@@ -1,0 +1,29 @@
+# ============================================================================
+#  ATTS IQAC Portal — root Apache config (security)
+# ============================================================================
+
+# Never list a directory's contents.
+Options -Indexes
+
+# Block direct access to secrets and source data:
+#   .env, .env.example, .gitignore, .htaccess, *.sql, *.md, *.json, *.lock
+<FilesMatch "(^\.|\.(env|sql|md|json|lock|log|example)$)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Don't advertise the PHP version.
+<IfModule mod_headers.c>
+    Header always unset X-Powered-By
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "same-origin"
+</IfModule>
+
+# Send index.php to handle the folder root.
+DirectoryIndex index.php
