@@ -29,7 +29,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('academic_year'),
             (string) input('metric'),
             (int) input('target_value'),
-            (string) input('remarks')
+            (string) input('remarks'),
+            (string) input('coordinator')
         );
     } elseif ($action === 'update') {
         [$ok, $msg] = target_update(
@@ -40,7 +41,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('metric'),
             (int) input('target_value'),
             (int) input('achieved_value'),
-            (string) input('remarks')
+            (string) input('remarks'),
+            (string) input('coordinator')
         );
     } elseif ($action === 'submit') {
         [$ok, $msg] = target_submit((int) input('id'), $user);
@@ -48,17 +50,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_review((int) input('id'), $user, (string) input('decision'), (string) input('review_remark'));
     } elseif ($action === 'delete') {
         [$ok, $msg] = target_delete((int) input('id'), $user);
+
+    // ---- Timed unlock workflow ----
+    } elseif ($action === 'unlock_request' && $user['role'] === 'HoD') {
+        [$ok, $msg] = unlock_request($user['department'] ?? null, (int) $user['id'], (string) input('reason'));
+    } elseif ($action === 'unlock_grant' && $user['role'] === 'Admin') {
+        $hours = (int) input('hours') ?: unlock_default_hours();
+        [$ok, $msg] = unlock_grant((int) input('id'), (int) $user['id'], $hours);
+    } elseif ($action === 'unlock_deny' && $user['role'] === 'Admin') {
+        [$ok, $msg] = unlock_deny((int) input('id'), (int) $user['id'], (string) input('admin_note'));
     } else {
-        [$ok, $msg] = [false, 'Unknown action.'];
+        [$ok, $msg] = [false, 'Unknown or not-permitted action.'];
     }
 
     flash($ok ? 'success' : 'error', $msg);
     redirect('/targets.php');
 }
 
+// Re-freeze any window that has run out before we read state for this page.
+unlock_expire_due();
+
 // A HoD only ever sees their own department; the other two choose.
 $isHod      = $user['role'] === 'HoD';
-$canCreate  = in_array($user['role'], ['Admin', 'HoD'], true);
+// A HoD enters the targets — that is their job. The Admin's job is to freeze
+// (approve) and unlock them, not to enter them. So only a HoD creates.
+$canCreate  = $isHod;
+$canManage  = in_array($user['role'], ['Admin', 'HoD'], true);   // may edit / delete within permission
 $deptFilter = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
 $yearFilter = trim((string) ($_GET['year'] ?? '')) ?: null;
 $statFilter = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
@@ -68,6 +85,13 @@ $departments = departments_all();
 $metrics     = metric_names();
 $years       = academic_years();
 $awaiting    = count(array_filter($targets, fn($t) => target_can_review($t, $user)));
+
+// Unlock workflow state:
+//   HoD   sees their own department's lock/unlock banner and countdown.
+//   Admin sees the queue of unlock requests waiting to be granted.
+$myUnlock       = $isHod ? unlock_state($user['department'] ?? null) : null;
+$pendingUnlocks = ($user['role'] === 'Admin') ? unlock_pending_all() : [];
+$unlockHours    = unlock_default_hours();
 
 $pageTitle = 'Targets';
 $breadcrumb = 'Targets';
@@ -112,6 +136,23 @@ require __DIR__ . '/inc/header.php';
       </select>
     </form>
 
+    <?php
+      // The meeting report always reflects what is on screen: same department
+      // (forced to their own for a HoD) and the same year filter. Same report,
+      // three formats — Word, Excel and a print-to-PDF view.
+      $reportBase = array_filter([
+          'department' => $isHod ? null : $deptFilter,
+          'year'       => $yearFilter,
+      ]);
+      $reportUrl = fn(string $fmt) => e(url('meeting-report.php') . '?' . http_build_query($reportBase + ['format' => $fmt]));
+    ?>
+    <div class="report-dl" title="Executive Meeting Report">
+      <span class="report-dl-label"><?= icon('download', 15) ?> Report</span>
+      <a class="report-dl-fmt" href="<?= $reportUrl('word') ?>">Word</a>
+      <a class="report-dl-fmt" href="<?= $reportUrl('excel') ?>">Excel</a>
+      <a class="report-dl-fmt" href="<?= $reportUrl('pdf') ?>" target="_blank" rel="noopener">PDF</a>
+    </div>
+
     <?php if ($canCreate): ?>
       <button class="btn btn-primary btn-sm" onclick="document.getElementById('addDlg').showModal()">
         <?= icon('plus') ?> Add Target
@@ -119,6 +160,91 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
   </div>
 </div>
+
+
+<?php /* ---- HoD: lock / request / countdown banner ---- */ ?>
+<?php if ($isHod && $myUnlock): ?>
+  <?php if ($myUnlock['state'] === 'unlocked'): ?>
+    <div class="unlock-banner open" data-until="<?= (int) $myUnlock['until'] * 1000 ?>">
+      <div class="ub-ic"><?= icon('clock', 20) ?></div>
+      <div class="ub-body">
+        <div class="ub-title">Targets unlocked for editing</div>
+        <div class="ub-sub">
+          Total window <strong><?= (int) $myUnlock['hours'] ?>h</strong>
+          &middot; Remaining <strong class="ub-remaining tabular">…</strong>
+          &middot; edit and re-submit as many times as you need before it ends.
+        </div>
+      </div>
+      <div class="ub-clock tabular">…</div>
+    </div>
+  <?php elseif ($myUnlock['state'] === 'requested'): ?>
+    <div class="unlock-banner pending">
+      <div class="ub-ic"><?= icon('clock', 20) ?></div>
+      <div class="ub-body">
+        <div class="ub-title">Unlock request awaiting the Admin</div>
+        <div class="ub-sub">Reason: <?= e($myUnlock['pending']['reason'] ?? '') ?></div>
+      </div>
+    </div>
+  <?php else: ?>
+    <div class="unlock-banner locked">
+      <div class="ub-ic"><?= icon('shield', 20) ?></div>
+      <div class="ub-body">
+        <div class="ub-title">Targets are locked</div>
+        <div class="ub-sub">Ask the Admin to unlock them if you need to make a change.</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('unlockDlg').showModal()">
+        <?= icon('key') ?> Request unlock
+      </button>
+    </div>
+  <?php endif; ?>
+<?php endif; ?>
+
+
+<?php /* ---- Admin: queue of unlock requests to grant or deny ---- */ ?>
+<?php if ($user['role'] === 'Admin' && !empty($pendingUnlocks)): ?>
+  <div class="card" style="border-left:3px solid var(--orange-500)">
+    <div class="card-head">
+      <div>
+        <div class="card-title"><?= icon('key', 16) ?> Unlock requests</div>
+        <div class="card-sub"><?= count($pendingUnlocks) ?> department<?= count($pendingUnlocks) !== 1 ? 's' : '' ?> asking to edit locked targets</div>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="table-wrap"><table class="data" style="min-width:760px"><thead><tr>
+        <th style="padding-left:24px">Department</th><th>Requested by</th><th>Reason</th><th>When</th>
+        <th class="num" style="padding-right:24px">Decision</th>
+      </tr></thead><tbody>
+        <?php foreach ($pendingUnlocks as $req): ?>
+          <tr>
+            <td style="padding-left:24px" class="fw-500"><?= e($req['department']) ?></td>
+            <td class="card-sub"><?= e($req['requester_name'] ?? '—') ?></td>
+            <td><?= e($req['reason'] ?? '') ?></td>
+            <td class="card-sub nowrap"><?= e(time_ago($req['created_at'])) ?></td>
+            <td class="num" style="padding-right:24px">
+              <div class="dept-actions" style="justify-content:flex-end">
+                <form method="post" class="flex gap-2 items-center">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="action" value="unlock_grant">
+                  <input type="hidden" name="id" value="<?= (int) $req['id'] ?>">
+                  <input class="input" type="number" name="hours" value="<?= $unlockHours ?>" min="1" max="720"
+                         title="Hours to allow editing" style="width:74px">
+                  <button class="btn btn-primary btn-sm"><?= icon('check') ?> Unlock</button>
+                </form>
+                <form method="post" onsubmit="return confirm('Deny this unlock request?')">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="action" value="unlock_deny">
+                  <input type="hidden" name="id" value="<?= (int) $req['id'] ?>">
+                  <button class="btn btn-outline btn-sm"><?= icon('x') ?></button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody></table></div>
+    </div>
+  </div>
+<?php endif; ?>
+
 
 <div class="card"><div class="card-body" style="padding:0">
   <?php if (empty($targets)): ?>
@@ -155,6 +281,9 @@ require __DIR__ . '/inc/header.php';
         <tr>
           <td style="padding-left:24px">
             <div style="font-weight:500"><?= e($t['metric']) ?></div>
+            <?php if (!empty($t['coordinator'])): ?>
+              <div class="card-sub"><?= icon('user', 12) ?> <?= e($t['coordinator']) ?></div>
+            <?php endif; ?>
             <?php if (!empty($t['remarks'])): ?>
               <div class="card-sub"><?= e($t['remarks']) ?></div>
             <?php endif; ?>
@@ -239,10 +368,9 @@ require __DIR__ . '/inc/header.php';
     <div class="msub"><?= $isHod ? 'Saved as a draft — send it for review when ready.' : 'Created by an Admin, so it is frozen straight away.' ?></div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <div class="field"><label>Metric <span class="req">*</span></label>
-      <select class="select" name="metric" required>
-        <?php foreach ($metrics as $m): ?><option><?= e($m) ?></option><?php endforeach; ?>
-      </select></div>
+    <div class="field" style="grid-column:span 2"><label>Target / Details <span class="req">*</span></label>
+      <input class="input" name="metric" list="metricList" required autocomplete="off"
+             placeholder="e.g. Pass Percentage, Journal Publications, NPTEL…"></div>
     <div class="field"><label>Department <span class="req">*</span></label>
       <?php if ($isHod): ?>
         <input class="input" value="<?= e($user['department'] ?? '') ?>" disabled>
@@ -255,9 +383,11 @@ require __DIR__ . '/inc/header.php';
       <select class="select" name="academic_year">
         <?php foreach ($years as $y): ?><option><?= e($y) ?></option><?php endforeach; ?>
       </select></div>
-    <div class="field"><label>Target Value <span class="req">*</span></label>
+    <div class="field"><label>Fixed (target value) <span class="req">*</span></label>
       <input class="input" type="number" name="target_value" min="0" required></div>
-    <div class="field" style="grid-column:span 2"><label>Remarks</label>
+    <div class="field"><label>Coordinator</label>
+      <input class="input" name="coordinator" placeholder="Responsible person"></div>
+    <div class="field" style="grid-column:span 2"><label>Progress / Remarks</label>
       <input class="input" name="remarks" placeholder="Optional notes"></div>
   </div>
   <div class="modal-foot">
@@ -265,7 +395,9 @@ require __DIR__ . '/inc/header.php';
     <button type="submit" class="btn btn-primary btn-sm">Add</button>
   </div>
 </form></dialog>
+<?php endif; ?>
 
+<?php if ($canManage): ?>
 <!-- Edit dialog -->
 <dialog class="modal" id="editDlg"><form method="post"><?= csrf_field() ?>
   <input type="hidden" name="action" value="update">
@@ -275,10 +407,8 @@ require __DIR__ . '/inc/header.php';
     <div class="msub" id="et-note"></div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <div class="field"><label>Metric</label>
-      <select class="select" name="metric" id="et-metric">
-        <?php foreach ($metrics as $m): ?><option><?= e($m) ?></option><?php endforeach; ?>
-      </select></div>
+    <div class="field" style="grid-column:span 2"><label>Target / Details</label>
+      <input class="input" name="metric" id="et-metric" list="metricList" autocomplete="off" required></div>
     <div class="field"><label>Department</label>
       <select class="select" name="department" id="et-dept" <?= $isHod ? 'disabled' : '' ?>>
         <?php foreach ($departments as $d): ?><option value="<?= e($d['name']) ?>"><?= e($d['name']) ?></option><?php endforeach; ?>
@@ -287,11 +417,13 @@ require __DIR__ . '/inc/header.php';
       <select class="select" name="academic_year" id="et-year">
         <?php foreach ($years as $y): ?><option><?= e($y) ?></option><?php endforeach; ?>
       </select></div>
-    <div class="field"><label>Target Value</label>
+    <div class="field"><label>Fixed (target value)</label>
       <input class="input" type="number" name="target_value" id="et-tv" min="0" required></div>
-    <div class="field"><label>Achieved Value</label>
+    <div class="field"><label>Achieved value</label>
       <input class="input" type="number" name="achieved_value" id="et-av" min="0"></div>
-    <div class="field"><label>Remarks</label>
+    <div class="field"><label>Coordinator</label>
+      <input class="input" name="coordinator" id="et-coord"></div>
+    <div class="field"><label>Progress / Remarks</label>
       <input class="input" name="remarks" id="et-rem"></div>
   </div>
   <div class="modal-foot">
@@ -337,6 +469,32 @@ require __DIR__ . '/inc/header.php';
   </div>
 </form></dialog>
 
+<?php if ($isHod && $myUnlock && $myUnlock['state'] === 'locked'): ?>
+<!-- HoD asks the Admin to open a timed edit window on the locked targets -->
+<dialog class="modal" id="unlockDlg" style="max-width:30rem"><form method="post"><?= csrf_field() ?>
+  <input type="hidden" name="action" value="unlock_request">
+  <div class="modal-head"><div>
+    <h3>Request unlock</h3>
+    <div class="msub">The Admin grants a timed window; you can then edit and re-submit until it ends.</div>
+  </div></div>
+  <div class="modal-body">
+    <div class="field"><label>Why do the locked targets need changing? <span class="req">*</span></label>
+      <input class="input" name="reason" required placeholder="e.g. revise the FDP target after the new circular">
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+    <button type="submit" class="btn btn-primary btn-sm">Send request</button>
+  </div>
+</form></dialog>
+<?php endif; ?>
+
+<!-- Suggestions for the free-text Target box: the configured metric names,
+     offered as a convenience but never a limit. -->
+<datalist id="metricList">
+  <?php foreach ($metrics as $m): ?><option value="<?= e($m) ?>"></option><?php endforeach; ?>
+</datalist>
+
 <script>
 function editTarget(t) {
   document.getElementById('et-id').value     = t.id;
@@ -345,6 +503,7 @@ function editTarget(t) {
   document.getElementById('et-year').value   = t.academic_year || '';
   document.getElementById('et-tv').value     = t.target_value;
   document.getElementById('et-av').value     = t.achieved_value;
+  document.getElementById('et-coord').value  = t.coordinator || '';
   document.getElementById('et-rem').value    = t.remarks || '';
   document.getElementById('et-note').textContent =
     t.status === 'Approved'
@@ -368,7 +527,7 @@ function reviewTarget(t, decision) {
   document.getElementById('rv-title').textContent = approve ? 'Approve and freeze?' : 'Send back for changes?';
   document.getElementById('rv-sub').textContent   = t.metric + ' · ' + (t.dept || '—') + ' · target ' + t.target;
   document.getElementById('rv-text').textContent  = approve
-    ? 'Once approved the target is frozen. The HoD can no longer edit it — only an Admin can change it after this.'
+    ? 'Once approved the target is frozen. The HoD cannot edit it unless you grant a timed unlock; an Admin can change it anytime.'
     : 'The HoD gets your note and can revise the target, then send it back up for review.';
   document.getElementById('rv-label').textContent = approve ? 'Note (optional)' : 'What needs changing?';
   var remark = document.getElementById('rv-remark');
@@ -378,5 +537,35 @@ function reviewTarget(t, decision) {
   document.getElementById('rv-go').textContent = approve ? 'Approve & freeze' : 'Send back';
   document.getElementById('revDlg').showModal();
 }
+
+/* Live countdown for the unlock window. Counts down to the exact instant the
+   Admin's grant expires; when it hits zero the window is over, so we reload so
+   the server re-locks the targets and the edit buttons disappear. */
+(function () {
+  var banner = document.querySelector('.unlock-banner.open');
+  if (!banner) return;
+  var until = parseInt(banner.getAttribute('data-until'), 10);
+  var remainEl = banner.querySelector('.ub-remaining');
+  var clockEl  = banner.querySelector('.ub-clock');
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+
+  function tick() {
+    var ms = until - Date.now();
+    if (ms <= 0) {
+      clockEl.textContent = '00:00:00';
+      if (remainEl) remainEl.textContent = 'expired';
+      location.reload();
+      return;
+    }
+    var s = Math.floor(ms / 1000);
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    var text = pad(h) + ':' + pad(m) + ':' + pad(sec);
+    clockEl.textContent = text;
+    if (remainEl) remainEl.textContent = h + 'h ' + pad(m) + 'm ' + pad(sec) + 's';
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>

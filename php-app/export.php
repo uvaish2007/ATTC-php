@@ -14,6 +14,7 @@
  */
 
 require_once __DIR__ . '/inc/auth.php';
+require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Record.php';
 
 $user = require_login();
@@ -23,13 +24,20 @@ $format     = strtolower(trim((string) input('format', 'csv')));
 $department = trim((string) input('department', '')) ?: null;
 $status     = trim((string) input('status', '')) ?: null;
 $type       = trim((string) input('type', '')) ?: null;
+$from       = trim((string) input('from', '')) ?: null;   // period start (YYYY-MM-DD)
+$to         = trim((string) input('to', '')) ?: null;     // period end
 
 if (!in_array($format, ['csv', 'excel', 'word'], true)) {
     $format = 'csv';
 }
 
+// A Director's report is always the whole institution — never one department.
+if ($user['role'] === 'Director') {
+    $department = null;
+}
+
 // ---- Get the records (role scope is applied inside) ---------------------
-$records = report_records($user, $department, $status, $type);
+$records = report_records($user, $department, $status, $type, $from, $to);
 
 // ---- Things that appear in the report heading ---------------------------
 $isOversight = in_array($user['role'], ['Admin', 'Director'], true);
@@ -41,6 +49,13 @@ $reportTitle = 'ACADEMIC RECORDS';
 if ($type) {
     $types = record_types();
     $reportTitle = strtoupper($types[$type]['label'] ?? 'ACADEMIC RECORDS');
+}
+
+// A human-readable period line for the heading, when a range was chosen.
+$periodLabel = null;
+if ($from || $to) {
+    $fmt = fn(?string $d) => $d ? date('d.m.Y', strtotime($d)) : '…';
+    $periodLabel = 'From ' . $fmt($from) . ' to ' . $fmt($to);
 }
 
 $today    = date('d.m.Y');
@@ -89,9 +104,13 @@ if ($format === 'csv') {
     // Excel needs this marker to read UTF-8 (é, ñ, …) correctly.
     fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-    csv_line($out, ['INTERNAL QUALITY ASSURANCE CELL (IQAC)']);
-    csv_line($out, [$reportTitle . ' - ' . $scopeLabel]);
-    csv_line($out, ['Date: ' . $today]);
+    csv_line($out, [REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)']);
+    csv_line($out, [$reportTitle]);
+    csv_line($out, ['Department: ' . $scopeLabel]);
+    if ($periodLabel) {
+        csv_line($out, ['Period: ' . $periodLabel]);
+    }
+    csv_line($out, ['Report Date: ' . $today]);
     csv_line($out, []);
     csv_line($out, $columns);
 
@@ -118,30 +137,20 @@ if ($format === 'excel') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
 }
+
+// Same letterhead, grid and sign-off as every other report (inc/report_layout).
+$meta = [['Department', $scopeLabel]];
+if ($periodLabel) {
+    $meta[] = ['Period', $periodLabel];
+}
+$meta[] = ['Total Records', (string) count($records)];
+$meta[] = ['Report Date', $today];
+
+report_document_head($reportTitle . ' Report');
+report_letterhead($reportTitle, $meta);
 ?>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body  { font-family: Calibri, Arial, sans-serif; font-size: 11pt; }
-    h2, h3, .date { text-align: center; margin: 2px 0; }
-    h2    { font-size: 14pt; }
-    h3    { font-size: 12pt; }
-    .date { font-size: 10pt; margin-bottom: 12px; }
-    table { border-collapse: collapse; width: 100%; }
-    th, td { border: 1px solid #333; padding: 5px 7px; font-size: 10pt; vertical-align: top; }
-    th    { background: #E8EAF0; text-align: center; }
-    .sign { margin-top: 40px; width: 100%; }
-    .sign td { border: 0; text-align: center; font-weight: bold; font-size: 10pt; }
-  </style>
-</head>
-<body>
 
-  <h2>INTERNAL QUALITY ASSURANCE CELL (IQAC)</h2>
-  <h3><?= e($reportTitle) ?> &ndash; <?= e($scopeLabel) ?></h3>
-  <div class="date">Date: <?= e($today) ?></div>
-
-  <table>
+  <table class="grid">
     <thead>
       <tr>
         <?php foreach ($columns as $column): ?>
@@ -152,14 +161,14 @@ if ($format === 'excel') {
     <tbody>
       <?php if (empty($records)): ?>
         <tr>
-          <td colspan="<?= count($columns) ?>" style="text-align:center">No records found.</td>
+          <td colspan="<?= count($columns) ?>" class="c">No records found.</td>
         </tr>
       <?php else: ?>
         <?php $serial = 1; ?>
         <?php foreach ($records as $record): ?>
           <tr>
-            <?php foreach (export_row($record, $serial++) as $value): ?>
-              <td><?= e($value) ?></td>
+            <?php foreach (export_row($record, $serial++) as $i => $value): ?>
+              <td<?= $i === 0 ? ' class="num"' : '' ?>><?= e($value) ?></td>
             <?php endforeach; ?>
           </tr>
         <?php endforeach; ?>
@@ -167,14 +176,6 @@ if ($format === 'excel') {
     </tbody>
   </table>
 
-  <!-- The signature line the printed IQAC proforma carries -->
-  <table class="sign">
-    <tr>
-      <td>HOD<?= $scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . e($scopeLabel) : '' ?></td>
-      <td>DEAN / ACADEMICS</td>
-      <td>PRINCIPAL</td>
-    </tr>
-  </table>
-
-</body>
-</html>
+<?php
+report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+report_document_foot();

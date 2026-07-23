@@ -18,6 +18,7 @@ function navigation_for(string $role): array
             ['section' => 'Manage', 'label' => 'Users',        'path' => 'users.php',       'icon' => 'users'],
             ['section' => 'Manage', 'label' => 'Departments',  'path' => 'departments.php', 'icon' => 'building'],
             ['section' => 'Manage', 'label' => 'Targets',      'path' => 'targets.php',     'icon' => 'target', 'badge' => 'targets'],
+            ['section' => 'Manage', 'label' => 'Report Template', 'path' => 'report-template.php', 'icon' => 'reports'],
             ['section' => 'System', 'label' => 'Settings',     'path' => 'settings.php',    'icon' => 'settings'],
         ],
         'Director' => [

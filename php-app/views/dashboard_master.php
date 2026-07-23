@@ -105,6 +105,49 @@ $showDepartments = $isOversight && count($rows) > 1;
 </div>
 
 
+<?php /* ---- HoD: the unlock window, shown with total + remaining time ---- */ ?>
+<?php if ($user['role'] === 'HoD'): ?>
+  <?php $du = unlock_state($user['department'] ?? null); ?>
+  <?php if ($du['state'] === 'unlocked'): ?>
+    <div class="unlock-banner open" data-until="<?= (int) $du['until'] * 1000 ?>">
+      <div class="ub-ic"><?= icon('clock', 20) ?></div>
+      <div class="ub-body">
+        <div class="ub-title">Targets unlocked for editing</div>
+        <div class="ub-sub">
+          Total window <strong><?= (int) $du['hours'] ?>h</strong>
+          &middot; Remaining <strong class="ub-remaining tabular">…</strong>
+          &middot; <a href="<?= e(url('targets.php')) ?>">edit your targets</a> before the timer ends.
+        </div>
+      </div>
+      <div class="ub-clock tabular">…</div>
+    </div>
+    <script>
+      (function () {
+        var b = document.querySelector('.unlock-banner.open'); if (!b) return;
+        var until = parseInt(b.getAttribute('data-until'), 10);
+        var rEl = b.querySelector('.ub-remaining'), cEl = b.querySelector('.ub-clock');
+        function p(n){ return (n<10?'0':'')+n; }
+        function tick(){
+          var ms = until - Date.now();
+          if (ms <= 0){ cEl.textContent='00:00:00'; if(rEl) rEl.textContent='expired'; location.reload(); return; }
+          var s=Math.floor(ms/1000), h=Math.floor(s/3600), m=Math.floor((s%3600)/60), x=s%60;
+          cEl.textContent=p(h)+':'+p(m)+':'+p(x); if(rEl) rEl.textContent=h+'h '+p(m)+'m '+p(x)+'s';
+        }
+        tick(); setInterval(tick, 1000);
+      })();
+    </script>
+  <?php elseif ($du['state'] === 'requested'): ?>
+    <div class="unlock-banner pending">
+      <div class="ub-ic"><?= icon('clock', 20) ?></div>
+      <div class="ub-body">
+        <div class="ub-title">Unlock request awaiting the Admin</div>
+        <div class="ub-sub">Your locked targets can be edited once the Admin grants the request.</div>
+      </div>
+    </div>
+  <?php endif; ?>
+<?php endif; ?>
+
+
 <!-- Counters -->
 <div class="stat-grid <?= $isOversight ? 'grid-6' : 'grid-4' ?>">
 
@@ -417,25 +460,7 @@ $showDepartments = $isOversight && count($rows) > 1;
      * doughnut without two greens fighting each other.
      */
     $attainTone = fn (int $percent) => $percent >= 100 ? '#059669' : ($percent >= 50 ? '#FF4F01' : '#DC2626');
-
-    // Targets store the metric's full name; these fit under a column.
-    $targetShort = [
-        'Journal Publications'    => 'Journals',  'Book & Book Chapters' => 'Books',
-        'Conference Publications' => 'Conf.',     'Patents & Copyrights' => 'Patents',
-        'MoU Signed'              => 'MoUs',      'FDP Participation'    => 'FDP',
-        'NPTEL'                   => 'NPTEL',     'Students Internship'  => 'Interns',
-        'Placements'              => 'Placed',
-    ];
-
-    /*
-     * Trim a label to the width its column can hold. SVG text does not wrap or
-     * clip, so a long department name would otherwise run straight over its
-     * neighbour once there are several targets on the chart.
-     */
-    $fit = function (string $text, float $width, float $perChar): string {
-        $max = max(3, (int) floor($width / $perChar));
-        return mb_strlen($text) <= $max ? $text : rtrim(mb_substr($text, 0, $max - 1)) . '…';
-    };
+    $attainBand = fn (int $percent) => $percent >= 100 ? 'Met' : ($percent >= 50 ? 'Halfway or better' : 'Behind');
   ?>
 
 <div class="mt-5 card" id="targetChart">
@@ -519,135 +544,87 @@ $showDepartments = $isOversight && count($rows) > 1;
 
     <?php else: ?>
 
-      <div class="attain-head">
-        <span class="big tabular" style="color:<?= $attainTone($attain['percent']) ?>"><?= (int) $attain['percent'] ?>%</span>
-        <span class="card-sub">
-          <?= (int) $attain['achieved'] ?> achieved of <?= (int) $attain['target'] ?> targeted
-          &middot; <?= (int) $attain['met'] ?> of <?= (int) $attain['targets'] ?>
-          target<?= $attain['targets'] !== 1 ? 's' : '' ?> met
-          &middot; <?= (int) $attain['frozen'] ?> frozen
-          <?php if ($attain['targets'] > count($attainRows)): ?>
-            &middot; showing the <?= count($attainRows) ?> furthest behind
-          <?php endif; ?>
-        </span>
+      <?php $underReview = (int) $attain['targets'] - (int) $attain['frozen']; ?>
+
+      <!-- Summary tiles: the headline reading, then how the targets stand -->
+      <div class="attain-tiles">
+        <div class="attain-tile hero">
+          <div class="k">Overall attainment</div>
+          <div class="v" style="color:<?= $attainTone($attain['percent']) ?>"><?= (int) $attain['percent'] ?>%</div>
+          <div class="tile-bar">
+            <span style="width:<?= min(100, (int) $attain['percent']) ?>%;background:<?= $attainTone($attain['percent']) ?>"></span>
+          </div>
+          <div class="sub"><?= (int) $attain['achieved'] ?> of <?= (int) $attain['target'] ?> records</div>
+        </div>
+        <div class="attain-tile">
+          <div class="k">Targets met</div>
+          <div class="v"><?= (int) $attain['met'] ?> <span class="of">/ <?= (int) $attain['targets'] ?></span></div>
+          <div class="sub">reached 100%</div>
+        </div>
+        <div class="attain-tile">
+          <div class="k">Frozen</div>
+          <div class="v"><?= (int) $attain['frozen'] ?> <span class="of">/ <?= (int) $attain['targets'] ?></span></div>
+          <div class="sub">approved commitments</div>
+        </div>
+        <div class="attain-tile">
+          <div class="k">Under review</div>
+          <div class="v"><?= $underReview ?></div>
+          <div class="sub">not frozen yet</div>
+        </div>
       </div>
 
-      <?php
-        // The same drawing box as the metric chart above, with room underneath
-        // for the three label lines each pair carries.
-        $left     = 40;
-        $right    = 716;
-        $top      = 24;
-        $baseline = 244;
+      <?php if ($attain['targets'] > count($attainRows)): ?>
+        <div class="card-sub" style="margin-bottom:10px">
+          Showing the <?= count($attainRows) ?> targets furthest behind, of <?= (int) $attain['targets'] ?>.
+        </div>
+      <?php endif; ?>
 
-        $peak = 1;
-        foreach ($attainRows as $row) {
-            $peak = max($peak, $row['target'], $row['achieved']);
-        }
+      <!-- Scale: every bar's track runs 0 → the target, so 100% = target met -->
+      <div class="attain-scale">
+        <span>0</span><span class="col2">50%</span><span>Target</span>
+      </div>
 
-        // Round the top of the scale up to a tidy number that divides by 4, so
-        // the four grid lines land on whole numbers.
-        $scaleTop = $peak;
-        foreach ([4, 8, 12, 20, 40, 80, 200, 400, 800, 2000, 4000, 8000] as $step) {
-            if ($step >= $peak) {
-                $scaleTop = $step;
-                break;
-            }
-        }
-
-        // Both bars share one scale — that is what makes them comparable, and
-        // it lets a beaten target simply out-grow its own plan bar.
-        $slot     = ($right - $left) / max(1, count($attainRows));
-        $pairGap  = 4;
-        $barWidth = max(6, min(22, ($slot - 28 - $pairGap) / 2));
-        $pairSpan = $barWidth * 2 + $pairGap;
-      ?>
-
-      <svg class="chart" viewBox="0 0 720 312" role="img"
-           aria-label="Each fixed target beside the number of records approved against it">
-
-        <!-- Grid lines, one every quarter of the scale -->
-        <?php for ($i = 0; $i <= 4; $i++): ?>
+      <!-- One horizontal bar per target. The track is the target; the fill is
+           what has been achieved against it. A beaten target fills the whole
+           track and is ringed; the true figure is always in the % beside it. -->
+      <div class="attain-list">
+        <?php foreach ($attainRows as $row): ?>
           <?php
-            $value = $scaleTop / 4 * $i;
-            $y     = $baseline - ($baseline - $top) * ($i / 4);
+            $pct    = (int) $row['percent'];
+            $barPct = max(2, min(100, $pct));   // keep a sliver visible at low %
+            $tone   = $attainTone($pct);
+            $scope  = trim($row['department'] . ($row['year'] ? ' · ' . $row['year'] : ''));
           ?>
-          <line class="chart-grid" x1="<?= $left ?>" y1="<?= round($y, 1) ?>" x2="<?= $right ?>" y2="<?= round($y, 1) ?>"></line>
-          <text class="chart-axis" x="<?= $left - 8 ?>" y="<?= round($y + 4, 1) ?>" text-anchor="end"><?= round($value) ?></text>
-        <?php endfor; ?>
+          <div class="attain-row">
+            <div class="attain-info">
+              <div class="nm">
+                <?php if ($row['frozen']): ?>
+                  <span class="lock" title="Frozen — an agreed commitment"><?= icon('shield', 13) ?></span>
+                <?php endif; ?>
+                <?= e($row['metric']) ?><?= $row['exact'] ? '' : ' *' ?>
+              </div>
+              <div class="scope">
+                <?php if ($scope !== ''): ?><?= e($scope) ?> &middot; <?php endif; ?>
+                <span class="st" style="color:<?= $tone ?>"><?= e($attainBand($pct)) ?></span>
+                <?php if (!$row['frozen']): ?> &middot; <?= e($row['status']) ?><?php endif; ?>
+              </div>
+            </div>
 
-        <!-- What the numbers down the left actually count -->
-        <text class="chart-axis-title" transform="rotate(-90 12 <?= round(($top + $baseline) / 2) ?>)"
-              x="12" y="<?= round(($top + $baseline) / 2) ?>" text-anchor="middle">RECORDS</text>
+            <div class="attain-track<?= $pct > 100 ? ' beat' : '' ?>"
+                 title="<?= (int) $row['achieved'] ?> of <?= (int) $row['target'] ?> (<?= $pct ?>%)">
+              <span class="attain-fill" style="width:<?= $barPct ?>%;background:<?= $tone ?>"></span>
+            </div>
 
-        <!-- One pair of columns per target: the plan, then what landed -->
-        <?php foreach ($attainRows as $index => $row): ?>
-          <?php
-            $groupLeft = $left + $slot * $index + ($slot - $pairSpan) / 2;
-            $middle    = $groupLeft + $pairSpan / 2;
-            $achievedX = $groupLeft + $barWidth + $pairGap;
-
-            $targetTop   = $baseline - ($baseline - $top) * min(1, $row['target']   / $scaleTop);
-            $achievedTop = $baseline - ($baseline - $top) * min(1, $row['achieved'] / $scaleTop);
-
-            $tone  = $attainTone($row['percent']);
-            $scope = trim($row['department'] . ($row['year'] ? ' · ' . $row['year'] : ''));
-            $state = $row['frozen'] ? 'frozen' : strtolower($row['status']);
-          ?>
-
-          <g class="chart-group">
-            <!-- Hover band, drawn first so it sits behind the columns -->
-            <rect class="chart-hit" x="<?= round($left + $slot * $index, 1) ?>" y="<?= $top ?>"
-                  width="<?= round($slot, 1) ?>" height="<?= $baseline - $top ?>">
-              <title>
-                <?= e($row['metric']) ?><?= $scope ? ' — ' . e($scope) : '' ?>
-                &#10;target <?= (int) $row['target'] ?>, achieved <?= (int) $row['achieved'] ?> (<?= (int) $row['percent'] ?>%)
-                &#10;<?= e($row['status']) ?><?= $row['frozen'] ? ' — frozen' : ' — not frozen yet' ?>
-              </title>
-            </rect>
-
-            <?php if ($row['target'] > 0): ?>
-              <!-- Solid once frozen; an outline while it is still being agreed -->
-              <path class="chart-bar-plan<?= $row['frozen'] ? '' : ' provisional' ?>"
-                    d="<?= bar_path($groupLeft, $targetTop, $barWidth, $baseline) ?>">
-                <title><?= e($row['metric']) ?> — fixed target: <?= (int) $row['target'] ?> (<?= e($row['status']) ?>)</title>
-              </path>
-            <?php endif; ?>
-
-            <?php if ($row['achieved'] > 0): ?>
-              <path d="<?= bar_path($achievedX, $achievedTop, $barWidth, $baseline) ?>" fill="<?= $tone ?>">
-                <title>
-                  <?= e($row['metric']) ?> — achieved: <?= (int) $row['achieved'] ?>
-                  approved record<?= $row['achieved'] !== 1 ? 's' : '' ?>
-                </title>
-              </path>
-            <?php endif; ?>
-
-            <!-- The percentage rides above whichever of the two bars is taller -->
-            <?php if ($row['target'] > 0): ?>
-              <text class="chart-pct" x="<?= round($middle, 1) ?>" y="<?= round(min($targetTop, $achievedTop) - 8, 1) ?>"
-                    text-anchor="middle" fill="<?= $tone ?>"><?= (int) $row['percent'] ?>%</text>
-            <?php endif; ?>
-
-            <text class="chart-axis" x="<?= round($middle, 1) ?>" y="<?= $baseline + 20 ?>" text-anchor="middle">
-              <?= e($fit($targetShort[$row['metric']] ?? $row['metric'], $slot - 6, 6.2)) ?>
-            </text>
-            <text class="chart-note" x="<?= round($middle, 1) ?>" y="<?= $baseline + 36 ?>" text-anchor="middle">
-              <?= e($fit($scope, $slot - 6, 5.4)) ?><?= $row['exact'] ? '' : ' *' ?>
-            </text>
-            <text class="chart-value" x="<?= round($middle, 1) ?>" y="<?= $baseline + 54 ?>" text-anchor="middle">
-              <?= (int) $row['achieved'] ?> / <?= (int) $row['target'] ?>
-            </text>
-          </g>
+            <div class="attain-nums">
+              <div class="pct" style="color:<?= $tone ?>"><?= $pct ?>%</div>
+              <div class="frac"><?= (int) $row['achieved'] ?> / <?= (int) $row['target'] ?></div>
+            </div>
+          </div>
         <?php endforeach; ?>
-
-        <!-- The baseline itself -->
-        <line class="chart-base" x1="<?= $left ?>" y1="<?= $baseline ?>" x2="<?= $right ?>" y2="<?= $baseline ?>"></line>
-      </svg>
+      </div>
 
       <div class="attain-foot">
-        <span class="attain-key"><span class="sw" style="background:var(--navy-200)"></span> Fixed target (frozen)</span>
-        <span class="attain-key"><span class="sw outline"></span> Still under review</span>
+        <span class="attain-key"><?= icon('shield', 13) ?> Frozen commitment</span>
         <span class="attain-key"><span class="sw" style="background:#059669"></span> Met</span>
         <span class="attain-key"><span class="sw" style="background:#FF4F01"></span> Halfway or better</span>
         <span class="attain-key"><span class="sw" style="background:#DC2626"></span> Behind</span>

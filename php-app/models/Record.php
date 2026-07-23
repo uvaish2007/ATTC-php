@@ -24,7 +24,7 @@ function record_types(): array
 }
 
 /** Fetch records for a given type, with optional filters. */
-function records_list(string $type, ?string $department = null, ?string $status = null, ?int $createdBy = null): array
+function records_list(string $type, ?string $department = null, ?string $status = null, ?int $createdBy = null, ?string $from = null, ?string $to = null): array
 {
     $types = record_types();
     if (!isset($types[$type])) {
@@ -49,6 +49,16 @@ function records_list(string $type, ?string $department = null, ?string $status 
         $sql .= ' AND created_by = ?';
         $params[] = $createdBy;
     }
+    // Period filter, on the submission date every record type shares. $to is
+    // pushed to the end of its day so the range is inclusive.
+    if ($from) {
+        $sql .= ' AND created_at >= ?';
+        $params[] = $from . ' 00:00:00';
+    }
+    if ($to) {
+        $sql .= ' AND created_at <= ?';
+        $params[] = $to . ' 23:59:59';
+    }
 
     $sql .= ' ORDER BY created_at DESC';
     $stmt = db()->prepare($sql);
@@ -66,13 +76,19 @@ function records_list(string $type, ?string $department = null, ?string $status 
  * Returns one flat list, newest first, with a few helper keys added:
  *   _type_key, _type_label, _title, _person
  */
-function report_records(array $user, ?string $department, ?string $status, ?string $type): array
+function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null): array
 {
     $types = record_types();
 
-    // Only Admin and Director may look outside their own department.
-    $isOversight = in_array($user['role'], ['Admin', 'Director'], true);
-    $scopeDept   = $isOversight ? $department : ($user['department'] ?: null);
+    // Admin may look at any department; Director only ever at the whole
+    // institution (never one department); everyone else is pinned to their own.
+    if ($user['role'] === 'Admin') {
+        $scopeDept = $department;
+    } elseif ($user['role'] === 'Director') {
+        $scopeDept = null;                                // overall only
+    } else {
+        $scopeDept = $user['department'] ?: null;
+    }
 
     // Faculty only ever see their own submissions.
     $onlyMine = ($user['role'] === 'Faculty') ? (int) $user['id'] : null;
@@ -87,7 +103,7 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
         $hasDept = !in_array($key, ['internship', 'placement'], true);
         $dept    = $hasDept ? $scopeDept : null;
 
-        foreach (records_list($key, $dept, $status, $onlyMine) as $row) {
+        foreach (records_list($key, $dept, $status, $onlyMine, $from, $to) as $row) {
             $row['_type_key']   = $key;
             $row['_type_label'] = $t['label'];
             $row['_title']      = $row[$t['title_col']] ?? '(untitled)';

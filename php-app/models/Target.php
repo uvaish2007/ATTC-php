@@ -23,6 +23,148 @@
  */
 
 require_once __DIR__ . '/../inc/db.php';
+require_once __DIR__ . '/Setting.php';
+
+/* ==========================================================================
+   Timed unlock permits
+   Once a department's targets are locked (Approved), a HoD asks for an unlock
+   with a reason; the Admin grants it, opening a timed edit window. There is no
+   background job — the window is simply "unlocked_until > now", checked on
+   every request, and the dashboard counts down to that same instant.
+   ========================================================================= */
+
+/** The default edit-window length in hours (Admin-configurable). */
+function unlock_default_hours(): int
+{
+    return max(1, (int) setting_get('unlock_hours', '12'));
+}
+
+/** Mark any window whose time has run out as Expired (lazy, cosmetic). */
+function unlock_expire_due(): void
+{
+    db()->exec("UPDATE unlock_requests SET status='Expired' WHERE status='Granted' AND unlocked_until <= NOW()");
+}
+
+/** The department's live unlock window, if one is open right now. */
+function unlock_active(?string $department): ?array
+{
+    if (!$department) {
+        return null;
+    }
+    $stmt = db()->prepare(
+        "SELECT * FROM unlock_requests
+          WHERE department = ? AND status = 'Granted' AND unlocked_until > NOW()
+          ORDER BY unlocked_until DESC LIMIT 1"
+    );
+    $stmt->execute([$department]);
+    return $stmt->fetch() ?: null;
+}
+
+/** A pending (awaiting-Admin) request for a department, if any. */
+function unlock_pending_for(?string $department): ?array
+{
+    if (!$department) {
+        return null;
+    }
+    $stmt = db()->prepare("SELECT * FROM unlock_requests WHERE department = ? AND status = 'Requested' ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$department]);
+    return $stmt->fetch() ?: null;
+}
+
+/**
+ * A department's unlock state for the UI.
+ *   state: 'locked' | 'requested' | 'unlocked'
+ *   until: epoch seconds the window closes (when unlocked)
+ */
+function unlock_state(?string $department): array
+{
+    $active = unlock_active($department);
+    if ($active) {
+        return [
+            'state'  => 'unlocked',
+            'active' => $active,
+            'pending'=> null,
+            'until'  => strtotime($active['unlocked_until']),
+            'hours'  => (int) $active['hours'],
+        ];
+    }
+    $pending = unlock_pending_for($department);
+    return [
+        'state'   => $pending ? 'requested' : 'locked',
+        'active'  => null,
+        'pending' => $pending,
+        'until'   => null,
+        'hours'   => 0,
+    ];
+}
+
+/** HoD asks to unlock their department's locked targets. */
+function unlock_request(?string $department, int $userId, string $reason): array
+{
+    if (!$department) {
+        return [false, 'No department to unlock.'];
+    }
+    if (unlock_active($department)) {
+        return [false, 'The targets are already unlocked.'];
+    }
+    if (unlock_pending_for($department)) {
+        return [false, 'An unlock request is already awaiting the Admin.'];
+    }
+    $reason = trim($reason);
+    if ($reason === '') {
+        return [false, 'Give a reason for the unlock request.'];
+    }
+
+    $stmt = db()->prepare("INSERT INTO unlock_requests (department, requested_by, reason, status) VALUES (?,?,?,'Requested')");
+    $stmt->execute([$department, $userId, $reason]);
+    return [true, 'Unlock request sent to the Admin.'];
+}
+
+/** Admin grants a request, opening the timed window. */
+function unlock_grant(int $id, int $adminId, int $hours): array
+{
+    $stmt = db()->prepare("SELECT * FROM unlock_requests WHERE id = ? AND status = 'Requested'");
+    $stmt->execute([$id]);
+    if (!$stmt->fetch()) {
+        return [false, 'That request is no longer pending.'];
+    }
+
+    $hours = max(1, min(720, $hours));
+    setting_set('unlock_hours', (string) $hours, $adminId);   // remember as the new default
+
+    $upd = db()->prepare(
+        "UPDATE unlock_requests
+            SET status='Granted', hours=?, granted_by=?, granted_at=NOW(),
+                unlocked_until = DATE_ADD(NOW(), INTERVAL ? HOUR)
+          WHERE id = ?"
+    );
+    $upd->execute([$hours, $adminId, $hours, $id]);
+    return [true, "Unlocked for {$hours}h — the HoD can edit until the timer ends."];
+}
+
+/** Admin denies a request. */
+function unlock_deny(int $id, int $adminId, string $note = ''): array
+{
+    $stmt = db()->prepare("UPDATE unlock_requests SET status='Denied', granted_by=?, admin_note=? WHERE id = ? AND status='Requested'");
+    $stmt->execute([$adminId, trim($note) ?: null, $id]);
+    return [true, 'Unlock request denied.'];
+}
+
+/** All pending requests, for the Admin's queue. */
+function unlock_pending_all(): array
+{
+    return db()->query(
+        "SELECT u.*, r.name AS requester_name
+           FROM unlock_requests u LEFT JOIN users r ON r.id = u.requested_by
+          WHERE u.status = 'Requested' ORDER BY u.created_at"
+    )->fetchAll();
+}
+
+/** How many requests are waiting, for the nav badge. */
+function unlock_pending_count(): int
+{
+    return (int) db()->query("SELECT COUNT(*) FROM unlock_requests WHERE status='Requested'")->fetchColumn();
+}
 
 /** The states a target can be in, in the order it travels through them. */
 function target_statuses(): array
@@ -73,10 +215,19 @@ function target_can_edit(array $target, array $user): bool
     if ($user['role'] === 'Admin') {
         return true;
     }
+    if ($user['role'] !== 'HoD' || !target_owns($target, $user)) {
+        return false;
+    }
 
-    return $user['role'] === 'HoD'
-        && target_owns($target, $user)
-        && in_array($target['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true);
+    $status = $target['status'] ?? 'Draft';
+
+    // Still theirs to write before it is locked...
+    if (in_array($status, ['Draft', 'Changes Requested'], true)) {
+        return true;
+    }
+
+    // ...or a locked target while an unlock window is open and unexpired.
+    return $status === 'Approved' && unlock_active($user['department'] ?? null) !== null;
 }
 
 /** May this user send it up for review? Only the HoD who owns it. */
@@ -137,6 +288,33 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
     return $stmt->fetchAll();
 }
 
+/**
+ * Targets for the Executive Meeting Report, in proforma order.
+ *
+ * Ordered by sort_order (the hand-set sequence of the printed proforma, with
+ * its lettered sub-items) and then id, so seeded rows keep their exact order
+ * and any form-added target falls in after them.
+ */
+function target_report_items(?string $department = null, ?string $year = null): array
+{
+    $sql    = 'SELECT * FROM targets WHERE 1=1';
+    $params = [];
+
+    if ($department) {
+        $sql .= ' AND department = ?';
+        $params[] = $department;
+    }
+    if ($year) {
+        $sql .= ' AND academic_year = ?';
+        $params[] = $year;
+    }
+
+    $sql .= ' ORDER BY (sort_order IS NULL), sort_order, id';
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    return $stmt->fetchAll();
+}
+
 function target_find(int $id): ?array
 {
     $stmt = db()->prepare('SELECT * FROM targets WHERE id = ?');
@@ -159,40 +337,37 @@ function targets_pending_count(): int
  * still have to send up. A HoD's department is taken from their account, never
  * from the form.
  */
-function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks): array
+function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null): array
 {
-    // A Director reviews targets, they do not write them — and the page hides
-    // the button, but hiding a button is not a rule. This is the rule.
-    if (!in_array($user['role'], ['Admin', 'HoD'], true)) {
-        return [false, 'Your role cannot create targets.'];
+    // Entering targets is the HoD's job. An Admin freezes and unlocks them but
+    // does not write them; a Director only reviews. So creation is HoD-only.
+    if ($user['role'] !== 'HoD') {
+        return [false, 'Only a HoD enters targets. The Admin freezes and unlocks them.'];
     }
 
-    if ($user['role'] === 'HoD') {
-        $department = (string) ($user['department'] ?? '');
-    }
+    // A HoD's department comes from their account, never from the form.
+    $department = (string) ($user['department'] ?? '');
 
+    // Metric is free text (any target title), so only emptiness is invalid.
+    $metric = trim($metric);
     if ($department === '' || $metric === '') {
-        return [false, 'Department and metric are required.'];
+        return [false, 'Department and target are required.'];
     }
     if ($targetValue < 0) {
         return [false, 'A target cannot be negative.'];
     }
 
-    $isAdmin = $user['role'] === 'Admin';
-
+    // Always starts as a draft the HoD then sends up for review.
     $stmt = db()->prepare(
-        'INSERT INTO targets (department, academic_year, metric, target_value, remarks, status, created_by, approved_by, approved_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO targets (department, academic_year, metric, target_value, remarks, coordinator, status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
-        $department, $academicYear, $metric, $targetValue, $remarks ?: null,
-        $isAdmin ? 'Approved' : 'Draft',
-        $user['id'],
-        $isAdmin ? $user['id'] : null,
-        $isAdmin ? date('Y-m-d H:i:s') : null,
+        $department, $academicYear, $metric, $targetValue, $remarks ?: null, $coordinator ?: null,
+        'Draft', $user['id'],
     ]);
 
-    return [true, $isAdmin ? 'Target created and frozen.' : 'Target saved as a draft. Send it for review when it is ready.'];
+    return [true, 'Target saved as a draft. Send it for review when it is ready.'];
 }
 
 /**
@@ -202,7 +377,7 @@ function target_create(array $user, string $department, string $academicYear, st
  * is rewritten so the record always shows who last set the figure. A HoD can
  * never move a target into another department.
  */
-function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks): array
+function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null): array
 {
     $existing = target_find($id);
     if (!$existing) {
@@ -212,6 +387,10 @@ function target_update(int $id, array $user, string $department, string $academi
         return [false, target_is_frozen($existing)
             ? 'That target is frozen. Only an Admin can change it now.'
             : 'That target is not yours to edit.'];
+    }
+    $metric = trim($metric);
+    if ($metric === '') {
+        return [false, 'The target title is required.'];
     }
     if ($targetValue < 0 || $achievedValue < 0) {
         return [false, 'Values cannot be negative.'];
@@ -223,10 +402,13 @@ function target_update(int $id, array $user, string $department, string $academi
 
     $frozen = target_is_frozen($existing);
 
-    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, achieved_value = ?, remarks = ?';
-    $args = [$department, $academicYear, $metric, $targetValue, $achievedValue, $remarks ?: null];
+    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, achieved_value = ?, remarks = ?, coordinator = ?';
+    $args = [$department, $academicYear, $metric, $targetValue, $achievedValue, $remarks ?: null, $coordinator ?: null];
 
-    if ($frozen) {
+    // Re-stamp the approval only when an Admin edits a frozen target — a HoD
+    // editing inside an unlock window is not re-approving it, so the original
+    // approver and date stand.
+    if ($frozen && $user['role'] === 'Admin') {
         $sql .= ', approved_by = ?, approved_at = ?';
         $args[] = $user['id'];
         $args[] = date('Y-m-d H:i:s');

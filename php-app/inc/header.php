@@ -24,8 +24,11 @@ $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
     'announcements' => unread_announcements_count($user),
     // Targets waiting on a decision. Only the two roles that can decide are
-    // told about them; for anyone else the count is noise.
-    'targets'       => in_array($user['role'], ['Admin', 'Director'], true) ? targets_pending_count() : 0,
+    // told about them; for anyone else the count is noise. For an Admin the
+    // badge also counts unlock requests, since those are actioned on the same
+    // Targets page.
+    'targets'       => (in_array($user['role'], ['Admin', 'Director'], true) ? targets_pending_count() : 0)
+                       + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
 ];
 
 $pageTitle    = $pageTitle    ?? 'Dashboard';

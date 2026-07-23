@@ -334,33 +334,126 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .chart-bar   { fill:var(--orange-500); transition:fill .15s; }
 .chart-bar:hover { fill:var(--orange-600); }
 
-/* ---- Target vs achieved (paired columns) -------------------------------- */
-/* The target bar is the quiet one: it is the line to clear, not the news. The
-   achieved bar beside it is coloured by how close it got, so the reading is
-   never carried by colour alone — the percentage sits above every pair. */
-.chart-bar-plan { fill:var(--navy-200); transition:fill .15s; }
-.chart-bar-plan:hover { fill:var(--navy-300); }
-/* A target still going through review is not a commitment yet, so it is drawn
-   as an outline rather than a solid bar. */
-.chart-bar-plan.provisional { fill:none; stroke:var(--navy-300); stroke-width:1.5; stroke-dasharray:3 3; }
-.chart-note { fill:var(--ink-faint); font-size:11px; }
-.chart-pct  { font-size:12px; font-weight:700; }
-.chart-axis-title { fill:var(--ink-faint); font-size:10px; font-weight:600; letter-spacing:.06em; }
-/* An invisible band behind each pair, so hovering anywhere near a column
-   highlights the whole group rather than just the few pixels of one bar. */
-.chart-hit { fill:transparent; }
-.chart-group:hover .chart-hit { fill:var(--navy-50); }
+/* ==========================================================================
+   Target vs Achieved
+   A KPI-tile summary, then one horizontal progress row per target. Horizontal
+   bars (not columns) so a full free-text target name always fits, and any
+   number of targets simply stacks.
+   ========================================================================= */
 
+/* ---- Filter bar ---- */
 .chart-filters { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .chart-filters .select { min-width:0; padding:6px 10px; font-size:13px; }
-.attain-head { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap;
-  padding-bottom:14px; margin-bottom:4px; border-bottom:1px solid var(--hairline); }
-.attain-head .big { font-size:26px; font-weight:700; color:var(--ink); line-height:1; }
-.attain-foot { display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-top:14px;
+
+/* ---- Timed unlock banner (Targets / dashboard) ----------------------------- */
+.unlock-banner { display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:12px;
+  margin-bottom:20px; border:1px solid var(--hairline); }
+.unlock-banner .ub-ic { width:38px; height:38px; border-radius:10px; display:grid; place-items:center; flex-shrink:0; }
+.unlock-banner .ub-body { flex:1; min-width:0; }
+.unlock-banner .ub-title { font-weight:600; font-size:14px; color:var(--ink); }
+.unlock-banner .ub-sub { font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
+.unlock-banner .ub-clock { font-size:24px; font-weight:700; letter-spacing:.02em; flex-shrink:0;
+  font-variant-numeric:tabular-nums; }
+/* Open = green/live, pending = amber, locked = navy */
+.unlock-banner.open   { background:#ECFDF5; border-color:#A7F3D0; }
+.unlock-banner.open   .ub-ic { background:#059669; color:#fff; }
+.unlock-banner.open   .ub-clock { color:#047857; }
+.unlock-banner.pending{ background:#FFFBEB; border-color:#FDE68A; }
+.unlock-banner.pending .ub-ic { background:#B45309; color:#fff; }
+.unlock-banner.locked { background:var(--navy-50); }
+.unlock-banner.locked .ub-ic { background:var(--navy-700); color:#fff; }
+
+/* ---- Report template builder (columns + rows) ------------------------------ */
+.tpl-scroll { overflow-x:auto; }
+.tpl-line { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--hairline); }
+.tpl-line:first-child { padding-top:0; }
+.tpl-ops { display:flex; gap:2px; flex-shrink:0; }
+.tpl-edit { display:grid; gap:8px; align-items:center; flex:1; min-width:0; }
+.tpl-edit .input, .tpl-edit .select { min-width:0; }
+.tpl-add { flex-wrap:wrap; padding-top:14px; }
+.tpl-head { border-bottom:2px solid var(--navy-200); padding-bottom:8px; }
+.tpl-colname { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
+  color:var(--ink-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* A data cell in the row builder: not editable here, filled from department upload. */
+.tpl-auto { display:inline-flex; align-items:center; gap:5px; justify-content:center; font-size:12px;
+  font-weight:600; color:var(--navy-500); background:var(--navy-50); border:1px dashed var(--navy-200);
+  border-radius:8px; padding:8px 6px; white-space:nowrap; }
+.tpl-auto-chip { display:inline-flex; align-items:center; font-size:11px; font-weight:600; color:var(--navy-600);
+  background:var(--navy-50); border:1px dashed var(--navy-200); border-radius:6px; padding:1px 6px; }
+
+/* ---- Reports hub: the three generatable reports, side by side -------------- */
+.report-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+.report-cards .card { margin:0; }
+.report-cards .card-title { display:flex; align-items:center; gap:8px; }
+
+/* ---- Meeting-report download: one label + three format links --------------- */
+.report-dl { display:inline-flex; align-items:stretch; border:1px solid var(--navy-200);
+  border-radius:8px; overflow:hidden; height:34px; }
+.report-dl-label { display:flex; align-items:center; gap:6px; padding:0 12px; font-size:13px;
+  font-weight:500; color:var(--ink-muted); background:var(--navy-50); }
+.report-dl-fmt { display:flex; align-items:center; padding:0 12px; font-size:13px; font-weight:600;
+  color:var(--navy-700); border-left:1px solid var(--navy-200); transition:background .12s, color .12s; }
+.report-dl-fmt:hover { background:var(--orange-500); color:#fff; }
+
+/* ---- Summary tiles ---- */
+.attain-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  gap:12px; margin-bottom:22px; }
+.attain-tile { border:1px solid var(--hairline); border-radius:12px; padding:14px 16px;
+  background:var(--surface); }
+.attain-tile.hero { background:linear-gradient(180deg,var(--navy-50),var(--surface)); }
+.attain-tile .k { font-size:11px; text-transform:uppercase; letter-spacing:.04em;
+  color:var(--ink-muted); font-weight:600; }
+.attain-tile .v { font-size:26px; font-weight:700; margin-top:8px; line-height:1;
+  letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums; }
+.attain-tile .v .of { font-size:15px; font-weight:600; color:var(--ink-faint); }
+.attain-tile .sub { font-size:11px; color:var(--ink-faint); margin-top:6px; }
+.tile-bar { height:6px; border-radius:999px; background:var(--navy-100); overflow:hidden; margin-top:10px; }
+.tile-bar > span { display:block; height:100%; border-radius:999px; transition:width .4s ease; }
+
+/* ---- Scale header (0 / 50% / target) ---- */
+.attain-scale { display:flex; justify-content:space-between; font-size:11px;
+  color:var(--ink-faint); padding:0 0 6px; border-bottom:1px solid var(--hairline); margin-bottom:4px; }
+.attain-scale .col2 { text-align:center; }
+
+/* ---- One target per row ---- */
+.attain-list { display:flex; flex-direction:column; }
+.attain-row  { display:grid; grid-template-columns:minmax(0,1.5fr) 2fr minmax(116px,auto);
+  gap:18px; align-items:center; padding:13px 8px; border-bottom:1px solid var(--hairline);
+  border-radius:8px; transition:background .12s; }
+.attain-row:last-child { border-bottom:0; }
+.attain-row:hover { background:var(--navy-50); }
+.attain-info { min-width:0; }
+.attain-info .nm { display:flex; align-items:center; gap:6px; font-weight:600; font-size:14px;
+  color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.attain-info .nm .lock { color:var(--navy-400); flex-shrink:0; display:inline-flex; }
+.attain-info .scope { font-size:12px; color:var(--ink-faint); margin-top:3px; white-space:nowrap;
+  overflow:hidden; text-overflow:ellipsis; }
+.attain-info .scope .st { font-weight:600; }
+
+/* The bar: a full-width track (= the target) with the achieved share filled in.
+   A faint 100% marker sits at the target line so a bar that fell short is read
+   against where it was meant to reach. */
+.attain-track { position:relative; height:14px; border-radius:999px; background:var(--navy-100);
+  overflow:hidden; }
+.attain-fill  { display:block; height:100%; border-radius:999px; min-width:2px; transition:width .4s ease; }
+.attain-fill.over { border-radius:999px; }
+.attain-track.beat { box-shadow:inset 0 0 0 1.5px rgba(5,150,105,.35); }
+
+.attain-nums { text-align:right; white-space:nowrap; }
+.attain-nums .pct  { font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1; }
+.attain-nums .frac { font-size:12px; color:var(--ink-faint); margin-top:3px; font-variant-numeric:tabular-nums; }
+
+/* ---- Legend / footnote ---- */
+.attain-foot { display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-top:16px;
   padding-top:14px; border-top:1px solid var(--hairline); font-size:12px; color:var(--ink-muted); }
 .attain-key { display:flex; align-items:center; gap:7px; }
 .attain-key .sw { width:11px; height:11px; border-radius:3px; flex-shrink:0; }
-.attain-key .sw.outline { background:none; border:1.5px dashed var(--navy-300); }
+
+@media (max-width:720px) {
+  .attain-row { grid-template-columns:1fr; gap:8px; }
+  .attain-nums { text-align:left; }
+  .attain-scale { display:none; }
+}
 
 /* ---- Doughnut (submission pipeline) ------------------------------------- */
 .donut-wrap { display:flex; align-items:center; gap:28px; flex-wrap:wrap; }

@@ -62,3 +62,18 @@ UPDATE targets
    SET status = 'Draft'
  WHERE status IS NULL
     OR status NOT IN ('Draft', 'Pending Review', 'Changes Requested', 'Approved');
+
+-- ---------------------------------------------------------------------------
+--  Coordinator (for the Executive Meeting Report)
+--
+--  The department's meeting report names one responsible coordinator per
+--  target row. Targets had no such field, so add it. Free text, because the
+--  responsible person is not always a system user (e.g. "Prof. N. Bala").
+-- ---------------------------------------------------------------------------
+SET @ddl = IF(
+  (SELECT COUNT(*) FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'targets'
+       AND COLUMN_NAME = 'coordinator') > 0,
+  'DO 0',
+  'ALTER TABLE targets ADD COLUMN coordinator VARCHAR(190) NULL AFTER remarks');
+PREPARE s FROM @ddl; EXECUTE s; DEALLOCATE PREPARE s;

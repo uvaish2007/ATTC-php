@@ -1,52 +1,53 @@
-# Node Modules
-backend/node_modules/
-frontend/node_modules/
+# ===========================================================================
+#  ATTS IQAC Portal — PHP + MySQL
+#  (the old React/Node app was removed; this repo is the php-app/ project)
+# ===========================================================================
 
-# Environment Files
-backend/.env
-frontend/.env
+# --- Secrets: never commit real credentials (use php-app/.env.example) ---
+.env
+php-app/.env
 *.env.local
 *.env.*.local
 
-# Uploaded proof documents — real faculty records, never commit these
-backend/uploads/
+# --- Portable PHP runtime (~90 MB of Windows x64 binaries) ---
+#   Not committed. To run: download PHP 8.4 NTS x64 and unzip into
+#   .php-runtime/ (see start-server.bat), or serve php-app/ with XAMPP.
+.php-runtime/
 
-# Build Output
-frontend/dist/
-backend/dist/
+# --- Unused Python virtual environment ---
+.venv/
 
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# --- Legacy Node / React artefacts (the SPA was removed) ---
+node_modules/
+vendor/
+backend/
+frontend/
 
-# Temporary Files
-*.tmp
-*.temp
-*.local
+# --- Uploaded proof documents: real faculty records, never commit ---
+php-app/uploads/*
+!php-app/uploads/.gitkeep
+!php-app/uploads/.htaccess
 
-# Coverage
-coverage/
+# --- Local reference docs (they embed the DB password / real report data) ---
+DATABASE-GUIDE.*
+*.doc
+*.docx
 
-# IDE
+# --- Tooling / local-only ---
+.claude/
+tree-maker/
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
 .vscode/
 !.vscode/extensions.json
 .idea/
 
-# OS Files
-.DS_Store
-Thumbs.db
-
-.php-runtime/
-.claude/
-tree-maker/
-php-app/uploads/*
-!php-app/uploads/.gitkeep
-.env
-.vscode/
-node_modules/
-vendor/
+# --- Logs / temporary files ---
+logs/
+*.log
+*.tmp
+*.temp
+*.local
+coverage/
