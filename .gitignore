@@ -9,6 +9,11 @@ php-app/.env
 *.env.local
 *.env.*.local
 
+# --- Full database dump (real users + bcrypt password hashes + real records) ---
+#   THIS REPO IS PUBLIC — never commit a data dump here. Share database.sql with
+#   teammates privately (direct file / private drive), or make the repo private.
+php-app/sql/database.sql
+
 # --- Portable PHP runtime (~90 MB of Windows x64 binaries) ---
 #   Not committed. To run: download PHP 8.4 NTS x64 and unzip into
 #   .php-runtime/ (see start-server.bat), or serve php-app/ with XAMPP.
