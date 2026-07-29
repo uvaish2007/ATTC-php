@@ -103,7 +103,8 @@ a { color:inherit; text-decoration:none; }
 .breadcrumb { display:flex; align-items:center; gap:8px; font-size:14px; }
 .breadcrumb .sep { color:var(--navy-200); display:flex; }
 .breadcrumb .cur { font-weight:500; color:var(--ink); }
-.breadcrumb .root { color:var(--ink-faint); }
+.breadcrumb .root { color:var(--ink-faint); text-decoration:none; transition:color .12s; }
+a.breadcrumb-root:hover, .breadcrumb a.root:hover { color:var(--orange-500); }
 .topbar-right { display:flex; align-items:center; gap:8px; }
 .icon-btn {
   width:40px; height:40px; display:grid; place-items:center; border-radius:10px;
@@ -362,6 +363,10 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .unlock-banner.pending .ub-ic { background:#B45309; color:#fff; }
 .unlock-banner.locked { background:var(--navy-50); }
 .unlock-banner.locked .ub-ic { background:var(--navy-700); color:#fff; }
+
+/* ---- Upload panel action bar ---------------------------------------------- */
+.upload-actions { display:flex; align-items:center; gap:8px; margin-top:18px; flex-wrap:wrap; }
+.upload-actions .spacer { flex:1 1 20px; }
 
 /* ---- Report template builder (columns + rows) ------------------------------ */
 .tpl-scroll { overflow-x:auto; }

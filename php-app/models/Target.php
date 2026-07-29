@@ -491,9 +491,25 @@ function target_delete(int $id, array $user): array
     return [true, 'Target deleted.'];
 }
 
+/**
+ * The academic years to offer, generated from the calendar so the list keeps
+ * itself up to date — no yearly edit needed.
+ *
+ * An academic year runs June–May, so from June onward the "current" year has
+ * already rolled over. The list runs from 2023-24 up to the year *after* the
+ * current one (so next year can be planned early), newest first.
+ */
 function academic_years(): array
 {
-    return ['2023-24', '2024-25', '2025-26', '2026-27'];
+    $firstStart   = 2023;
+    $currentStart = (int) date('n') >= 6 ? (int) date('Y') : (int) date('Y') - 1;
+    $lastStart    = $currentStart + 1;   // also offer the upcoming year
+
+    $years = [];
+    for ($y = $lastStart; $y >= $firstStart; $y--) {
+        $years[] = sprintf('%d-%02d', $y, ($y + 1) % 100);
+    }
+    return $years;
 }
 
 function metric_names(): array

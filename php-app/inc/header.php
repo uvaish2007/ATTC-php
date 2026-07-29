@@ -92,7 +92,7 @@ $flashes      = take_flashes();
   <div class="main">
     <header class="topbar">
       <nav class="breadcrumb" aria-label="Breadcrumb">
-        <span class="root">ATTS</span>
+        <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS</a>
         <span class="sep"><?= icon('chevron', 14) ?></span>
         <span class="cur"><?= e($breadcrumb) ?></span>
       </nav>

@@ -21,16 +21,23 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Target.php';
 
-$user = require_role(['Admin', 'HoD', 'Director']);
+// Every signed-in user may generate the report (the template itself is still
+// Admin-only to edit — see report-template.php).
+$user = require_login();
 
 $format = strtolower(trim((string) input('format', 'word')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
     $format = 'word';
 }
 
-// A HoD is pinned to their own department; the oversight roles choose one.
-$isHod      = $user['role'] === 'HoD';
-$department = $isHod ? ($user['department'] ?? null) : (trim((string) input('department')) ?: null);
+/*
+ * Scope by role: oversight roles (Admin, Director) may pick any department or
+ * see all; everyone else is pinned to their own department.
+ */
+$isOversight = in_array($user['role'], ['Admin', 'Director'], true);
+$department  = $isOversight
+    ? (trim((string) input('department')) ?: null)
+    : ($user['department'] ?? null);
 
 $columns = template_columns();
 $rows    = template_rows();
@@ -52,11 +59,25 @@ foreach ($columns as $c) {
     if ($matchKey === null && $c['col_key'] !== 'sno') { $matchKey = $c['col_key']; }
 }
 
-// Index the department's uploaded targets by their (normalised) metric text.
+/*
+ * Normalise a title for matching a template row to a department's target:
+ * lower-cased, a leading "a. " sub-letter dropped, spacing around slashes and
+ * runs of whitespace collapsed. So "a. BOOKS PUBLICATION" matches "BOOKS
+ * PUBLICATION", and "SCOPUS / SCI" matches "SCOPUS/SCI".
+ */
+$norm = function ($s): string {
+    $s = mb_strtolower(trim((string) $s));
+    $s = preg_replace('/^[a-z]\.\s*/', '', $s);   // drop a leading sub-letter
+    $s = preg_replace('/[^a-z0-9]+/', ' ', $s);    // any punctuation (/ & , -) -> space
+    $s = preg_replace('/\s+/', ' ', $s);           // collapse whitespace
+    return trim($s);
+};
+
+// Index the department's uploaded targets by their normalised metric text.
 $byMetric = [];
 if ($department !== null) {
     foreach (target_report_items($department) as $t) {
-        $key = mb_strtolower(trim((string) $t['metric']));
+        $key = $norm($t['metric']);
         if ($key !== '' && !isset($byMetric[$key])) {
             $byMetric[$key] = $t;
         }
@@ -90,11 +111,20 @@ report_document_head('Executive Meeting Report', 'landscape');
 <?php endif; ?>
 
 <?php
-report_letterhead('Executive Meeting Report', [
-    ['Department', $deptLabel],
+require_once __DIR__ . '/models/Target.php';   // academic_years()
+$deptHeading = $department !== null
+    ? 'DEPARTMENT OF ' . strtoupper(department_full_name($department))
+    : 'REPORT TEMPLATE';
+[$durFrom, $durTo] = report_year_duration(academic_years()[0] ?? null);
+$headingLines = [];
+if ($department !== null && $durFrom !== '') {
+    $headingLines[] = 'DETAILS OF TARGETS FIXED & ACHIEVED FOR THE DURATION FROM ' . $durFrom . ' TO ' . $durTo;
+    $headingLines[] = '(Target Achieved Status – from ' . $durFrom . ' to ' . $today . ')';
+}
+report_letterhead($deptHeading, [
     ['Total Rows', (string) count($rows)],
     ['Report Date', $today],
-]);
+], $headingLines);
 ?>
 
   <table class="grid">
@@ -102,34 +132,111 @@ report_letterhead('Executive Meeting Report', [
       <?php foreach ($columns as $c): ?><col style="width:<?= (int) $c['width'] ?>%"><?php endforeach; ?>
     </colgroup>
     <thead>
+      <?php
+        // Columns like "Achieved (From ...)" and "Achieved (During ...)" are
+        // grouped under a single "Achieved" heading spanning them, with their
+        // "(From ...)" part shown on a second header row — exactly the proforma.
+        $grp = [];
+        foreach ($columns as $c) {
+            $grp[] = preg_match('/^\s*(Achieved)\s*\((.+)\)\s*$/i', (string) $c['label'], $m)
+                ? ['Achieved', trim($m[2])]
+                : [null, (string) $c['label']];
+        }
+        $hasGroups = false;
+        foreach ($grp as $x) { if ($x[0] !== null) { $hasGroups = true; break; } }
+        $nCols = count($columns);
+      ?>
       <tr>
-        <?php foreach ($columns as $c): ?>
-          <th style="text-align:<?= e($c['align']) ?>"><?= e($c['label']) ?></th>
-        <?php endforeach; ?>
+        <?php for ($i = 0; $i < $nCols; $i++): ?>
+          <?php [$g, $sub] = $grp[$i]; ?>
+          <?php if ($g === null): ?>
+            <th<?= $hasGroups ? ' rowspan="2"' : '' ?> style="text-align:<?= e($columns[$i]['align']) ?>;vertical-align:middle"><?= e($columns[$i]['label']) ?></th>
+          <?php elseif ($i === 0 || $grp[$i - 1][0] !== $g): ?>
+            <?php $run = 0; for ($j = $i; $j < $nCols && $grp[$j][0] === $g; $j++) { $run++; } ?>
+            <th colspan="<?= $run ?>" style="text-align:center"><?= e($g) ?></th>
+          <?php endif; ?>
+        <?php endfor; ?>
       </tr>
+      <?php if ($hasGroups): ?>
+      <tr>
+        <?php for ($i = 0; $i < $nCols; $i++): [$g, $sub] = $grp[$i]; if ($g !== null): ?>
+          <th style="text-align:center"><?= e($sub) ?></th>
+        <?php endif; endfor; ?>
+      </tr>
+      <?php endif; ?>
     </thead>
     <tbody>
       <?php if (empty($rows) || empty($columns)): ?>
         <tr><td colspan="<?= $span ?>" class="c">This template has no rows yet — add them in the Report Template builder.</td></tr>
       <?php else: ?>
-        <?php foreach ($rows as $r): ?>
-          <?php
-            // The department's target for this row, matched on Target / Details.
-            $matchText = $matchKey ? mb_strtolower(trim((string) ($r['cells'][$matchKey] ?? ''))) : '';
-            $deptRow   = $matchText !== '' ? ($byMetric[$matchText] ?? null) : null;
-          ?>
+        <?php
+          // 1. Build the value matrix: label cells from the template, data cells
+          //    auto-filled from the matching department target. A row is "met"
+          //    when its target was reached (achieved >= a non-zero fixed target),
+          //    which shades its cells green like the proforma.
+          $matrix = [];
+          $rowMet = [];
+          foreach ($rows as $ri => $r) {
+              $matchText = $matchKey ? $norm($r['cells'][$matchKey] ?? '') : '';
+              $deptRow   = $matchText !== '' ? ($byMetric[$matchText] ?? null) : null;
+              $rowMet[$ri] = $deptRow
+                  && (int) ($deptRow['target_value'] ?? 0) > 0
+                  && (int) ($deptRow['achieved_value'] ?? 0) >= (int) ($deptRow['target_value'] ?? 0);
+              foreach ($columns as $c) {
+                  if (($c['source'] ?? 'label') === 'data') {
+                      $matrix[$ri][$c['col_key']] = $deptRow ? (string) ($deptRow[(string) $c['field']] ?? '') : '';
+                  } else {
+                      $matrix[$ri][$c['col_key']] = (string) ($r['cells'][$c['col_key']] ?? '');
+                  }
+              }
+          }
+
+          // 2. Group rows under one S.No: a numbered item plus its a./b./c.
+          //    sub-rows. A new group begins wherever the S.No cell is non-empty.
+          $rowCount = count($rows);
+          $groups   = [];
+          $g = 0;
+          while ($g < $rowCount) {
+              $h = $g + 1;
+              while ($h < $rowCount && trim((string) ($matrix[$h]['sno'] ?? '')) === '') { $h++; }
+              $groups[] = [$g, $h];
+              $g = $h;
+          }
+
+          // 3. Within each group, merge each column downward: a value's cell spans
+          //    over the blank cells that follow it, so "5" covers its two sub-rows
+          //    and a lone "-" in Remarks covers its group — exactly the proforma.
+          $cellRender = [];
+          $cellSpan   = [];
+          foreach ($groups as [$gs, $ge]) {
+              foreach ($columns as $c) {
+                  $k = $c['col_key'];
+                  $head = -1;
+                  for ($r = $gs; $r < $ge; $r++) {
+                      $v = trim((string) ($matrix[$r][$k] ?? ''));
+                      if ($v !== '') {
+                          $head = $r; $cellRender[$r][$k] = true; $cellSpan[$r][$k] = 1;
+                      } elseif ($head >= 0) {
+                          $cellSpan[$head][$k]++; $cellRender[$r][$k] = false;
+                      } else {
+                          $cellRender[$r][$k] = true; $cellSpan[$r][$k] = 1;
+                      }
+                  }
+              }
+          }
+        ?>
+        <?php foreach ($rows as $ri => $r): ?>
           <tr>
             <?php foreach ($columns as $c): ?>
               <?php
-                if (($c['source'] ?? 'label') === 'data') {
-                    // Filled from the department's upload, never from the template.
-                    $field = (string) ($c['field'] ?? '');
-                    $val   = $deptRow ? (string) ($deptRow[$field] ?? '') : '';
-                } else {
-                    $val = (string) ($r['cells'][$c['col_key']] ?? '');
-                }
+                $k = $c['col_key'];
+                if (!$cellRender[$ri][$k]) continue;
+                $rs = $cellSpan[$ri][$k];
+                // Green only the cells that belong solely to a met row; a merged
+                // cell (rowspan) also covers sub-rows that may not be met.
+                $met = $rowMet[$ri] && $rs === 1;
               ?>
-              <td style="text-align:<?= e($c['align']) ?>"><?= e($val) ?></td>
+              <td<?= $met ? ' class="met"' : '' ?> style="text-align:<?= e($c['align']) ?><?= $rs > 1 ? ';vertical-align:middle' : '' ?>"<?= $rs > 1 ? ' rowspan="' . $rs . '"' : '' ?>><?= e($matrix[$ri][$k]) ?></td>
             <?php endforeach; ?>
           </tr>
         <?php endforeach; ?>
