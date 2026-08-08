@@ -36,10 +36,8 @@ $records = report_records($user, $department, null, null, $from, $to);
 // The label shown on the report reflects the scope actually applied.
 if ($user['role'] === 'HoD') {
     $deptLabel = $user['department'] ?: 'ALL DEPARTMENTS';
-} elseif ($user['role'] === 'Director') {
-    $deptLabel = 'ALL DEPARTMENTS';
 } else {
-    $deptLabel = $department ?: 'ALL DEPARTMENTS';
+    $deptLabel = $department ?: 'ALL DEPARTMENTS';   // Admin/Director may narrow
 }
 
 // ---- Aggregate: one row per record type, counted by review status ----------

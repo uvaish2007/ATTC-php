@@ -15,6 +15,7 @@ require_once __DIR__ . '/models/Metric.php';
 require_once __DIR__ . '/models/User.php';
 
 $user = require_role(['Admin']);
+require_module('settings');
 
 // ---- Which tab is open? --------------------------------------------------
 $tabs = [

@@ -8,30 +8,61 @@
  */
 
 require_once __DIR__ . '/../inc/db.php';
+require_once __DIR__ . '/Target.php';   // academic_years()
 
-/** Metrics that carry a department (appear in the breakdown matrix). */
-function dept_metrics(): array
+/**
+ * Every record type the dashboard counts, and how to count it. This is the one
+ * place that lists them, so a new type shows up on the dashboard automatically.
+ *
+ *   group  faculty | activity | student — how the type is grouped on screen.
+ *   year   the table has an academic_year column, so the year filter applies.
+ *   dedup  the type stores one row per student for a *group* activity (a team
+ *          event is entered once per participant). The academy counts such an
+ *          activity ONCE — dedup lists the columns that identify the one event,
+ *          so five team-mates are not counted as five. Each student still keeps
+ *          their own row, which is their individual credit in the per-student
+ *          report; only the institution tally is de-duplicated.
+ */
+function all_metrics(): array
 {
     return [
-        'journals'    => ['label' => 'Journals',    'table' => 'journal_publications'],
-        'books'       => ['label' => 'Books',       'table' => 'book_publications'],
-        'conferences' => ['label' => 'Conferences', 'table' => 'conference_publications'],
-        'patents'     => ['label' => 'Patents',     'table' => 'patents'],
-        'fdp'         => ['label' => 'FDP',         'table' => 'fdp'],
-        'mou'         => ['label' => 'MoUs',        'table' => 'mou'],
-        'events'      => ['label' => 'Events',      'table' => 'events'],
-        'nptel'       => ['label' => 'NPTEL',       'table' => 'nptel'],
+        'journals'        => ['label' => 'Journals',        'table' => 'journal_publications',    'group' => 'faculty',  'year' => true],
+        'books'           => ['label' => 'Books',           'table' => 'book_publications',       'group' => 'faculty',  'year' => true],
+        'conferences'     => ['label' => 'Conferences',     'table' => 'conference_publications', 'group' => 'faculty',  'year' => true],
+        'patents'         => ['label' => 'Patents',         'table' => 'patents',                 'group' => 'faculty',  'year' => true],
+        'fdp'             => ['label' => 'FDP',             'table' => 'fdp',                     'group' => 'faculty',  'year' => false],
+        'mou'             => ['label' => 'MoUs',            'table' => 'mou',                     'group' => 'faculty',  'year' => false],
+        'nptel'           => ['label' => 'NPTEL',           'table' => 'nptel',                   'group' => 'faculty',  'year' => false],
+        'online'          => ['label' => 'Online Courses',  'table' => 'online_courses',          'group' => 'faculty',  'year' => true],
+        'events'          => ['label' => 'Events',          'table' => 'events',                  'group' => 'activity', 'year' => false],
+        'nss'             => ['label' => 'NSS/YRC/RRC',      'table' => 'nss',                     'group' => 'activity', 'year' => true],
+        'value_added'     => ['label' => 'Value Added',     'table' => 'value_added_courses',     'group' => 'activity', 'year' => true],
+        'training'        => ['label' => 'Training',        'table' => 'training',                'group' => 'activity', 'year' => true],
+        'internships'     => ['label' => 'Internships',     'table' => 'internships',             'group' => 'student',  'year' => false],
+        'placements'      => ['label' => 'Placements',      'table' => 'placements',              'group' => 'student',  'year' => false],
+        'summer_training' => ['label' => 'Summer Training', 'table' => 'summer_training',         'group' => 'student',  'year' => true],
+        'achievements'    => ['label' => 'Achievements',    'table' => 'student_achievements',    'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],
+        'participations'  => ['label' => 'Participations',  'table' => 'student_participations',  'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],
     ];
 }
 
-/** Department-less metrics (institution-wide only). */
-function other_metrics(): array
+/**
+ * How a metric is counted. A plain type counts every row; a group activity
+ * counts each distinct event once, so a team entered as many student rows is
+ * one activity in the institution tally.
+ */
+function metric_count_expr(array $m): string
 {
-    return [
-        'internships' => ['label' => 'Internships', 'table' => 'internships'],
-        'placements'  => ['label' => 'Placements',  'table' => 'placements'],
-    ];
+    if (!empty($m['dedup'])) {
+        $cols = implode(', ', array_map(fn($c) => "`$c`", $m['dedup']));
+        return "COUNT(DISTINCT $cols)";
+    }
+    return 'COUNT(*)';
 }
+
+/** Back-compat: every table now carries a department, so all metrics are here. */
+function dept_metrics(): array  { return all_metrics(); }
+function other_metrics(): array { return []; }
 
 /**
  * Build the full dashboard payload for a user, honouring the department/status
@@ -52,21 +83,24 @@ function dashboard_data(array $user): array
 
     $valid  = ['Draft', 'Submitted', 'Approved', 'Rejected'];
     $status = in_array(($_GET['status'] ?? ''), $valid, true) ? $_GET['status'] : null;
+    $year   = trim((string) ($_GET['year'] ?? '')) ?: null;
 
-    $deptMetrics  = dept_metrics();
-    $otherMetrics = other_metrics();
+    $metrics = all_metrics();
 
-    // ---- per-department counts, one grouped query per dept-metric ----
+    // ---- per-department counts, one grouped query per metric ----
+    // Group activities are de-duplicated here (metric_count_expr), so the
+    // institution tally counts a team event once, not once per participant.
     $deptCounts = [];   // [department][metricKey] = n
     $seen = [];
 
-    foreach ($deptMetrics as $key => $m) {
-        $sql = "SELECT department, COUNT(*) AS n FROM `{$m['table']}`";
+    foreach ($metrics as $key => $m) {
+        $expr   = metric_count_expr($m);
+        $sql    = "SELECT department, $expr AS n FROM `{$m['table']}`";
+        $where  = [];
         $params = [];
-        if ($status !== null) {
-            $sql .= ' WHERE status = ?';
-            $params[] = $status;
-        }
+        if ($status !== null)             { $where[] = 'status = ?';        $params[] = $status; }
+        if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
+        if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' GROUP BY department';
 
         $stmt = $pdo->prepare($sql);
@@ -94,7 +128,7 @@ function dashboard_data(array $user): array
     foreach ($matrixDepartments as $dept) {
         $counts = [];
         $total = 0;
-        foreach ($deptMetrics as $key => $m) {
+        foreach ($metrics as $key => $m) {
             $n = $deptCounts[$dept][$key] ?? 0;
             $counts[$key] = $n;
             $total += $n;
@@ -104,7 +138,7 @@ function dashboard_data(array $user): array
 
     // ---- scoped totals ----
     $totals = [];
-    foreach ($deptMetrics as $key => $m) {
+    foreach ($metrics as $key => $m) {
         if ($departmentFilter !== null) {
             $totals[$key] = $deptCounts[$departmentFilter][$key] ?? 0;
         } else {
@@ -115,39 +149,22 @@ function dashboard_data(array $user): array
             $totals[$key] = $sum;
         }
     }
-    foreach ($otherMetrics as $key => $m) {
-        if ($departmentFilter !== null) {
-            $totals[$key] = null; // can't attribute to a department
-        } else {
-            $sql = "SELECT COUNT(*) FROM `{$m['table']}`";
-            if ($status !== null) {
-                $stmt = $pdo->prepare($sql . ' WHERE status = ?');
-                $stmt->execute([$status]);
-            } else {
-                $stmt = $pdo->query($sql);
-            }
-            $totals[$key] = (int) $stmt->fetchColumn();
-        }
-    }
 
     $grandTotal = 0;
     foreach ($totals as $v) {
         $grandTotal += (int) $v;
     }
 
-    // ---- status pipeline (respects department filter, ignores status filter) ----
+    // ---- status pipeline (respects department + year, ignores status filter) ----
     $statusBreakdown = ['Draft' => 0, 'Submitted' => 0, 'Approved' => 0, 'Rejected' => 0];
-    foreach (array_merge($deptMetrics, $otherMetrics) as $key => $m) {
-        $hasDept = isset($deptMetrics[$key]);
-        if ($departmentFilter !== null && !$hasDept) {
-            continue;
-        }
-        $sql = "SELECT status, COUNT(*) AS n FROM `{$m['table']}`";
+    foreach ($metrics as $key => $m) {
+        $expr   = metric_count_expr($m);
+        $sql    = "SELECT status, $expr AS n FROM `{$m['table']}`";
+        $where  = [];
         $params = [];
-        if ($departmentFilter !== null && $hasDept) {
-            $sql .= ' WHERE department = ?';
-            $params[] = $departmentFilter;
-        }
+        if ($departmentFilter !== null)   { $where[] = 'department = ?';    $params[] = $departmentFilter; }
+        if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
+        if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' GROUP BY status';
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);
@@ -178,7 +195,7 @@ function dashboard_data(array $user): array
     }
 
     // ---- recent submissions + how the targets are doing ----
-    $recent  = recent_activity($departmentFilter, $status);
+    $recent  = recent_activity($departmentFilter, $status, null, $year);
     $targets = target_progress($departmentFilter);
 
     /*
@@ -212,34 +229,33 @@ function dashboard_data(array $user): array
     }
 
     return [
-        'scope'          => ['department' => $departmentFilter, 'status' => $status],
+        'scope'          => ['department' => $departmentFilter, 'status' => $status, 'year' => $year],
         'isOversight'    => $isOversight,
         'departments'    => $departments,
+        'years'          => academic_years(),
         'usingConfigured'=> $usingConfigured,
         'stats'          => $stats,
         'metricDefs'     => array_map(
             fn($k, $m) => ['key' => $k, 'label' => $m['label']],
-            array_keys($deptMetrics + $otherMetrics),
-            array_values($deptMetrics + $otherMetrics)
+            array_keys($metrics),
+            array_values($metrics)
         ),
         'totals'         => $totals,
         'matrix'         => [
-            'metrics' => array_map(fn($k, $m) => ['key' => $k, 'label' => $m['label']], array_keys($deptMetrics), array_values($deptMetrics)),
+            'metrics' => array_map(fn($k, $m) => ['key' => $k, 'label' => $m['label'], 'group' => $m['group']], array_keys($metrics), array_values($metrics)),
             'rows'    => $matrixRows,
         ],
         'statusBreakdown'=> $statusBreakdown,
         'usersByRole'    => $usersByRole,
         // labels + values are both re-indexed 0..n so the page can zip them by
         // position (array_map over an assoc array would keep string keys).
-        'chartData'      => (function () use ($departmentFilter, $deptMetrics, $otherMetrics, $totals) {
-            $set = $departmentFilter !== null ? $deptMetrics : ($deptMetrics + $otherMetrics);
-            return [
-                'labels' => array_values(array_map(fn($m) => $m['label'], $set)),
-                'values' => array_values(array_map(fn($k) => (int) ($totals[$k] ?? 0), array_keys($set))),
-            ];
-        })(),
+        'chartData'      => [
+            'labels' => array_values(array_map(fn($m) => $m['label'], $metrics)),
+            'values' => array_values(array_map(fn($k) => (int) ($totals[$k] ?? 0), array_keys($metrics))),
+        ],
         'recent'         => $recent,
         'targetProgress' => $targets,
+        'targetSummary'  => target_summary($departmentFilter),
         'targetAttainment' => $attainment,
         'targetFilters'    => $attainFilters,
         'targetOptions'    => $attainOptions,
@@ -284,6 +300,65 @@ function target_progress(?string $department, int $limit = 6): array
     }
 
     return $rows;
+}
+
+/**
+ * A whole-scope summary of the targets — so the dashboard can show how ALL
+ * targets are doing at a glance, not just a handful. Returns the overall
+ * achieved/target figure, a Met / On-track / Behind distribution, and a
+ * per-department rollup (each department's aggregate progress).
+ */
+function target_summary(?string $department): array
+{
+    $sql    = 'SELECT department, target_value, achieved_value FROM targets';
+    $params = [];
+    if ($department !== null) {
+        $sql .= ' WHERE department = ?';
+        $params[] = $department;
+    }
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+
+    $count = 0; $totT = 0; $totA = 0; $met = 0; $onTrack = 0; $behind = 0;
+    $byDept = [];
+    foreach ($stmt as $r) {
+        $t = (int) $r['target_value'];
+        $a = (int) $r['achieved_value'];
+        $count++; $totT += $t; $totA += $a;
+        $pct = $t > 0 ? $a / $t * 100 : 0;
+        if     ($pct >= 100) { $met++; }
+        elseif ($pct >= 50)  { $onTrack++; }
+        else                 { $behind++; }
+
+        $d = ($r['department'] ?? '') !== '' ? $r['department'] : 'Unassigned';
+        if (!isset($byDept[$d])) { $byDept[$d] = ['target' => 0, 'achieved' => 0, 'count' => 0]; }
+        $byDept[$d]['target']   += $t;
+        $byDept[$d]['achieved'] += $a;
+        $byDept[$d]['count']++;
+    }
+
+    $rows = [];
+    foreach ($byDept as $d => $v) {
+        $rows[] = [
+            'department' => $d,
+            'target'     => $v['target'],
+            'achieved'   => $v['achieved'],
+            'count'      => $v['count'],
+            'percent'    => $v['target'] > 0 ? (int) round($v['achieved'] / $v['target'] * 100) : 0,
+        ];
+    }
+    usort($rows, fn($a, $b) => $b['percent'] <=> $a['percent']);
+
+    return [
+        'count'        => $count,
+        'target'       => $totT,
+        'achieved'     => $totA,
+        'percent'      => $totT > 0 ? (int) round($totA / $totT * 100) : 0,
+        'met'          => $met,
+        'onTrack'      => $onTrack,
+        'behind'       => $behind,
+        'byDepartment' => $rows,
+    ];
 }
 
 /**
@@ -351,7 +426,7 @@ function target_attainment(?string $department, array $filters = [], int $limit 
         }
     }
 
-    $sql = 'SELECT department, academic_year, metric, target_value, status FROM targets';
+    $sql = 'SELECT department, academic_year, metric, target_value, achieved_value, status FROM targets';
     if ($where) {
         $sql .= ' WHERE ' . implode(' AND ', $where);
     }
@@ -367,8 +442,28 @@ function target_attainment(?string $department, array $filters = [], int $limit 
 
     foreach ($stmt as $row) {
         $source = $sources[$row['metric']] ?? null;
+
+        // A free-text target (e.g. the Executive-Meeting proforma rows) has no
+        // record table to count against, so its progress is the achieved figure
+        // the HoD entered. Record-backed metrics are still counted live below.
         if ($source === null) {
-            continue;   // a metric with no record table behind it — nothing to count
+            $achieved = (int) $row['achieved_value'];
+            $target   = (int) $row['target_value'];
+            $totalTarget   += $target;
+            $totalAchieved += $achieved;
+            if ($target > 0 && $achieved >= $target) { $met++; }
+            $rows[] = [
+                'metric'     => (string) $row['metric'],
+                'department' => (string) ($row['department'] ?? ''),
+                'year'       => (string) ($row['academic_year'] ?? ''),
+                'target'     => $target,
+                'achieved'   => $achieved,
+                'percent'    => $target > 0 ? (int) round($achieved / $target * 100) : 0,
+                'exact'      => true,
+                'status'     => (string) ($row['status'] ?? 'Draft'),
+                'frozen'     => ($row['status'] ?? '') === 'Approved',
+            ];
+            continue;
         }
 
         $where = ['status = ?'];
@@ -423,11 +518,33 @@ function target_attainment(?string $department, array $filters = [], int $limit 
         ];
     }
 
+    // Institution-wide attainment per target type: the same target set folded by
+    // its name, so the chart can show "how are we doing on each target" across
+    // every department rather than a handful of single-department rows.
+    $byMetricAgg = [];
+    foreach ($rows as $r) {
+        $m = $r['metric'];
+        if (!isset($byMetricAgg[$m])) {
+            $byMetricAgg[$m] = ['metric' => $m, 'target' => 0, 'achieved' => 0, 'count' => 0, 'met' => 0];
+        }
+        $byMetricAgg[$m]['target']   += $r['target'];
+        $byMetricAgg[$m]['achieved'] += $r['achieved'];
+        $byMetricAgg[$m]['count']++;
+        if ($r['target'] > 0 && $r['achieved'] >= $r['target']) { $byMetricAgg[$m]['met']++; }
+    }
+    $byMetric = [];
+    foreach ($byMetricAgg as $v) {
+        $v['percent'] = $v['target'] > 0 ? (int) round($v['achieved'] / $v['target'] * 100) : 0;
+        $byMetric[] = $v;
+    }
+    usort($byMetric, fn($a, $b) => $a['percent'] <=> $b['percent']);   // worst first
+
     usort($rows, fn($a, $b) => $a['percent'] <=> $b['percent']);
 
     return [
-        'rows'    => array_slice($rows, 0, $limit),
-        'summary' => [
+        'rows'     => array_slice($rows, 0, $limit),
+        'byMetric' => $byMetric,
+        'summary'  => [
             'targets'     => count($rows),
             'met'         => $met,
             'frozen'      => count(array_filter($rows, fn($r) => $r['frozen'])),
@@ -464,29 +581,40 @@ function target_filter_options(): array
     ];
 }
 
-/** Recent submissions across the main record types. */
-function recent_activity(?string $department, ?string $status, ?int $createdBy = null): array
+/** Recent submissions across every record type. */
+function recent_activity(?string $department, ?string $status, ?int $createdBy = null, ?string $year = null): array
 {
+    // table, label, its title column, and whether it keeps an academic_year.
     $sources = [
-        ['table' => 'journal_publications', 'label' => 'Journal',   'title' => 'paper_title',  'dept' => true],
-        ['table' => 'book_publications',    'label' => 'Book',      'title' => 'title',        'dept' => true],
-        ['table' => 'patents',              'label' => 'Patent',    'title' => 'title',        'dept' => true],
-        ['table' => 'fdp',                  'label' => 'FDP',       'title' => 'title',        'dept' => true],
-        ['table' => 'mou',                  'label' => 'MoU',       'title' => 'organization', 'dept' => true],
-        ['table' => 'placements',           'label' => 'Placement', 'title' => 'student_name', 'dept' => false],
+        ['table' => 'journal_publications',    'label' => 'Journal',        'title' => 'paper_title',   'year' => true],
+        ['table' => 'book_publications',       'label' => 'Book',           'title' => 'title',         'year' => true],
+        ['table' => 'conference_publications', 'label' => 'Conference',     'title' => 'paper_title',   'year' => true],
+        ['table' => 'patents',                 'label' => 'Patent',         'title' => 'title',         'year' => true],
+        ['table' => 'fdp',                     'label' => 'FDP',            'title' => 'title',         'year' => false],
+        ['table' => 'mou',                     'label' => 'MoU',            'title' => 'organization',  'year' => false],
+        ['table' => 'events',                  'label' => 'Event',          'title' => 'event_title',   'year' => false],
+        ['table' => 'nptel',                   'label' => 'NPTEL',          'title' => 'course_title',  'year' => false],
+        ['table' => 'online_courses',          'label' => 'Online Course',  'title' => 'course_title',  'year' => true],
+        ['table' => 'nss',                     'label' => 'NSS/YRC/RRC',    'title' => 'activity_name', 'year' => true],
+        ['table' => 'value_added_courses',     'label' => 'Value Added',    'title' => 'course_title',  'year' => true],
+        ['table' => 'training',                'label' => 'Training',       'title' => 'event_title',   'year' => true],
+        ['table' => 'internships',             'label' => 'Internship',     'title' => 'title',         'year' => false],
+        ['table' => 'placements',              'label' => 'Placement',      'title' => 'student_name',  'year' => false],
+        ['table' => 'summer_training',         'label' => 'Summer Training','title' => 'title',         'year' => true],
+        ['table' => 'student_achievements',    'label' => 'Achievement',    'title' => 'event_name',    'year' => true],
+        ['table' => 'student_participations',  'label' => 'Participation',  'title' => 'event_name',    'year' => true],
     ];
 
     $rows = [];
     foreach ($sources as $s) {
         $where = [];
         $params = [];
-        if ($status !== null) { $where[] = 'status = ?'; $params[] = $status; }
-        if ($department !== null && $s['dept']) { $where[] = 'department = ?'; $params[] = $department; }
-        if ($createdBy !== null) { $where[] = 'created_by = ?'; $params[] = $createdBy; }
+        if ($status !== null)             { $where[] = 'status = ?';        $params[] = $status; }
+        if ($department !== null)         { $where[] = 'department = ?';    $params[] = $department; }
+        if ($createdBy !== null)          { $where[] = 'created_by = ?';    $params[] = $createdBy; }
+        if ($year !== null && $s['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
 
-        $sql = "SELECT `{$s['title']}` AS title, status, created_at"
-             . ($s['dept'] ? ', department' : ", NULL AS department")
-             . " FROM `{$s['table']}`";
+        $sql = "SELECT `{$s['title']}` AS title, status, created_at, department FROM `{$s['table']}`";
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' ORDER BY created_at DESC LIMIT 5';
 

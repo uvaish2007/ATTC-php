@@ -12,6 +12,7 @@ require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/Record.php';
 
 $user = require_role(['HoD']);
+require_module('faculty');
 
 $department = (string) ($user['department'] ?? '');
 $search     = trim((string) input('q', ''));

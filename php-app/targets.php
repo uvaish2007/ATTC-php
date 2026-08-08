@@ -17,6 +17,7 @@ require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD', 'Director']);
+require_module('targets');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -50,6 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_review((int) input('id'), $user, (string) input('decision'), (string) input('review_remark'));
     } elseif ($action === 'delete') {
         [$ok, $msg] = target_delete((int) input('id'), $user);
+    } elseif ($action === 'apply_count') {
+        // Accept the "counted from approved records" figure into achieved_value.
+        [$ok, $msg] = target_apply_count((int) input('id'), $user);
 
     // ---- Timed unlock workflow ----
     } elseif ($action === 'unlock_request' && $user['role'] === 'HoD') {
@@ -111,30 +115,45 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <div class="actions">
-    <form method="get" class="flex gap-2 items-center">
-      <?php if (!$isHod): ?>
-        <select class="select" name="department" style="min-width:150px" onchange="this.form.submit()">
-          <option value="">All Depts</option>
-          <?php foreach ($departments as $d): ?>
-            <option value="<?= e($d['name']) ?>" <?= $deptFilter === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
-          <?php endforeach; ?>
-        </select>
-      <?php endif; ?>
-
-      <select class="select" name="year" style="min-width:120px" onchange="this.form.submit()">
-        <option value="">All Years</option>
-        <?php foreach ($years as $y): ?>
-          <option value="<?= e($y) ?>" <?= $yearFilter === $y ? 'selected' : '' ?>><?= e($y) ?></option>
-        <?php endforeach; ?>
-      </select>
-
-      <select class="select" name="status" style="min-width:150px" onchange="this.form.submit()">
-        <option value="">All Statuses</option>
-        <?php foreach (target_statuses() as $s): ?>
-          <option value="<?= e($s) ?>" <?= $statFilter === $s ? 'selected' : '' ?>><?= e($s) ?></option>
-        <?php endforeach; ?>
-      </select>
-    </form>
+    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($yearFilter ? 1 : 0) + ($statFilter ? 1 : 0); ?>
+    <details class="filter-funnel">
+      <summary class="btn btn-outline btn-sm">
+        <?= icon('filter', 15) ?> Filters<?php if ($tgActive): ?> <span class="ff-dot"><?= $tgActive ?></span><?php endif; ?>
+      </summary>
+      <span class="filter-backdrop" onclick="this.closest('details').removeAttribute('open')"></span>
+      <div class="filter-pop">
+        <form method="get">
+          <div class="ff-head">
+            <span>Filter targets</span>
+            <?php if ($tgActive): ?><a class="ff-clear" href="<?= e(url('targets.php')) ?>">Clear all</a><?php endif; ?>
+          </div>
+          <?php if (!$isHod): ?>
+            <div class="ff-field"><label class="ff-label">Department</label>
+              <select class="select" name="department" onchange="this.form.submit()">
+                <option value="">All departments</option>
+                <?php foreach ($departments as $d): ?>
+                  <option value="<?= e($d['name']) ?>" <?= $deptFilter === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
+                <?php endforeach; ?>
+              </select></div>
+          <?php endif; ?>
+          <div class="ff-field"><label class="ff-label">Academic Year</label>
+            <select class="select" name="year" onchange="this.form.submit()">
+              <option value="">All years</option>
+              <?php foreach ($years as $y): ?>
+                <option value="<?= e($y) ?>" <?= $yearFilter === $y ? 'selected' : '' ?>><?= e($y) ?></option>
+              <?php endforeach; ?>
+            </select></div>
+          <div class="ff-field"><label class="ff-label">Status</label>
+            <select class="select" name="status" onchange="this.form.submit()">
+              <option value="">All statuses</option>
+              <?php foreach (target_statuses() as $s): ?>
+                <option value="<?= e($s) ?>" <?= $statFilter === $s ? 'selected' : '' ?>><?= e($s) ?></option>
+              <?php endforeach; ?>
+            </select></div>
+          <div class="ff-actions"><button class="btn btn-primary btn-sm" type="submit"><?= icon('filter', 14) ?> Apply filters</button></div>
+        </form>
+      </div>
+    </details>
 
     <?php
       // The meeting report always reflects what is on screen: same department
@@ -154,6 +173,9 @@ require __DIR__ . '/inc/header.php';
     </div>
 
     <?php if ($canCreate): ?>
+      <a class="btn btn-outline btn-sm" href="<?= e(url('target-import.php')) ?>" title="Bulk-import targets from a CSV">
+        <?= icon('upload', 15) ?> Import CSV
+      </a>
       <button class="btn btn-primary btn-sm" onclick="document.getElementById('addDlg').showModal()">
         <?= icon('plus') ?> Add Target
       </button>
@@ -246,9 +268,9 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 
-<div class="card"><div class="card-body" style="padding:0">
-  <?php if (empty($targets)): ?>
+<?php if (empty($targets)): ?>
 
+  <div class="card"><div class="card-body">
     <div class="empty">
       <div class="ic"><?= icon('target', 20) ?></div>
       <p>No targets here</p>
@@ -256,108 +278,155 @@ require __DIR__ . '/inc/header.php';
         <?= $canCreate ? 'Add a target to start tracking department progress.' : 'Targets appear here once a HoD sends one up for review.' ?>
       </div>
     </div>
+  </div></div>
 
-  <?php else: ?>
+<?php else: ?>
 
-    <div class="table-wrap"><table class="data" style="min-width:900px">
-      <thead><tr>
-        <th style="padding-left:24px">Metric</th>
-        <th>Department</th>
-        <th>Year</th>
-        <th>Status</th>
-        <th class="num">Target</th>
-        <th class="num">Achieved</th>
-        <th class="num">Progress</th>
-        <th class="num" style="padding-right:24px">Actions</th>
-      </tr></thead>
-      <tbody>
-      <?php foreach ($targets as $t): ?>
-        <?php
-          $pct      = $t['target_value'] > 0 ? min(100, round($t['achieved_value'] / $t['target_value'] * 100)) : 0;
-          $barColor = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
-          $frozen   = target_is_frozen($t);
-          $status   = (string) ($t['status'] ?? 'Draft');
-        ?>
-        <tr>
-          <td style="padding-left:24px">
-            <div style="font-weight:500"><?= e($t['metric']) ?></div>
-            <?php if (!empty($t['coordinator'])): ?>
-              <div class="card-sub"><?= icon('user', 12) ?> <?= e($t['coordinator']) ?></div>
-            <?php endif; ?>
-            <?php if (!empty($t['remarks'])): ?>
-              <div class="card-sub"><?= e($t['remarks']) ?></div>
-            <?php endif; ?>
-            <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
-              <div class="card-sub" style="color:#B45309;margin-top:2px">
-                <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
-              </div>
-            <?php endif; ?>
-          </td>
-          <td style="color:var(--ink-muted)"><?= e($t['department'] ?? '—') ?></td>
-          <td><span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span></td>
-          <td>
-            <span class="badge badge-<?= target_status_class($status) ?>">
-              <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
-            </span>
-            <?php if ($frozen && !empty($t['approver_name'])): ?>
-              <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
-            <?php endif; ?>
-          </td>
-          <td class="num tabular" style="font-weight:600"><?= (int) $t['target_value'] ?></td>
-          <td class="num tabular" style="font-weight:600"><?= (int) $t['achieved_value'] ?></td>
-          <td class="num">
-            <div class="flex items-center gap-2" style="justify-content:flex-end">
-              <span class="tabular" style="font-size:12px;font-weight:600;color:<?= $barColor ?>"><?= $pct ?>%</span>
-              <span style="width:48px;height:6px;border-radius:999px;background:var(--navy-100);overflow:hidden;display:inline-block">
-                <span style="display:block;height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:999px"></span>
+  <?php
+    // Group every target under its department, so each department is its own
+    // card — not one long mixed list.
+    $byDept = [];
+    foreach ($targets as $t) {
+        $key = ($t['department'] ?? '') !== '' ? $t['department'] : 'Unassigned';
+        $byDept[$key][] = $t;
+    }
+    ksort($byDept, SORT_NATURAL | SORT_FLAG_CASE);
+  ?>
+
+  <?php foreach ($byDept as $deptName => $deptTargets): ?>
+    <?php
+      $dSumT = array_sum(array_map(fn($x) => (int) $x['target_value'], $deptTargets));
+      $dSumA = array_sum(array_map(fn($x) => (int) $x['achieved_value'], $deptTargets));
+      $dPct  = $dSumT > 0 ? min(100, (int) round($dSumA / $dSumT * 100)) : 0;
+      $dCol  = $dPct >= 100 ? '#10B981' : ($dPct >= 50 ? 'var(--orange-500)' : '#EF4444');
+    ?>
+    <details class="card tg-group">
+      <summary class="tg-group-head">
+        <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
+        <span class="badge badge-neutral"><?= count($deptTargets) ?> target<?= count($deptTargets) !== 1 ? 's' : '' ?></span>
+        <span class="tg-overall">
+          <span class="tabular" style="font-weight:600;color:<?= $dCol ?>"><?= $dPct ?>%</span>
+          <span class="tg-bar"><span style="width:<?= $dPct ?>%;background:<?= $dCol ?>"></span></span>
+        </span>
+        <span class="tg-chev"><?= icon('chevron', 16) ?></span>
+      </summary>
+
+      <div class="table-wrap"><table class="data" style="min-width:760px">
+        <thead><tr>
+          <th style="padding-left:24px">Metric</th>
+          <th>Year</th>
+          <th>Status</th>
+          <th class="num">Target</th>
+          <th class="num">Achieved</th>
+          <th class="num">Progress</th>
+          <th class="num" style="padding-right:24px">Actions</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach ($deptTargets as $t): ?>
+          <?php
+            $pct      = $t['target_value'] > 0 ? min(100, round($t['achieved_value'] / $t['target_value'] * 100)) : 0;
+            $barColor = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
+            $frozen   = target_is_frozen($t);
+            $status   = (string) ($t['status'] ?? 'Draft');
+            // Non-destructive suggestion: approved records backing this target,
+            // or null when the metric is a manual (non-record) proforma row.
+            $recCount = target_record_count($t);
+          ?>
+          <tr>
+            <td style="padding-left:24px">
+              <div style="font-weight:500"><?= e($t['metric']) ?></div>
+              <?php if (!empty($t['coordinator'])): ?>
+                <div class="card-sub"><?= icon('user', 12) ?> <?= e($t['coordinator']) ?></div>
+              <?php endif; ?>
+              <?php if (!empty($t['remarks'])): ?>
+                <div class="card-sub"><?= e($t['remarks']) ?></div>
+              <?php endif; ?>
+              <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
+                <div class="card-sub" style="color:#B45309;margin-top:2px">
+                  <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
+                </div>
+              <?php endif; ?>
+            </td>
+            <td><span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span></td>
+            <td>
+              <span class="badge badge-<?= target_status_class($status) ?>">
+                <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
               </span>
-            </div>
-          </td>
-          <td class="num" style="padding-right:24px">
-            <div class="dept-actions" style="justify-content:flex-end">
-
-              <?php if (target_can_submit($t, $user)): ?>
-                <form method="post" style="display:inline">
-                  <?= csrf_field() ?>
-                  <input type="hidden" name="action" value="submit">
-                  <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
-                  <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
-                </form>
+              <?php if ($frozen && !empty($t['approver_name'])): ?>
+                <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
               <?php endif; ?>
-
-              <?php if (target_can_review($t, $user)): ?>
-                <button class="mini-btn" title="Approve and freeze"
-                        onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "approve")'>
-                  <?= icon('check', 15) ?>
-                </button>
-                <button class="mini-btn" title="Send back for changes"
-                        onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "changes")'>
-                  <?= icon('refresh', 15) ?>
-                </button>
+            </td>
+            <td class="num tabular" style="font-weight:600"><?= (int) $t['target_value'] ?></td>
+            <td class="num tabular" style="font-weight:600">
+              <?= (int) $t['achieved_value'] ?>
+              <?php if ($recCount !== null): ?>
+                <div class="rec-suggest">
+                  <span class="rec-count" title="Approved records of this type in scope"><?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records</span>
+                  <?php if ($recCount !== (int) $t['achieved_value'] && target_can_edit($t, $user)): ?>
+                    <form method="post" style="display:inline">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="action" value="apply_count">
+                      <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                      <button class="rec-use" title="Set achieved to <?= (int) $recCount ?> from approved records">Use</button>
+                    </form>
+                  <?php endif; ?>
+                </div>
               <?php endif; ?>
+            </td>
+            <td class="num">
+              <div class="flex items-center gap-2" style="justify-content:flex-end">
+                <span class="tabular" style="font-size:12px;font-weight:600;color:<?= $barColor ?>"><?= $pct ?>%</span>
+                <span style="width:48px;height:6px;border-radius:999px;background:var(--navy-100);overflow:hidden;display:inline-block">
+                  <span style="display:block;height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:999px"></span>
+                </span>
+              </div>
+            </td>
+            <td class="num" style="padding-right:24px">
+              <div class="dept-actions" style="justify-content:flex-end">
 
-              <?php if (target_can_edit($t, $user)): ?>
-                <button class="mini-btn" title="<?= $frozen ? 'Edit frozen target' : 'Edit' ?>"
-                        onclick='editTarget(<?= e(json_encode($t)) ?>)'><?= icon('pencil', 15) ?></button>
-              <?php endif; ?>
+                <?php if (target_can_submit($t, $user)): ?>
+                  <form method="post" style="display:inline">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="submit">
+                    <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                    <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
+                  </form>
+                <?php endif; ?>
 
-              <?php if (target_can_delete($t, $user)): ?>
-                <button class="mini-btn danger" title="Delete"
-                        onclick='delTarget(<?= (int) $t["id"] ?>, "<?= e($t["metric"]) ?>")'><?= icon('trash', 15) ?></button>
-              <?php endif; ?>
+                <?php if (target_can_review($t, $user)): ?>
+                  <button class="mini-btn" title="Approve and freeze"
+                          onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "approve")'>
+                    <?= icon('check', 15) ?>
+                  </button>
+                  <button class="mini-btn" title="Send back for changes"
+                          onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "changes")'>
+                    <?= icon('refresh', 15) ?>
+                  </button>
+                <?php endif; ?>
 
-              <?php if ($status === 'Pending Review' && !target_can_review($t, $user)): ?>
-                <span class="card-sub"><?= icon('clock', 14) ?></span>
-              <?php endif; ?>
+                <?php if (target_can_edit($t, $user)): ?>
+                  <button class="mini-btn" title="<?= $frozen ? 'Edit frozen target' : 'Edit' ?>"
+                          onclick='editTarget(<?= e(json_encode($t)) ?>)'><?= icon('pencil', 15) ?></button>
+                <?php endif; ?>
 
-            </div>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody></table></div>
+                <?php if (target_can_delete($t, $user)): ?>
+                  <button class="mini-btn danger" title="Delete"
+                          onclick='delTarget(<?= (int) $t["id"] ?>, "<?= e($t["metric"]) ?>")'><?= icon('trash', 15) ?></button>
+                <?php endif; ?>
 
-  <?php endif; ?>
-</div></div>
+                <?php if ($status === 'Pending Review' && !target_can_review($t, $user)): ?>
+                  <span class="card-sub"><?= icon('clock', 14) ?></span>
+                <?php endif; ?>
+
+              </div>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody></table></div>
+    </details>
+  <?php endforeach; ?>
+
+<?php endif; ?>
 
 <?php if ($canCreate): ?>
 <!-- Add dialog. A HoD's department is fixed by their account, so it is shown, not chosen. -->

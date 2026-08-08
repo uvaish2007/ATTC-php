@@ -18,6 +18,7 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Record.php';
 
 $user = require_login();
+require_module('reports');
 
 // ---- Read the same filters the Reports page uses ------------------------
 $format     = strtolower(trim((string) input('format', 'csv')));

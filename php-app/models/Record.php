@@ -20,6 +20,15 @@ function record_types(): array
         'nptel'      => ['table' => 'nptel',                   'label' => 'NPTEL',                  'title_col' => 'course_title'],
         'internship' => ['table' => 'internships',             'label' => 'Internship',             'title_col' => 'title'],
         'placement'  => ['table' => 'placements',              'label' => 'Placement',              'title_col' => 'student_name'],
+
+        // Types added straight from the IQAC templates.
+        'nss'                   => ['table' => 'nss',                    'label' => 'NSS / YRC / RRC',           'title_col' => 'activity_name'],
+        'online_course'         => ['table' => 'online_courses',         'label' => 'Online Course',             'title_col' => 'course_title'],
+        'student_achievement'   => ['table' => 'student_achievements',   'label' => 'Student Achievement',       'title_col' => 'student_name'],
+        'student_participation' => ['table' => 'student_participations', 'label' => 'Student Participation',      'title_col' => 'student_name'],
+        'summer_training'       => ['table' => 'summer_training',        'label' => 'Summer / Winter Training',  'title_col' => 'title'],
+        'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title'],
+        'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title'],
     ];
 }
 
@@ -32,7 +41,10 @@ function records_list(string $type, ?string $department = null, ?string $status 
     }
 
     $t = $types[$type];
-    $hasDept = !in_array($type, ['internship', 'placement'], true);
+    // Every record table now carries a department column (internships and
+    // placements gained a "Dept / Branch" to match their templates), so a
+    // department filter applies uniformly.
+    $hasDept = true;
 
     $sql = "SELECT * FROM `{$t['table']}` WHERE 1=1";
     $params = [];
@@ -80,12 +92,10 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
 {
     $types = record_types();
 
-    // Admin may look at any department; Director only ever at the whole
-    // institution (never one department); everyone else is pinned to their own.
-    if ($user['role'] === 'Admin') {
+    // Admin and Director may look at any department (or all, when none is
+    // picked); everyone else is pinned to their own department.
+    if (in_array($user['role'], ['Admin', 'Director'], true)) {
         $scopeDept = $department;
-    } elseif ($user['role'] === 'Director') {
-        $scopeDept = null;                                // overall only
     } else {
         $scopeDept = $user['department'] ?: null;
     }
@@ -99,11 +109,9 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
     $all = [];
 
     foreach ($wanted as $key => $t) {
-        // Internships and placements are student records with no department column.
-        $hasDept = !in_array($key, ['internship', 'placement'], true);
-        $dept    = $hasDept ? $scopeDept : null;
-
-        foreach (records_list($key, $dept, $status, $onlyMine, $from, $to) as $row) {
+        // Every table now has a department column, so each type is scoped to the
+        // caller's department (student records carry a "Dept / Branch" too).
+        foreach (records_list($key, $scopeDept, $status, $onlyMine, $from, $to) as $row) {
             $row['_type_key']   = $key;
             $row['_type_label'] = $t['label'];
             $row['_title']      = $row[$t['title_col']] ?? '(untitled)';
@@ -186,16 +194,13 @@ function pending_records(?string $department = null): array
     $all = [];
 
     foreach ($types as $key => $t) {
-        $hasDept = !in_array($key, ['internship', 'placement'], true);
-
+        // Every table has a department column now, so all types are dept-scoped.
         $sql = "SELECT *, '{$key}' AS record_type FROM `{$t['table']}` WHERE status = 'Submitted'";
         $params = [];
 
-        if ($department && $hasDept) {
+        if ($department) {
             $sql .= ' AND department = ?';
             $params[] = $department;
-        } elseif ($department && !$hasDept) {
-            continue;
         }
 
         $sql .= ' ORDER BY created_at DESC';
@@ -236,14 +241,6 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     $newStatus = ($action === 'approve') ? 'Approved' : 'Rejected';
     $table = $types[$type]['table'];
 
-    // Internships and placements have no department column, so a
-    // department-scoped reviewer (HoD) can never act on them.
-    $hasDept = !in_array($type, ['internship', 'placement'], true);
-
-    if ($scopeDept !== null && !$hasDept) {
-        return [false, 'Record not found or outside your department.'];
-    }
-
     $sql    = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ? WHERE id = ? AND status = 'Submitted'";
     $params = [$newStatus, $remark ?: null, $approvedBy, $id];
 
@@ -260,6 +257,38 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     }
 
     return [true, "Record {$newStatus}."];
+}
+
+/**
+ * Approve every pending (Submitted) record of a department in one go — used by
+ * the "Approve all" button on the approvals page. $scopeDept restricts an HoD to
+ * their own department (enforced in the WHERE), so they can never bulk-approve
+ * another department's records. Returns [ok, message] with the count approved.
+ */
+function records_bulk_approve(string $department, int $approvedBy, ?string $scopeDept = null): array
+{
+    $department = trim($department);
+    if ($department === '') {
+        return [false, 'No department given.'];
+    }
+    if ($scopeDept !== null && $scopeDept !== $department) {
+        return [false, 'You can only approve your own department.'];
+    }
+
+    $total = 0;
+    foreach (record_types() as $t) {
+        $stmt = db()->prepare(
+            "UPDATE `{$t['table']}` SET status = 'Approved', approved_by = ?
+             WHERE status = 'Submitted' AND department = ?"
+        );
+        $stmt->execute([$approvedBy, $department]);
+        $total += $stmt->rowCount();
+    }
+
+    if ($total === 0) {
+        return [false, 'Nothing pending to approve in ' . $department . '.'];
+    }
+    return [true, "Approved {$total} record" . ($total === 1 ? '' : 's') . " in {$department}."];
 }
 
 /** Get all records by the current user across all types. */

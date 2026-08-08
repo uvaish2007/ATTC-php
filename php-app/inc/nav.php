@@ -9,48 +9,51 @@ require_once __DIR__ . '/db.php';
 
 function navigation_for(string $role): array
 {
+    // Sections are consistent across roles — Overview, Workspace, Manage,
+    // Account — and render in that order (group_navigation keeps first-seen
+    // order). Each role only lists the pages it can actually reach.
     $items = [
         'Admin' => [
-            ['section' => 'Main',   'label' => 'Dashboard',   'path' => 'dashboard.php',   'icon' => 'dashboard'],
-            ['section' => 'Main',   'label' => 'Approvals',    'path' => 'approvals.php',   'icon' => 'approvals', 'badge' => 'approvals'],
-            ['section' => 'Main',   'label' => 'Announcements','path' => 'announcements.php','icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Main',   'label' => 'Reports',      'path' => 'reports.php',     'icon' => 'reports'],
-            ['section' => 'Manage', 'label' => 'Users',        'path' => 'users.php',       'icon' => 'users'],
-            ['section' => 'Manage', 'label' => 'Departments',  'path' => 'departments.php', 'icon' => 'building'],
-            ['section' => 'Manage', 'label' => 'Targets',      'path' => 'targets.php',     'icon' => 'target', 'badge' => 'targets'],
-            ['section' => 'Manage', 'label' => 'Report Template', 'path' => 'report-template.php', 'icon' => 'reports'],
-            ['section' => 'System', 'label' => 'Settings',     'path' => 'settings.php',    'icon' => 'settings'],
+            ['section' => 'Overview',  'label' => 'Dashboard',      'path' => 'dashboard.php',      'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements',  'path' => 'announcements.php',  'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Approvals',      'path' => 'approvals.php',      'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Workspace', 'label' => 'Reports',        'path' => 'reports.php',        'icon' => 'reports'],
+            ['section' => 'Manage',    'label' => 'Users',          'path' => 'users.php',          'icon' => 'users'],
+            ['section' => 'Manage',    'label' => 'Departments',    'path' => 'departments.php',    'icon' => 'building'],
+            ['section' => 'Manage',    'label' => 'Targets',        'path' => 'targets.php',        'icon' => 'target', 'badge' => 'targets'],
+            ['section' => 'Manage',    'label' => 'Report Template','path' => 'report-template.php','icon' => 'reports'],
+            ['section' => 'Account',   'label' => 'Settings',       'path' => 'settings.php',       'icon' => 'settings'],
         ],
         'Director' => [
-            ['section' => 'Menu',    'label' => 'Dashboard',     'path' => 'dashboard.php',    'icon' => 'dashboard'],
-            ['section' => 'Menu',    'label' => 'Announcements', 'path' => 'announcements.php','icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Menu',    'label' => 'Reports',       'path' => 'reports.php',      'icon' => 'reports'],
+            ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Reports',       'path' => 'reports.php',       'icon' => 'reports'],
             // Director reviews the targets a HoD sends up, so they need the page.
-            ['section' => 'Menu',    'label' => 'Targets',       'path' => 'targets.php',      'icon' => 'target', 'badge' => 'targets'],
-            ['section' => 'Account', 'label' => 'Profile',       'path' => 'profile.php',      'icon' => 'user'],
+            ['section' => 'Manage',    'label' => 'Targets',       'path' => 'targets.php',       'icon' => 'target', 'badge' => 'targets'],
+            ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],
         'HoD' => [
-            ['section' => 'Main',       'label' => 'Dashboard',    'path' => 'dashboard.php',    'icon' => 'dashboard'],
-            ['section' => 'Main',       'label' => 'Approvals',    'path' => 'approvals.php',    'icon' => 'approvals', 'badge' => 'approvals'],
-            ['section' => 'Main',       'label' => 'Announcements','path' => 'announcements.php','icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Department', 'label' => 'Faculty',     'path' => 'faculty.php',   'icon' => 'graduation'],
-            ['section' => 'Department', 'label' => 'Targets',     'path' => 'targets.php',   'icon' => 'target'],
-            ['section' => 'Records',    'label' => 'Upload Data', 'path' => 'upload.php',    'icon' => 'upload'],
-            ['section' => 'Records',    'label' => 'Reports',     'path' => 'reports.php',   'icon' => 'reports'],
-            ['section' => 'Account',    'label' => 'Profile',     'path' => 'profile.php',   'icon' => 'user'],
+            ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Upload Data',   'path' => 'upload.php',        'icon' => 'upload'],
+            ['section' => 'Workspace', 'label' => 'Approvals',     'path' => 'approvals.php',     'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Workspace', 'label' => 'Reports',       'path' => 'reports.php',       'icon' => 'reports'],
+            ['section' => 'Manage',    'label' => 'Faculty',       'path' => 'faculty.php',       'icon' => 'graduation'],
+            ['section' => 'Manage',    'label' => 'Targets',       'path' => 'targets.php',       'icon' => 'target'],
+            ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],
         'Coordinator' => [
-            ['section' => 'Menu',    'label' => 'Dashboard',    'path' => 'dashboard.php',    'icon' => 'dashboard'],
-            ['section' => 'Menu',    'label' => 'Announcements','path' => 'announcements.php','icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Menu',    'label' => 'Upload Data',  'path' => 'upload.php',       'icon' => 'upload'],
-            ['section' => 'Menu',    'label' => 'Reports',      'path' => 'reports.php',      'icon' => 'reports'],
-            ['section' => 'Account', 'label' => 'Profile',      'path' => 'profile.php',      'icon' => 'user'],
+            ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Upload Data',   'path' => 'upload.php',        'icon' => 'upload'],
+            ['section' => 'Workspace', 'label' => 'Reports',       'path' => 'reports.php',       'icon' => 'reports'],
+            ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],
         'Faculty' => [
-            ['section' => 'Menu',    'label' => 'Dashboard',    'path' => 'dashboard.php',    'icon' => 'dashboard'],
-            ['section' => 'Menu',    'label' => 'Announcements','path' => 'announcements.php','icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Menu',    'label' => 'Upload Data',  'path' => 'upload.php',       'icon' => 'upload'],
-            ['section' => 'Account', 'label' => 'Profile',      'path' => 'profile.php',      'icon' => 'user'],
+            ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Upload Data',   'path' => 'upload.php',        'icon' => 'upload'],
+            ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],
     ];
 
@@ -78,32 +81,24 @@ function nav_href(string $path): string
 /** Total pending (Submitted) records a reviewer should act on, for the badge. */
 function pending_approvals_count(array $user): int
 {
-    $tables = [
-        'journal_publications', 'book_publications', 'conference_publications',
-        'patents', 'fdp', 'mou', 'events', 'nptel', 'internships', 'placements',
-    ];
-
     // Only Admin/HoD review; HoD is scoped to their own department.
     if (!in_array($user['role'], ['Admin', 'HoD'], true)) {
         return 0;
     }
 
+    require_once __DIR__ . '/../models/Record.php';   // record_types()
+
     $scopeDept = $user['role'] === 'HoD' ? ($user['department'] ?? null) : null;
 
+    // Every record type, all of which now carry a department column.
     $total = 0;
-    foreach ($tables as $t) {
-        // Tables without a department column can't be scoped to an HoD.
-        $hasDept = !in_array($t, ['internships', 'placements'], true);
-
-        if ($scopeDept !== null && !$hasDept) {
-            continue;
-        }
-
+    foreach (record_types() as $t) {
+        $table = $t['table'];
         if ($scopeDept !== null) {
-            $stmt = db()->prepare("SELECT COUNT(*) FROM `$t` WHERE status='Submitted' AND department = ?");
+            $stmt = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status='Submitted' AND department = ?");
             $stmt->execute([$scopeDept]);
         } else {
-            $stmt = db()->query("SELECT COUNT(*) FROM `$t` WHERE status='Submitted'");
+            $stmt = db()->query("SELECT COUNT(*) FROM `$table` WHERE status='Submitted'");
         }
         $total += (int) $stmt->fetchColumn();
     }

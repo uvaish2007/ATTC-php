@@ -56,3 +56,7 @@ logs/
 *.temp
 *.local
 coverage/
+
+# --- Real-data spreadsheets & editor workspace (public repo) ---
+*.xlsx
+*.code-workspace

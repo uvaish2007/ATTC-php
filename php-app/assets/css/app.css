@@ -369,22 +369,36 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .upload-actions .spacer { flex:1 1 20px; }
 
 /* ---- Report template builder (columns + rows) ------------------------------ */
-.tpl-scroll { overflow-x:auto; }
-.tpl-line { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--hairline); }
-.tpl-line:first-child { padding-top:0; }
+.tpl-scroll { overflow-x:auto; overflow-y:visible; }
+.tpl-line { display:flex; align-items:center; gap:10px; padding:7px 8px; border-bottom:1px solid var(--hairline); }
+.tpl-line:hover:not(.tpl-head):not(.tpl-add) { background:var(--navy-50); border-radius:8px; }
 .tpl-ops { display:flex; gap:2px; flex-shrink:0; }
 .tpl-edit { display:grid; gap:8px; align-items:center; flex:1; min-width:0; }
-.tpl-edit .input, .tpl-edit .select { min-width:0; }
-.tpl-add { flex-wrap:wrap; padding-top:14px; }
-.tpl-head { border-bottom:2px solid var(--navy-200); padding-bottom:8px; }
+.tpl-edit .input, .tpl-edit .select { min-width:0; height:38px; }
+.tpl-add { flex-wrap:wrap; padding-top:16px; margin-top:4px; border-top:1px dashed var(--hairline); border-bottom:0; }
+.tpl-head { border-bottom:2px solid var(--navy-200); padding-bottom:10px; position:sticky; top:0;
+  background:var(--surface); z-index:3; }
+.tpl-head:hover { background:var(--surface); }
 .tpl-colname { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
   color:var(--ink-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-/* A data cell in the row builder: not editable here, filled from department upload. */
-.tpl-auto { display:inline-flex; align-items:center; gap:5px; justify-content:center; font-size:12px;
-  font-weight:600; color:var(--navy-500); background:var(--navy-50); border:1px dashed var(--navy-200);
-  border-radius:8px; padding:8px 6px; white-space:nowrap; }
+/* A data cell in the row builder: auto-filled from the upload, so kept quiet so
+   the eye lands on the Label cells the admin actually fills. */
+.tpl-auto { display:inline-flex; align-items:center; gap:4px; justify-content:center; font-size:11px;
+  font-weight:500; color:var(--ink-faint); background:var(--canvas); border:1px solid var(--hairline);
+  border-radius:7px; padding:9px 6px; white-space:nowrap; }
+.tpl-auto svg { opacity:.5; }
 .tpl-auto-chip { display:inline-flex; align-items:center; font-size:11px; font-weight:600; color:var(--navy-600);
   background:var(--navy-50); border:1px dashed var(--navy-200); border-radius:6px; padding:1px 6px; }
+/* Label / Data type badge in the column editor. */
+.tpl-type { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:999px;
+  font-size:11px; font-weight:700; white-space:nowrap; }
+.tpl-type.label { background:var(--navy-50); color:var(--navy-600); }
+.tpl-type.data  { background:#ECFDF5; color:#047857; }
+.tpl-ncol { display:grid; gap:5px; }
+.tpl-ncol > .ff-label { margin:0; }
+.tpl-legend { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:11px 14px; margin-bottom:16px;
+  background:var(--canvas); border:1px solid var(--hairline); border-radius:10px; }
+.tpl-legend-lead { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-muted); }
 
 /* ---- Reports hub: the three generatable reports, side by side -------------- */
 .report-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
@@ -685,6 +699,26 @@ table.data.wide { min-width:640px; }
   a[href]:after { content:""; }   /* don't print the raw URLs */
 }
 
+/* Attainment-by-target list scrolls inside a fixed height so the whole set is
+   available without stretching the card. */
+.attain-scroll { max-height:360px; overflow-y:auto; padding-right:4px; }
+
+/* ---- Targets grouped by department --------------------------------------- */
+.tg-group { padding:0; margin-bottom:16px; overflow:hidden; }
+.tg-group > summary { display:flex; align-items:center; gap:12px; padding:15px 20px 15px 24px;
+  cursor:pointer; list-style:none; }
+.tg-group > summary::-webkit-details-marker { display:none; }
+.tg-group > summary::marker { content:""; }
+.tg-group > summary:hover { background:var(--navy-50); }
+.tg-group[open] > summary { border-bottom:1px solid var(--hairline); }
+.tg-group .tg-dept { font-weight:700; font-size:15px; display:inline-flex; align-items:center; gap:8px; }
+.tg-group .tg-overall { margin-left:auto; display:inline-flex; align-items:center; gap:8px; }
+.tg-group .tg-bar { width:90px; height:6px; border-radius:999px; background:var(--navy-100);
+  overflow:hidden; display:inline-block; }
+.tg-group .tg-bar > span { display:block; height:100%; border-radius:999px; }
+.tg-group .tg-chev { color:var(--ink-faint); display:inline-flex; transition:transform .15s; }
+.tg-group[open] .tg-chev { transform:rotate(90deg); }
+
 /* ---- Small utilities ---------------------------------------------------- */
 .truncate { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .nowrap   { white-space:nowrap; }
@@ -692,3 +726,80 @@ table.data.wide { min-width:640px; }
 .faint    { color:var(--ink-faint); }
 .fw-500 { font-weight:500; } .fw-600 { font-weight:600; } .fw-700 { font-weight:700; }
 .pt-0 { padding-top:0; }
+
+/* ---- Filter funnel — a compact dropdown that replaces a full filter bar - */
+.filter-funnel { position:relative; display:inline-block; }
+.filter-funnel > summary {
+  list-style:none; cursor:pointer; user-select:none;
+  display:inline-flex; align-items:center; gap:7px; line-height:1;
+}
+.filter-funnel > summary::-webkit-details-marker { display:none; }
+.filter-funnel > summary::marker { content:""; }
+.filter-funnel > summary:focus-visible { outline:2px solid var(--orange-300); outline-offset:2px; }
+.filter-funnel[open] > summary { background:var(--navy-50); border-color:var(--navy-200); }
+.filter-funnel .ff-dot {
+  display:inline-flex; align-items:center; justify-content:center;
+  min-width:18px; height:18px; padding:0 5px; border-radius:9px;
+  background:var(--orange-500); color:#fff; font-size:11px; font-weight:700;
+}
+.filter-pop {
+  position:absolute; right:0; top:calc(100% + 8px); z-index:60;
+  background:var(--surface); border:1px solid var(--hairline); border-radius:var(--radius);
+  box-shadow:var(--shadow-pop); padding:16px; width:320px; max-width:calc(100vw - 32px);
+  text-align:left;
+}
+.filter-pop .ff-head {
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  font-size:14px; font-weight:700; color:var(--ink); margin-bottom:14px;
+}
+.filter-pop .ff-head .ff-clear { font-size:12px; font-weight:500; color:var(--ink-muted); }
+.filter-pop .ff-field { margin-bottom:12px; }
+.filter-pop .ff-field:last-child { margin-bottom:0; }
+.filter-pop .ff-label { font-size:12px; font-weight:600; color:var(--ink-muted); margin-bottom:6px; display:block; }
+.filter-pop .select, .filter-pop .input { width:100%; box-sizing:border-box; }
+.filter-pop .ff-period { display:flex; align-items:center; gap:8px; }
+.filter-pop .ff-period .input { flex:1 1 0; min-width:0; }
+.filter-pop .ff-actions { display:flex; gap:8px; margin-top:16px; }
+.filter-pop .ff-actions .btn { flex:1; }
+.filter-backdrop { display:none; }
+.filter-funnel[open] .filter-backdrop { display:block; position:fixed; inset:0; z-index:50; background:transparent; }
+@media (max-width:640px){ .filter-pop { right:0; left:auto; } }
+
+/* ---- Locked (maintenance) sidebar modules -------------------------------- */
+.nav-link.locked { opacity:.55; cursor:not-allowed; }
+.nav-link.locked:hover { background:transparent; color:inherit; }
+.nav-link.locked .nav-label { text-decoration:none; }
+.nav-lock { margin-left:auto; display:inline-flex; align-items:center; opacity:.75; }
+
+/* ---- Role badge in the topbar (who am I logged in as) -------------------- */
+.role-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 10px; border-radius:999px;
+  background:var(--navy-900); color:#fff;
+  font-size:11px; font-weight:600; letter-spacing:.4px; text-transform:uppercase;
+  white-space:nowrap;
+}
+.role-badge svg { opacity:.85; }
+
+/* ---- Target: "counted from approved records" suggestion ------------------ */
+.rec-suggest { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin-top:3px; font-weight:400; }
+.rec-count { display:inline-flex; align-items:center; gap:3px; font-size:11px; color:var(--ink-faint); white-space:nowrap; }
+.rec-use {
+  border:1px solid var(--orange-200); background:var(--orange-50); color:var(--orange-700);
+  font-size:10px; font-weight:600; padding:1px 7px; border-radius:999px; cursor:pointer; line-height:1.5;
+}
+.rec-use:hover { background:var(--orange-100); border-color:var(--orange-300); }
+
+/* ---- Alpha release banner ------------------------------------------------ */
+.alpha-banner {
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  margin-bottom:16px; padding:9px 14px; border-radius:10px;
+  background:var(--orange-50); border:1px solid var(--orange-200);
+}
+.alpha-tag {
+  flex-shrink:0; font-size:10px; font-weight:700; letter-spacing:.6px;
+  color:#fff; background:var(--orange-500); padding:3px 8px; border-radius:999px;
+}
+.alpha-text { font-size:12.5px; color:var(--orange-700); }
+.alpha-text strong { color:var(--orange-700); }
+@media print { .alpha-banner { display:none; } }

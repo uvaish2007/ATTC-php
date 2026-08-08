@@ -491,6 +491,137 @@ function target_delete(int $id, array $user): array
     return [true, 'Target deleted.'];
 }
 
+/* ==========================================================================
+   Contribution counting (non-destructive suggestion)
+
+   Most targets are free-text meeting-report proforma rows (pass %, website
+   updation, lettered sub-items) whose achieved figure is tracked by hand and
+   must never be touched. Only a handful correspond to a record type faculty
+   actually upload. For those, we can COUNT the approved records and OFFER that
+   number beside the target — the HoD accepts it into achieved_value with one
+   click. Nothing is ever overwritten automatically.
+   ========================================================================= */
+
+/**
+ * The record type whose approved rows back a target, inferred from its free-text
+ * metric. Returns null for every proforma row that is not record-backed, so only
+ * the mappable handful ever gets a suggestion.
+ */
+function target_suggested_type(string $metric): ?string
+{
+    $m = strtoupper($metric);
+
+    // Order matters: least-ambiguous words are checked first, and the broad
+    // "CONFERENCE"/"JOURNAL" catch-alls last — so a row that names FDP *and*
+    // conference ("Faculty participations in FDP … / Conference") maps to FDP,
+    // not conference. This is a best-effort hint only; the HoD reviews it.
+    $rules = [
+        'nptel'      => ['NPTEL'],
+        'internship' => ['INTERNSHIP'],
+        'placement'  => ['PLACEMENT'],
+        'patent'     => ['PATENT', 'COPY RIGHT', 'COPYRIGHT'],
+        'book'       => ['BOOK'],            // "BOOKS PUBLICATION" and "BOOK CHAPTER"
+        'mou'        => ['MOU'],
+        'fdp'        => ['FDP', 'STTP'],
+        'conference' => ['CONFERENCE'],
+        'journal'    => ['SCOPUS', 'SCI JOURNAL', 'UGC CARE', 'QUALITY PUBLICATION', 'JOURNAL'],
+    ];
+
+    foreach ($rules as $type => $words) {
+        foreach ($words as $w) {
+            if (strpos($m, $w) !== false) {
+                return $type;
+            }
+        }
+    }
+
+    return null;
+}
+
+/** Columns of a record table, cached, so a count only filters on columns it has. */
+function target_record_table_columns(string $table): array
+{
+    static $cache = [];
+    if (!array_key_exists($table, $cache)) {
+        try {
+            $cache[$table] = db()->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_COLUMN);
+        } catch (\PDOException $e) {
+            $cache[$table] = [];
+        }
+    }
+    return $cache[$table];
+}
+
+/**
+ * How many APPROVED records back this target right now — the figure the HoD may
+ * accept into achieved_value. Null when the target is not record-backed.
+ *
+ * Scoped to the target's department (where the record type has that column) and
+ * to its academic year (likewise), so the count matches the target's scope.
+ */
+function target_record_count(array $target): ?int
+{
+    $type = target_suggested_type((string) ($target['metric'] ?? ''));
+    if ($type === null) {
+        return null;
+    }
+
+    require_once __DIR__ . '/Record.php';
+    $types = record_types();
+    if (!isset($types[$type])) {
+        return null;
+    }
+
+    $table = $types[$type]['table'];
+    $cols  = target_record_table_columns($table);
+    if (!in_array('status', $cols, true)) {
+        return null;
+    }
+
+    $sql  = "SELECT COUNT(*) FROM `$table` WHERE status = 'Approved'";
+    $args = [];
+
+    if (in_array('department', $cols, true) && !empty($target['department'])) {
+        $sql .= ' AND department = ?';
+        $args[] = $target['department'];
+    }
+    if (in_array('academic_year', $cols, true) && !empty($target['academic_year'])) {
+        $sql .= ' AND academic_year = ?';
+        $args[] = $target['academic_year'];
+    }
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($args);
+    return (int) $stmt->fetchColumn();
+}
+
+/**
+ * Accept the counted-from-records figure into achieved_value (the HoD's one-click
+ * "Use"). Goes through the same target_can_edit() gate as any other edit, so a
+ * frozen target still needs Admin rights or an open unlock window.
+ */
+function target_apply_count(int $id, array $user): array
+{
+    $existing = target_find($id);
+    if (!$existing) {
+        return [false, 'Target not found.'];
+    }
+    if (!target_can_edit($existing, $user)) {
+        return [false, target_is_frozen($existing)
+            ? 'That target is frozen. Only an Admin can change it now.'
+            : 'That target is not yours to edit.'];
+    }
+
+    $count = target_record_count($existing);
+    if ($count === null) {
+        return [false, 'This target is not linked to an uploaded record type.'];
+    }
+
+    db()->prepare('UPDATE targets SET achieved_value = ? WHERE id = ?')->execute([$count, $id]);
+
+    return [true, "Achieved set to {$count} from approved records."];
+}
+
 /**
  * The academic years to offer, generated from the calendar so the list keeps
  * itself up to date — no yearly edit needed.

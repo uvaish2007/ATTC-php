@@ -62,12 +62,22 @@ $flashes      = take_flashes();
             <?php foreach ($items as $item):
               $isActive = ($item['path'] === $active);
               $badge = isset($item['badge']) ? ($badgeCounts[$item['badge']] ?? 0) : 0;
+              $locked = !module_is_active(module_for_path($item['path']));
             ?>
-              <a class="nav-link<?= $isActive ? ' active' : '' ?>" href="<?= e(nav_href($item['path'])) ?>" title="<?= e($item['label']) ?>">
-                <?= icon($item['icon']) ?>
-                <span class="nav-label"><?= e($item['label']) ?></span>
-                <?php if ($badge > 0): ?><span class="nav-badge"><?= (int) $badge ?></span><?php endif; ?>
-              </a>
+              <?php if ($locked): ?>
+                <a class="nav-link locked" href="#" title="<?= e($item['label']) ?> — Coming Soon"
+                   onclick="showLockedModule(<?= htmlspecialchars(json_encode($item['label']), ENT_QUOTES) ?>); return false;">
+                  <?= icon($item['icon']) ?>
+                  <span class="nav-label"><?= e($item['label']) ?></span>
+                  <span class="nav-lock"><?= icon('lock', 14) ?></span>
+                </a>
+              <?php else: ?>
+                <a class="nav-link<?= $isActive ? ' active' : '' ?>" href="<?= e(nav_href($item['path'])) ?>" title="<?= e($item['label']) ?>">
+                  <?= icon($item['icon']) ?>
+                  <span class="nav-label"><?= e($item['label']) ?></span>
+                  <?php if ($badge > 0): ?><span class="nav-badge"><?= (int) $badge ?></span><?php endif; ?>
+                </a>
+              <?php endif; ?>
             <?php endforeach; ?>
           </div>
         </div>
@@ -97,6 +107,7 @@ $flashes      = take_flashes();
         <span class="cur"><?= e($breadcrumb) ?></span>
       </nav>
       <div class="topbar-right">
+        <span class="role-badge" title="You are signed in as <?= e($user['role']) ?>"><?= icon('shield', 13) ?> <?= e($user['role']) ?></span>
         <button class="icon-btn" aria-label="Notifications"><?= icon('bell', 19) ?></button>
         <div class="topbar-div"></div>
         <div class="topbar-user">
@@ -109,6 +120,10 @@ $flashes      = take_flashes();
 
     <main class="content">
       <div class="container">
+        <div class="alpha-banner" role="note">
+          <span class="alpha-tag">ALPHA v0.1</span>
+          <span class="alpha-text">Scoped release — the <strong>Targets</strong> module is the focus. Some modules may be limited or marked “Coming Soon.”</span>
+        </div>
         <?php foreach ($flashes as $f): ?>
           <div class="alert alert-<?= e($f['type']) ?>"><?= e($f['message']) ?></div>
         <?php endforeach; ?>

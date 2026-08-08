@@ -14,6 +14,7 @@ only in your own `php-app/.env`, which is never committed.
 | **PHP 8.0+** | Either the bundled portable runtime (`.php-runtime/`, Windows) started by `start-server.bat`, or install **XAMPP** and serve `php-app/` from `htdocs`. |
 
 PHP needs the **PDO MySQL** extension (`pdo_mysql`) — XAMPP has it on by default.
+Proof uploads accept a **PDF up to 2 MB**.
 
 ---
 
@@ -73,6 +74,9 @@ mysql -u root -p atts_main < php-app/sql/target_workflow.sql   # target review +
 mysql -u root -p atts_main < php-app/sql/app_settings.sql
 mysql -u root -p atts_main < php-app/sql/report_template.sql
 mysql -u root -p atts_main < php-app/sql/target_unlock.sql
+mysql -u root -p atts_main < php-app/sql/template_align.sql       # aligns record tables to the report templates
+mysql -u root -p atts_main < php-app/sql/template_new_types.sql   # NSS, Online Courses, Achievements, Participations, Training, Value Added, Summer Training
+mysql -u root -p atts_main < php-app/sql/seed_new_types.sql       # sample data for those new types (re-runnable)
 mysql -u root -p atts_main < php-app/sql/meeting_report_cse.sql  # optional CSE sample report
 ```
 

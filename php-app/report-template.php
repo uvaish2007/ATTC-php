@@ -53,10 +53,14 @@ $rows        = template_rows();
 $dataFields  = target_data_fields();
 $departments = departments_all();
 
-// The grid track for a row: one column per report column, then the Save button.
-$rowGrid = 'grid-template-columns:' . implode(' ', array_map(
-    fn($c) => 'minmax(120px,' . max(1, (int) $c['width']) . 'fr)',
-    $columns
+// The row editor only edits Label cells — Data cells are auto-filled from each
+// department's targets and are never typed here — so the editor grid spans just
+// the label columns, with the data columns shown once as a legend.
+$labelColumns = array_values(array_filter($columns, fn($c) => ($c['source'] ?? 'label') !== 'data'));
+$dataColumns  = array_values(array_filter($columns, fn($c) => ($c['source'] ?? 'label') === 'data'));
+$labelGrid = 'grid-template-columns:' . implode(' ', array_map(
+    fn($c) => 'minmax(160px,' . max(1, (int) $c['width']) . 'fr)',
+    $labelColumns
 )) . ' auto;';
 
 $pageTitle  = 'Report Template';
@@ -102,6 +106,19 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
   <div class="card-body">
+    <div class="tpl-scroll">
+    <div class="tpl-line tpl-head">
+      <div class="tpl-ops" style="visibility:hidden"><button class="mini-btn"><?= icon('arrow-left', 15) ?></button><button class="mini-btn"><?= icon('arrow-right', 15) ?></button></div>
+      <div class="tpl-edit" style="grid-template-columns:1fr 66px 92px 104px 1fr auto">
+        <span class="tpl-colname">Column name</span>
+        <span class="tpl-colname">Width %</span>
+        <span class="tpl-colname">Align</span>
+        <span class="tpl-colname">Fills from</span>
+        <span class="tpl-colname">Data field</span>
+        <span></span>
+      </div>
+      <span class="mini-btn" style="visibility:hidden"></span>
+    </div>
     <?php foreach ($columns as $i => $c): ?>
       <div class="tpl-line">
         <div class="tpl-ops">
@@ -149,6 +166,7 @@ require __DIR__ . '/inc/header.php';
       </select>
       <button class="btn btn-primary btn-sm"><?= icon('plus') ?> Add</button>
     </form>
+    </div>
   </div>
 </div>
 
@@ -160,18 +178,24 @@ require __DIR__ . '/inc/header.php';
       <div class="card-title">Rows</div>
       <div class="card-sub">
         <?= count($rows) ?> row<?= count($rows) !== 1 ? 's' : '' ?> &middot;
-        you fill only the <strong>Label</strong> cells (the structure). The
-        <span class="tpl-auto-chip">Data</span> cells fill from each department's upload when the report is generated.
+        fill only the label cells below &mdash; the data columns fill themselves when the report is generated
       </div>
     </div>
   </div>
   <div class="card-body">
+    <?php if ($dataColumns): ?>
+      <div class="tpl-legend">
+        <span class="tpl-legend-lead"><?= icon('refresh', 13) ?> Auto-filled from each department's targets:</span>
+        <?php foreach ($dataColumns as $c): ?><span class="tpl-type data"><?= e($c['label']) ?></span><?php endforeach; ?>
+      </div>
+    <?php endif; ?>
+
     <div class="tpl-scroll">
-      <!-- Column headings, aligned to the row grid -->
+      <!-- Only the label columns are edited here -->
       <div class="tpl-line tpl-head">
-        <div class="tpl-ops" style="visibility:hidden"><button class="mini-btn"><?= icon('arrow-left', 15) ?></button></div>
-        <div class="tpl-edit" style="<?= $rowGrid ?>">
-          <?php foreach ($columns as $c): ?><span class="tpl-colname"><?= e($c['label']) ?></span><?php endforeach; ?>
+        <div class="tpl-ops" style="visibility:hidden"><button class="mini-btn"><?= icon('arrow-left', 15) ?></button><button class="mini-btn"><?= icon('arrow-right', 15) ?></button></div>
+        <div class="tpl-edit" style="<?= $labelGrid ?>">
+          <?php foreach ($labelColumns as $c): ?><span class="tpl-colname"><?= e($c['label']) ?></span><?php endforeach; ?>
           <span></span>
         </div>
         <span class="mini-btn" style="visibility:hidden"></span>
@@ -189,14 +213,10 @@ require __DIR__ . '/inc/header.php';
             <form method="post"><?= csrf_field() ?><input type="hidden" name="action" value="row_move"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>"><input type="hidden" name="dir" value="down">
               <button class="mini-btn" title="Move down" <?= $i === count($rows) - 1 ? 'disabled' : '' ?>><?= icon('arrow-right', 15) ?></button></form>
           </div>
-          <form method="post" class="tpl-edit" style="<?= $rowGrid ?>">
+          <form method="post" class="tpl-edit" style="<?= $labelGrid ?>">
             <?= csrf_field() ?><input type="hidden" name="action" value="row_update"><input type="hidden" name="id" value="<?= (int) $r['id'] ?>">
-            <?php foreach ($columns as $c): ?>
-              <?php if (($c['source'] ?? 'label') === 'data'): ?>
-                <span class="tpl-auto" title="Filled from department upload (<?= e($c['field'] ?? '') ?>)"><?= icon('refresh', 12) ?> auto</span>
-              <?php else: ?>
-                <input class="input" name="cell[<?= e($c['col_key']) ?>]" value="<?= e($r['cells'][$c['col_key']] ?? '') ?>" aria-label="<?= e($c['label']) ?>">
-              <?php endif; ?>
+            <?php foreach ($labelColumns as $c): ?>
+              <input class="input" name="cell[<?= e($c['col_key']) ?>]" value="<?= e($r['cells'][$c['col_key']] ?? '') ?>" aria-label="<?= e($c['label']) ?>">
             <?php endforeach; ?>
             <button class="btn btn-outline btn-sm" title="Save row"><?= icon('save', 15) ?></button>
           </form>
@@ -208,18 +228,14 @@ require __DIR__ . '/inc/header.php';
       <?php endforeach; ?>
 
       <!-- Add a row -->
-      <div class="tpl-line" style="border-bottom:0">
-        <div class="tpl-ops" style="visibility:hidden"><button class="mini-btn"><?= icon('arrow-left', 15) ?></button></div>
-        <form method="post" class="tpl-edit" style="<?= $rowGrid ?>">
+      <div class="tpl-line tpl-add" style="border-top:0">
+        <div class="tpl-ops" style="visibility:hidden"><button class="mini-btn"><?= icon('arrow-left', 15) ?></button><button class="mini-btn"><?= icon('arrow-right', 15) ?></button></div>
+        <form method="post" class="tpl-edit" style="<?= $labelGrid ?>">
           <?= csrf_field() ?><input type="hidden" name="action" value="row_add">
-          <?php foreach ($columns as $c): ?>
-            <?php if (($c['source'] ?? 'label') === 'data'): ?>
-              <span class="tpl-auto" title="Filled from department upload (<?= e($c['field'] ?? '') ?>)"><?= icon('refresh', 12) ?> auto</span>
-            <?php else: ?>
-              <input class="input" name="cell[<?= e($c['col_key']) ?>]" placeholder="<?= e($c['label']) ?>">
-            <?php endif; ?>
+          <?php foreach ($labelColumns as $c): ?>
+            <input class="input" name="cell[<?= e($c['col_key']) ?>]" placeholder="<?= e($c['label']) ?>">
           <?php endforeach; ?>
-          <button class="btn btn-primary btn-sm" title="Add row"><?= icon('plus', 15) ?></button>
+          <button class="btn btn-primary btn-sm" title="Add row"><?= icon('plus', 15) ?> Add row</button>
         </form>
         <span class="mini-btn" style="visibility:hidden"></span>
       </div>

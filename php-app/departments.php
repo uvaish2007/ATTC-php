@@ -3,6 +3,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin']);
+require_module('departments');
 
 // -- handle create / update / delete --------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {

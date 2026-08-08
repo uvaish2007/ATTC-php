@@ -4,6 +4,7 @@ require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin']);
+require_module('users');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();

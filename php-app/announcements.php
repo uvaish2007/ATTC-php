@@ -14,6 +14,7 @@ require_once __DIR__ . '/models/Announcement.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user      = require_login();
+require_module('announcements');
 $canManage = announcement_can_manage($user);
 
 // -------------------------------------------------------------------------

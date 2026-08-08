@@ -10,6 +10,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
+require_once __DIR__ . '/feature_flags.php';
 
 /** Start the session with a stable name and hardened cookie flags. */
 function auth_boot(): void

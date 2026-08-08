@@ -13,6 +13,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Announcement.php';
 
 $user = require_login();
+require_module('announcements');
 
 $file = announcement_file_find((int) input('file', 0));
 
