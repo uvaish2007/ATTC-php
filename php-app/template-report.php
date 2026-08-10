@@ -73,15 +73,29 @@ $norm = function ($s): string {
     return trim($s);
 };
 
-// Index the department's uploaded targets by their normalised metric text.
-$byMetric = [];
-if ($department !== null) {
-    foreach (target_report_items($department) as $t) {
-        $key = $norm($t['metric']);
-        if ($key !== '' && !isset($byMetric[$key])) {
-            $byMetric[$key] = $t;
+// Index one department's uploaded targets by their normalised metric text.
+$buildByMetric = function (?string $dept) use ($norm): array {
+    $index = [];
+    if ($dept !== null) {
+        foreach (target_report_items($dept) as $t) {
+            $key = $norm($t['metric']);
+            if ($key !== '' && !isset($index[$key])) {
+                $index[$key] = $t;
+            }
         }
     }
+    return $index;
+};
+
+// Which departments to render. The chosen one, or EVERY department when none is
+// chosen — so an "All departments" report prints real data for each department
+// instead of an empty template shell (the cause of "only the labels print").
+require_once __DIR__ . '/models/Department.php';
+$deptsToRender = $department !== null
+    ? [$department]
+    : array_map(fn($d) => $d['name'], departments_all());
+if (empty($deptsToRender)) {
+    $deptsToRender = [null];   // no departments configured — show the template once
 }
 
 $deptLabel = $department ?: '—';
@@ -112,19 +126,27 @@ report_document_head('Executive Meeting Report', 'landscape');
 
 <?php
 require_once __DIR__ . '/models/Target.php';   // academic_years()
-$deptHeading = $department !== null
-    ? 'DEPARTMENT OF ' . strtoupper(department_full_name($department))
-    : 'REPORT TEMPLATE';
 [$durFrom, $durTo] = report_year_duration(academic_years()[0] ?? null);
-$headingLines = [];
-if ($department !== null && $durFrom !== '') {
-    $headingLines[] = 'DETAILS OF TARGETS FIXED & ACHIEVED FOR THE DURATION FROM ' . $durFrom . ' TO ' . $durTo;
-    $headingLines[] = '(Target Achieved Status – from ' . $durFrom . ' to ' . $today . ')';
-}
-report_letterhead($deptHeading, [
-    ['Total Rows', (string) count($rows)],
-    ['Report Date', $today],
-], $headingLines);
+
+// One proforma per department to render (all of them when none was chosen).
+foreach ($deptsToRender as $dIndex => $dept):
+    $byMetric    = $buildByMetric($dept);
+    $deptHeading = $dept !== null
+        ? 'DEPARTMENT OF ' . strtoupper(department_full_name($dept))
+        : 'REPORT TEMPLATE';
+    $headingLines = [];
+    if ($dept !== null && $durFrom !== '') {
+        $headingLines[] = 'DETAILS OF TARGETS FIXED & ACHIEVED FOR THE DURATION FROM ' . $durFrom . ' TO ' . $durTo;
+        $headingLines[] = '(Target Achieved Status – from ' . $durFrom . ' to ' . $today . ')';
+    }
+    // Start each department (after the first) on a fresh page.
+    if ($dIndex > 0) {
+        echo '<div style="page-break-before:always"></div>';
+    }
+    report_letterhead($deptHeading, [
+        ['Total Rows', (string) count($rows)],
+        ['Report Date', $today],
+    ], $headingLines);
 ?>
 
   <table class="grid">
@@ -245,5 +267,6 @@ report_letterhead($deptHeading, [
   </table>
 
 <?php
-report_signoff(['HOD' . ($department ? ' / ' . $department : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+    report_signoff(['HOD' . ($dept ? ' / ' . $dept : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+endforeach;
 report_document_foot();

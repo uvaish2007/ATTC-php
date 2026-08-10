@@ -91,6 +91,10 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
     <w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
   <style>
     @page { size: <?= $size ?>; margin: 1.4cm 1.2cm; }
+    /* Force background colours (e.g. the green "achieved" cells) to actually
+       print — browsers drop them by default, which turned white-on-green data
+       cells into invisible white-on-white. */
+    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body   { font-family: 'Times New Roman', serif; font-size: 11pt; color:#000; }
 
     /* ---- Letterhead ---- */
