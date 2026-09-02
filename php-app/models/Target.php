@@ -648,3 +648,37 @@ function metric_names(): array
     $rows = db()->query('SELECT name FROM metrics WHERE status = 1 ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
     return $rows ?: [];
 }
+
+/**
+ * Automatically update achieved_value for all record-backed targets in the targets table.
+ */
+function sync_all_target_achieved(): void
+{
+    $targets = db()->query("SELECT * FROM targets")->fetchAll();
+    $updateStmt = db()->prepare("UPDATE targets SET achieved_value = ? WHERE id = ?");
+    foreach ($targets as $t) {
+        $count = target_record_count($t);
+        if ($count !== null) {
+            $updateStmt->execute([$count, (int) $t['id']]);
+        }
+    }
+}
+
+/**
+ * Automatically update achieved_value for targets matching a specific record type.
+ */
+function sync_target_achieved_for_type(string $type): void
+{
+    $targets = db()->query("SELECT * FROM targets")->fetchAll();
+    $updateStmt = db()->prepare("UPDATE targets SET achieved_value = ? WHERE id = ?");
+    foreach ($targets as $t) {
+        $suggestedType = target_suggested_type((string) ($t['metric'] ?? ''));
+        if ($suggestedType === $type) {
+            $count = target_record_count($t);
+            if ($count !== null) {
+                $updateStmt->execute([$count, (int) $t['id']]);
+            }
+        }
+    }
+}
+

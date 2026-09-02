@@ -256,6 +256,9 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         return [false, 'Record not found, already reviewed, or outside your department.'];
     }
 
+    require_once __DIR__ . '/Target.php';
+    sync_target_achieved_for_type($type);
+
     return [true, "Record {$newStatus}."];
 }
 
@@ -288,6 +291,10 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     if ($total === 0) {
         return [false, 'Nothing pending to approve in ' . $department . '.'];
     }
+
+    require_once __DIR__ . '/Target.php';
+    sync_all_target_achieved();
+
     return [true, "Approved {$total} record" . ($total === 1 ? '' : 's') . " in {$department}."];
 }
 
