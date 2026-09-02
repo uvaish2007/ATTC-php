@@ -92,9 +92,9 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
 {
     $types = record_types();
 
-    // Admin and Director may look at any department (or all, when none is
-    // picked); everyone else is pinned to their own department.
-    if (in_array($user['role'], ['Admin', 'Director'], true)) {
+    // Admin may look at any department; Director only ever at the whole
+    // institution (never one department); everyone else is pinned to their own.
+    if ($user['role'] === 'Admin') {
         $scopeDept = $department;
     } else {
         $scopeDept = $user['department'] ?: null;

@@ -241,7 +241,7 @@ function target_can_submit(array $target, array $user): bool
 /** May this user approve it or send it back? Only while it is waiting. */
 function target_can_review(array $target, array $user): bool
 {
-    return in_array($user['role'], ['Admin', 'Director'], true)
+    return in_array($user['role'], ['Admin', 'Director', 'Dean'], true)
         && ($target['status'] ?? '') === 'Pending Review';
 }
 

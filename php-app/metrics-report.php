@@ -19,7 +19,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Record.php';
 
-$user = require_role(['Admin', 'HoD', 'Director']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
 
 $format = strtolower(trim((string) input('format', 'word')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {

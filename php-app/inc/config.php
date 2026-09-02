@@ -12,7 +12,7 @@ require_once __DIR__ . '/env.php';
 load_env(dirname(__DIR__) . '/.env');
 
 // --- Database (MySQL / MariaDB) ---
-define('DB_HOST', env('DB_HOST', '127.0.0.1'));
+define('DB_HOST', env('DB_HOST', 'localhost'));
 define('DB_PORT', env('DB_PORT', '3306'));
 define('DB_NAME', env('DB_NAME', 'atts_main'));
 define('DB_USER', env('DB_USER', 'root'));

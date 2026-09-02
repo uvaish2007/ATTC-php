@@ -31,7 +31,7 @@ $deptFilter = trim((string)($_GET['department']??''));
 $search = trim((string)($_GET['q']??''));
 $users = users_all($roleFilter?:null, $deptFilter?:null, $search?:null);
 $departments = departments_all();
-$allRoles = ['Admin','Director','HoD','Coordinator','Faculty'];
+$allRoles = ['Admin','Director','Dean','HoD','Coordinator','Faculty'];
 
 $pageTitle = 'Users'; $breadcrumb = 'Users';
 require __DIR__ . '/inc/header.php';
@@ -61,7 +61,7 @@ require __DIR__ . '/inc/header.php';
     <div class="table-wrap"><table class="data" style="min-width:700px"><thead><tr>
       <th style="padding-left:24px">User</th><th>Role</th><th>Department</th><th>Status</th><th>Joined</th><th class="num" style="padding-right:24px">Actions</th>
     </tr></thead><tbody>
-    <?php foreach($users as $u): $rb=['Admin'=>'danger','Director'=>'info','HoD'=>'warning','Coordinator'=>'brand','Faculty'=>'neutral'];?>
+    <?php foreach($users as $u): $rb=['Admin'=>'danger','Director'=>'info','Dean'=>'brand','HoD'=>'warning','Coordinator'=>'brand','Faculty'=>'neutral'];?>
       <tr>
         <td style="padding-left:24px"><div class="flex items-center gap-3"><div class="avatar-dark" style="width:36px;height:36px;font-size:11px;flex-shrink:0"><?=e(initials($u['name']))?></div><div><div style="font-weight:500"><?=e($u['name'])?></div><div class="card-sub"><?=e($u['email'])?></div></div></div></td>
         <td><span class="badge badge-<?=$rb[$u['role']]??'neutral'?>"><?=e($u['role'])?></span></td>

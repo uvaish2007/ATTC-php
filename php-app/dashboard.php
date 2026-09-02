@@ -27,6 +27,7 @@ if ($user['role'] === 'Faculty') {
     $titles = [
         'Admin'       => 'Admin Dashboard',
         'Director'    => 'Director Dashboard',
+        'Dean'        => 'Dean Dashboard',
         'HoD'         => 'HoD Dashboard',
         'Coordinator' => 'Coordinator Dashboard',
     ];

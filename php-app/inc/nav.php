@@ -32,6 +32,14 @@ function navigation_for(string $role): array
             ['section' => 'Manage',    'label' => 'Targets',       'path' => 'targets.php',       'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],
+        'Dean' => [
+            ['section' => 'Menu',    'label' => 'Dashboard',     'path' => 'dashboard.php',    'icon' => 'dashboard'],
+            ['section' => 'Menu',    'label' => 'Approvals',     'path' => 'approvals.php',    'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Menu',    'label' => 'Announcements', 'path' => 'announcements.php','icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Menu',    'label' => 'Reports',       'path' => 'reports.php',      'icon' => 'reports'],
+            ['section' => 'Menu',    'label' => 'Targets',       'path' => 'targets.php',      'icon' => 'target', 'badge' => 'targets'],
+            ['section' => 'Account', 'label' => 'Profile',       'path' => 'profile.php',      'icon' => 'user'],
+        ],
         'HoD' => [
             ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
@@ -81,6 +89,11 @@ function nav_href(string $path): string
 /** Total pending (Submitted) records a reviewer should act on, for the badge. */
 function pending_approvals_count(array $user): int
 {
+    $tables = [
+        'journal_publications', 'book_publications', 'conference_publications',
+        'patents', 'fdp', 'mou', 'events', 'nptel', 'internships', 'placements',
+    ];
+
     // Only Admin/HoD review; HoD is scoped to their own department.
     if (!in_array($user['role'], ['Admin', 'HoD'], true)) {
         return 0;

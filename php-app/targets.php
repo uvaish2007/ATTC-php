@@ -17,7 +17,6 @@ require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD', 'Director']);
-require_module('targets');
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();

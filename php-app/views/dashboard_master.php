@@ -9,8 +9,8 @@
  * Comes from dashboard.php:  $user, $data, $pageTitle
  */
 
-$isOversight = $data['isOversight'];                             // Admin / Director
-$isReviewer  = in_array($user['role'], ['Admin', 'HoD'], true);  // can approve
+$isOversight = $data['isOversight'];                             // Admin / Director / Dean
+$isReviewer  = in_array($user['role'], ['Admin', 'Dean', 'HoD'], true);  // can approve
 $scopeLabel  = $data['scope']['department'] ?: 'All departments';
 $stats       = $data['stats'];
 

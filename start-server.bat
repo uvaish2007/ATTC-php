@@ -13,14 +13,38 @@ REM ===========================================================================
 
 cd /d "%~dp0"
 
-if not exist ".php-runtime\php.exe" (
+set "PHP_EXE="
+set "PHP_INI="
+
+if exist ".php-runtime\php.exe" (
+    set "PHP_EXE=%~dp0.php-runtime\php.exe"
+) else if exist "%~dp0php-app\.php-runtime\php.exe" (
+    set "PHP_EXE=%~dp0php-app\.php-runtime\php.exe"
+)
+
+if not defined PHP_EXE (
     echo.
-    echo   ERROR: .php-runtime\php.exe is missing.
+    echo   ERROR: PHP was not found.
     echo   Download the PHP 8.4 NTS x64 zip from https://windows.php.net/download
     echo   and unzip it into a folder named .php-runtime next to this file.
+    echo   The app also accepts a runtime under php-app\.php-runtime.
     echo.
     pause
     exit /b 1
+)
+
+if exist ".php-runtime\php.ini" (
+    set "PHP_INI=%~dp0.php-runtime\php.ini"
+) else if exist "%~dp0php-app\.php-runtime\php.ini" (
+    set "PHP_INI=%~dp0php-app\.php-runtime\php.ini"
+) else if exist ".php-runtime\php.ini-development" (
+    set "PHP_INI=%~dp0.php-runtime\php.ini-development"
+) else if exist "%~dp0php-app\.php-runtime\php.ini-development" (
+    set "PHP_INI=%~dp0php-app\.php-runtime\php.ini-development"
+)
+
+if not defined PHP_INI (
+    set "PHP_INI=%~dp0php-app\.php-runtime\php.ini-development"
 )
 
 echo.
@@ -34,6 +58,7 @@ echo.
 echo   Sign in with any of these (pick the matching role in the form):
 echo       Admin        mohameduvaish132@gmail.com   uvaish123
 echo       Director     director@atts.edu            director123
+echo       Dean         dean@atts.edu                dean@123
 echo       HoD          hod@atts.edu                 hod12345
 echo       Coordinator  coordinator@atts.edu         coord1234
 echo       Faculty      faculty@atts.edu             faculty123
@@ -49,7 +74,7 @@ start "" /min powershell -NoProfile -WindowStyle Hidden -Command "for($i=0;$i -l
 
 REM Run the server in THIS window. It stays running and prints each request
 REM until you press Ctrl+C or close the window.
-".php-runtime\php.exe" -c ".php-runtime\php.ini" -S 127.0.0.1:8000 -t "%~dp0."
+"%PHP_EXE%" -c "%PHP_INI%" -S 127.0.0.1:8000 -t "%~dp0."
 
 echo.
 echo   ----------------------------------------------------------------

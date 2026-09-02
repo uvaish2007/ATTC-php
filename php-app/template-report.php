@@ -21,9 +21,7 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Target.php';
 
-// Every signed-in user may generate the report (the template itself is still
-// Admin-only to edit — see report-template.php).
-$user = require_login();
+$user = require_role(['Admin', 'HoD', 'Director']);
 
 $format = strtolower(trim((string) input('format', 'word')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {

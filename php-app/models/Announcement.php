@@ -27,7 +27,7 @@ function announcement_priorities(): array
 /** Who is allowed to publish, edit, pin, archive and see the analytics. */
 function announcement_can_manage(array $user): bool
 {
-    return in_array($user['role'], ['Admin', 'Director', 'HoD', 'Coordinator', 'Faculty'], true);
+    return in_array($user['role'], ['Admin', 'Director'], true);
 }
 
 /**

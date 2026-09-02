@@ -26,12 +26,11 @@ require_once __DIR__ . '/models/Setting.php';
 $user = require_login();
 require_module('reports');
 
-$role        = $user['role'];
-$isAdmin     = $role === 'Admin';
-$isHod       = $role === 'HoD';
-$isDirector  = $role === 'Director';
-$isOversight = $isAdmin || $isDirector;   // may choose any department (or all)
-$canFilter   = $isAdmin || $isHod || $isDirector;   // year + period narrowing
+$role       = $user['role'];
+$isAdmin    = $role === 'Admin';
+$isHod      = $role === 'HoD';
+$isDirector = $role === 'Director';
+$canFilter  = $isAdmin || $isHod;     // Director never narrows; Faculty/Coord keep basic filters
 
 // ---- Admin sets the template every department must use --------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
@@ -47,14 +46,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
 }
 
 // ---- Filters -------------------------------------------------------------
-// Admin and Director may choose any department, year and period; a HoD is
-// pinned to their own department; Faculty/Coordinator keep type + status only.
-$department = $isOversight ? (trim((string) input('department')) ?: null) : null;
-$status     = trim((string) input('status')) ?: null;
-$type       = trim((string) input('type'))   ?: null;
-$year       = $canFilter ? (trim((string) input('year')) ?: null) : null;
-$from       = $canFilter ? (trim((string) input('from')) ?: null) : null;
-$to         = $canFilter ? (trim((string) input('to'))   ?: null) : null;
+// Director cannot narrow anything; a HoD cannot choose a department; Faculty
+// and Coordinator keep the basic status/type filters within their own scope.
+$department = $isAdmin ? (trim((string) input('department')) ?: null) : null;
+$status     = !$isDirector ? (trim((string) input('status')) ?: null) : null;
+$type       = !$isDirector ? (trim((string) input('type'))   ?: null) : null;
+$year       = $canFilter   ? (trim((string) input('year'))   ?: null) : null;
+$from       = $canFilter   ? (trim((string) input('from'))   ?: null) : null;
+$to         = $canFilter   ? (trim((string) input('to'))     ?: null) : null;
 
 $records = report_records($user, $department, $status, $type, $from, $to);
 
@@ -196,6 +195,61 @@ require __DIR__ . '/inc/header.php';
           <?php endforeach; ?>
         </select>
         <button class="btn btn-primary btn-sm" type="submit"><?= icon('save') ?> Apply to all departments</button>
+      </form>
+    </div>
+  </div>
+<?php endif; ?>
+
+
+<?php if ($canFilter): ?>
+  <!-- Filter bar: one set of filters shared by all three reports below -->
+  <div class="mt-5 card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">Filters</div>
+        <div class="card-sub">Applied to the reports and downloads below</div>
+      </div>
+      <?php if ($recordsQ || $year): ?>
+        <a class="btn btn-ghost btn-sm" href="<?= e(url('reports.php')) ?>">Clear</a>
+      <?php endif; ?>
+    </div>
+    <div class="card-body">
+      <form method="get" class="flex gap-2 items-center" style="flex-wrap:wrap">
+        <?php if ($isAdmin): ?>
+          <select class="select" name="department" onchange="this.form.submit()">
+            <option value="">All departments</option>
+            <?php foreach ($departments as $d): ?>
+              <option value="<?= e($d['name']) ?>" <?= $department === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        <?php endif; ?>
+
+        <select class="select" name="year" onchange="this.form.submit()">
+          <option value="">All years</option>
+          <?php foreach ($years as $y): ?>
+            <option value="<?= e($y) ?>" <?= $year === $y ? 'selected' : '' ?>><?= e($y) ?></option>
+          <?php endforeach; ?>
+        </select>
+
+        <select class="select" name="type" onchange="this.form.submit()">
+          <option value="">All types</option>
+          <?php foreach ($types as $key => $t): ?>
+            <option value="<?= e($key) ?>" <?= $type === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
+          <?php endforeach; ?>
+        </select>
+
+        <select class="select" name="status" onchange="this.form.submit()">
+          <option value="">All statuses</option>
+          <?php foreach (['Approved', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
+            <option value="<?= $o ?>" <?= $status === $o ? 'selected' : '' ?>><?= $o ?></option>
+          <?php endforeach; ?>
+        </select>
+
+        <label class="card-sub" style="display:flex;align-items:center;gap:6px">Period
+          <input class="input" type="date" name="from" value="<?= e((string) $from) ?>" onchange="this.form.submit()" style="width:150px">
+          <span>–</span>
+          <input class="input" type="date" name="to" value="<?= e((string) $to) ?>" onchange="this.form.submit()" style="width:150px">
+        </label>
       </form>
     </div>
   </div>

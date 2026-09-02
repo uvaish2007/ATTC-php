@@ -16,6 +16,7 @@ $selectedRole = '';
 $roles = [
     'Admin'       => ['icon' => 'shield',     'desc' => 'Full system access, manage users & departments'],
     'Director'    => ['icon' => 'eye',         'desc' => 'Institution-wide overview & reports'],
+    'Dean'        => ['icon' => 'award',       'desc' => 'Academic oversight & institution-wide approvals'],
     'HoD'         => ['icon' => 'graduation',  'desc' => 'Department head, approve records'],
     'Coordinator' => ['icon' => 'target',      'desc' => 'Upload data & generate reports'],
     'Faculty'     => ['icon' => 'user',        'desc' => 'Submit academic records & track status'],

@@ -72,7 +72,7 @@ function dashboard_data(array $user): array
 {
     $pdo = db();
 
-    $isOversight = in_array($user['role'], ['Admin', 'Director'], true);
+    $isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
 
     // Server-side scope: only oversight roles may choose a department.
     if ($isOversight) {
@@ -187,7 +187,7 @@ function dashboard_data(array $user): array
     ];
 
     // ---- users by role ----
-    $usersByRole = ['Admin' => 0, 'Director' => 0, 'HoD' => 0, 'Coordinator' => 0, 'Faculty' => 0];
+    $usersByRole = ['Admin' => 0, 'Director' => 0, 'Dean' => 0, 'HoD' => 0, 'Coordinator' => 0, 'Faculty' => 0];
     foreach ($pdo->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role') as $row) {
         if (isset($usersByRole[$row['role']])) {
             $usersByRole[$row['role']] = (int) $row['n'];

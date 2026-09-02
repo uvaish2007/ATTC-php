@@ -41,7 +41,7 @@ if ($user['role'] === 'Director') {
 $records = report_records($user, $department, $status, $type, $from, $to);
 
 // ---- Things that appear in the report heading ---------------------------
-$isOversight = in_array($user['role'], ['Admin', 'Director'], true);
+$isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
 $scopeLabel  = $isOversight
     ? ($department ?: 'ALL DEPARTMENTS')
     : ($user['department'] ?: 'ALL DEPARTMENTS');

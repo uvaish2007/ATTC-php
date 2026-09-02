@@ -47,7 +47,7 @@ function user_create(string $name, string $email, string $password, string $role
         return [false, 'Name, email and password are required.'];
     }
 
-    $validRoles = ['Admin', 'Director', 'HoD', 'Coordinator', 'Faculty'];
+    $validRoles = ['Admin', 'Director', 'Dean', 'HoD', 'Coordinator', 'Faculty'];
     if (!in_array($role, $validRoles, true)) {
         return [false, 'Invalid role.'];
     }

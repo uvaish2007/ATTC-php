@@ -4,7 +4,6 @@ require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD']);
-require_module('approvals');
 
 // An HoD may only review their own department; Admin has no such limit.
 $scopeDept = ($user['role'] === 'HoD') ? ($user['department'] ?? null) : null;
