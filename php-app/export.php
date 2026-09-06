@@ -25,8 +25,8 @@ $format     = strtolower(trim((string) input('format', 'csv')));
 $department = trim((string) input('department', '')) ?: null;
 $status     = trim((string) input('status', '')) ?: null;
 $type       = trim((string) input('type', '')) ?: null;
-$from       = trim((string) input('from', '')) ?: null;   // period start (YYYY-MM-DD)
-$to         = trim((string) input('to', '')) ?: null;     // period end
+$from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
+$to         = parse_date_input(input('to', ''));     // period end
 
 if (!in_array($format, ['csv', 'excel', 'word'], true)) {
     $format = 'csv';
@@ -132,8 +132,25 @@ if ($format === 'csv') {
    content type and the file extension change.
    ===================================================================== */
 if ($format === 'excel') {
-    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
+    require_once __DIR__ . '/inc/xlsx_writer.php';
+    $exportRows = [];
+    foreach ($records as $i => $r) {
+        $exportRows[] = export_row($r, $i + 1);
+    }
+    $metaLines = [
+        'MOHAMED SATHAK ENGINEERING COLLEGE',
+        $reportTitle,
+        'Department: ' . $scopeLabel,
+        'Report Date: ' . $today
+    ];
+    $xlsxData = SimpleXlsxWriter::createXlsx($columns, $exportRows, 'Academic Records', $metaLines);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
+    header('Content-Length: ' . strlen($xlsxData));
+    header('Cache-Control: max-age=0');
+    echo $xlsxData;
+    exit;
 } else {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');

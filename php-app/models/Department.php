@@ -8,6 +8,39 @@ require_once __DIR__ . '/../inc/db.php';
 
 function departments_all(): array
 {
+    static $ensured = false;
+    if (!$ensured) {
+        $ensured = true;
+        try {
+            $depts = [
+                ['name' => 'Aero',           'code' => 'AERO'],
+                ['name' => 'Civil',          'code' => 'CIVIL'],
+                ['name' => 'CSBS',           'code' => 'CSBS'],
+                ['name' => 'EEE',            'code' => 'EEE'],
+                ['name' => 'ECE',            'code' => 'ECE'],
+                ['name' => 'Marine',         'code' => 'MARINE'],
+                ['name' => 'Mech',           'code' => 'MECH'],
+                ['name' => 'AI&ML',          'code' => 'AIML'],
+                ['name' => 'Cyber Security', 'code' => 'CYBER'],
+                ['name' => 'Chem',           'code' => 'CHEM'],
+                ['name' => 'IT',             'code' => 'IT'],
+                ['name' => 'Arch',           'code' => 'ARCH'],
+                ['name' => 'MCA',            'code' => 'MCA'],
+                ['name' => 'MBA',            'code' => 'MBA'],
+            ];
+            $pdo = db();
+            foreach ($depts as $d) {
+                $stmt = $pdo->prepare("SELECT id FROM departments WHERE name = ? OR code = ?");
+                $stmt->execute([$d['name'], $d['code']]);
+                if (!$stmt->fetch()) {
+                    $insert = $pdo->prepare("INSERT INTO departments (name, code) VALUES (?, ?)");
+                    $insert->execute([$d['name'], $d['code']]);
+                }
+            }
+        } catch (\PDOException $e) {
+            // fail-open if unmigrated
+        }
+    }
     return db()->query('SELECT * FROM departments ORDER BY name')->fetchAll();
 }
 

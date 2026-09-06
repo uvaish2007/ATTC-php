@@ -199,6 +199,9 @@ function target_is_frozen(array $target): bool
 /** The HoD's own department, or null for anyone not scoped to one. */
 function target_owns(array $target, array $user): bool
 {
+    if (in_array($user['role'], ['Admin', 'Director', 'Dean'], true)) {
+        return true;
+    }
     return ($user['department'] ?? null) !== null
         && ($target['department'] ?? null) === $user['department'];
 }
@@ -215,7 +218,7 @@ function target_can_edit(array $target, array $user): bool
     if ($user['role'] === 'Admin') {
         return true;
     }
-    if ($user['role'] !== 'HoD' || !target_owns($target, $user)) {
+    if (!in_array($user['role'], ['HoD', 'Dean'], true) || !target_owns($target, $user)) {
         return false;
     }
 
@@ -227,13 +230,14 @@ function target_can_edit(array $target, array $user): bool
     }
 
     // ...or a locked target while an unlock window is open and unexpired.
-    return $status === 'Approved' && unlock_active($user['department'] ?? null) !== null;
+    $dept = $target['department'] ?? ($user['department'] ?? null);
+    return $status === 'Approved' && unlock_active($dept) !== null;
 }
 
 /** May this user send it up for review? Only the HoD who owns it. */
 function target_can_submit(array $target, array $user): bool
 {
-    return $user['role'] === 'HoD'
+    return in_array($user['role'], ['HoD', 'Dean'], true)
         && target_owns($target, $user)
         && in_array($target['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true);
 }
@@ -252,15 +256,15 @@ function target_can_delete(array $target, array $user): bool
         return true;
     }
 
-    return $user['role'] === 'HoD'
+    return in_array($user['role'], ['HoD', 'Dean'], true)
         && target_owns($target, $user)
         && !target_is_frozen($target);
 }
 
 /**
- * Targets, newest first, optionally narrowed by department, year or status.
+ * Targets, newest first, optionally narrowed by department, year, status or metric.
  */
-function targets_all(?string $department = null, ?string $year = null, ?string $status = null): array
+function targets_all(?string $department = null, ?string $year = null, ?string $status = null, ?string $metric = null): array
 {
     $sql = 'SELECT t.*, u.name AS creator_name, a.name AS approver_name
               FROM targets t
@@ -280,6 +284,10 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
     if ($status) {
         $sql .= ' AND t.status = ?';
         $params[] = $status;
+    }
+    if ($metric) {
+        $sql .= ' AND t.metric = ?';
+        $params[] = $metric;
     }
 
     $sql .= ' ORDER BY t.created_at DESC';
@@ -309,7 +317,7 @@ function target_report_items(?string $department = null, ?string $year = null): 
         $params[] = $year;
     }
 
-    $sql .= ' ORDER BY (sort_order IS NULL), sort_order, id';
+    $sql .= ' ORDER BY id ASC';
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll();
@@ -339,14 +347,15 @@ function targets_pending_count(): int
  */
 function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null): array
 {
-    // Entering targets is the HoD's job. An Admin freezes and unlocks them but
-    // does not write them; a Director only reviews. So creation is HoD-only.
-    if ($user['role'] !== 'HoD') {
-        return [false, 'Only a HoD enters targets. The Admin freezes and unlocks them.'];
+    if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
+        return [false, 'Only a HoD or Dean enters targets.'];
     }
 
-    // A HoD's department comes from their account, never from the form.
-    $department = (string) ($user['department'] ?? '');
+    if ($user['role'] === 'HoD') {
+        $department = (string) ($user['department'] ?? '');
+    } else {
+        $department = trim($department) ?: ((string) ($user['department'] ?? '') ?: 'CSE');
+    }
 
     // Metric is free text (any target title), so only emptiness is invalid.
     $metric = trim($metric);
@@ -590,9 +599,13 @@ function target_record_count(array $target): ?int
         $args[] = $target['academic_year'];
     }
 
-    $stmt = db()->prepare($sql);
-    $stmt->execute($args);
-    return (int) $stmt->fetchColumn();
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($args);
+        return (int) $stmt->fetchColumn();
+    } catch (\PDOException $e) {
+        return 0;
+    }
 }
 
 /**
@@ -623,18 +636,17 @@ function target_apply_count(int $id, array $user): array
 }
 
 /**
- * The academic years to offer, generated from the calendar so the list keeps
- * itself up to date — no yearly edit needed.
+ * All valid academic years up to the current one.
  *
  * An academic year runs June–May, so from June onward the "current" year has
- * already rolled over. The list runs from 2023-24 up to the year *after* the
- * current one (so next year can be planned early), newest first.
+ * already rolled over. The list runs from 2023-24 up to the current academic
+ * year (never showing future academic years), newest first.
  */
 function academic_years(): array
 {
     $firstStart   = 2023;
     $currentStart = (int) date('n') >= 6 ? (int) date('Y') : (int) date('Y') - 1;
-    $lastStart    = $currentStart + 1;   // also offer the upcoming year
+    $lastStart    = $currentStart;   // current academic year only (no future years)
 
     $years = [];
     for ($y = $lastStart; $y >= $firstStart; $y--) {

@@ -103,21 +103,26 @@ function dashboard_data(array $user): array
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' GROUP BY department';
 
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        foreach ($stmt as $row) {
-            $dept = $row['department'] !== null && $row['department'] !== '' ? $row['department'] : 'Unassigned';
-            $seen[$dept] = true;
-            $deptCounts[$dept][$key] = (int) $row['n'];
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            foreach ($stmt as $row) {
+                $dept = $row['department'] !== null && $row['department'] !== '' ? $row['department'] : 'Unassigned';
+                $seen[$dept] = true;
+                $deptCounts[$dept][$key] = (int) $row['n'];
+            }
+        } catch (\PDOException $e) {
+            continue;
         }
     }
 
     // ---- department list: admin-managed if any, else derived from data ----
-    $configured = $pdo->query('SELECT name FROM departments ORDER BY name')->fetchAll(PDO::FETCH_COLUMN);
+    require_once __DIR__ . '/Department.php';
+    $configured = array_map(fn($d) => $d['name'], departments_all());
     $dataDepartments = array_keys($seen);
-    sort($dataDepartments);
     $usingConfigured = count($configured) > 0;
-    $departments = $usingConfigured ? $configured : $dataDepartments;
+    $departments = $usingConfigured ? array_values(array_unique(array_merge($configured, $dataDepartments))) : $dataDepartments;
+    sort($departments);
 
     // ---- matrix rows (real data; single row when a department is selected) ----
     $matrixDepartments = $departmentFilter !== null
@@ -166,13 +171,17 @@ function dashboard_data(array $user): array
         if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' GROUP BY status';
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        foreach ($stmt as $row) {
-            $s = $row['status'] ?: 'Draft';
-            if (isset($statusBreakdown[$s])) {
-                $statusBreakdown[$s] += (int) $row['n'];
+        try {
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+            foreach ($stmt as $row) {
+                $s = $row['status'] ?: 'Draft';
+                if (isset($statusBreakdown[$s])) {
+                    $statusBreakdown[$s] += (int) $row['n'];
+                }
             }
+        } catch (\PDOException $e) {
+            continue;
         }
     }
 
@@ -618,16 +627,20 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' ORDER BY created_at DESC LIMIT 5';
 
-        $stmt = db()->prepare($sql);
-        $stmt->execute($params);
-        foreach ($stmt as $r) {
-            $rows[] = [
-                'metric'     => $s['label'],
-                'title'      => (string) ($r['title'] ?: '(untitled)'),
-                'department' => $r['department'],
-                'status'     => $r['status'],
-                'at'         => $r['created_at'],
-            ];
+        try {
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
+            foreach ($stmt as $r) {
+                $rows[] = [
+                    'metric'     => $s['label'],
+                    'title'      => (string) ($r['title'] ?: '(untitled)'),
+                    'department' => $r['department'],
+                    'status'     => $r['status'],
+                    'at'         => $r['created_at'],
+                ];
+            }
+        } catch (\PDOException $e) {
+            continue;
         }
     }
 
@@ -646,17 +659,21 @@ function my_dashboard_data(array $user): array
     $totals = [];
 
     foreach ($metrics as $key => $m) {
-        $stmt = $pdo->prepare("SELECT status, COUNT(*) AS n FROM `{$m['table']}` WHERE created_by = ? GROUP BY status");
-        $stmt->execute([$uid]);
-        $sum = 0;
-        foreach ($stmt as $row) {
-            $sum += (int) $row['n'];
-            $s = $row['status'] ?: 'Draft';
-            if (isset($statusBreakdown[$s])) {
-                $statusBreakdown[$s] += (int) $row['n'];
+        try {
+            $stmt = $pdo->prepare("SELECT status, COUNT(*) AS n FROM `{$m['table']}` WHERE created_by = ? GROUP BY status");
+            $stmt->execute([$uid]);
+            $sum = 0;
+            foreach ($stmt as $row) {
+                $sum += (int) $row['n'];
+                $s = $row['status'] ?: 'Draft';
+                if (isset($statusBreakdown[$s])) {
+                    $statusBreakdown[$s] += (int) $row['n'];
+                }
             }
+            $totals[$key] = $sum;
+        } catch (\PDOException $e) {
+            $totals[$key] = 0;
         }
-        $totals[$key] = $sum;
     }
 
     $total = array_sum($totals);

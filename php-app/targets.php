@@ -16,7 +16,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD', 'Director']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -55,8 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_apply_count((int) input('id'), $user);
 
     // ---- Timed unlock workflow ----
-    } elseif ($action === 'unlock_request' && $user['role'] === 'HoD') {
-        [$ok, $msg] = unlock_request($user['department'] ?? null, (int) $user['id'], (string) input('reason'));
+    } elseif ($action === 'unlock_request' && in_array($user['role'], ['HoD', 'Dean'], true)) {
+        $unlockDept = $user['department'] ?? (trim((string) input('department')) ?: 'CSE');
+        [$ok, $msg] = unlock_request($unlockDept, (int) $user['id'], (string) input('reason'));
     } elseif ($action === 'unlock_grant' && $user['role'] === 'Admin') {
         $hours = (int) input('hours') ?: unlock_default_hours();
         [$ok, $msg] = unlock_grant((int) input('id'), (int) $user['id'], $hours);
@@ -73,26 +74,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Re-freeze any window that has run out before we read state for this page.
 unlock_expire_due();
 
-// A HoD only ever sees their own department; the other two choose.
-$isHod      = $user['role'] === 'HoD';
-// A HoD enters the targets — that is their job. The Admin's job is to freeze
-// (approve) and unlock them, not to enter them. So only a HoD creates.
-$canCreate  = $isHod;
-$canManage  = in_array($user['role'], ['Admin', 'HoD'], true);   // may edit / delete within permission
-$deptFilter = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
-$yearFilter = trim((string) ($_GET['year'] ?? '')) ?: null;
-$statFilter = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
+// A HoD or Dean enters and manages targets for their scope; the other roles choose.
+$isHod       = $user['role'] === 'HoD';
+$isDean      = $user['role'] === 'Dean';
+$isHodOrDean = $isHod || $isDean;
 
-$targets     = targets_all($deptFilter, $yearFilter, $statFilter);
+$canCreate   = $isHodOrDean;
+$canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
+$deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
+$yearFilter   = trim((string) ($_GET['year'] ?? '')) ?: null;
+$statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
+$metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
+
+$targets     = targets_all($deptFilter, $yearFilter, $statFilter, $metricFilter);
 $departments = departments_all();
 $metrics     = metric_names();
 $years       = academic_years();
 $awaiting    = count(array_filter($targets, fn($t) => target_can_review($t, $user)));
 
 // Unlock workflow state:
-//   HoD   sees their own department's lock/unlock banner and countdown.
+//   HoD/Dean sees their department's lock/unlock banner and countdown.
 //   Admin sees the queue of unlock requests waiting to be granted.
-$myUnlock       = $isHod ? unlock_state($user['department'] ?? null) : null;
+$unlockDept     = $user['department'] ?? ($deptFilter ?: 'CSE');
+$myUnlock       = $isHodOrDean ? unlock_state($unlockDept) : null;
 $pendingUnlocks = ($user['role'] === 'Admin') ? unlock_pending_all() : [];
 $unlockHours    = unlock_default_hours();
 
@@ -114,7 +118,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <div class="actions">
-    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($yearFilter ? 1 : 0) + ($statFilter ? 1 : 0); ?>
+    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($yearFilter ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
     <details class="filter-funnel">
       <summary class="btn btn-outline btn-sm">
         <?= icon('filter', 15) ?> Filters<?php if ($tgActive): ?> <span class="ff-dot"><?= $tgActive ?></span><?php endif; ?>
@@ -140,6 +144,13 @@ require __DIR__ . '/inc/header.php';
               <option value="">All years</option>
               <?php foreach ($years as $y): ?>
                 <option value="<?= e($y) ?>" <?= $yearFilter === $y ? 'selected' : '' ?>><?= e($y) ?></option>
+              <?php endforeach; ?>
+            </select></div>
+          <div class="ff-field"><label class="ff-label">Metric</label>
+            <select class="select" name="metric" onchange="this.form.submit()">
+              <option value="">All metrics</option>
+              <?php foreach ($metrics as $m): ?>
+                <option value="<?= e($m) ?>" <?= $metricFilter === $m ? 'selected' : '' ?>><?= e($m) ?></option>
               <?php endforeach; ?>
             </select></div>
           <div class="ff-field"><label class="ff-label">Status</label>
@@ -183,8 +194,8 @@ require __DIR__ . '/inc/header.php';
 </div>
 
 
-<?php /* ---- HoD: lock / request / countdown banner ---- */ ?>
-<?php if ($isHod && $myUnlock): ?>
+<?php /* ---- HoD / Dean: lock / request / countdown banner ---- */ ?>
+<?php if ($isHodOrDean && $myUnlock): ?>
   <?php if ($myUnlock['state'] === 'unlocked'): ?>
     <div class="unlock-banner open" data-until="<?= (int) $myUnlock['until'] * 1000 ?>">
       <div class="ub-ic"><?= icon('clock', 20) ?></div>
@@ -537,7 +548,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 </form></dialog>
 
-<?php if ($isHod && $myUnlock && $myUnlock['state'] === 'locked'): ?>
+<?php if ($isHodOrDean && $myUnlock && $myUnlock['state'] === 'locked'): ?>
 <!-- HoD asks the Admin to open a timed edit window on the locked targets -->
 <dialog class="modal" id="unlockDlg" style="max-width:30rem"><form method="post"><?= csrf_field() ?>
   <input type="hidden" name="action" value="unlock_request">

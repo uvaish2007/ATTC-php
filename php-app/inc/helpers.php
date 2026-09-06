@@ -30,6 +30,54 @@ function input(string $key, $default = '')
     return $_POST[$key] ?? $_GET[$key] ?? $default;
 }
 
+/**
+ * Normalise a user-entered date string (DD-MM-YYYY or YYYY-MM-DD) to ISO YYYY-MM-DD for SQL.
+ * Returns null if invalid or empty.
+ */
+function parse_date_input(?string $input): ?string
+{
+    $input = trim((string) $input);
+    if ($input === '') {
+        return null;
+    }
+    // DD-MM-YYYY or DD/MM/YYYY
+    if (preg_match('/^(\d{1,2})[-|\/](\d{1,2})[-|\/](\d{4})$/', $input, $m)) {
+        $day   = (int) $m[1];
+        $month = (int) $m[2];
+        $year  = (int) $m[3];
+        if (checkdate($month, $day, $year)) {
+            return sprintf('%04d-%02d-%02d', $year, $month, $day);
+        }
+    }
+    // YYYY-MM-DD
+    if (preg_match('/^(\d{4})[-|\/](\d{1,2})[-|\/](\d{1,2})$/', $input, $m)) {
+        $year  = (int) $m[1];
+        $month = (int) $m[2];
+        $day   = (int) $m[3];
+        if (checkdate($month, $day, $year)) {
+            return sprintf('%04d-%02d-%02d', $year, $month, $day);
+        }
+    }
+    $ts = strtotime($input);
+    return $ts ? date('Y-m-d', $ts) : null;
+}
+
+/**
+ * Format ISO YYYY-MM-DD or date input string into display format DD-MM-YYYY.
+ */
+function format_date_display(?string $dateStr): string
+{
+    $dateStr = trim((string) $dateStr);
+    if ($dateStr === '') {
+        return '';
+    }
+    $iso = parse_date_input($dateStr);
+    if (!$iso) {
+        return $dateStr;
+    }
+    return date('d-m-Y', strtotime($iso));
+}
+
 /** Queue a one-shot flash message shown on the next page load. */
 function flash(string $type, string $message): void
 {

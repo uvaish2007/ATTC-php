@@ -94,8 +94,8 @@ function pending_approvals_count(array $user): int
         'patents', 'fdp', 'mou', 'events', 'nptel', 'internships', 'placements',
     ];
 
-    // Only Admin/HoD review; HoD is scoped to their own department.
-    if (!in_array($user['role'], ['Admin', 'HoD'], true)) {
+    // Admin/Dean/HoD review; HoD is scoped to their own department.
+    if (!in_array($user['role'], ['Admin', 'Dean', 'HoD'], true)) {
         return 0;
     }
 
@@ -107,13 +107,17 @@ function pending_approvals_count(array $user): int
     $total = 0;
     foreach (record_types() as $t) {
         $table = $t['table'];
-        if ($scopeDept !== null) {
-            $stmt = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status='Submitted' AND department = ?");
-            $stmt->execute([$scopeDept]);
-        } else {
-            $stmt = db()->query("SELECT COUNT(*) FROM `$table` WHERE status='Submitted'");
+        try {
+            if ($scopeDept !== null) {
+                $stmt = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status='Submitted' AND department = ?");
+                $stmt->execute([$scopeDept]);
+            } else {
+                $stmt = db()->query("SELECT COUNT(*) FROM `$table` WHERE status='Submitted'");
+            }
+            $total += (int) $stmt->fetchColumn();
+        } catch (\PDOException $e) {
+            continue;
         }
-        $total += (int) $stmt->fetchColumn();
     }
 
     return $total;

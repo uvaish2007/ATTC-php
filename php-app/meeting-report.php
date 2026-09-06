@@ -14,7 +14,7 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Setting.php';
 
-$user = require_role(['Admin', 'HoD', 'Director']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
 
 $params = array_filter([
     'department' => trim((string) input('department')) ?: null,

@@ -30,7 +30,9 @@ $role       = $user['role'];
 $isAdmin    = $role === 'Admin';
 $isHod      = $role === 'HoD';
 $isDirector = $role === 'Director';
-$canFilter  = $isAdmin || $isHod;     // Director never narrows; Faculty/Coord keep basic filters
+$isDean     = $role === 'Dean';
+$isOversight = $isAdmin || $isDirector || $isDean;
+$canFilter  = $isAdmin || $isHod || $isDean;     // Director never narrows; Dean/Admin/HoD filter
 
 // ---- Admin sets the template every department must use --------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
@@ -48,14 +50,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
 // ---- Filters -------------------------------------------------------------
 // Director cannot narrow anything; a HoD cannot choose a department; Faculty
 // and Coordinator keep the basic status/type filters within their own scope.
-$department = $isAdmin ? (trim((string) input('department')) ?: null) : null;
+$department = ($isAdmin || $isDean) ? (trim((string) input('department')) ?: null) : null;
 $status     = !$isDirector ? (trim((string) input('status')) ?: null) : null;
 $type       = !$isDirector ? (trim((string) input('type'))   ?: null) : null;
 $year       = $canFilter   ? (trim((string) input('year'))   ?: null) : null;
-$from       = $canFilter   ? (trim((string) input('from'))   ?: null) : null;
-$to         = $canFilter   ? (trim((string) input('to'))     ?: null) : null;
+$rawFrom    = $canFilter   ? trim((string) input('from'))    : '';
+$rawTo      = $canFilter   ? trim((string) input('to'))      : '';
 
-$records = report_records($user, $department, $status, $type, $from, $to);
+$fromIso     = parse_date_input($rawFrom);
+$toIso       = parse_date_input($rawTo);
+$fromDisplay = format_date_display($rawFrom);
+$toDisplay   = format_date_display($rawTo);
+
+$rangeError = null;
+if ($fromIso && $toIso && $fromIso > $toIso) {
+    $rangeError = 'From Date cannot be later than To Date.';
+}
+
+$records = report_records($user, $department, $status, $type, $rangeError ? null : $fromIso, $rangeError ? null : $toIso);
 
 $types       = record_types();
 $departments = departments_all();
@@ -80,10 +92,10 @@ if ($isHod) {
 // ---- Query strings each report link carries ------------------------------
 $recordsQ = array_filter([
     'department' => $department, 'status' => $status, 'type' => $type,
-    'from' => $from, 'to' => $to,
+    'from' => $fromDisplay, 'to' => $toDisplay,
 ]);
 $meetingQ = array_filter(['department' => $department, 'year' => $year]);
-$metricsQ = array_filter(['department' => $department, 'from' => $from, 'to' => $to]);
+$metricsQ = array_filter(['department' => $department, 'from' => $fromDisplay, 'to' => $toDisplay]);
 
 $link = fn(string $file, array $q, string $fmt) =>
     e(url($file) . '?' . http_build_query($q + ['format' => $fmt]));
@@ -95,7 +107,13 @@ $breadcrumb = 'Reports';
 require __DIR__ . '/inc/header.php';
 ?>
 
-<?php $activeCount = count(array_filter([$department, $year, $type, $status])) + (($from || $to) ? 1 : 0); ?>
+<?php if (!empty($rangeError)): ?>
+  <div class="alert alert-error" style="background:#fee2e2; border:1px solid #f87171; color:#991b1b; padding:12px 16px; border-radius:8px; display:flex; align-items:center; gap:10px; margin-bottom:16px;">
+    <span><strong>Invalid Date Range:</strong> <?= e($rangeError) ?></span>
+  </div>
+<?php endif; ?>
+
+<?php $activeCount = count(array_filter([$department, $year, $type, $status])) + (($fromDisplay || $toDisplay) ? 1 : 0); ?>
 <div class="page-head">
   <div>
     <h1>Reports</h1>
@@ -111,7 +129,7 @@ require __DIR__ . '/inc/header.php';
         </summary>
         <span class="filter-backdrop" onclick="this.closest('details').removeAttribute('open')"></span>
         <div class="filter-pop">
-          <form method="get">
+          <form method="get" onsubmit="return validatePeriodRange()">
             <div class="ff-head">
               <span>Filter reports</span>
               <?php if ($activeCount): ?><a class="ff-clear" href="<?= e(url('reports.php')) ?>">Clear all</a><?php endif; ?>
@@ -153,12 +171,31 @@ require __DIR__ . '/inc/header.php';
               </select></div>
 
             <?php if ($canFilter): ?>
-              <div class="ff-field"><label class="ff-label">Submission Period</label>
-                <div class="ff-period">
-                  <input class="input" type="date" name="from" value="<?= e((string) $from) ?>" onchange="this.form.submit()">
-                  <span>–</span>
-                  <input class="input" type="date" name="to" value="<?= e((string) $to) ?>" onchange="this.form.submit()">
-                </div></div>
+              <div class="ff-field">
+                <label class="ff-label">Submission Period</label>
+                <div class="ff-period" style="display:flex; align-items:center; gap:8px;">
+                  <div class="date-picker-wrap" style="position:relative; flex:1;">
+                    <input class="input date-input" type="text" name="from" id="from_date_input"
+                           placeholder="DD-MM-YYYY" value="<?= e($fromDisplay) ?>"
+                           maxlength="10" autocomplete="off" style="padding-right:28px;" onchange="validatePeriodRange()">
+                    <button type="button" class="date-picker-btn" onclick="openCustomCalendar('from_date_input', event)"
+                            title="Open calendar" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#6b7280;">
+                      <?= icon('calendar', 15) ?>
+                    </button>
+                  </div>
+                  <span style="color:#6b7280; font-weight:600;">–</span>
+                  <div class="date-picker-wrap" style="position:relative; flex:1;">
+                    <input class="input date-input" type="text" name="to" id="to_date_input"
+                           placeholder="DD-MM-YYYY" value="<?= e($toDisplay) ?>"
+                           maxlength="10" autocomplete="off" style="padding-right:28px;" onchange="validatePeriodRange()">
+                    <button type="button" class="date-picker-btn" onclick="openCustomCalendar('to_date_input', event)"
+                            title="Open calendar" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#6b7280;">
+                      <?= icon('calendar', 15) ?>
+                    </button>
+                  </div>
+                </div>
+                <div id="period_range_error" style="display:none; color:#dc2626; font-size:12px; margin-top:4px; font-weight:600;"></div>
+              </div>
             <?php endif; ?>
 
             <div class="ff-actions">
@@ -482,5 +519,260 @@ require __DIR__ . '/inc/header.php';
   .rec-group-dl { margin-left:auto; font-size:12px; font-weight:600; display:inline-flex; align-items:center; gap:5px; }
   .rec-more { padding:8px 0 0; }
 </style>
+
+<style>
+.custom-calendar-popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 99999;
+  margin-top: 4px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1);
+  padding: 12px;
+  width: 270px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #1e293b;
+}
+.cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.cal-head select {
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  font-size: 12px;
+  background: #fff;
+  color: #0f172a;
+}
+.cal-btn {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-weight: bold;
+  color: #334155;
+}
+.cal-btn:hover {
+  background: #e2e8f0;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  text-align: center;
+}
+.cal-day-hdr {
+  font-weight: 600;
+  color: #64748b;
+  font-size: 11px;
+  padding: 4px 0;
+}
+.cal-day {
+  padding: 6px 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cal-day:hover {
+  background: #eff6ff;
+  color: #2563eb;
+}
+.cal-day.selected {
+  background: #2563eb;
+  color: #ffffff;
+  font-weight: bold;
+}
+.cal-day.empty {
+  cursor: default;
+  background: transparent;
+}
+</style>
+
+<script>
+let activeCalendarInput = null;
+let currentCalDate = new Date();
+
+function openCustomCalendar(inputId, evt) {
+  if (evt) evt.stopPropagation();
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  
+  closeCustomCalendar();
+  activeCalendarInput = input;
+  
+  const val = input.value.trim();
+  const m = val.match(/^(\d{1,2})[-|\/](\d{1,2})[-|\/](\d{4})$/);
+  if (m) {
+    currentCalDate = new Date(parseInt(m[3], 10), parseInt(m[2], 10) - 1, parseInt(m[1], 10));
+  } else {
+    currentCalDate = new Date();
+  }
+  
+  const popover = document.createElement('div');
+  popover.id = 'custom-calendar-popover';
+  popover.className = 'custom-calendar-popover';
+  popover.onclick = (e) => e.stopPropagation();
+  
+  renderCalendarContent(popover);
+  
+  const wrap = input.closest('.date-picker-wrap') || input.parentElement;
+  wrap.style.position = 'relative';
+  wrap.appendChild(popover);
+}
+
+function renderCalendarContent(popover) {
+  const year = currentCalDate.getFullYear();
+  const month = currentCalDate.getMonth();
+  
+  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  
+  let monthOptions = '';
+  monthNames.forEach((name, i) => {
+    monthOptions += `<option value="${i}" ${i === month ? 'selected' : ''}>${name}</option>`;
+  });
+  
+  let yearOptions = '';
+  const currYear = new Date().getFullYear();
+  for (let y = currYear - 10; y <= currYear + 5; y++) {
+    yearOptions += `<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`;
+  }
+  
+  let html = `
+    <div class="cal-head">
+      <button type="button" class="cal-btn" onclick="prevCalMonth()">&lt;</button>
+      <select onchange="changeCalMonth(this.value)">${monthOptions}</select>
+      <select onchange="changeCalYear(this.value)">${yearOptions}</select>
+      <button type="button" class="cal-btn" onclick="nextCalMonth()">&gt;</button>
+    </div>
+    <div class="cal-grid">
+      <div class="cal-day-hdr">Su</div>
+      <div class="cal-day-hdr">Mo</div>
+      <div class="cal-day-hdr">Tu</div>
+      <div class="cal-day-hdr">We</div>
+      <div class="cal-day-hdr">Th</div>
+      <div class="cal-day-hdr">Fr</div>
+      <div class="cal-day-hdr">Sa</div>
+  `;
+  
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div class="cal-day empty"></div>`;
+  }
+  
+  let selDay = -1, selMonth = -1, selYear = -1;
+  if (activeCalendarInput && activeCalendarInput.value) {
+    const parts = activeCalendarInput.value.split(/[-|\/]/);
+    if (parts.length === 3) {
+      selDay = parseInt(parts[0], 10);
+      selMonth = parseInt(parts[1], 10) - 1;
+      selYear = parseInt(parts[2], 10);
+    }
+  }
+  
+  for (let d = 1; d <= daysInMonth; d++) {
+    const isSel = (d === selDay && month === selMonth && year === selYear);
+    html += `<div class="cal-day ${isSel ? 'selected' : ''}" onclick="selectCalDay(${d})">${d}</div>`;
+  }
+  
+  html += `</div>`;
+  popover.innerHTML = html;
+}
+
+function prevCalMonth() {
+  currentCalDate.setMonth(currentCalDate.getMonth() - 1);
+  const pop = document.getElementById('custom-calendar-popover');
+  if (pop) renderCalendarContent(pop);
+}
+
+function nextCalMonth() {
+  currentCalDate.setMonth(currentCalDate.getMonth() + 1);
+  const pop = document.getElementById('custom-calendar-popover');
+  if (pop) renderCalendarContent(pop);
+}
+
+function changeCalMonth(m) {
+  currentCalDate.setMonth(parseInt(m, 10));
+  const pop = document.getElementById('custom-calendar-popover');
+  if (pop) renderCalendarContent(pop);
+}
+
+function changeCalYear(y) {
+  currentCalDate.setFullYear(parseInt(y, 10));
+  const pop = document.getElementById('custom-calendar-popover');
+  if (pop) renderCalendarContent(pop);
+}
+
+function selectCalDay(d) {
+  if (!activeCalendarInput) return;
+  const dayStr = String(d).padStart(2, '0');
+  const monthStr = String(currentCalDate.getMonth() + 1).padStart(2, '0');
+  const yearStr = currentCalDate.getFullYear();
+  
+  activeCalendarInput.value = `${dayStr}-${monthStr}-${yearStr}`;
+  closeCustomCalendar();
+  
+  validatePeriodRange();
+}
+
+function closeCustomCalendar() {
+  const pop = document.getElementById('custom-calendar-popover');
+  if (pop) pop.remove();
+}
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#custom-calendar-popover') && !e.target.closest('.date-picker-btn')) {
+    closeCustomCalendar();
+  }
+});
+
+function validatePeriodRange() {
+  const fromEl = document.getElementById('from_date_input');
+  const toEl = document.getElementById('to_date_input');
+  const errEl = document.getElementById('period_range_error');
+  
+  if (!fromEl || !toEl) return true;
+  
+  const parseDate = (str) => {
+    if (!str) return null;
+    const p = str.trim().split(/[-|\/]/);
+    if (p.length === 3 && p[0].length >= 1 && p[1].length >= 1 && p[2].length === 4) {
+      return new Date(parseInt(p[2], 10), parseInt(p[1], 10) - 1, parseInt(p[0], 10));
+    }
+    return null;
+  };
+  
+  const fDate = parseDate(fromEl.value);
+  const tDate = parseDate(toEl.value);
+  
+  if (fDate && tDate && fDate > tDate) {
+    if (errEl) {
+      errEl.textContent = 'From Date cannot be later than To Date.';
+      errEl.style.display = 'block';
+    }
+    fromEl.style.borderColor = '#ef4444';
+    toEl.style.borderColor = '#ef4444';
+    return false;
+  } else {
+    if (errEl) {
+      errEl.textContent = '';
+      errEl.style.display = 'none';
+    }
+    fromEl.style.borderColor = '';
+    toEl.style.borderColor = '';
+    return true;
+  }
+}
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

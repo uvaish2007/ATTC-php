@@ -3,7 +3,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD']);
+$user = require_role(['Admin', 'HoD', 'Dean']);
 
 // An HoD may only review their own department; Admin has no such limit.
 $scopeDept = ($user['role'] === 'HoD') ? ($user['department'] ?? null) : null;
@@ -34,7 +34,7 @@ $types       = record_types();
 $departments = departments_all();
 
 // Filters: Admin may narrow by department; anyone may narrow by type and search.
-$filterDept = ($user['role'] === 'Admin') ? (trim((string) input('department')) ?: null) : null;
+$filterDept = in_array($user['role'], ['Admin', 'Dean'], true) ? (trim((string) input('department')) ?: null) : null;
 $filterType = (string) input('type');
 if (!isset($types[$filterType])) { $filterType = ''; }
 $search = trim((string) input('q'));
@@ -83,7 +83,7 @@ require __DIR__ . '/inc/header.php';
             <?php if ($hasFilter): ?><a class="ff-clear" href="<?= e(url('approvals.php')) ?>">Clear all</a><?php endif; ?>
           </div>
 
-          <?php if ($user['role'] === 'Admin'): ?>
+          <?php if (in_array($user['role'], ['Admin', 'Dean'], true)): ?>
             <div class="ff-field"><label class="ff-label">Department</label>
               <select class="select" name="department" onchange="this.form.submit()">
                 <option value="">All departments</option>

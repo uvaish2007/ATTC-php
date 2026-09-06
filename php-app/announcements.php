@@ -127,7 +127,7 @@ $backQuery = http_build_query(array_filter([
 // -------------------------------------------------------------------------
 // Opening one notice: announcements.php?view=12
 // -------------------------------------------------------------------------
-$openId = (int) input('view', 0);
+$openId = (int) (input('view') ?: input('id', 0));
 
 if ($openId > 0 && announcement_find($openId, $user)) {
     announcement_count_view($openId);

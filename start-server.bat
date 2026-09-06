@@ -58,7 +58,7 @@ echo.
 echo   Sign in with any of these (pick the matching role in the form):
 echo       Admin        mohameduvaish132@gmail.com   uvaish123
 echo       Director     director@atts.edu            director123
-echo       Dean         dean@atts.edu                dean@123
+echo       Dean         dean@atts.edu                dean1234
 echo       HoD          hod@atts.edu                 hod12345
 echo       Coordinator  coordinator@atts.edu         coord1234
 echo       Faculty      faculty@atts.edu             faculty123

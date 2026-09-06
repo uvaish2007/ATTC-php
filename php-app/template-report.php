@@ -21,7 +21,7 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Target.php';
 
-$user = require_role(['Admin', 'HoD', 'Director']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
 
 $format = strtolower(trim((string) input('format', 'word')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
@@ -29,10 +29,10 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 }
 
 /*
- * Scope by role: oversight roles (Admin, Director) may pick any department or
+ * Scope by role: oversight roles (Admin, Director, Dean) may pick any department or
  * see all; everyone else is pinned to their own department.
  */
-$isOversight = in_array($user['role'], ['Admin', 'Director'], true);
+$isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
 $department  = $isOversight
     ? (trim((string) input('department')) ?: null)
     : ($user['department'] ?? null);
@@ -103,8 +103,42 @@ if ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
 } elseif ($format === 'excel') {
-    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
+    require_once __DIR__ . '/inc/xlsx_writer.php';
+
+    $hdr = array_map(fn($c) => (string) $c['label'], $columns);
+    $exportRows = [];
+    $metaLines = [
+        'MOHAMED SATHAK ENGINEERING COLLEGE',
+        'EXECUTIVE MEETING REPORT - TARGETS FIXED & ACHIEVED',
+        'Department: ' . ($department ?: 'ALL DEPARTMENTS'),
+        'Report Date: ' . $today
+    ];
+
+    foreach ($deptsToRender as $dIndex => $dept) {
+        $byMetric = $buildByMetric($dept);
+        foreach ($rows as $ri => $r) {
+            $matchText = $matchKey ? $norm($r['cells'][$matchKey] ?? '') : '';
+            $deptRow   = $matchText !== '' ? ($byMetric[$matchText] ?? null) : null;
+            $rowValues = [];
+            foreach ($columns as $c) {
+                if (($c['source'] ?? 'label') === 'data') {
+                    $rowValues[] = $deptRow ? (string) ($deptRow[(string) $c['field']] ?? '') : '';
+                } else {
+                    $rowValues[] = (string) ($r['cells'][$c['col_key']] ?? '');
+                }
+            }
+            $exportRows[] = $rowValues;
+        }
+    }
+
+    $xlsxData = SimpleXlsxWriter::createXlsx($hdr, $exportRows, 'Targets Report', $metaLines);
+
+    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
+    header('Content-Length: ' . strlen($xlsxData));
+    header('Cache-Control: max-age=0');
+    echo $xlsxData;
+    exit;
 } else {
     header('Content-Type: text/html; charset=UTF-8');
 }

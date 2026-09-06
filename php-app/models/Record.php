@@ -9,7 +9,12 @@ require_once __DIR__ . '/../inc/db.php';
 /** All record types with their table names and display info. */
 function record_types(): array
 {
-    return [
+    static $filtered = null;
+    if ($filtered !== null) {
+        return $filtered;
+    }
+
+    $all = [
         'journal'    => ['table' => 'journal_publications',    'label' => 'Journal Publication',    'title_col' => 'paper_title'],
         'book'       => ['table' => 'book_publications',       'label' => 'Book / Chapter',         'title_col' => 'title'],
         'conference' => ['table' => 'conference_publications', 'label' => 'Conference Publication', 'title_col' => 'paper_title'],
@@ -30,6 +35,15 @@ function record_types(): array
         'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title'],
         'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title'],
     ];
+
+    try {
+        $dbTables = array_map('strtolower', db()->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN));
+        $filtered = array_filter($all, fn($item) => in_array(strtolower($item['table']), $dbTables, true));
+    } catch (\PDOException $e) {
+        $filtered = $all;
+    }
+
+    return $filtered;
 }
 
 /** Fetch records for a given type, with optional filters. */
@@ -73,9 +87,13 @@ function records_list(string $type, ?string $department = null, ?string $status 
     }
 
     $sql .= ' ORDER BY created_at DESC';
-    $stmt = db()->prepare($sql);
-    $stmt->execute($params);
-    return $stmt->fetchAll();
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    } catch (\PDOException $e) {
+        return [];
+    }
 }
 
 /**
@@ -155,24 +173,28 @@ function record_counts_for_users(array $userIds): array
     $placeholders = implode(',', array_fill(0, count($userIds), '?'));
 
     foreach (record_types() as $t) {
-        $stmt = db()->prepare(
-            "SELECT created_by, status, COUNT(*) AS n
-             FROM `{$t['table']}`
-             WHERE created_by IN ($placeholders)
-             GROUP BY created_by, status"
-        );
-        $stmt->execute($userIds);
+        try {
+            $stmt = db()->prepare(
+                "SELECT created_by, status, COUNT(*) AS n
+                 FROM `{$t['table']}`
+                 WHERE created_by IN ($placeholders)
+                 GROUP BY created_by, status"
+            );
+            $stmt->execute($userIds);
 
-        foreach ($stmt as $row) {
-            $id     = (int) $row['created_by'];
-            $status = $row['status'] ?: 'Draft';
-            $n      = (int) $row['n'];
+            foreach ($stmt as $row) {
+                $id     = (int) $row['created_by'];
+                $status = $row['status'] ?: 'Draft';
+                $n      = (int) $row['n'];
 
-            $summary[$id]['total'] += $n;
+                $summary[$id]['total'] += $n;
 
-            if (isset($summary[$id][$status])) {
-                $summary[$id][$status] += $n;
+                if (isset($summary[$id][$status])) {
+                    $summary[$id][$status] += $n;
+                }
             }
+        } catch (\PDOException $e) {
+            continue;
         }
     }
 
@@ -204,14 +226,18 @@ function pending_records(?string $department = null): array
         }
 
         $sql .= ' ORDER BY created_at DESC';
-        $stmt = db()->prepare($sql);
-        $stmt->execute($params);
+        try {
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
 
-        foreach ($stmt as $row) {
-            $row['_type_key']   = $key;
-            $row['_type_label'] = $t['label'];
-            $row['_title']      = $row[$t['title_col']] ?? '(untitled)';
-            $all[] = $row;
+            foreach ($stmt as $row) {
+                $row['_type_key']   = $key;
+                $row['_type_label'] = $t['label'];
+                $row['_title']      = $row[$t['title_col']] ?? '(untitled)';
+                $all[] = $row;
+            }
+        } catch (\PDOException $e) {
+            continue;
         }
     }
 
@@ -280,12 +306,16 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
 
     $total = 0;
     foreach (record_types() as $t) {
-        $stmt = db()->prepare(
-            "UPDATE `{$t['table']}` SET status = 'Approved', approved_by = ?
-             WHERE status = 'Submitted' AND department = ?"
-        );
-        $stmt->execute([$approvedBy, $department]);
-        $total += $stmt->rowCount();
+        try {
+            $stmt = db()->prepare(
+                "UPDATE `{$t['table']}` SET status = 'Approved', approved_by = ?
+                 WHERE status = 'Submitted' AND department = ?"
+            );
+            $stmt->execute([$approvedBy, $department]);
+            $total += $stmt->rowCount();
+        } catch (\PDOException $e) {
+            continue;
+        }
     }
 
     if ($total === 0) {
@@ -305,14 +335,18 @@ function my_records(int $userId): array
     $all = [];
 
     foreach ($types as $key => $t) {
-        $stmt = db()->prepare("SELECT *, '{$key}' AS record_type FROM `{$t['table']}` WHERE created_by = ? ORDER BY created_at DESC");
-        $stmt->execute([$userId]);
+        try {
+            $stmt = db()->prepare("SELECT *, '{$key}' AS record_type FROM `{$t['table']}` WHERE created_by = ? ORDER BY created_at DESC");
+            $stmt->execute([$userId]);
 
-        foreach ($stmt as $row) {
-            $row['_type_key']   = $key;
-            $row['_type_label'] = $t['label'];
-            $row['_title']      = $row[$t['title_col']] ?? '(untitled)';
-            $all[] = $row;
+            foreach ($stmt as $row) {
+                $row['_type_key']   = $key;
+                $row['_type_label'] = $t['label'];
+                $row['_title']      = $row[$t['title_col']] ?? '(untitled)';
+                $all[] = $row;
+            }
+        } catch (\PDOException $e) {
+            continue;
         }
     }
 
