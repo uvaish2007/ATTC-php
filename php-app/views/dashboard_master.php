@@ -488,18 +488,20 @@ $deptUrl = function (string $dept) use ($data) {
       <?php else: ?>
         <div class="rs-bar">
           <?php foreach ($statusColours as $status => $colour): ?>
-            <?php if ($breakdown[$status] > 0): ?>
-              <span style="flex:<?= $breakdown[$status] ?>;background:<?= $colour ?>" title="<?= $status ?>: <?= (int) $breakdown[$status] ?>"></span>
+            <?php $cnt = (int) ($breakdown[$status] ?? 0); ?>
+            <?php if ($cnt > 0): ?>
+              <span style="flex:<?= $cnt ?>;background:<?= $colour ?>" title="<?= $status ?>: <?= $cnt ?>"></span>
             <?php endif; ?>
           <?php endforeach; ?>
         </div>
         <div class="rs-legend">
           <?php foreach ($statusColours as $status => $colour): ?>
+            <?php $cnt = (int) ($breakdown[$status] ?? 0); ?>
             <div class="rs-row">
               <span class="rs-dot" style="background:<?= $colour ?>"></span>
               <span class="rs-nm"><?= $status ?></span>
-              <span class="rs-n tabular"><?= (int) $breakdown[$status] ?></span>
-              <span class="rs-pc tabular faint"><?= round($breakdown[$status] / $totalCount * 100) ?>%</span>
+              <span class="rs-n tabular"><?= $cnt ?></span>
+              <span class="rs-pc tabular faint"><?= round($cnt / $totalCount * 100) ?>%</span>
             </div>
           <?php endforeach; ?>
         </div>

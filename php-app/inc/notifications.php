@@ -91,7 +91,7 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 4. Important Target Updates
+    // 4. Important Target Updates (for Dean / Admin / Director)
     if (in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
         try {
             $targetCount = targets_pending_count();
@@ -104,6 +104,67 @@ function fetch_header_notifications(array $user): array
                     'time'        => 'Action Required',
                     'link'        => url('targets.php'),
                     'unread'      => ($markAllTime === 0),
+                    'icon'        => 'target'
+                ];
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    // 5. Target Decision Notifications for HoD
+    if ($user['role'] === 'HoD') {
+        try {
+            $dept = $user['department'] ?? '';
+            $uid  = (int) $user['id'];
+
+            // 5a. Changes Requested by Dean/Admin
+            $stmt = db()->prepare(
+                "SELECT id, metric, department, review_remark, updated_at
+                 FROM targets
+                 WHERE status = 'Changes Requested' AND (department = ? OR created_by = ?)
+                 ORDER BY updated_at DESC LIMIT 5"
+            );
+            $stmt->execute([$dept, $uid]);
+            $changesTargets = $stmt->fetchAll();
+
+            foreach ($changesTargets as $t) {
+                $remarkText = !empty($t['review_remark']) ? $t['review_remark'] : 'Please review and revise.';
+                $isUnread   = ($markAllTime === 0 || strtotime($t['updated_at']) > $markAllTime);
+                $metricText = !empty($t['metric']) ? ' (' . $t['metric'] . ')' : '';
+                $notifications[] = [
+                    'id'          => 'target_changes_' . $t['id'],
+                    'type'        => 'target',
+                    'title'       => 'Target Changes Requested',
+                    'description' => "The Dean requested changes to your target{$metricText}: " . $remarkText,
+                    'time'        => time_ago($t['updated_at']),
+                    'link'        => url('targets.php'),
+                    'unread'      => $isUnread,
+                    'icon'        => 'target'
+                ];
+            }
+
+            // 5b. Targets Approved by Dean/Admin
+            $stmt = db()->prepare(
+                "SELECT id, metric, department, approved_at, updated_at
+                 FROM targets
+                 WHERE status = 'Approved' AND approved_by IS NOT NULL AND approved_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) AND (department = ? OR created_by = ?)
+                 ORDER BY approved_at DESC LIMIT 5"
+            );
+            $stmt->execute([$dept, $uid]);
+            $approvedTargets = $stmt->fetchAll();
+
+            foreach ($approvedTargets as $t) {
+                $timeRef    = !empty($t['approved_at']) ? $t['approved_at'] : $t['updated_at'];
+                $isUnread   = ($markAllTime === 0 || strtotime($timeRef) > $markAllTime);
+                $metricText = !empty($t['metric']) ? ' (' . $t['metric'] . ')' : '';
+                $deptText   = !empty($t['department']) ? $t['department'] : 'your department';
+                $notifications[] = [
+                    'id'          => 'target_approved_' . $t['id'],
+                    'type'        => 'target',
+                    'title'       => 'Target Approved',
+                    'description' => "Your target for {$deptText}{$metricText} was approved by the Dean.",
+                    'time'        => time_ago($timeRef),
+                    'link'        => url('targets.php'),
+                    'unread'      => $isUnread,
                     'icon'        => 'target'
                 ];
             }

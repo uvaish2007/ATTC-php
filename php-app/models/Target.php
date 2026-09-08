@@ -345,7 +345,7 @@ function targets_pending_count(): int
  * still have to send up. A HoD's department is taken from their account, never
  * from the form.
  */
-function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null): array
+function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft'): array
 {
     if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
         return [false, 'Only a HoD or Dean enters targets.'];
@@ -366,15 +366,22 @@ function target_create(array $user, string $department, string $academicYear, st
         return [false, 'A target cannot be negative.'];
     }
 
-    // Always starts as a draft the HoD then sends up for review.
+    $isPending = ($status === 'Pending Review');
+    $statusVal = $isPending ? 'Pending Review' : 'Draft';
+    $submittedAt = $isPending ? date('Y-m-d H:i:s') : null;
+
     $stmt = db()->prepare(
-        'INSERT INTO targets (department, academic_year, metric, target_value, remarks, coordinator, status, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO targets (department, academic_year, metric, target_value, remarks, coordinator, status, submitted_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
         $department, $academicYear, $metric, $targetValue, $remarks ?: null, $coordinator ?: null,
-        'Draft', $user['id'],
+        $statusVal, $submittedAt, $user['id'],
     ]);
+
+    if ($isPending) {
+        return [true, 'Target created and submitted for Dean review.'];
+    }
 
     return [true, 'Target saved as a draft. Send it for review when it is ready.'];
 }

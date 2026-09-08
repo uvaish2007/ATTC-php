@@ -22,7 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
 
-    if ($action === 'create') {
+    if ($action === 'create' || $action === 'create_and_submit') {
+        $targetStatus = ($action === 'create_and_submit') ? 'Pending Review' : 'Draft';
         [$ok, $msg] = target_create(
             $user,
             (string) input('department'),
@@ -30,7 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('metric'),
             (int) input('target_value'),
             (string) input('remarks'),
-            (string) input('coordinator')
+            (string) input('coordinator'),
+            $targetStatus
         );
     } elseif ($action === 'update') {
         [$ok, $msg] = target_update(
@@ -441,10 +443,9 @@ require __DIR__ . '/inc/header.php';
 <?php if ($canCreate): ?>
 <!-- Add dialog. A HoD's department is fixed by their account, so it is shown, not chosen. -->
 <dialog class="modal" id="addDlg"><form method="post"><?= csrf_field() ?>
-  <input type="hidden" name="action" value="create">
   <div class="modal-head"><div>
     <h3>Add Target</h3>
-    <div class="msub"><?= $isHod ? 'Saved as a draft — send it for review when ready.' : 'Created by an Admin, so it is frozen straight away.' ?></div>
+    <div class="msub">Save as a draft to edit later, or submit for review immediately.</div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
     <div class="field" style="grid-column:span 2"><label>Target / Details <span class="req">*</span></label>
@@ -471,7 +472,8 @@ require __DIR__ . '/inc/header.php';
   </div>
   <div class="modal-foot">
     <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
-    <button type="submit" class="btn btn-primary btn-sm">Add</button>
+    <button type="submit" name="action" value="create" class="btn btn-outline btn-sm">Save Draft</button>
+    <button type="submit" name="action" value="create_and_submit" class="btn btn-primary btn-sm">Submit for Review</button>
   </div>
 </form></dialog>
 <?php endif; ?>
