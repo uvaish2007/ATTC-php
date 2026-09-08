@@ -19,11 +19,13 @@ function fetch_header_notifications(array $user): array
         try {
             $pendingCount = pending_approvals_count($user);
             if ($pendingCount > 0) {
+                $roleLabel = ($user['role'] === 'Dean') ? 'Dean' : (($user['role'] === 'HoD') ? 'HoD' : '');
+                $descLabel = $roleLabel ? "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting $roleLabel review." : "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting your review.";
                 $notifications[] = [
                     'id'          => 'approval_pending',
                     'type'        => 'approval',
                     'title'       => 'Pending Approvals',
-                    'description' => "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting your review.",
+                    'description' => $descLabel,
                     'time'        => 'Action Required',
                     'link'        => url('approvals.php'),
                     'unread'      => ($markAllTime === 0),

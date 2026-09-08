@@ -68,8 +68,12 @@ function records_list(string $type, ?string $department = null, ?string $status 
         $params[] = $department;
     }
     if ($status) {
-        $sql .= ' AND status = ?';
-        $params[] = $status;
+        if ($status === 'Submitted' || $status === 'Pending') {
+            $sql .= " AND status IN ('HOD Pending', 'Dean Pending', 'Submitted')";
+        } else {
+            $sql .= ' AND status = ?';
+            $params[] = $status;
+        }
     }
     if ($createdBy !== null) {
         $sql .= ' AND created_by = ?';
@@ -167,7 +171,7 @@ function record_counts_for_users(array $userIds): array
     }
 
     // Start every person at zero so the page never has to check for gaps.
-    $blank   = ['total' => 0, 'Approved' => 0, 'Submitted' => 0, 'Draft' => 0, 'Rejected' => 0];
+    $blank   = ['total' => 0, 'Approved' => 0, 'Dean Pending' => 0, 'HOD Pending' => 0, 'Submitted' => 0, 'Draft' => 0, 'Rejected' => 0];
     $summary = array_fill_keys($userIds, $blank);
 
     $placeholders = implode(',', array_fill(0, count($userIds), '?'));
@@ -210,15 +214,30 @@ function user_record_counts(int $userId): array
 }
 
 /** Get all pending records across all types for approval view. */
-function pending_records(?string $department = null): array
+function pending_records(?string $department = null, ?string $stage = null, ?string $role = null): array
 {
     $types = record_types();
     $all = [];
 
+    if ($role === 'HoD' || $stage === 'HOD Pending') {
+        $targetStatuses = ['HOD Pending', 'Submitted'];
+    } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
+        $targetStatuses = ['Dean Pending'];
+    } else {
+        if ($stage === 'HOD Pending') {
+            $targetStatuses = ['HOD Pending', 'Submitted'];
+        } elseif ($stage === 'Dean Pending') {
+            $targetStatuses = ['Dean Pending'];
+        } else {
+            $targetStatuses = ['Dean Pending', 'HOD Pending', 'Submitted'];
+        }
+    }
+
+    $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
+
     foreach ($types as $key => $t) {
-        // Every table has a department column now, so all types are dept-scoped.
-        $sql = "SELECT *, '{$key}' AS record_type FROM `{$t['table']}` WHERE status = 'Submitted'";
-        $params = [];
+        $sql = "SELECT *, '{$key}' AS record_type FROM `{$t['table']}` WHERE status IN ($inClause)";
+        $params = $targetStatuses;
 
         if ($department) {
             $sql .= ' AND department = ?';
@@ -249,11 +268,9 @@ function pending_records(?string $department = null): array
  * Approve or reject a record.
  *
  * $scopeDept restricts the action to one department (an HoD may only review
- * their own). Passing null means no department restriction (Admin). The scope
- * is enforced in the WHERE clause, so an out-of-scope id simply matches no row
- * and cannot be flipped — the id in the POST is never trusted on its own.
+ * their own). Passing null means no department restriction (Admin/Dean).
  */
-function record_review(string $type, int $id, string $action, ?string $remark, int $approvedBy, ?string $scopeDept = null): array
+function record_review(string $type, int $id, string $action, ?string $remark, int $approvedBy, ?string $scopeDept = null, string $userRole = 'Admin'): array
 {
     $types = record_types();
     if (!isset($types[$type])) {
@@ -264,11 +281,22 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         return [false, 'Invalid review action.'];
     }
 
-    $newStatus = ($action === 'approve') ? 'Approved' : 'Rejected';
     $table = $types[$type]['table'];
 
-    $sql    = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ? WHERE id = ? AND status = 'Submitted'";
-    $params = [$newStatus, $remark ?: null, $approvedBy, $id];
+    if ($userRole === 'HoD') {
+        $validCurrent = ['HOD Pending', 'Submitted'];
+        $newStatus    = ($action === 'approve') ? 'Dean Pending' : 'Rejected';
+    } elseif ($userRole === 'Dean') {
+        $validCurrent = ['Dean Pending'];
+        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
+    } else {
+        $validCurrent = ['HOD Pending', 'Dean Pending', 'Submitted'];
+        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
+    }
+
+    $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
+    $sql      = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ? WHERE id = ? AND status IN ($inClause)";
+    $params   = array_merge([$newStatus, $remark ?: null, $approvedBy, $id], $validCurrent);
 
     if ($scopeDept !== null) {
         $sql     .= ' AND department = ?';
@@ -279,22 +307,22 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     $stmt->execute($params);
 
     if ($stmt->rowCount() === 0) {
-        return [false, 'Record not found, already reviewed, or outside your department.'];
+        return [false, 'Record not found, already reviewed, or outside your department scope.'];
     }
 
-    require_once __DIR__ . '/Target.php';
-    sync_target_achieved_for_type($type);
+    if ($newStatus === 'Approved') {
+        require_once __DIR__ . '/Target.php';
+        sync_target_achieved_for_type($type);
+    }
 
-    return [true, "Record {$newStatus}."];
+    $msgStatus = ($newStatus === 'Dean Pending') ? 'approved by HOD and submitted for Dean review' : $newStatus;
+    return [true, "Record {$msgStatus}."];
 }
 
 /**
- * Approve every pending (Submitted) record of a department in one go — used by
- * the "Approve all" button on the approvals page. $scopeDept restricts an HoD to
- * their own department (enforced in the WHERE), so they can never bulk-approve
- * another department's records. Returns [ok, message] with the count approved.
+ * Approve every pending record of a department in one go.
  */
-function records_bulk_approve(string $department, int $approvedBy, ?string $scopeDept = null): array
+function records_bulk_approve(string $department, int $approvedBy, ?string $scopeDept = null, string $userRole = 'HoD'): array
 {
     $department = trim($department);
     if ($department === '') {
@@ -304,14 +332,25 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         return [false, 'You can only approve your own department.'];
     }
 
+    if ($userRole === 'HoD') {
+        $validCurrent = ['HOD Pending', 'Submitted'];
+        $newStatus    = 'Dean Pending';
+    } else {
+        $validCurrent = ['Dean Pending'];
+        $newStatus    = 'Approved';
+    }
+
+    $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
     $total = 0;
+
     foreach (record_types() as $t) {
         try {
             $stmt = db()->prepare(
-                "UPDATE `{$t['table']}` SET status = 'Approved', approved_by = ?
-                 WHERE status = 'Submitted' AND department = ?"
+                "UPDATE `{$t['table']}` SET status = ?, approved_by = ?
+                 WHERE status IN ($inClause) AND department = ?"
             );
-            $stmt->execute([$approvedBy, $department]);
+            $params = array_merge([$newStatus, $approvedBy], $validCurrent, [$department]);
+            $stmt->execute($params);
             $total += $stmt->rowCount();
         } catch (\PDOException $e) {
             continue;
@@ -322,10 +361,13 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         return [false, 'Nothing pending to approve in ' . $department . '.'];
     }
 
-    require_once __DIR__ . '/Target.php';
-    sync_all_target_achieved();
+    if ($newStatus === 'Approved') {
+        require_once __DIR__ . '/Target.php';
+        sync_all_target_achieved();
+    }
 
-    return [true, "Approved {$total} record" . ($total === 1 ? '' : 's') . " in {$department}."];
+    $msgStatus = ($newStatus === 'Dean Pending') ? 'submitted for Dean review' : 'approved';
+    return [true, "Approved {$total} record" . ($total === 1 ? '' : 's') . " in {$department} ({$msgStatus})."];
 }
 
 /** Get all records by the current user across all types. */

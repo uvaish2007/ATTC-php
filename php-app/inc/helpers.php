@@ -124,10 +124,12 @@ function time_ago($datetime): string
 function status_class(string $status): string
 {
     $map = [
-        'Draft'     => 'neutral',
-        'Submitted' => 'info',
-        'Approved'  => 'success',
-        'Rejected'  => 'danger',
+        'Draft'        => 'neutral',
+        'Submitted'    => 'info',
+        'HOD Pending'  => 'info',
+        'Dean Pending' => 'warning',
+        'Approved'     => 'success',
+        'Rejected'     => 'danger',
     ];
 
     return $map[$status] ?? 'neutral';

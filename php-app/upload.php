@@ -119,8 +119,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values = [];
     $placeholders = [];
 
+    $initialStatus = ($user['role'] === 'HoD') ? 'Dean Pending' : 'HOD Pending';
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
-    $fields[] = 'status';     $values[] = 'Submitted'; $placeholders[] = '?';
+    $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
 
     foreach ($_POST as $k => $v) {
         if (!in_array($k, $allowed, true) || $v === '') continue;
@@ -448,7 +449,7 @@ require __DIR__ . '/inc/header.php';
   $mType   = (string) input('mtype');
   if (!isset($types[$mType])) { $mType = ''; }
   $mStatus = (string) input('mstatus');
-  if (!in_array($mStatus, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) { $mStatus = ''; }
+  if (!in_array($mStatus, ['Draft', 'HOD Pending', 'Dean Pending', 'Submitted', 'Approved', 'Rejected'], true)) { $mStatus = ''; }
   $mQ      = trim((string) input('mq'));
 
   $shown = $myRecords;
@@ -488,7 +489,7 @@ require __DIR__ . '/inc/header.php';
           <div class="ff-field"><label class="ff-label">Status</label>
             <select class="select" name="mstatus" onchange="this.form.submit()">
               <option value="">All statuses</option>
-              <?php foreach (['Approved', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
+              <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
                 <option value="<?= $o ?>" <?= $mStatus === $o ? 'selected' : '' ?>><?= $o ?></option>
               <?php endforeach; ?>
             </select></div>
@@ -509,7 +510,7 @@ require __DIR__ . '/inc/header.php';
         <th style="padding-left:24px">Record</th><th>Type</th><th>Proof</th><th>Status</th><th>Submitted</th>
       </tr></thead><tbody>
       <?php foreach (array_slice($shown, 0, 50) as $r):
-        $statusBadge = ['Draft'=>'neutral','Submitted'=>'info','Approved'=>'success','Rejected'=>'danger'];
+        $statusBadge = ['Draft'=>'neutral','Submitted'=>'info','HOD Pending'=>'info','Dean Pending'=>'warning','Approved'=>'success','Rejected'=>'danger'];
       ?>
         <tr>
           <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= e($r['_title']) ?></div></td>

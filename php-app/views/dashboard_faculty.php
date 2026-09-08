@@ -13,10 +13,12 @@ $stats     = $data['stats'];
 // Same order and same colours as the master dashboard, so the two pages
 // never disagree about what "Approved" looks like.
 $statusColours = [
-    'Approved'  => '#059669',
-    'Submitted' => '#2563EB',
-    'Rejected'  => '#DC2626',
-    'Draft'     => '#6B7FA8',
+    'Approved'     => '#059669',
+    'Dean Pending' => '#F59E0B',
+    'HOD Pending'  => '#2563EB',
+    'Submitted'    => '#2563EB',
+    'Rejected'     => '#DC2626',
+    'Draft'        => '#6B7FA8',
 ];
 
 // label, value, icon, icon colour, small caption

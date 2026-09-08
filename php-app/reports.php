@@ -74,7 +74,7 @@ $departments = departments_all();
 $years       = academic_years();
 $template    = active_report_template();
 
-$counts = ['Draft' => 0, 'Submitted' => 0, 'Approved' => 0, 'Rejected' => 0];
+$counts = ['Draft' => 0, 'HOD Pending' => 0, 'Dean Pending' => 0, 'Submitted' => 0, 'Approved' => 0, 'Rejected' => 0];
 foreach ($records as $r) {
     if (isset($counts[$r['status']])) {
         $counts[$r['status']]++;
@@ -165,7 +165,7 @@ require __DIR__ . '/inc/header.php';
             <div class="ff-field"><label class="ff-label">Review Status</label>
               <select class="select" name="status" onchange="this.form.submit()">
                 <option value="">All statuses</option>
-                <?php foreach (['Approved', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
+                <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
                   <option value="<?= $o ?>" <?= $status === $o ? 'selected' : '' ?>><?= $o ?></option>
                 <?php endforeach; ?>
               </select></div>

@@ -24,10 +24,12 @@ $stats       = $data['stats'];
  * tell them apart by colour alone.
  */
 $statusColours = [
-    'Approved'  => '#059669',
-    'Submitted' => '#2563EB',
-    'Rejected'  => '#DC2626',
-    'Draft'     => '#6B7FA8',
+    'Approved'     => '#059669',
+    'Dean Pending' => '#F59E0B',
+    'HOD Pending'  => '#2563EB',
+    'Submitted'    => '#2563EB',
+    'Rejected'     => '#DC2626',
+    'Draft'        => '#6B7FA8',
 ];
 
 // Short names for the chart, so the labels under the bars never collide.
@@ -45,7 +47,7 @@ $shortNames = [
 $sb          = $data['statusBreakdown'];
 $recTotal    = array_sum($sb);
 $approved    = (int) ($sb['Approved'] ?? 0);
-$pendingRec  = (int) ($sb['Submitted'] ?? 0);
+$pendingRec  = (int) (($sb['Dean Pending'] ?? 0) + ($sb['HOD Pending'] ?? 0) + ($sb['Submitted'] ?? 0));
 $rejectedRec = (int) ($sb['Rejected'] ?? 0);
 $approvalRate = $recTotal > 0 ? (int) round($approved / $recTotal * 100) : 0;
 
@@ -129,7 +131,7 @@ $deptUrl = function (string $dept) use ($data) {
 
       <select class="select" name="status" onchange="this.form.submit()">
         <option value="">All statuses</option>
-        <?php foreach (['Approved', 'Submitted', 'Draft', 'Rejected'] as $status): ?>
+        <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $status): ?>
           <option value="<?= $status ?>" <?= $data['scope']['status'] === $status ? 'selected' : '' ?>>
             <?= $status ?>
           </option>

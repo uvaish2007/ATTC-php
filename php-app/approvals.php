@@ -16,14 +16,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'approve_all') {
         // $scopeDept is enforced inside records_bulk_approve, so an HoD can only
         // ever clear their own department.
-        [$ok, $msg] = records_bulk_approve((string) input('department'), (int) $user['id'], $scopeDept);
+        [$ok, $msg] = records_bulk_approve((string) input('department'), (int) $user['id'], $scopeDept, $user['role']);
     } else {
         $type   = (string) input('record_type');
         $id     = (int)    input('record_id');
         $remark = (string) input('review_remark');
         // $scopeDept is enforced inside record_review, so a forged record_id for
         // another department cannot be approved from here.
-        [$ok, $msg] = record_review($type, $id, $action, $remark, $user['id'], $scopeDept);
+        [$ok, $msg] = record_review($type, $id, $action, $remark, $user['id'], $scopeDept, $user['role']);
     }
 
     flash($ok ? 'success' : 'error', $msg);
@@ -42,7 +42,7 @@ $search = trim((string) input('q'));
 // Department scope: an HoD is pinned to their own; an Admin uses the filter.
 $effectiveDept = $scopeDept ?? $filterDept;
 
-$records = pending_records($effectiveDept);
+$records = pending_records($effectiveDept, null, $user['role']);
 
 // Type + free-text narrowing happen in PHP over the already-scoped list.
 if ($filterType !== '') {

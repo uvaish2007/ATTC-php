@@ -86,14 +86,9 @@ function nav_href(string $path): string
     return $exists ? url($path) : url('coming-soon.php?page=' . urlencode($path));
 }
 
-/** Total pending (Submitted) records a reviewer should act on, for the badge. */
+/** Total pending records a reviewer should act on, for the badge. */
 function pending_approvals_count(array $user): int
 {
-    $tables = [
-        'journal_publications', 'book_publications', 'conference_publications',
-        'patents', 'fdp', 'mou', 'events', 'nptel', 'internships', 'placements',
-    ];
-
     // Admin/Dean/HoD review; HoD is scoped to their own department.
     if (!in_array($user['role'], ['Admin', 'Dean', 'HoD'], true)) {
         return 0;
@@ -101,18 +96,30 @@ function pending_approvals_count(array $user): int
 
     require_once __DIR__ . '/../models/Record.php';   // record_types()
 
-    $scopeDept = $user['role'] === 'HoD' ? ($user['department'] ?? null) : null;
+    $role = $user['role'];
+    $scopeDept = $role === 'HoD' ? ($user['department'] ?? null) : null;
 
-    // Every record type, all of which now carry a department column.
+    if ($role === 'HoD') {
+        $targetStatuses = ['HOD Pending', 'Submitted'];
+    } elseif ($role === 'Dean') {
+        $targetStatuses = ['Dean Pending'];
+    } else {
+        $targetStatuses = ['Dean Pending'];
+    }
+
+    $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
+
     $total = 0;
     foreach (record_types() as $t) {
         $table = $t['table'];
         try {
             if ($scopeDept !== null) {
-                $stmt = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status='Submitted' AND department = ?");
-                $stmt->execute([$scopeDept]);
+                $params = array_merge($targetStatuses, [$scopeDept]);
+                $stmt   = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause) AND department = ?");
+                $stmt->execute($params);
             } else {
-                $stmt = db()->query("SELECT COUNT(*) FROM `$table` WHERE status='Submitted'");
+                $stmt = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)");
+                $stmt->execute($targetStatuses);
             }
             $total += (int) $stmt->fetchColumn();
         } catch (\PDOException $e) {
