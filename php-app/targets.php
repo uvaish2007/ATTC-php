@@ -32,7 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (int) input('target_value'),
             (string) input('remarks'),
             (string) input('coordinator'),
-            $targetStatus
+            $targetStatus,
+            (string) input('target_deadline')
         );
     } elseif ($action === 'update') {
         [$ok, $msg] = target_update(
@@ -44,7 +45,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (int) input('target_value'),
             (int) input('achieved_value'),
             (string) input('remarks'),
-            (string) input('coordinator')
+            (string) input('coordinator'),
+            (string) input('target_deadline')
         );
     } elseif ($action === 'submit') {
         [$ok, $msg] = target_submit((int) input('id'), $user);
@@ -325,13 +327,22 @@ require __DIR__ . '/inc/header.php';
 
       <div class="table-wrap"><table class="data" style="min-width:760px">
         <thead><tr>
-          <th style="padding-left:24px">Metric</th>
-          <th>Year</th>
-          <th>Status</th>
-          <th class="num">Target</th>
-          <th class="num">Achieved</th>
-          <th class="num">Progress</th>
-          <th class="num" style="padding-right:24px">Actions</th>
+          <?php if ($isHod): ?>
+            <th style="padding-left:24px">Target Details</th>
+            <th class="num">Fixed Target</th>
+            <th>Target Deadline</th>
+            <th>Status</th>
+            <th class="num" style="padding-right:24px">Actions</th>
+          <?php else: ?>
+            <th style="padding-left:24px">Metric</th>
+            <th>Year</th>
+            <th>Status</th>
+            <th class="num">Target</th>
+            <th>Deadline</th>
+            <th class="num">Achieved</th>
+            <th class="num">Progress</th>
+            <th class="num" style="padding-right:24px">Actions</th>
+          <?php endif; ?>
         </tr></thead>
         <tbody>
         <?php foreach ($deptTargets as $t): ?>
@@ -345,93 +356,179 @@ require __DIR__ . '/inc/header.php';
             $recCount = target_record_count($t);
           ?>
           <tr>
-            <td style="padding-left:24px">
-              <div style="font-weight:500"><?= e($t['metric']) ?></div>
-              <?php if (!empty($t['coordinator'])): ?>
-                <div class="card-sub"><?= icon('user', 12) ?> <?= e($t['coordinator']) ?></div>
-              <?php endif; ?>
-              <?php if (!empty($t['remarks'])): ?>
-                <div class="card-sub"><?= e($t['remarks']) ?></div>
-              <?php endif; ?>
-              <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
-                <div class="card-sub" style="color:#B45309;margin-top:2px">
-                  <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
-                </div>
-              <?php endif; ?>
-            </td>
-            <td><span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span></td>
-            <td>
-              <span class="badge badge-<?= target_status_class($status) ?>">
-                <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
-              </span>
-              <?php if ($frozen && !empty($t['approver_name'])): ?>
-                <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
-              <?php endif; ?>
-            </td>
-            <td class="num tabular" style="font-weight:600"><?= (int) $t['target_value'] ?></td>
-            <td class="num tabular" style="font-weight:600">
-              <?= (int) $t['achieved_value'] ?>
-              <?php if ($recCount !== null): ?>
-                <div class="rec-suggest">
-                  <span class="rec-count" title="Approved records of this type in scope"><?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records</span>
-                  <?php if ($recCount !== (int) $t['achieved_value'] && target_can_edit($t, $user)): ?>
+            <?php if ($isHod): ?>
+              <td style="padding-left:24px">
+                <div style="font-weight:600;color:var(--navy-900)"><?= e($t['metric']) ?></div>
+                <?php if (!empty($t['academic_year'])): ?>
+                  <div class="card-sub" style="font-size:12px;margin-top:2px"><?= icon('calendar', 12) ?> <?= e($t['academic_year']) ?></div>
+                <?php endif; ?>
+                <?php if (!empty($t['coordinator'])): ?>
+                  <div class="card-sub"><?= icon('user', 12) ?> Coordinator: <?= e($t['coordinator']) ?></div>
+                <?php endif; ?>
+                <?php if (!empty($t['remarks'])): ?>
+                  <div class="card-sub"><?= e($t['remarks']) ?></div>
+                <?php endif; ?>
+                <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
+                  <div class="card-sub" style="color:#B45309;margin-top:2px">
+                    <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
+                  </div>
+                <?php endif; ?>
+              </td>
+              <td class="num tabular" style="font-weight:600;font-size:14px"><?= (int) $t['target_value'] ?></td>
+              <td>
+                <?php if (!empty($t['target_deadline'])): ?>
+                  <?php
+                    $deadlineTs = strtotime($t['target_deadline']);
+                    $isOverdue = ($deadlineTs < strtotime('today') && $status !== 'Approved');
+                  ?>
+                  <div style="font-weight:500;<?= $isOverdue ? 'color:#DC2626;' : '' ?>">
+                    <?= icon('clock', 12) ?> <?= date('d M Y', $deadlineTs) ?>
+                  </div>
+                  <?php if ($isOverdue): ?>
+                    <span class="badge badge-danger" style="font-size:10px;padding:1px 6px">Overdue</span>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <span class="card-sub">—</span>
+                <?php endif; ?>
+              </td>
+              <td>
+                <span class="badge badge-<?= target_status_class($status) ?>">
+                  <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
+                </span>
+                <?php if ($frozen && !empty($t['approver_name'])): ?>
+                  <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
+                <?php endif; ?>
+              </td>
+              <td class="num" style="padding-right:24px">
+                <div class="dept-actions" style="justify-content:flex-end">
+                  <button type="button" class="mini-btn" title="View Target Details"
+                          onclick='viewTarget(<?= e(json_encode($t)) ?>)'><?= icon('eye', 15) ?></button>
+                  <?php if (target_can_submit($t, $user)): ?>
                     <form method="post" style="display:inline">
                       <?= csrf_field() ?>
-                      <input type="hidden" name="action" value="apply_count">
+                      <input type="hidden" name="action" value="submit">
                       <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
-                      <button class="rec-use" title="Set achieved to <?= (int) $recCount ?> from approved records">Use</button>
+                      <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
                     </form>
                   <?php endif; ?>
+                  <?php if (target_can_edit($t, $user)): ?>
+                    <button class="mini-btn" title="<?= $frozen ? 'Edit frozen target' : 'Edit' ?>"
+                            onclick='editTarget(<?= e(json_encode($t)) ?>)'><?= icon('pencil', 15) ?></button>
+                  <?php endif; ?>
+                  <?php if (target_can_delete($t, $user)): ?>
+                    <button class="mini-btn danger" title="Delete"
+                            onclick='delTarget(<?= (int) $t["id"] ?>, "<?= e($t["metric"]) ?>")'><?= icon('trash', 15) ?></button>
+                  <?php endif; ?>
+                  <?php if ($status === 'Pending Review' && !target_can_review($t, $user)): ?>
+                    <span class="card-sub" title="Awaiting Dean review"><?= icon('clock', 14) ?></span>
+                  <?php endif; ?>
                 </div>
-              <?php endif; ?>
-            </td>
-            <td class="num">
-              <div class="flex items-center gap-2" style="justify-content:flex-end">
-                <span class="tabular" style="font-size:12px;font-weight:600;color:<?= $barColor ?>"><?= $pct ?>%</span>
-                <span style="width:48px;height:6px;border-radius:999px;background:var(--navy-100);overflow:hidden;display:inline-block">
-                  <span style="display:block;height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:999px"></span>
+              </td>
+            <?php else: ?>
+              <td style="padding-left:24px">
+                <div style="font-weight:500"><?= e($t['metric']) ?></div>
+                <?php if (!empty($t['coordinator'])): ?>
+                  <div class="card-sub"><?= icon('user', 12) ?> <?= e($t['coordinator']) ?></div>
+                <?php endif; ?>
+                <?php if (!empty($t['remarks'])): ?>
+                  <div class="card-sub"><?= e($t['remarks']) ?></div>
+                <?php endif; ?>
+                <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
+                  <div class="card-sub" style="color:#B45309;margin-top:2px">
+                    <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
+                  </div>
+                <?php endif; ?>
+              </td>
+              <td><span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span></td>
+              <td>
+                <span class="badge badge-<?= target_status_class($status) ?>">
+                  <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
                 </span>
-              </div>
-            </td>
-            <td class="num" style="padding-right:24px">
-              <div class="dept-actions" style="justify-content:flex-end">
-
-                <?php if (target_can_submit($t, $user)): ?>
-                  <form method="post" style="display:inline">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="action" value="submit">
-                    <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
-                    <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
-                  </form>
+                <?php if ($frozen && !empty($t['approver_name'])): ?>
+                  <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
                 <?php endif; ?>
-
-                <?php if (target_can_review($t, $user)): ?>
-                  <button class="mini-btn" title="Approve and freeze"
-                          onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "approve")'>
-                    <?= icon('check', 15) ?>
-                  </button>
-                  <button class="mini-btn" title="Send back for changes"
-                          onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "changes")'>
-                    <?= icon('refresh', 15) ?>
-                  </button>
+              </td>
+              <td class="num tabular" style="font-weight:600"><?= (int) $t['target_value'] ?></td>
+              <td>
+                <?php if (!empty($t['target_deadline'])): ?>
+                  <?php
+                    $deadlineTs = strtotime($t['target_deadline']);
+                    $isOverdue = ($deadlineTs < strtotime('today') && $status !== 'Approved');
+                  ?>
+                  <div style="font-weight:500;font-size:13px;<?= $isOverdue ? 'color:#DC2626;' : '' ?>">
+                    <?= icon('clock', 12) ?> <?= date('d M Y', $deadlineTs) ?>
+                  </div>
+                  <?php if ($isOverdue): ?>
+                    <span class="badge badge-danger" style="font-size:10px;padding:1px 6px">Overdue</span>
+                  <?php endif; ?>
+                <?php else: ?>
+                  <span class="card-sub">—</span>
                 <?php endif; ?>
-
-                <?php if (target_can_edit($t, $user)): ?>
-                  <button class="mini-btn" title="<?= $frozen ? 'Edit frozen target' : 'Edit' ?>"
-                          onclick='editTarget(<?= e(json_encode($t)) ?>)'><?= icon('pencil', 15) ?></button>
+              </td>
+              <td class="num tabular" style="font-weight:600">
+                <?= (int) $t['achieved_value'] ?>
+                <?php if ($recCount !== null): ?>
+                  <div class="rec-suggest">
+                    <span class="rec-count" title="Approved records of this type in scope"><?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records</span>
+                    <?php if ($recCount !== (int) $t['achieved_value'] && target_can_edit($t, $user)): ?>
+                      <form method="post" style="display:inline">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="action" value="apply_count">
+                        <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                        <button class="rec-use" title="Set achieved to <?= (int) $recCount ?> from approved records">Use</button>
+                      </form>
+                    <?php endif; ?>
+                  </div>
                 <?php endif; ?>
+              </td>
+              <td class="num">
+                <div class="flex items-center gap-2" style="justify-content:flex-end">
+                  <span class="tabular" style="font-size:12px;font-weight:600;color:<?= $barColor ?>"><?= $pct ?>%</span>
+                  <span style="width:48px;height:6px;border-radius:999px;background:var(--navy-100);overflow:hidden;display:inline-block">
+                    <span style="display:block;height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:999px"></span>
+                  </span>
+                </div>
+              </td>
+              <td class="num" style="padding-right:24px">
+                <div class="dept-actions" style="justify-content:flex-end">
+                  <button type="button" class="mini-btn" title="View Target Details"
+                          onclick='viewTarget(<?= e(json_encode($t)) ?>)'><?= icon('eye', 15) ?></button>
+                  <?php if (target_can_submit($t, $user)): ?>
+                    <form method="post" style="display:inline">
+                      <?= csrf_field() ?>
+                      <input type="hidden" name="action" value="submit">
+                      <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                      <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
+                    </form>
+                  <?php endif; ?>
 
-                <?php if (target_can_delete($t, $user)): ?>
-                  <button class="mini-btn danger" title="Delete"
-                          onclick='delTarget(<?= (int) $t["id"] ?>, "<?= e($t["metric"]) ?>")'><?= icon('trash', 15) ?></button>
-                <?php endif; ?>
+                  <?php if (target_can_review($t, $user)): ?>
+                    <button class="mini-btn" title="Approve and freeze"
+                            onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "approve")'>
+                      <?= icon('check', 15) ?>
+                    </button>
+                    <button class="mini-btn" title="Send back for changes"
+                            onclick='reviewTarget(<?= e(json_encode(["id" => (int) $t["id"], "metric" => $t["metric"], "dept" => $t["department"], "target" => (int) $t["target_value"]])) ?>, "changes")'>
+                      <?= icon('refresh', 15) ?>
+                    </button>
+                  <?php endif; ?>
 
-                <?php if ($status === 'Pending Review' && !target_can_review($t, $user)): ?>
-                  <span class="card-sub"><?= icon('clock', 14) ?></span>
-                <?php endif; ?>
+                  <?php if (target_can_edit($t, $user)): ?>
+                    <button class="mini-btn" title="<?= $frozen ? 'Edit frozen target' : 'Edit' ?>"
+                            onclick='editTarget(<?= e(json_encode($t)) ?>)'><?= icon('pencil', 15) ?></button>
+                  <?php endif; ?>
 
-              </div>
-            </td>
+                  <?php if (target_can_delete($t, $user)): ?>
+                    <button class="mini-btn danger" title="Delete"
+                            onclick='delTarget(<?= (int) $t["id"] ?>, "<?= e($t["metric"]) ?>")'><?= icon('trash', 15) ?></button>
+                  <?php endif; ?>
+
+                  <?php if ($status === 'Pending Review' && !target_can_review($t, $user)): ?>
+                    <span class="card-sub"><?= icon('clock', 14) ?></span>
+                  <?php endif; ?>
+                </div>
+              </td>
+            <?php endif; ?>
           </tr>
         <?php endforeach; ?>
         </tbody></table></div>
@@ -465,6 +562,8 @@ require __DIR__ . '/inc/header.php';
       </select></div>
     <div class="field"><label>Fixed (target value) <span class="req">*</span></label>
       <input class="input" type="number" name="target_value" min="0" required></div>
+    <div class="field"><label>Target Deadline</label>
+      <input class="input" type="date" name="target_deadline"></div>
     <div class="field"><label>Coordinator</label>
       <input class="input" name="coordinator" placeholder="Responsible person"></div>
     <div class="field" style="grid-column:span 2"><label>Progress / Remarks</label>
@@ -500,11 +599,13 @@ require __DIR__ . '/inc/header.php';
       </select></div>
     <div class="field"><label>Fixed (target value)</label>
       <input class="input" type="number" name="target_value" id="et-tv" min="0" required></div>
+    <div class="field"><label>Target Deadline</label>
+      <input class="input" type="date" name="target_deadline" id="et-dl"></div>
     <div class="field"><label>Achieved value</label>
       <input class="input" type="number" name="achieved_value" id="et-av" min="0"></div>
     <div class="field"><label>Coordinator</label>
       <input class="input" name="coordinator" id="et-coord"></div>
-    <div class="field"><label>Progress / Remarks</label>
+    <div class="field" style="grid-column:span 2"><label>Progress / Remarks</label>
       <input class="input" name="remarks" id="et-rem"></div>
   </div>
   <div class="modal-foot">
@@ -570,6 +671,49 @@ require __DIR__ . '/inc/header.php';
 </form></dialog>
 <?php endif; ?>
 
+<!-- View Target dialog -->
+<dialog class="modal" id="viewDlg" style="max-width:32rem">
+  <div class="modal-head"><div>
+    <h3 id="vt-title">Target Details</h3>
+    <div class="msub" id="vt-dept-year"></div>
+  </div></div>
+  <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--navy-50, #f8fafc);padding:14px;border-radius:8px">
+      <div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Fixed Target</div>
+        <div id="vt-target" style="font-size:18px;font-weight:700;color:var(--navy-900, #0f172a)">—</div>
+      </div>
+      <div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Target Deadline</div>
+        <div id="vt-deadline" style="font-size:15px;font-weight:600;color:var(--navy-800, #1e293b)">—</div>
+      </div>
+      <div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Status</div>
+        <div id="vt-status" style="margin-top:3px"></div>
+      </div>
+      <div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Coordinator</div>
+        <div id="vt-coordinator" style="font-size:14px;font-weight:500;margin-top:2px">—</div>
+      </div>
+    </div>
+    <div>
+      <div class="card-sub" style="font-weight:600;margin-bottom:4px">Target Metric / Details:</div>
+      <div id="vt-metric" style="font-weight:500;font-size:14px;line-height:1.4"></div>
+    </div>
+    <div id="vt-remarks-box">
+      <div class="card-sub" style="font-weight:600;margin-bottom:2px">Remarks / Notes:</div>
+      <div id="vt-remarks" class="card-sub" style="color:var(--navy-700)">—</div>
+    </div>
+    <div id="vt-review-box" style="display:none;background:#fffbeb;border:1px solid #fef3c7;padding:10px 12px;border-radius:6px">
+      <div style="font-size:12px;font-weight:600;color:#b45309">Dean / Reviewer Remark:</div>
+      <div id="vt-review-remark" style="font-size:13px;color:#92400e;margin-top:2px"></div>
+    </div>
+  </div>
+  <div class="modal-foot">
+    <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Close</button>
+  </div>
+</dialog>
+
 <!-- Suggestions for the free-text Target box: the configured metric names,
      offered as a convenience but never a limit. -->
 <datalist id="metricList">
@@ -583,6 +727,7 @@ function editTarget(t) {
   document.getElementById('et-dept').value   = t.department || '';
   document.getElementById('et-year').value   = t.academic_year || '';
   document.getElementById('et-tv').value     = t.target_value;
+  document.getElementById('et-dl').value     = t.target_deadline || '';
   document.getElementById('et-av').value     = t.achieved_value;
   document.getElementById('et-coord').value  = t.coordinator || '';
   document.getElementById('et-rem').value    = t.remarks || '';
@@ -591,6 +736,50 @@ function editTarget(t) {
       ? 'This target is frozen. Your change is recorded against your name and it stays frozen.'
       : 'Status: ' + (t.status || 'Draft');
   document.getElementById('editDlg').showModal();
+}
+
+function viewTarget(t) {
+  document.getElementById('vt-title').textContent = t.metric || 'Target Details';
+  document.getElementById('vt-dept-year').textContent = (t.department || '') + (t.academic_year ? ' · ' + t.academic_year : '');
+  document.getElementById('vt-target').textContent = t.target_value ?? '0';
+
+  var dl = t.target_deadline;
+  if (dl) {
+    var parts = dl.split('-');
+    if (parts.length === 3) {
+      var d = new Date(parts[0], parts[1] - 1, parts[2]);
+      var opts = { day: '2-digit', month: 'short', year: 'numeric' };
+      document.getElementById('vt-deadline').textContent = d.toLocaleDateString('en-GB', opts);
+    } else {
+      document.getElementById('vt-deadline').textContent = dl;
+    }
+  } else {
+    document.getElementById('vt-deadline').textContent = 'None set';
+  }
+
+  var stMap = {
+    'Approved': 'success',
+    'Changes Requested': 'warning',
+    'Pending Review': 'info',
+    'Draft': 'neutral'
+  };
+  var st = t.status || 'Draft';
+  var stClass = stMap[st] || 'neutral';
+  document.getElementById('vt-status').innerHTML = '<span class="badge badge-' + stClass + '">' + st + '</span>';
+
+  document.getElementById('vt-coordinator').textContent = t.coordinator || '—';
+  document.getElementById('vt-metric').textContent = t.metric || '—';
+  document.getElementById('vt-remarks').textContent = t.remarks || 'None';
+
+  var revBox = document.getElementById('vt-review-box');
+  if (t.review_remark) {
+    revBox.style.display = 'block';
+    document.getElementById('vt-review-remark').textContent = t.review_remark;
+  } else {
+    revBox.style.display = 'none';
+  }
+
+  document.getElementById('viewDlg').showModal();
 }
 
 function delTarget(id, name) {

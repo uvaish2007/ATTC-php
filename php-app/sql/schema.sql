@@ -79,6 +79,7 @@ CREATE TABLE targets (
   academic_year  VARCHAR(20)  NULL,
   metric         VARCHAR(150) NULL,
   target_value   INT          NOT NULL DEFAULT 0,
+  target_deadline DATE        NULL,
   achieved_value INT          NOT NULL DEFAULT 0,
   status         VARCHAR(30)  NOT NULL DEFAULT 'Draft',
   remarks        TEXT         NULL,

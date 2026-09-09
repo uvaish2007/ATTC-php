@@ -345,7 +345,7 @@ function targets_pending_count(): int
  * still have to send up. A HoD's department is taken from their account, never
  * from the form.
  */
-function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft'): array
+function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft', ?string $targetDeadline = null): array
 {
     if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
         return [false, 'Only a HoD or Dean enters targets.'];
@@ -370,12 +370,20 @@ function target_create(array $user, string $department, string $academicYear, st
     $statusVal = $isPending ? 'Pending Review' : 'Draft';
     $submittedAt = $isPending ? date('Y-m-d H:i:s') : null;
 
+    $targetDeadline = !empty(trim((string) $targetDeadline)) ? trim((string) $targetDeadline) : null;
+    if ($targetDeadline !== null) {
+        $d = DateTime::createFromFormat('Y-m-d', $targetDeadline);
+        if (!$d || $d->format('Y-m-d') !== $targetDeadline) {
+            $targetDeadline = null;
+        }
+    }
+
     $stmt = db()->prepare(
-        'INSERT INTO targets (department, academic_year, metric, target_value, remarks, coordinator, status, submitted_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO targets (department, academic_year, metric, target_value, target_deadline, remarks, coordinator, status, submitted_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
-        $department, $academicYear, $metric, $targetValue, $remarks ?: null, $coordinator ?: null,
+        $department, $academicYear, $metric, $targetValue, $targetDeadline, $remarks ?: null, $coordinator ?: null,
         $statusVal, $submittedAt, $user['id'],
     ]);
 
@@ -393,7 +401,7 @@ function target_create(array $user, string $department, string $academicYear, st
  * is rewritten so the record always shows who last set the figure. A HoD can
  * never move a target into another department.
  */
-function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null): array
+function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null): array
 {
     $existing = target_find($id);
     if (!$existing) {
@@ -418,8 +426,16 @@ function target_update(int $id, array $user, string $department, string $academi
 
     $frozen = target_is_frozen($existing);
 
-    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, achieved_value = ?, remarks = ?, coordinator = ?';
-    $args = [$department, $academicYear, $metric, $targetValue, $achievedValue, $remarks ?: null, $coordinator ?: null];
+    $targetDeadline = !empty(trim((string) $targetDeadline)) ? trim((string) $targetDeadline) : null;
+    if ($targetDeadline !== null) {
+        $d = DateTime::createFromFormat('Y-m-d', $targetDeadline);
+        if (!$d || $d->format('Y-m-d') !== $targetDeadline) {
+            $targetDeadline = null;
+        }
+    }
+
+    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, target_deadline = ?, achieved_value = ?, remarks = ?, coordinator = ?';
+    $args = [$department, $academicYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
 
     // Re-stamp the approval only when an Admin edits a frozen target — a HoD
     // editing inside an unlock window is not re-approving it, so the original
