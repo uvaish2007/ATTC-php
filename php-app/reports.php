@@ -61,6 +61,8 @@ $fromIso     = parse_date_input($rawFrom);
 $toIso       = parse_date_input($rawTo);
 $fromDisplay = format_date_display($rawFrom);
 $toDisplay   = format_date_display($rawTo);
+$from        = $fromIso;
+$to          = $toIso;
 
 $rangeError = null;
 if ($fromIso && $toIso && $fromIso > $toIso) {

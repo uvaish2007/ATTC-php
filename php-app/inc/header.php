@@ -376,10 +376,6 @@ $flashes      = take_flashes();
 
     <main class="content">
       <div class="container">
-        <div class="alpha-banner" role="note">
-          <span class="alpha-tag">ALPHA v0.1</span>
-          <span class="alpha-text">Scoped release — the <strong>Targets</strong> module is the focus. Some modules may be limited or marked “Coming Soon.”</span>
-        </div>
         <?php foreach ($flashes as $f): ?>
           <div class="alert alert-<?= e($f['type']) ?>"><?= e($f['message']) ?></div>
         <?php endforeach; ?>

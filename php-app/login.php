@@ -23,29 +23,32 @@ $roles = [
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    csrf_check();
-
-    $email    = trim((string) input('email'));
-    $password = (string) input('password');
-    $selectedRole = trim((string) input('role'));
-
-    if ($selectedRole === '') {
-        $error = 'Please select your role before signing in.';
+    if (!csrf_verify()) {
+        $error = 'Your session or security token has expired. Please try signing in again.';
+        // Ensure a fresh token is generated for the new attempt
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+        $selectedRole = trim((string) input('role'));
     } else {
-        $user = attempt_login($email, $password);
+        $email        = trim((string) input('email'));
+        $password     = (string) input('password');
+        $selectedRole = trim((string) input('role'));
 
-        if ($user) {
-            // Validate the selected role matches the user's actual role
-            if ($user['role'] !== $selectedRole) {
-                // Log the user out since they selected the wrong role
-                logout();
-                auth_boot();
-                $error = 'The selected role does not match your account. You are registered as "' . htmlspecialchars($user['role']) . '".';
-            } else {
-                redirect('/dashboard.php');
-            }
+        if ($selectedRole === '') {
+            $error = 'Please select your role before signing in.';
         } else {
-            $error = 'Invalid email or password.';
+            $failReason = null;
+            $user = attempt_login($email, $password, $selectedRole, $failReason);
+
+            if ($user) {
+                redirect('/dashboard.php');
+            } elseif ($failReason === 'deactivated') {
+                $error = 'Your account has been deactivated. Please contact an administrator.';
+            } elseif ($failReason && str_starts_with($failReason, 'role_mismatch:')) {
+                $actualRole = substr($failReason, 14);
+                $error = 'The selected role does not match your account. You are registered as "' . htmlspecialchars($actualRole) . '".';
+            } else {
+                $error = 'Invalid email or password.';
+            }
         }
     }
 }
@@ -229,6 +232,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     step1.offsetHeight;
     step1.style.animation = 'fadeInUp .3s ease';
     step2Bar.classList.remove('active');
+  });
+
+  // Prevent double-submission and provide feedback
+  const loginForm = document.getElementById('loginForm');
+  loginForm.addEventListener('submit', (e) => {
+    const submitBtn = loginForm.querySelector('button[type="submit"]');
+    if (submitBtn.disabled) {
+      e.preventDefault();
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Signing In...';
+  });
+
+  // Refresh page if restored from browser back-forward cache (bfcache)
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      window.location.reload();
+    }
   });
 
   // If there's an error and a role was selected, show step 2

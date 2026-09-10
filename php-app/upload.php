@@ -141,7 +141,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash('success', $types[$type]['label'] . ' submitted for review.');
     } catch (\PDOException $e) {
         error_log('upload.php insert failed: ' . $e->getMessage());
-        flash('error', 'Sorry, that record could not be saved. Please check the fields and try again.');
+        $err = 'Sorry, that record could not be saved. Please check the fields and try again.';
+        if (defined('APP_DEBUG') && APP_DEBUG) {
+            $err .= ' [' . $e->getMessage() . ']';
+        }
+        flash('error', $err);
         redirect('/upload.php?type=' . $type);
     }
 
@@ -400,8 +404,9 @@ require __DIR__ . '/inc/header.php';
 
         <!-- Proof / attachment (optional) — carried onto the report -->
         <div class="field" style="grid-column:span 2">
-          <label>Proof / Attachment <span class="card-sub">— PDF only, up to 2 MB</span></label>
-          <input class="input" type="file" name="proof" accept="application/pdf,.pdf">
+          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
+          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
+          <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
         </div>
       </div>
 
@@ -439,6 +444,45 @@ require __DIR__ . '/inc/header.php';
         sel.addEventListener('change', sync);
         sync();
       });
+
+      /* Immediate strict 2MB check: file cannot even be selected if > 2 MB */
+      var proofInput = document.getElementById('proofInput');
+      if (proofInput) {
+        var MAX_PROOF_BYTES = 2 * 1024 * 1024; // 2 MB
+        var proofErr = document.getElementById('proofSizeError');
+
+        proofInput.addEventListener('change', function () {
+          var file = this.files && this.files[0];
+          if (!file) return;
+
+          if (file.size > MAX_PROOF_BYTES) {
+            var sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            alert('File size exceeds the 2 MB limit (' + sizeMb + ' MB). Only attachments of 2 MB or less can be selected.');
+            this.value = ''; // Immediately clear selection
+            if (proofErr) {
+              proofErr.textContent = 'Selected file (' + sizeMb + ' MB) exceeds 2 MB limit. Selection cleared. Please choose a file ≤ 2 MB.';
+              proofErr.style.display = 'block';
+            }
+            return false;
+          }
+
+          // PDF format check
+          var name = file.name.toLowerCase();
+          if (!name.endsWith('.pdf')) {
+            alert('Only PDF files (.pdf) are allowed as proof attachments.');
+            this.value = '';
+            if (proofErr) {
+              proofErr.textContent = 'Only PDF files are supported. Selection cleared.';
+              proofErr.style.display = 'block';
+            }
+            return false;
+          }
+
+          if (proofErr) {
+            proofErr.style.display = 'none';
+          }
+        });
+      }
     </script>
   </div>
 </div>

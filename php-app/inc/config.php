@@ -16,12 +16,19 @@ define('DB_HOST', env('DB_HOST', 'localhost'));
 define('DB_PORT', env('DB_PORT', '3306'));
 define('DB_NAME', env('DB_NAME', 'atts_main'));
 define('DB_USER', env('DB_USER', 'root'));
-define('DB_PASS', (string) env('DB_PASS', ''));
+define('DB_PASS', (string) env('DB_PASS', '1234'));
 
 // --- Application ---
-// The URL path the app is served from. "/php-app" for XAMPP htdocs; "" if you
-// serve the folder itself at the root (e.g. `php -S localhost:8000`).
-define('BASE_URL', rtrim((string) env('BASE_URL', '/php-app'), '/'));
+// The URL path the app is served from. Auto-detect if left blank in .env.
+$configuredBaseUrl = env('BASE_URL', null);
+if ($configuredBaseUrl !== null && $configuredBaseUrl !== '') {
+    define('BASE_URL', rtrim((string) $configuredBaseUrl, '/'));
+} else {
+    // Auto-detect based on script location relative to document root
+    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+    $detectedBase = ($scriptDir === '/' || $scriptDir === '.') ? '' : rtrim($scriptDir, '/');
+    define('BASE_URL', $detectedBase);
+}
 
 define('UPLOAD_DIR', dirname(__DIR__) . '/uploads');
 define('UPLOAD_URL', BASE_URL . '/uploads');
