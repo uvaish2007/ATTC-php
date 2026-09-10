@@ -30,10 +30,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('academic_year'),
             (string) input('metric'),
             (int) input('target_value'),
+            (string) input('fixed_text'),
             (string) input('remarks'),
             (string) input('coordinator'),
+<<<<<<< Updated upstream
             $targetStatus,
             (string) input('target_deadline')
+=======
+            (string) input('achieved_p1'),
+            (string) input('achieved_p2')
+>>>>>>> Stashed changes
         );
     } elseif ($action === 'update') {
         [$ok, $msg] = target_update(
@@ -43,11 +49,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('academic_year'),
             (string) input('metric'),
             (int) input('target_value'),
+            (string) input('fixed_text'),
             (int) input('achieved_value'),
             (string) input('remarks'),
             (string) input('coordinator'),
+<<<<<<< HEAD
             (string) input('target_deadline'),
             input('fixed_text') !== null ? (string) input('fixed_text') : null
+=======
+<<<<<<< Updated upstream
+            (string) input('target_deadline')
+=======
+            (string) input('achieved_p1'),
+            (string) input('achieved_p2')
+>>>>>>> Stashed changes
+>>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
         );
     } elseif ($action === 'update_deadline') {
         $id = (int) input('id');
@@ -402,8 +418,9 @@ require __DIR__ . '/inc/header.php';
         <span class="tg-chev"><?= icon('chevron', 16) ?></span>
       </summary>
 
-      <div class="table-wrap"><table class="data" style="min-width:760px">
+      <div class="table-wrap"><table class="data" style="min-width:800px">
         <thead><tr>
+<<<<<<< Updated upstream
           <?php if ($isHod): ?>
             <th style="padding-left:24px;width:75px">S.No</th>
             <th style="min-width:320px">Target Details</th>
@@ -421,18 +438,35 @@ require __DIR__ . '/inc/header.php';
             <th class="num">Progress</th>
             <th class="num" style="padding-right:24px">Actions</th>
           <?php endif; ?>
+=======
+          <th style="padding-left:24px;width:52px">S.No</th>
+          <th>Target Details</th>
+          <th>Year</th>
+          <th>Status</th>
+          <th class="num">Fixed</th>
+          <th class="num">Achieved<br><span style="font-size:10px;font-weight:400">From period</span></th>
+          <th class="num">Achieved<br><span style="font-size:10px;font-weight:400">During period</span></th>
+          <th class="num" style="padding-right:24px">Actions</th>
+>>>>>>> Stashed changes
         </tr></thead>
         <tbody>
         <?php foreach ($deptTargets as $index => $t): ?>
           <?php
-            $pct      = $t['target_value'] > 0 ? min(100, round($t['achieved_value'] / $t['target_value'] * 100)) : 0;
-            $barColor = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
             $frozen   = target_is_frozen($t);
             $status   = (string) ($t['status'] ?? 'Draft');
+<<<<<<< HEAD
             // Non-destructive suggestion: only compute for non-HoD view where the [Use] button is actually shown
             $recCount = !$isHod ? target_record_count($t) : null;
+=======
+            $recCount = target_record_count($t);
+            // Build S.No display: serial_no + sub_label
+            $sno      = trim(($t['serial_no'] ?? '') . ' ' . ($t['sub_label'] ?? ''));
+            // Fixed display: prefer fixed_text, fall back to target_value
+            $fixedDisplay = !empty($t['fixed_text']) ? $t['fixed_text'] : ((string)(int)$t['target_value']);
+>>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
           ?>
           <tr>
+<<<<<<< Updated upstream
             <?php if ($isHod): ?>
               <td style="padding-left:24px;font-weight:600;color:var(--navy-700);white-space:nowrap">
                 <?= (int) ($index + 1) ?>
@@ -515,6 +549,33 @@ require __DIR__ . '/inc/header.php';
                   <button type="button" class="mini-btn" title="View Target Details"
                           onclick='viewTarget(<?= e(json_encode($t)) ?>)'><?= icon('eye', 15) ?></button>
                   <?php if (target_can_submit($t, $user)): ?>
+=======
+            <td style="padding-left:24px;color:var(--ink-muted,#64748b);font-size:13px"><?= e($sno) ?></td>
+            <td>
+              <div style="font-weight:500"><?= e($t['metric']) ?></div>
+              <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
+                <div class="card-sub" style="color:#B45309;margin-top:2px">
+                  <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
+                </div>
+              <?php endif; ?>
+            </td>
+            <td><span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span></td>
+            <td>
+              <span class="badge badge-<?= target_status_class($status) ?>">
+                <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
+              </span>
+              <?php if ($frozen && !empty($t['approver_name'])): ?>
+                <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
+              <?php endif; ?>
+            </td>
+            <td class="num tabular" style="font-weight:600"><?= e($fixedDisplay) ?></td>
+            <td class="num tabular">
+              <?= e(!empty($t['achieved_p1']) ? $t['achieved_p1'] : ($t['achieved_value'] ? (string)(int)$t['achieved_value'] : '—')) ?>
+              <?php if ($recCount !== null && empty($t['achieved_p1'])): ?>
+                <div class="rec-suggest">
+                  <span class="rec-count" title="Approved records of this type in scope"><?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records</span>
+                  <?php if ($recCount !== (int) $t['achieved_value'] && target_can_edit($t, $user)): ?>
+>>>>>>> Stashed changes
                     <form method="post" style="display:inline">
                       <?= csrf_field() ?>
                       <input type="hidden" name="action" value="submit">
@@ -534,6 +595,7 @@ require __DIR__ . '/inc/header.php';
                     <span class="card-sub" title="Awaiting Dean review"><?= icon('clock', 14) ?></span>
                   <?php endif; ?>
                 </div>
+<<<<<<< Updated upstream
               </td>
             <?php else: ?>
               <td style="padding-left:24px">
@@ -557,6 +619,21 @@ require __DIR__ . '/inc/header.php';
                 </span>
                 <?php if ($frozen && !empty($t['approver_name'])): ?>
                   <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
+=======
+              <?php endif; ?>
+            </td>
+            <td class="num tabular"><?= e(!empty($t['achieved_p2']) ? $t['achieved_p2'] : '—') ?></td>
+            <td class="num" style="padding-right:24px">
+              <div class="dept-actions" style="justify-content:flex-end">
+
+                <?php if (target_can_submit($t, $user)): ?>
+                  <form method="post" style="display:inline">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="submit">
+                    <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                    <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
+                  </form>
+>>>>>>> Stashed changes
                 <?php endif; ?>
               </td>
               <td class="num tabular" style="font-weight:600"><?= (int) $t['target_value'] ?></td>
@@ -670,7 +747,7 @@ require __DIR__ . '/inc/header.php';
     <div class="msub">Save as a draft to edit later, or submit for review immediately.</div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <div class="field" style="grid-column:span 2"><label>Target / Details <span class="req">*</span></label>
+    <div class="field" style="grid-column:span 2"><label>Target Details <span class="req">*</span></label>
       <input class="input" name="metric" list="metricList" required autocomplete="off"
              placeholder="e.g. Pass Percentage, Journal Publications, NPTEL…"></div>
     <div class="field"><label>Department <span class="req">*</span></label>
@@ -685,6 +762,7 @@ require __DIR__ . '/inc/header.php';
       <select class="select" name="academic_year">
         <?php foreach ($years as $y): ?><option><?= e($y) ?></option><?php endforeach; ?>
       </select></div>
+<<<<<<< Updated upstream
     <div class="field"><label>Fixed (target value) <span class="req">*</span></label>
       <input class="input" type="number" name="target_value" min="0" required></div>
     <div class="field"><label>Target Deadline</label>
@@ -693,6 +771,16 @@ require __DIR__ . '/inc/header.php';
       <input class="input" name="coordinator" placeholder="Responsible person"></div>
     <div class="field" style="grid-column:span 2"><label>Progress / Remarks</label>
       <input class="input" name="remarks" placeholder="Optional notes"></div>
+=======
+    <div class="field"><label>Fixed (numeric) <span class="req">*</span></label>
+      <input class="input" type="number" name="target_value" min="0" required placeholder="e.g. 86"></div>
+    <div class="field"><label>Fixed (display text)</label>
+      <input class="input" name="fixed_text" placeholder="e.g. 86 %, UGC – 18, 10 Lakhs"></div>
+    <div class="field"><label>Achieved — From period</label>
+      <input class="input" name="achieved_p1" placeholder="e.g. 31, UGC – 4, -"></div>
+    <div class="field"><label>Achieved — During period</label>
+      <input class="input" name="achieved_p2" placeholder="e.g. 01 — Notes here, -"></div>
+>>>>>>> Stashed changes
   </div>
   <div class="modal-foot">
     <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
@@ -712,7 +800,7 @@ require __DIR__ . '/inc/header.php';
     <div class="msub" id="et-note"></div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <div class="field" style="grid-column:span 2"><label>Target / Details</label>
+    <div class="field" style="grid-column:span 2"><label>Target Details</label>
       <input class="input" name="metric" id="et-metric" list="metricList" autocomplete="off" required></div>
     <div class="field"><label>Department</label>
       <select class="select" name="department" id="et-dept" <?= $isHod ? 'disabled' : '' ?>>
@@ -722,9 +810,15 @@ require __DIR__ . '/inc/header.php';
       <select class="select" name="academic_year" id="et-year">
         <?php foreach ($years as $y): ?><option><?= e($y) ?></option><?php endforeach; ?>
       </select></div>
+<<<<<<< HEAD
     <div class="field"><label>Fixed Target</label>
       <input class="input" type="text" name="fixed_text" id="et-fixed-text" placeholder="e.g. 86 %, 10 Lakhs, 50">
       <input type="hidden" name="target_value" id="et-tv"></div>
+=======
+    <div class="field"><label>Fixed (numeric)</label>
+      <input class="input" type="number" name="target_value" id="et-tv" min="0" required></div>
+<<<<<<< Updated upstream
+>>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
     <div class="field"><label>Target Deadline</label>
       <input class="input" type="date" name="target_deadline" id="et-dl"></div>
     <div class="field"><label>Achieved value</label>
@@ -733,6 +827,16 @@ require __DIR__ . '/inc/header.php';
       <input class="input" name="coordinator" id="et-coord"></div>
     <div class="field" style="grid-column:span 2"><label>Progress / Remarks</label>
       <input class="input" name="remarks" id="et-rem"></div>
+=======
+    <div class="field"><label>Fixed (display text)</label>
+      <input class="input" name="fixed_text" id="et-fixedtext" placeholder="e.g. 86 %, UGC – 18"></div>
+    <div class="field"><label>Achieved — From period</label>
+      <input class="input" name="achieved_p1" id="et-p1" placeholder="e.g. 31, -"></div>
+    <div class="field"><label>Achieved — During period</label>
+      <input class="input" name="achieved_p2" id="et-p2" placeholder="e.g. 01 — Notes, -"></div>
+    <div class="field"><label>Achieved value (numeric)</label>
+      <input class="input" type="number" name="achieved_value" id="et-av" min="0"></div>
+>>>>>>> Stashed changes
   </div>
   <div class="modal-foot">
     <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
@@ -848,6 +952,7 @@ require __DIR__ . '/inc/header.php';
 
 <script>
 function editTarget(t) {
+<<<<<<< Updated upstream
   document.getElementById('et-id').value     = t.id;
   document.getElementById('et-metric').value = t.metric || '';
   document.getElementById('et-dept').value   = t.department || '';
@@ -859,6 +964,17 @@ function editTarget(t) {
   document.getElementById('et-av').value     = (t.achieved_value != null ? t.achieved_value : 0);
   document.getElementById('et-coord').value  = t.coordinator || '';
   document.getElementById('et-rem').value    = t.remarks || '';
+=======
+  document.getElementById('et-id').value          = t.id;
+  document.getElementById('et-metric').value      = t.metric || '';
+  document.getElementById('et-dept').value        = t.department || '';
+  document.getElementById('et-year').value        = t.academic_year || '';
+  document.getElementById('et-tv').value          = t.target_value;
+  document.getElementById('et-fixedtext').value   = t.fixed_text || '';
+  document.getElementById('et-av').value          = t.achieved_value;
+  document.getElementById('et-p1').value          = t.achieved_p1 || '';
+  document.getElementById('et-p2').value          = t.achieved_p2 || '';
+>>>>>>> Stashed changes
   document.getElementById('et-note').textContent =
     t.status === 'Approved'
       ? 'This target is frozen. Your change is recorded against your name and it stays frozen.'

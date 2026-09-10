@@ -16,6 +16,7 @@ define('DB_HOST', env('DB_HOST', 'localhost'));
 define('DB_PORT', env('DB_PORT', '3306'));
 define('DB_NAME', env('DB_NAME', 'atts_main'));
 define('DB_USER', env('DB_USER', 'root'));
+<<<<<<< HEAD
 define('DB_PASS', (string) env('DB_PASS', ''));
 $defaultSslCa = '';
 if (strpos((string) env('DB_HOST', ''), 'tidbcloud.com') !== false) {
@@ -30,6 +31,21 @@ $defaultBaseUrl = (isset($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAM
 $envBaseUrl     = env('BASE_URL');
 $resolvedBase   = ($envBaseUrl !== null && $envBaseUrl !== '') ? $envBaseUrl : $defaultBaseUrl;
 define('BASE_URL', rtrim((string) $resolvedBase, '/'));
+=======
+define('DB_PASS', (string) env('DB_PASS', '1234'));
+
+// --- Application ---
+// The URL path the app is served from. Auto-detect if left blank in .env.
+$configuredBaseUrl = env('BASE_URL', null);
+if ($configuredBaseUrl !== null && $configuredBaseUrl !== '') {
+    define('BASE_URL', rtrim((string) $configuredBaseUrl, '/'));
+} else {
+    // Auto-detect based on script location relative to document root
+    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+    $detectedBase = ($scriptDir === '/' || $scriptDir === '.') ? '' : rtrim($scriptDir, '/');
+    define('BASE_URL', $detectedBase);
+}
+>>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
 
 define('UPLOAD_DIR', dirname(__DIR__) . '/uploads');
 define('UPLOAD_URL', BASE_URL . '/uploads');

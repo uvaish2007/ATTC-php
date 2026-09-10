@@ -27,8 +27,8 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 }
 
 $department = trim((string) input('department')) ?: null;   // honoured only for Admin
-$from       = trim((string) input('from')) ?: null;
-$to         = trim((string) input('to')) ?: null;
+$from       = parse_date_input((string) input('from'));
+$to         = parse_date_input((string) input('to'));
 
 // report_records applies the role scope (Director → all, HoD → own dept).
 $records = report_records($user, $department, null, null, $from, $to);

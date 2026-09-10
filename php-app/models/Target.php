@@ -377,7 +377,11 @@ function targets_pending_count(): int
  * still have to send up. A HoD's department is taken from their account, never
  * from the form.
  */
+<<<<<<< Updated upstream
 function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft', ?string $targetDeadline = null): array
+=======
+function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $fixedText = null, ?string $remarks = null, ?string $coordinator = null, ?string $achievedP1 = null, ?string $achievedP2 = null): array
+>>>>>>> Stashed changes
 {
     if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
         return [false, 'Only a HoD or Dean enters targets.'];
@@ -411,12 +415,23 @@ function target_create(array $user, string $department, string $academicYear, st
     }
 
     $stmt = db()->prepare(
+<<<<<<< Updated upstream
         'INSERT INTO targets (department, academic_year, metric, target_value, target_deadline, remarks, coordinator, status, submitted_at, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
         $department, $academicYear, $metric, $targetValue, $targetDeadline, $remarks ?: null, $coordinator ?: null,
         $statusVal, $submittedAt, $user['id'],
+=======
+        'INSERT INTO targets (department, academic_year, metric, target_value, fixed_text, achieved_p1, achieved_p2, remarks, coordinator, status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    $stmt->execute([
+        $department, $academicYear, $metric, $targetValue,
+        $fixedText ?: null, $achievedP1 ?: null, $achievedP2 ?: null,
+        $remarks ?: null, $coordinator ?: null,
+        'Draft', $user['id'],
+>>>>>>> Stashed changes
     ]);
 
     if ($isPending) {
@@ -433,7 +448,15 @@ function target_create(array $user, string $department, string $academicYear, st
  * is rewritten so the record always shows who last set the figure. A HoD can
  * never move a target into another department.
  */
+<<<<<<< HEAD
 function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null, ?string $fixedText = null): array
+=======
+<<<<<<< Updated upstream
+function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null): array
+=======
+function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $fixedText = null, int $achievedValue = 0, ?string $remarks = null, ?string $coordinator = null, ?string $achievedP1 = null, ?string $achievedP2 = null): array
+>>>>>>> Stashed changes
+>>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
 {
     $existing = target_find($id);
     if (!$existing) {
@@ -458,6 +481,7 @@ function target_update(int $id, array $user, string $department, string $academi
 
     $frozen = target_is_frozen($existing);
 
+<<<<<<< Updated upstream
     $targetDeadline = !empty(trim((string) $targetDeadline)) ? trim((string) $targetDeadline) : null;
     if ($targetDeadline !== null) {
         $d = DateTime::createFromFormat('Y-m-d', $targetDeadline);
@@ -468,6 +492,10 @@ function target_update(int $id, array $user, string $department, string $academi
 
     $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, target_deadline = ?, achieved_value = ?, remarks = ?, coordinator = ?';
     $args = [$department, $academicYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
+=======
+    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, fixed_text = ?, achieved_value = ?, achieved_p1 = ?, achieved_p2 = ?, remarks = ?, coordinator = ?';
+    $args = [$department, $academicYear, $metric, $targetValue, $fixedText ?: null, $achievedValue, $achievedP1 ?: null, $achievedP2 ?: null, $remarks ?: null, $coordinator ?: null];
+>>>>>>> Stashed changes
 
     if ($fixedText !== null) {
         $sql .= ', fixed_text = ?';
