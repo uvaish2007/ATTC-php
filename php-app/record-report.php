@@ -44,8 +44,8 @@ $singleDept   = $department !== null;
 // Optional review-status and submission-period filters (from the Reports page).
 $status = trim((string) input('status')) ?: null;
 if (!in_array($status, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) { $status = null; }
-$from = trim((string) input('from')) ?: null;
-$to   = trim((string) input('to')) ?: null;
+$from = parse_date_input((string) input('from'));
+$to   = parse_date_input((string) input('to'));
 
 // Records of this type, in the user's scope, newest first.
 $records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to);
