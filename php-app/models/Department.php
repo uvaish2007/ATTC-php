@@ -6,34 +6,45 @@
 
 require_once __DIR__ . '/../inc/db.php';
 
+$GLOBALS['_departments_cache'] = null;
+
+function departments_clear_cache(): void
+{
+    $GLOBALS['_departments_cache'] = null;
+}
+
 function departments_all(): array
 {
+    if ($GLOBALS['_departments_cache'] !== null) {
+        return $GLOBALS['_departments_cache'];
+    }
+
     static $ensured = false;
     if (!$ensured) {
         $ensured = true;
         try {
-            $depts = [
-                ['name' => 'Aero',           'code' => 'AERO'],
-                ['name' => 'Civil',          'code' => 'CIVIL'],
-                ['name' => 'CSBS',           'code' => 'CSBS'],
-                ['name' => 'EEE',            'code' => 'EEE'],
-                ['name' => 'ECE',            'code' => 'ECE'],
-                ['name' => 'Marine',         'code' => 'MARINE'],
-                ['name' => 'Mech',           'code' => 'MECH'],
-                ['name' => 'AI&ML',          'code' => 'AIML'],
-                ['name' => 'Cyber Security', 'code' => 'CYBER'],
-                ['name' => 'Chem',           'code' => 'CHEM'],
-                ['name' => 'IT',             'code' => 'IT'],
-                ['name' => 'Arch',           'code' => 'ARCH'],
-                ['name' => 'MCA',            'code' => 'MCA'],
-                ['name' => 'MBA',            'code' => 'MBA'],
-            ];
             $pdo = db();
-            foreach ($depts as $d) {
-                $stmt = $pdo->prepare("SELECT id FROM departments WHERE name = ? OR code = ?");
-                $stmt->execute([$d['name'], $d['code']]);
-                if (!$stmt->fetch()) {
-                    $insert = $pdo->prepare("INSERT INTO departments (name, code) VALUES (?, ?)");
+            // If departments already exist, skip redundant individual checks
+            $count = (int) $pdo->query("SELECT COUNT(*) FROM departments")->fetchColumn();
+            if ($count === 0) {
+                $depts = [
+                    ['name' => 'Aero',           'code' => 'AERO'],
+                    ['name' => 'Civil',          'code' => 'CIVIL'],
+                    ['name' => 'CSBS',           'code' => 'CSBS'],
+                    ['name' => 'EEE',            'code' => 'EEE'],
+                    ['name' => 'ECE',            'code' => 'ECE'],
+                    ['name' => 'Marine',         'code' => 'MARINE'],
+                    ['name' => 'Mech',           'code' => 'MECH'],
+                    ['name' => 'AI&ML',          'code' => 'AIML'],
+                    ['name' => 'Cyber Security', 'code' => 'CYBER'],
+                    ['name' => 'Chem',           'code' => 'CHEM'],
+                    ['name' => 'IT',             'code' => 'IT'],
+                    ['name' => 'Arch',           'code' => 'ARCH'],
+                    ['name' => 'MCA',            'code' => 'MCA'],
+                    ['name' => 'MBA',            'code' => 'MBA'],
+                ];
+                $insert = $pdo->prepare("INSERT INTO departments (name, code) VALUES (?, ?)");
+                foreach ($depts as $d) {
                     $insert->execute([$d['name'], $d['code']]);
                 }
             }
@@ -41,7 +52,8 @@ function departments_all(): array
             // fail-open if unmigrated
         }
     }
-    return db()->query('SELECT * FROM departments ORDER BY name')->fetchAll();
+    $GLOBALS['_departments_cache'] = db()->query('SELECT * FROM departments ORDER BY name')->fetchAll();
+    return $GLOBALS['_departments_cache'];
 }
 
 function department_find(int $id): ?array
@@ -79,6 +91,7 @@ function department_create(string $name, string $code): array
 
     $stmt = db()->prepare('INSERT INTO departments (name, code) VALUES (?, ?)');
     $stmt->execute([$name, $code]);
+    departments_clear_cache();
 
     return [true, 'Department added.'];
 }
@@ -114,6 +127,7 @@ function department_update(int $id, string $name, string $code): array
 
     $stmt = db()->prepare('UPDATE departments SET name = ?, code = ? WHERE id = ?');
     $stmt->execute([$name, $code, $id]);
+    departments_clear_cache();
 
     return [true, 'Department updated.'];
 }
@@ -130,6 +144,7 @@ function department_delete(int $id): array
 
     $stmt = db()->prepare('DELETE FROM departments WHERE id = ?');
     $stmt->execute([$id]);
+    departments_clear_cache();
 
     return [true, 'Department deleted.'];
 }

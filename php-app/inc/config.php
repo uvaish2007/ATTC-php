@@ -17,11 +17,19 @@ define('DB_PORT', env('DB_PORT', '3306'));
 define('DB_NAME', env('DB_NAME', 'atts_main'));
 define('DB_USER', env('DB_USER', 'root'));
 define('DB_PASS', (string) env('DB_PASS', ''));
+$defaultSslCa = '';
+if (strpos((string) env('DB_HOST', ''), 'tidbcloud.com') !== false) {
+    $defaultSslCa = dirname(__DIR__) . '/certs/isrgrootx1.pem';
+}
+define('DB_SSL_CA', (string) env('DB_SSL_CA', $defaultSslCa));
 
 // --- Application ---
 // The URL path the app is served from. "/php-app" for XAMPP htdocs; "" if you
-// serve the folder itself at the root (e.g. `php -S localhost:8000`).
-define('BASE_URL', rtrim((string) env('BASE_URL', '/php-app'), '/'));
+// serve the folder itself at the root (e.g. `php -S localhost:8000 -t php-app`).
+$defaultBaseUrl = (isset($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/php-app') === 0) ? '/php-app' : '';
+$envBaseUrl     = env('BASE_URL');
+$resolvedBase   = ($envBaseUrl !== null && $envBaseUrl !== '') ? $envBaseUrl : $defaultBaseUrl;
+define('BASE_URL', rtrim((string) $resolvedBase, '/'));
 
 define('UPLOAD_DIR', dirname(__DIR__) . '/uploads');
 define('UPLOAD_URL', BASE_URL . '/uploads');

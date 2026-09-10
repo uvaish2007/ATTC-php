@@ -94,6 +94,16 @@ function pending_approvals_count(array $user): int
         return 0;
     }
 
+    // The header badge and the notification bell both ask for this in the same
+    // request, and it fans out to one COUNT(*) per record table. Memoise per
+    // request (keyed by the only inputs that matter) so that fan-out happens
+    // once, not once per caller.
+    static $memo = [];
+    $memoKey = $user['role'] . '|' . ($user['department'] ?? '');
+    if (array_key_exists($memoKey, $memo)) {
+        return $memo[$memoKey];
+    }
+
     require_once __DIR__ . '/../models/Record.php';   // record_types()
 
     $role = $user['role'];
@@ -127,5 +137,5 @@ function pending_approvals_count(array $user): int
         }
     }
 
-    return $total;
+    return $memo[$memoKey] = $total;
 }

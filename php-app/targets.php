@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = (string) input('action');
 
     if ($action === 'create' || $action === 'create_and_submit') {
-        $targetStatus = ($action === 'create_and_submit') ? 'Pending Review' : 'Draft';
+        $targetStatus = ($action === 'create_and_submit') ? 'Dean Pending' : 'Draft';
         [$ok, $msg] = target_create(
             $user,
             (string) input('department'),
@@ -46,12 +46,58 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (int) input('achieved_value'),
             (string) input('remarks'),
             (string) input('coordinator'),
-            (string) input('target_deadline')
+            (string) input('target_deadline'),
+            input('fixed_text') !== null ? (string) input('fixed_text') : null
         );
+    } elseif ($action === 'update_deadline') {
+        $id = (int) input('id');
+        $rawDeadline = trim((string) input('target_deadline'));
+        $targetDeadline = null;
+        if ($rawDeadline !== '') {
+            $parsed = parse_date_input($rawDeadline);
+            if ($parsed) {
+                $targetDeadline = $parsed;
+            } else {
+                $d = DateTime::createFromFormat('Y-m-d', $rawDeadline);
+                if ($d && $d->format('Y-m-d') === $rawDeadline) {
+                    $targetDeadline = $rawDeadline;
+                }
+            }
+        }
+        $existing = target_find($id);
+        if (!$existing) {
+            [$ok, $msg] = [false, 'Target not found.'];
+        } elseif (!target_can_edit($existing, $user)) {
+            [$ok, $msg] = [false, 'You cannot edit this target.'];
+        } else {
+            db()->prepare('UPDATE targets SET target_deadline = ?, updated_at = NOW() WHERE id = ?')->execute([$targetDeadline, $id]);
+            [$ok, $msg] = [true, 'Target deadline updated.'];
+        }
+
+        if (!empty($_POST['ajax'])) {
+            header('Content-Type: application/json');
+            echo json_encode([
+                'ok'        => $ok,
+                'msg'       => $msg,
+                'formatted' => $targetDeadline ? date('d-m-Y', strtotime($targetDeadline)) : '—'
+            ]);
+            exit;
+        }
+    } elseif ($action === 'submit_all' && in_array($user['role'], ['HoD', 'Dean'], true)) {
+        $dept = $user['department'] ?? (trim((string) input('department')) ?: 'CSE');
+        $year = trim((string) input('academic_year')) ?: '2025-26';
+        $stmt = db()->prepare("UPDATE targets SET status = 'Dean Pending', submitted_at = NOW() WHERE department = ? AND academic_year = ? AND status IN ('Draft', 'Changes Requested')");
+        $stmt->execute([$dept, $year]);
+        $count = $stmt->rowCount();
+        [$ok, $msg] = [true, "$count target" . ($count !== 1 ? 's' : '') . " submitted for Dean review."];
     } elseif ($action === 'submit') {
         [$ok, $msg] = target_submit((int) input('id'), $user);
     } elseif ($action === 'review') {
         [$ok, $msg] = target_review((int) input('id'), $user, (string) input('decision'), (string) input('review_remark'));
+    } elseif ($action === 'bulk_approve' && in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
+        $dept = trim((string) input('department')) ?: null;
+        $year = trim((string) input('academic_year')) ?: null;
+        [$ok, $msg] = targets_bulk_approve($user, $dept, $year);
     } elseif ($action === 'delete') {
         [$ok, $msg] = target_delete((int) input('id'), $user);
     } elseif ($action === 'apply_count') {
@@ -83,14 +129,27 @@ $isHod       = $user['role'] === 'HoD';
 $isDean      = $user['role'] === 'Dean';
 $isHodOrDean = $isHod || $isDean;
 
-$canCreate   = $isHodOrDean;
+$canCreate   = $isHod;
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
 $deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
 $yearFilter   = trim((string) ($_GET['year'] ?? '')) ?: null;
 $statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
 $metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
 
-$targets     = targets_all($deptFilter, $yearFilter, $statFilter, $metricFilter);
+// Dean must only see HOD-submitted targets awaiting approval (or reviewed ones), NEVER HOD Drafts
+if ($isDean) {
+    if ($statFilter === null || $statFilter === 'Draft') {
+        $statFilter = 'Dean Pending';
+    }
+}
+
+// Safe automatic seeding: ONLY for HoD for their own department; never seed on Dean browsing
+$seedYear = $yearFilter ?: '2025-26';
+if ($isHod && !empty($user['department'])) {
+    ensure_default_targets($user['department'], $seedYear, (int) $user['id']);
+}
+
+$targets     = targets_all($deptFilter, $yearFilter, $statFilter, $metricFilter, $isDean);
 $departments = departments_all();
 $metrics     = metric_names();
 $years       = academic_years();
@@ -159,10 +218,16 @@ require __DIR__ . '/inc/header.php';
             </select></div>
           <div class="ff-field"><label class="ff-label">Status</label>
             <select class="select" name="status" onchange="this.form.submit()">
-              <option value="">All statuses</option>
-              <?php foreach (target_statuses() as $s): ?>
-                <option value="<?= e($s) ?>" <?= $statFilter === $s ? 'selected' : '' ?>><?= e($s) ?></option>
-              <?php endforeach; ?>
+              <?php if ($isDean): ?>
+                <option value="Dean Pending" <?= $statFilter === 'Dean Pending' ? 'selected' : '' ?>>Dean Pending</option>
+                <option value="Approved" <?= $statFilter === 'Approved' ? 'selected' : '' ?>>Approved</option>
+                <option value="Changes Requested" <?= $statFilter === 'Changes Requested' ? 'selected' : '' ?>>Changes Requested</option>
+              <?php else: ?>
+                <option value="">All statuses</option>
+                <?php foreach (target_statuses() as $s): ?>
+                  <option value="<?= e($s) ?>" <?= $statFilter === $s ? 'selected' : '' ?>><?= e($s) ?></option>
+                <?php endforeach; ?>
+              <?php endif; ?>
             </select></div>
           <div class="ff-actions"><button class="btn btn-primary btn-sm" type="submit"><?= icon('filter', 14) ?> Apply filters</button></div>
         </form>
@@ -313,8 +378,9 @@ require __DIR__ . '/inc/header.php';
       $dSumA = array_sum(array_map(fn($x) => (int) $x['achieved_value'], $deptTargets));
       $dPct  = $dSumT > 0 ? min(100, (int) round($dSumA / $dSumT * 100)) : 0;
       $dCol  = $dPct >= 100 ? '#10B981' : ($dPct >= 50 ? 'var(--orange-500)' : '#EF4444');
+      $draftCount = count(array_filter($deptTargets, fn($x) => in_array($x['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true)));
     ?>
-    <details class="card tg-group">
+    <details class="card tg-group" <?= $isHod ? 'open' : '' ?>>
       <summary class="tg-group-head">
         <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
         <span class="badge badge-neutral"><?= count($deptTargets) ?> target<?= count($deptTargets) !== 1 ? 's' : '' ?></span>
@@ -322,17 +388,29 @@ require __DIR__ . '/inc/header.php';
           <span class="tabular" style="font-weight:600;color:<?= $dCol ?>"><?= $dPct ?>%</span>
           <span class="tg-bar"><span style="width:<?= $dPct ?>%;background:<?= $dCol ?>"></span></span>
         </span>
+        <?php if ($isHod && $draftCount > 0): ?>
+          <form method="post" style="display:inline;margin-left:auto;margin-right:12px" onclick="event.stopPropagation()">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="submit_all">
+            <input type="hidden" name="department" value="<?= e($deptName) ?>">
+            <input type="hidden" name="academic_year" value="<?= e($yearFilter ?: '2025-26') ?>">
+            <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Submit all <?= $draftCount ?> targets to the Dean for review?')">
+              <?= icon('send', 14) ?> Submit All for Review (<?= $draftCount ?>)
+            </button>
+          </form>
+        <?php endif; ?>
         <span class="tg-chev"><?= icon('chevron', 16) ?></span>
       </summary>
 
       <div class="table-wrap"><table class="data" style="min-width:760px">
         <thead><tr>
           <?php if ($isHod): ?>
-            <th style="padding-left:24px">Target Details</th>
-            <th class="num">Fixed Target</th>
-            <th>Target Deadline</th>
-            <th>Status</th>
-            <th class="num" style="padding-right:24px">Actions</th>
+            <th style="padding-left:24px;width:75px">S.No</th>
+            <th style="min-width:320px">Target Details</th>
+            <th class="num" style="width:130px">Fixed Target</th>
+            <th style="width:210px">Target Deadline</th>
+            <th style="width:150px">Status</th>
+            <th class="num" style="padding-right:24px;width:130px">Actions</th>
           <?php else: ?>
             <th style="padding-left:24px">Metric</th>
             <th>Year</th>
@@ -345,21 +423,23 @@ require __DIR__ . '/inc/header.php';
           <?php endif; ?>
         </tr></thead>
         <tbody>
-        <?php foreach ($deptTargets as $t): ?>
+        <?php foreach ($deptTargets as $index => $t): ?>
           <?php
             $pct      = $t['target_value'] > 0 ? min(100, round($t['achieved_value'] / $t['target_value'] * 100)) : 0;
             $barColor = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
             $frozen   = target_is_frozen($t);
             $status   = (string) ($t['status'] ?? 'Draft');
-            // Non-destructive suggestion: approved records backing this target,
-            // or null when the metric is a manual (non-record) proforma row.
-            $recCount = target_record_count($t);
+            // Non-destructive suggestion: only compute for non-HoD view where the [Use] button is actually shown
+            $recCount = !$isHod ? target_record_count($t) : null;
           ?>
           <tr>
             <?php if ($isHod): ?>
-              <td style="padding-left:24px">
-                <div style="font-weight:600;color:var(--navy-900)"><?= e($t['metric']) ?></div>
-                <?php if (!empty($t['academic_year'])): ?>
+              <td style="padding-left:24px;font-weight:600;color:var(--navy-700);white-space:nowrap">
+                <?= (int) ($index + 1) ?>
+              </td>
+              <td>
+                <div style="font-weight:600;color:var(--navy-900);line-height:1.45"><?= e($t['metric']) ?></div>
+                <?php if (!empty($t['academic_year']) && !$yearFilter): ?>
                   <div class="card-sub" style="font-size:12px;margin-top:2px"><?= icon('calendar', 12) ?> <?= e($t['academic_year']) ?></div>
                 <?php endif; ?>
                 <?php if (!empty($t['coordinator'])): ?>
@@ -369,34 +449,65 @@ require __DIR__ . '/inc/header.php';
                   <div class="card-sub"><?= e($t['remarks']) ?></div>
                 <?php endif; ?>
                 <?php if ($status === 'Changes Requested' && !empty($t['review_remark'])): ?>
-                  <div class="card-sub" style="color:#B45309;margin-top:2px">
-                    <?= icon('alert-triangle', 12) ?> <?= e($t['review_remark']) ?>
+                  <div class="card-sub" style="color:#B45309;margin-top:3px;font-weight:500">
+                    <?= icon('alert-triangle', 12) ?> Dean's note: <?= e($t['review_remark']) ?>
                   </div>
                 <?php endif; ?>
               </td>
-              <td class="num tabular" style="font-weight:600;font-size:14px"><?= (int) $t['target_value'] ?></td>
+              <td class="num tabular" style="font-weight:700;font-size:14px;color:var(--navy-800);white-space:nowrap">
+                <?= e(!empty($t['fixed_text']) ? $t['fixed_text'] : ($t['target_value'] > 0 ? (string)$t['target_value'] : '-')) ?>
+              </td>
               <td>
-                <?php if (!empty($t['target_deadline'])): ?>
-                  <?php
-                    $deadlineTs = strtotime($t['target_deadline']);
-                    $isOverdue = ($deadlineTs < strtotime('today') && $status !== 'Approved');
-                  ?>
-                  <div style="font-weight:500;<?= $isOverdue ? 'color:#DC2626;' : '' ?>">
-                    <?= icon('clock', 12) ?> <?= date('d M Y', $deadlineTs) ?>
-                  </div>
-                  <?php if ($isOverdue): ?>
-                    <span class="badge badge-danger" style="font-size:10px;padding:1px 6px">Overdue</span>
-                  <?php endif; ?>
+                <?php if (target_can_edit($t, $user)): ?>
+                  <form method="post" class="deadline-form" onsubmit="return handleDeadlineSubmit(event, this)">
+                    <?= csrf_field() ?>
+                    <input type="hidden" name="action" value="update_deadline">
+                    <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
+                    <input type="hidden" name="ajax" value="1">
+                    <div style="display:flex;align-items:center;gap:6px">
+                      <input type="date" class="input input-sm deadline-picker" name="target_deadline"
+                             value="<?= e($t['target_deadline'] ?? '') ?>"
+                             onchange="saveDeadlineToServer(this.form)"
+                             title="Pick deadline"
+                             style="width:125px;height:30px;padding:2px 6px;font-size:12px">
+                      <span class="deadline-display card-sub tabular" style="font-size:11px;font-weight:600;min-width:70px">
+                        <?= !empty($t['target_deadline']) ? date('d-m-Y', strtotime($t['target_deadline'])) : '—' ?>
+                      </span>
+                    </div>
+                  </form>
                 <?php else: ?>
-                  <span class="card-sub">—</span>
+                  <div style="display:flex;align-items:center;gap:4px">
+                    <?php if (!empty($t['target_deadline'])): ?>
+                      <?php
+                        $deadlineTs = strtotime($t['target_deadline']);
+                        $isOverdue = ($deadlineTs < strtotime('today') && $status !== 'Approved');
+                      ?>
+                      <span class="tabular font-medium" style="font-size:13px;<?= $isOverdue ? 'color:#DC2626;font-weight:600' : 'color:var(--ink)' ?>">
+                        <?= icon('clock', 12) ?> <?= date('d-m-Y', $deadlineTs) ?>
+                      </span>
+                      <?php if ($isOverdue): ?>
+                        <span class="badge badge-danger" style="font-size:10px;padding:1px 5px">Overdue</span>
+                      <?php endif; ?>
+                    <?php else: ?>
+                      <span class="card-sub">—</span>
+                    <?php endif; ?>
+                  </div>
                 <?php endif; ?>
               </td>
               <td>
-                <span class="badge badge-<?= target_status_class($status) ?>">
-                  <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
-                </span>
+                <?php if ($status === 'Draft'): ?>
+                  <span class="badge badge-neutral">Draft</span>
+                <?php elseif ($status === 'Pending Review' || $status === 'Dean Pending'): ?>
+                  <span class="badge badge-info" title="Awaiting Dean review"><?= icon('clock', 11) ?> Dean Pending</span>
+                <?php elseif ($status === 'Changes Requested'): ?>
+                  <span class="badge badge-warning" title="Dean requested changes"><?= icon('alert-triangle', 11) ?> Changes Requested</span>
+                <?php elseif ($status === 'Approved'): ?>
+                  <span class="badge badge-success" title="Approved & Frozen"><?= icon('shield', 11) ?> Approved</span>
+                <?php else: ?>
+                  <span class="badge badge-<?= target_status_class($status) ?>"><?= e($status) ?></span>
+                <?php endif; ?>
                 <?php if ($frozen && !empty($t['approver_name'])): ?>
-                  <div class="card-sub" style="margin-top:3px">by <?= e($t['approver_name']) ?></div>
+                  <div class="card-sub" style="margin-top:2px;font-size:11px">by <?= e($t['approver_name']) ?></div>
                 <?php endif; ?>
               </td>
               <td class="num" style="padding-right:24px">
@@ -408,7 +519,7 @@ require __DIR__ . '/inc/header.php';
                       <?= csrf_field() ?>
                       <input type="hidden" name="action" value="submit">
                       <input type="hidden" name="id" value="<?= (int) $t['id'] ?>">
-                      <button class="mini-btn" title="Send for review"><?= icon('send', 15) ?></button>
+                      <button class="mini-btn" title="Send for Dean review" style="color:var(--orange-500)"><?= icon('send', 15) ?></button>
                     </form>
                   <?php endif; ?>
                   <?php if (target_can_edit($t, $user)): ?>
@@ -419,7 +530,7 @@ require __DIR__ . '/inc/header.php';
                     <button class="mini-btn danger" title="Delete"
                             onclick='delTarget(<?= (int) $t["id"] ?>, "<?= e($t["metric"]) ?>")'><?= icon('trash', 15) ?></button>
                   <?php endif; ?>
-                  <?php if ($status === 'Pending Review' && !target_can_review($t, $user)): ?>
+                  <?php if (in_array($status, ['Pending Review', 'Dean Pending'], true) && !target_can_review($t, $user)): ?>
                     <span class="card-sub" title="Awaiting Dean review"><?= icon('clock', 14) ?></span>
                   <?php endif; ?>
                 </div>
@@ -535,6 +646,20 @@ require __DIR__ . '/inc/header.php';
     </details>
   <?php endforeach; ?>
 
+  <?php if ($isDean && $awaiting > 0): ?>
+    <div style="margin-top:24px;margin-bottom:12px;display:flex;justify-content:flex-end">
+      <form method="post" id="bulkApproveForm" onsubmit="return confirmBulkApprove(event, this)">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="bulk_approve">
+        <input type="hidden" name="department" value="<?= e($deptFilter ?? '') ?>">
+        <input type="hidden" name="academic_year" value="<?= e($yearFilter ?? '') ?>">
+        <button type="submit" class="btn btn-primary" style="font-weight:600;padding:10px 22px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 2px 6px rgba(249,115,22,0.25)">
+          <?= icon('check', 16) ?> Approve All Targets
+        </button>
+      </form>
+    </div>
+  <?php endif; ?>
+
 <?php endif; ?>
 
 <?php if ($canCreate): ?>
@@ -597,8 +722,9 @@ require __DIR__ . '/inc/header.php';
       <select class="select" name="academic_year" id="et-year">
         <?php foreach ($years as $y): ?><option><?= e($y) ?></option><?php endforeach; ?>
       </select></div>
-    <div class="field"><label>Fixed (target value)</label>
-      <input class="input" type="number" name="target_value" id="et-tv" min="0" required></div>
+    <div class="field"><label>Fixed Target</label>
+      <input class="input" type="text" name="fixed_text" id="et-fixed-text" placeholder="e.g. 86 %, 10 Lakhs, 50">
+      <input type="hidden" name="target_value" id="et-tv"></div>
     <div class="field"><label>Target Deadline</label>
       <input class="input" type="date" name="target_deadline" id="et-dl"></div>
     <div class="field"><label>Achieved value</label>
@@ -726,9 +852,11 @@ function editTarget(t) {
   document.getElementById('et-metric').value = t.metric || '';
   document.getElementById('et-dept').value   = t.department || '';
   document.getElementById('et-year').value   = t.academic_year || '';
-  document.getElementById('et-tv').value     = t.target_value;
+  document.getElementById('et-tv').value     = (t.target_value != null ? t.target_value : 0);
+  var fixedEl = document.getElementById('et-fixed-text');
+  if (fixedEl) fixedEl.value = t.fixed_text || (t.target_value != null ? t.target_value : '');
   document.getElementById('et-dl').value     = t.target_deadline || '';
-  document.getElementById('et-av').value     = t.achieved_value;
+  document.getElementById('et-av').value     = (t.achieved_value != null ? t.achieved_value : 0);
   document.getElementById('et-coord').value  = t.coordinator || '';
   document.getElementById('et-rem').value    = t.remarks || '';
   document.getElementById('et-note').textContent =
@@ -741,15 +869,13 @@ function editTarget(t) {
 function viewTarget(t) {
   document.getElementById('vt-title').textContent = t.metric || 'Target Details';
   document.getElementById('vt-dept-year').textContent = (t.department || '') + (t.academic_year ? ' · ' + t.academic_year : '');
-  document.getElementById('vt-target').textContent = t.target_value ?? '0';
+  document.getElementById('vt-target').textContent = t.fixed_text || (t.target_value != null ? t.target_value : '—');
 
   var dl = t.target_deadline;
   if (dl) {
     var parts = dl.split('-');
     if (parts.length === 3) {
-      var d = new Date(parts[0], parts[1] - 1, parts[2]);
-      var opts = { day: '2-digit', month: 'short', year: 'numeric' };
-      document.getElementById('vt-deadline').textContent = d.toLocaleDateString('en-GB', opts);
+      document.getElementById('vt-deadline').textContent = parts[2] + '-' + parts[1] + '-' + parts[0];
     } else {
       document.getElementById('vt-deadline').textContent = dl;
     }
@@ -837,5 +963,47 @@ function reviewTarget(t, decision) {
   tick();
   setInterval(tick, 1000);
 })();
+
+function saveDeadlineToServer(form) {
+  var formData = new FormData(form);
+  var displaySpan = form.querySelector('.deadline-display');
+  var picker = form.querySelector('.deadline-picker');
+
+  fetch(window.location.href, {
+    method: 'POST',
+    body: formData,
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(function(res) { return res.json(); })
+  .then(function(data) {
+    if (data && data.ok) {
+      if (displaySpan) displaySpan.textContent = data.formatted || '—';
+      if (picker) {
+        picker.style.borderColor = '#10B981';
+        setTimeout(function() { picker.style.borderColor = ''; }, 1200);
+      }
+    } else if (data && data.msg) {
+      alert(data.msg);
+    }
+  })
+  .catch(function() {
+    form.submit();
+  });
+}
+
+function handleDeadlineSubmit(e, form) {
+  e.preventDefault();
+  saveDeadlineToServer(form);
+  return false;
+}
+
+function confirmBulkApprove(e, form) {
+  e.preventDefault();
+  var msg = 'Approve all targets?\n\nAll currently eligible Dean Pending targets shown for review will be approved.';
+  if (confirm(msg)) {
+    form.submit();
+  }
+  return false;
+}
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>

@@ -33,6 +33,23 @@ require_once __DIR__ . '/Setting.php';
    every request, and the dashboard counts down to that same instant.
    ========================================================================= */
 
+/**
+ * Request-scoped memo for unlock_active(), keyed by department.
+ *
+ * target_can_edit() calls unlock_active() once for every Approved target drawn
+ * on the Targets page, and each call is the same query for the same department.
+ * Without this, a department with dozens of approved targets fires dozens of
+ * identical round-trips to the (remote) database and the page can exceed the
+ * PHP time limit. Any write that could change the answer clears this.
+ */
+$GLOBALS['_unlock_active_cache'] = [];
+
+/** Forget the memoised unlock_active() answers (call after an unlock write). */
+function unlock_active_cache_clear(): void
+{
+    $GLOBALS['_unlock_active_cache'] = [];
+}
+
 /** The default edit-window length in hours (Admin-configurable). */
 function unlock_default_hours(): int
 {
@@ -43,6 +60,7 @@ function unlock_default_hours(): int
 function unlock_expire_due(): void
 {
     db()->exec("UPDATE unlock_requests SET status='Expired' WHERE status='Granted' AND unlocked_until <= NOW()");
+    unlock_active_cache_clear();
 }
 
 /** The department's live unlock window, if one is open right now. */
@@ -51,13 +69,16 @@ function unlock_active(?string $department): ?array
     if (!$department) {
         return null;
     }
+    if (array_key_exists($department, $GLOBALS['_unlock_active_cache'])) {
+        return $GLOBALS['_unlock_active_cache'][$department];
+    }
     $stmt = db()->prepare(
         "SELECT * FROM unlock_requests
           WHERE department = ? AND status = 'Granted' AND unlocked_until > NOW()
           ORDER BY unlocked_until DESC LIMIT 1"
     );
     $stmt->execute([$department]);
-    return $stmt->fetch() ?: null;
+    return $GLOBALS['_unlock_active_cache'][$department] = ($stmt->fetch() ?: null);
 }
 
 /** A pending (awaiting-Admin) request for a department, if any. */
@@ -117,6 +138,7 @@ function unlock_request(?string $department, int $userId, string $reason): array
 
     $stmt = db()->prepare("INSERT INTO unlock_requests (department, requested_by, reason, status) VALUES (?,?,?,'Requested')");
     $stmt->execute([$department, $userId, $reason]);
+    unlock_active_cache_clear();
     return [true, 'Unlock request sent to the Admin.'];
 }
 
@@ -139,6 +161,7 @@ function unlock_grant(int $id, int $adminId, int $hours): array
           WHERE id = ?"
     );
     $upd->execute([$hours, $adminId, $hours, $id]);
+    unlock_active_cache_clear();
     return [true, "Unlocked for {$hours}h — the HoD can edit until the timer ends."];
 }
 
@@ -147,6 +170,7 @@ function unlock_deny(int $id, int $adminId, string $note = ''): array
 {
     $stmt = db()->prepare("UPDATE unlock_requests SET status='Denied', granted_by=?, admin_note=? WHERE id = ? AND status='Requested'");
     $stmt->execute([$adminId, trim($note) ?: null, $id]);
+    unlock_active_cache_clear();
     return [true, 'Unlock request denied.'];
 }
 
@@ -169,7 +193,7 @@ function unlock_pending_count(): int
 /** The states a target can be in, in the order it travels through them. */
 function target_statuses(): array
 {
-    return ['Draft', 'Pending Review', 'Changes Requested', 'Approved'];
+    return ['Draft', 'Dean Pending', 'Changes Requested', 'Approved'];
 }
 
 /**
@@ -182,6 +206,7 @@ function target_status_class(string $status): string
 {
     $map = [
         'Draft'             => 'neutral',
+        'Dean Pending'      => 'info',
         'Pending Review'    => 'info',
         'Changes Requested' => 'warning',
         'Approved'          => 'success',
@@ -246,7 +271,7 @@ function target_can_submit(array $target, array $user): bool
 function target_can_review(array $target, array $user): bool
 {
     return in_array($user['role'], ['Admin', 'Director', 'Dean'], true)
-        && ($target['status'] ?? '') === 'Pending Review';
+        && in_array($target['status'] ?? '', ['Dean Pending', 'Pending Review'], true);
 }
 
 /** May this user delete it? A frozen target is Admin-only. */
@@ -264,7 +289,7 @@ function target_can_delete(array $target, array $user): bool
 /**
  * Targets, newest first, optionally narrowed by department, year, status or metric.
  */
-function targets_all(?string $department = null, ?string $year = null, ?string $status = null, ?string $metric = null): array
+function targets_all(?string $department = null, ?string $year = null, ?string $status = null, ?string $metric = null, bool $excludeDrafts = false): array
 {
     $sql = 'SELECT t.*, u.name AS creator_name, a.name AS approver_name
               FROM targets t
@@ -282,15 +307,22 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
         $params[] = $year;
     }
     if ($status) {
-        $sql .= ' AND t.status = ?';
-        $params[] = $status;
+        if ($status === 'Dean Pending' || $status === 'Pending Review') {
+            $sql .= " AND t.status IN ('Dean Pending', 'Pending Review')";
+        } else {
+            $sql .= ' AND t.status = ?';
+            $params[] = $status;
+        }
+    }
+    if ($excludeDrafts) {
+        $sql .= " AND t.status != 'Draft'";
     }
     if ($metric) {
         $sql .= ' AND t.metric = ?';
         $params[] = $metric;
     }
 
-    $sql .= ' ORDER BY t.created_at DESC';
+    $sql .= ' ORDER BY (t.sort_order IS NULL OR t.sort_order = 0), t.sort_order ASC, t.id ASC';
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetchAll();
@@ -334,7 +366,7 @@ function target_find(int $id): ?array
 /** How many targets are sitting in the review queue, for the nav badge. */
 function targets_pending_count(): int
 {
-    $stmt = db()->query("SELECT COUNT(*) FROM targets WHERE status = 'Pending Review'");
+    $stmt = db()->query("SELECT COUNT(*) FROM targets WHERE status IN ('Dean Pending', 'Pending Review')");
     return (int) $stmt->fetchColumn();
 }
 
@@ -366,8 +398,8 @@ function target_create(array $user, string $department, string $academicYear, st
         return [false, 'A target cannot be negative.'];
     }
 
-    $isPending = ($status === 'Pending Review');
-    $statusVal = $isPending ? 'Pending Review' : 'Draft';
+    $isPending = in_array($status, ['Pending Review', 'Dean Pending'], true);
+    $statusVal = $isPending ? 'Dean Pending' : 'Draft';
     $submittedAt = $isPending ? date('Y-m-d H:i:s') : null;
 
     $targetDeadline = !empty(trim((string) $targetDeadline)) ? trim((string) $targetDeadline) : null;
@@ -401,7 +433,7 @@ function target_create(array $user, string $department, string $academicYear, st
  * is rewritten so the record always shows who last set the figure. A HoD can
  * never move a target into another department.
  */
-function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null): array
+function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null, ?string $fixedText = null): array
 {
     $existing = target_find($id);
     if (!$existing) {
@@ -437,6 +469,11 @@ function target_update(int $id, array $user, string $department, string $academi
     $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, target_deadline = ?, achieved_value = ?, remarks = ?, coordinator = ?';
     $args = [$department, $academicYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
 
+    if ($fixedText !== null) {
+        $sql .= ', fixed_text = ?';
+        $args[] = trim($fixedText);
+    }
+
     // Re-stamp the approval only when an Admin edits a frozen target — a HoD
     // editing inside an unlock window is not re-approving it, so the original
     // approver and date stand.
@@ -465,10 +502,10 @@ function target_submit(int $id, array $user): array
         return [false, 'That target cannot be sent for review.'];
     }
 
-    $stmt = db()->prepare("UPDATE targets SET status = 'Pending Review', submitted_at = ? WHERE id = ?");
+    $stmt = db()->prepare("UPDATE targets SET status = 'Dean Pending', submitted_at = ? WHERE id = ?");
     $stmt->execute([date('Y-m-d H:i:s'), $id]);
 
-    return [true, 'Sent to the Director and Admin for review.'];
+    return [true, 'Target submitted for Dean review.'];
 }
 
 /**
@@ -493,7 +530,7 @@ function target_review(int $id, array $user, string $decision, ?string $remark):
         return [true, 'Target approved and frozen.'];
     }
 
-    if ($decision === 'changes') {
+    if ($decision === 'changes' || $decision === 'reject') {
         if (trim((string) $remark) === '') {
             return [false, 'Say what needs changing before sending it back.'];
         }
@@ -503,6 +540,65 @@ function target_review(int $id, array $user, string $decision, ?string $remark):
     }
 
     return [false, 'Unknown review decision.'];
+}
+
+/**
+ * Bulk approve all currently eligible targets waiting for review (status 'Dean Pending').
+ * Scoped to user's authorized role and optional department/academic-year filters.
+ * Runs atomically inside a database transaction.
+ */
+function targets_bulk_approve(array $user, ?string $deptFilter = null, ?string $yearFilter = null): array
+{
+    if (!in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
+        return [false, 'You are not authorized to approve targets.'];
+    }
+
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        $sql = "SELECT id, department, metric, academic_year, created_by
+                  FROM targets
+                 WHERE status IN ('Dean Pending', 'Pending Review')";
+        $params = [];
+
+        if ($deptFilter) {
+            $sql .= " AND department = ?";
+            $params[] = $deptFilter;
+        }
+        if ($yearFilter) {
+            $sql .= " AND academic_year = ?";
+            $params[] = $yearFilter;
+        }
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $targets = $stmt->fetchAll();
+
+        if (empty($targets)) {
+            $pdo->rollBack();
+            return [false, 'No eligible Dean Pending targets found to approve.'];
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $updSql = "UPDATE targets
+                      SET status = 'Approved', approved_by = ?, approved_at = ?
+                    WHERE id = ? AND status IN ('Dean Pending', 'Pending Review')";
+        $updStmt = $pdo->prepare($updSql);
+
+        $approvedCount = 0;
+        foreach ($targets as $t) {
+            $updStmt->execute([$user['id'], $now, $t['id']]);
+            $approvedCount += $updStmt->rowCount();
+        }
+
+        $pdo->commit();
+        return [true, "$approvedCount target" . ($approvedCount !== 1 ? 's' : '') . " approved successfully."];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return [false, 'Failed to approve targets: ' . $e->getMessage()];
+    }
 }
 
 function target_delete(int $id, array $user): array
@@ -593,9 +689,18 @@ function target_record_table_columns(string $table): array
  */
 function target_record_count(array $target): ?int
 {
+    static $countCache = [];
+
     $type = target_suggested_type((string) ($target['metric'] ?? ''));
     if ($type === null) {
         return null;
+    }
+
+    $dept = (string) ($target['department'] ?? '');
+    $year = (string) ($target['academic_year'] ?? '');
+    $cacheKey = "{$type}|{$dept}|{$year}";
+    if (array_key_exists($cacheKey, $countCache)) {
+        return $countCache[$cacheKey];
     }
 
     require_once __DIR__ . '/Record.php';
@@ -625,7 +730,9 @@ function target_record_count(array $target): ?int
     try {
         $stmt = db()->prepare($sql);
         $stmt->execute($args);
-        return (int) $stmt->fetchColumn();
+        $count = (int) $stmt->fetchColumn();
+        $countCache[$cacheKey] = $count;
+        return $count;
     } catch (\PDOException $e) {
         return 0;
     }
@@ -715,5 +822,101 @@ function sync_target_achieved_for_type(string $type): void
             }
         }
     }
+}
+
+/**
+ * Default targets list from the CSE Executive Meeting Report Word document.
+ * Fixed target details and fixed target values are sourced directly from the document.
+ */
+function target_defaults(): array
+{
+    return [
+        ['sort_order' => 1,  'serial_no' => '1',     'metric' => 'PASS PERCENTAGE', 'fixed_text' => '86 %', 'target_value' => 86],
+        ['sort_order' => 2,  'serial_no' => '2',     'metric' => 'TO IMPROVE II, III & IV YEAR STUDENTS CGPA', 'fixed_text' => '50', 'target_value' => 50],
+        ['sort_order' => 3,  'serial_no' => '3',     'metric' => '2022-26 BATCH STUDENTS PLACEMENT', 'fixed_text' => '60', 'target_value' => 60],
+        ['sort_order' => 4,  'serial_no' => '4',     'metric' => 'NUMBER OF QUALITY PUBLICATIONS IN SCOPUS/SCI JOURNALS/SPRINGER/UGC CARE/H-INDEX', 'fixed_text' => 'UGC – 18', 'target_value' => 18],
+        ['sort_order' => 5,  'serial_no' => '5(a)',  'metric' => 'BOOKS PUBLICATION', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 6,  'serial_no' => '5(b)',  'metric' => 'BOOK CHAPTER', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 7,  'serial_no' => '6(a)',  'metric' => 'PATENT PUBLISHED', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 8,  'serial_no' => '6(b)',  'metric' => 'PATENT GRANTED', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 9,  'serial_no' => '6(c)',  'metric' => 'COPY RIGHTS', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 10, 'serial_no' => '7(a)',  'metric' => 'SPONSORED RESEARCH', 'fixed_text' => '10 Lakhs', 'target_value' => 10],
+        ['sort_order' => 11, 'serial_no' => '7(b)',  'metric' => 'FUNDS CONSULTANCY PROJECTS', 'fixed_text' => '2 Lakhs', 'target_value' => 2],
+        ['sort_order' => 12, 'serial_no' => '8',     'metric' => 'RESEARCH CENTRE RECOGNITION FROM ANNA UNIVERSITY', 'fixed_text' => '-', 'target_value' => 0],
+        ['sort_order' => 13, 'serial_no' => '9(a)',  'metric' => 'PROGRAMME ON INTELLECTUAL PROPERTY RIGHTS', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 14, 'serial_no' => '9(b)',  'metric' => 'PROGRAMME ON HIGHER STUDIES', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 15, 'serial_no' => '9(c)',  'metric' => 'PROGRAMME ON ENTREPRENEURSHIP', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 16, 'serial_no' => '10(a)', 'metric' => 'NPTEL', 'fixed_text' => '9', 'target_value' => 9],
+        ['sort_order' => 17, 'serial_no' => '10(b)', 'metric' => 'Others', 'fixed_text' => '-', 'target_value' => 0],
+        ['sort_order' => 18, 'serial_no' => '11',    'metric' => 'INDUSTRY INTERACTION/MOU/INDUSTRY SUPPORTED LAB', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 19, 'serial_no' => '12',    'metric' => 'NO OF STUDENTS COMPLETED INDUSTRY INTERNSHIP (4 weeks & above)', 'fixed_text' => '85', 'target_value' => 85],
+        ['sort_order' => 20, 'serial_no' => '13',    'metric' => 'NO OF STUDENTS COMPLETED SUMMER TRAINING (less than 4 weeks)', 'fixed_text' => '20', 'target_value' => 20],
+        ['sort_order' => 21, 'serial_no' => '14',    'metric' => 'STUDENTS PROJECT WITH QUALITY AND PUBLISH THE PROJECTS in Conference, Journal, Hackathon & YouTube', 'fixed_text' => '10', 'target_value' => 10],
+        ['sort_order' => 22, 'serial_no' => '15',    'metric' => 'FACULTY PARTICIPATIONS IN FDP / TRAINING ACTIVITIES / STTP/ CONFERENCE', 'fixed_text' => '27', 'target_value' => 27],
+        ['sort_order' => 23, 'serial_no' => '16',    'metric' => 'NO. OF MEMBERSHIP IN PROFESSIONAL SOCIETIES (Faculties & Students)', 'fixed_text' => '50', 'target_value' => 50],
+        ['sort_order' => 24, 'serial_no' => '17',    'metric' => 'NEWSLETTER', 'fixed_text' => '2', 'target_value' => 2],
+        ['sort_order' => 25, 'serial_no' => '18',    'metric' => 'NO. OF ONLINE CERTIFICATIONS COMPLETED BY STUDENTS', 'fixed_text' => '50', 'target_value' => 50],
+        ['sort_order' => 26, 'serial_no' => '19',    'metric' => 'NO. OF STUDENTS COMPLETED IIT-', 'fixed_text' => '100', 'target_value' => 100],
+        ['sort_order' => 27, 'serial_no' => '20(a)', 'metric' => 'PARTICIPATION IN INTER-INSTITUTE EVENTS BY STUDENTS WITHIN STATE', 'fixed_text' => '10', 'target_value' => 10],
+        ['sort_order' => 28, 'serial_no' => '20(b)', 'metric' => 'OUTSIDE STATE', 'fixed_text' => '2', 'target_value' => 2],
+        ['sort_order' => 29, 'serial_no' => '20(c)', 'metric' => 'AWARDS/PRIZES', 'fixed_text' => '5', 'target_value' => 5],
+        ['sort_order' => 30, 'serial_no' => '21',    'metric' => 'NO OF VALUE ADDED COURSE/HANDS ON TRAINING COURSES', 'fixed_text' => '3', 'target_value' => 3],
+        ['sort_order' => 31, 'serial_no' => '22(a)', 'metric' => 'EVENTS PARTICIPATION IN SPORTS – STATE LEVEL', 'fixed_text' => '10', 'target_value' => 10],
+        ['sort_order' => 32, 'serial_no' => '22(b)', 'metric' => 'NATIONAL LEVEL', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 33, 'serial_no' => '22(c)', 'metric' => 'AWARDS / MEDALS', 'fixed_text' => '5', 'target_value' => 5],
+        ['sort_order' => 34, 'serial_no' => '23',    'metric' => 'INNOVATION EVENTS TO BE CONDUCTED', 'fixed_text' => '2', 'target_value' => 2],
+        ['sort_order' => 35, 'serial_no' => '24',    'metric' => 'IIC ACTIVITIES', 'fixed_text' => '2', 'target_value' => 2],
+        ['sort_order' => 36, 'serial_no' => '25',    'metric' => 'WEBSITE UPDATION', 'fixed_text' => '-', 'target_value' => 0],
+        ['sort_order' => 37, 'serial_no' => '26',    'metric' => 'STARTUP', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 38, 'serial_no' => '27',    'metric' => 'ALUMNI CHAPTER', 'fixed_text' => '-', 'target_value' => 0],
+        ['sort_order' => 39, 'serial_no' => '28',    'metric' => 'AWARDS', 'fixed_text' => '1', 'target_value' => 1],
+        ['sort_order' => 40, 'serial_no' => '29(a)', 'metric' => 'RECOGNITION for Faculty – BOS/DC MEMBERS', 'fixed_text' => '10', 'target_value' => 10],
+        ['sort_order' => 41, 'serial_no' => '29(b)', 'metric' => 'QP/Key SETTER', 'fixed_text' => '03', 'target_value' => 3],
+        ['sort_order' => 42, 'serial_no' => '29(c)', 'metric' => 'Reviewer for Journal', 'fixed_text' => '01', 'target_value' => 1],
+        ['sort_order' => 43, 'serial_no' => '29(d)', 'metric' => 'Resource Person', 'fixed_text' => '-', 'target_value' => 0],
+        ['sort_order' => 44, 'serial_no' => '29(e)', 'metric' => 'Others', 'fixed_text' => '01', 'target_value' => 1],
+        ['sort_order' => 45, 'serial_no' => '30',    'metric' => 'NO. OF ACTIVITIES CONDUCTED BY NSS/YRC', 'fixed_text' => '-', 'target_value' => 0],
+    ];
+}
+
+/**
+ * Ensure default targets exist for a department and academic year.
+ * If targets already exist, does not duplicate them (safe idempotent seed).
+ */
+function ensure_default_targets(string $department, string $academicYear = '2025-26', ?int $createdBy = null): int
+{
+    $department = trim($department);
+    $academicYear = trim($academicYear);
+    if ($department === '' || $academicYear === '') {
+        return 0;
+    }
+
+    $chk = db()->prepare("SELECT COUNT(*) FROM targets WHERE department = ? AND academic_year = ? AND serial_no = '1'");
+    $chk->execute([$department, $academicYear]);
+    if ((int) $chk->fetchColumn() > 0) {
+        return 0;
+    }
+
+    $defaults = target_defaults();
+    $sql = 'INSERT INTO targets (department, academic_year, sort_order, serial_no, metric, fixed_text, target_value, target_deadline, achieved_value, status, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, \'Draft\', ?, NOW(), NOW())';
+    $stmt = db()->prepare($sql);
+
+    $inserted = 0;
+    foreach ($defaults as $item) {
+        $stmt->execute([
+            $department,
+            $academicYear,
+            $item['sort_order'],
+            $item['serial_no'],
+            $item['metric'],
+            $item['fixed_text'],
+            $item['target_value'],
+            $createdBy,
+        ]);
+        $inserted++;
+    }
+
+    return $inserted;
 }
 

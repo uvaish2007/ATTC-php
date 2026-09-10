@@ -92,6 +92,137 @@ $deptUrl = function (string $dept) use ($data) {
     $q = array_filter(['department' => $dept, 'year' => $data['scope']['year'] ?? '']);
     return url('dashboard.php') . ($q ? '?' . http_build_query($q) : '');
 };
+
+/*
+ * The "Graph" side of the Raw Data / Graph toggle: a small inline-SVG column
+ * chart. The SVG has a fixed viewBox so it scales like a picture and the labels
+ * can never overlap however wide the card gets. It reuses the dashboard's
+ * existing .chart-* classes (app.css); only the bar colour is passed in.
+ */
+if (!function_exists('dash_column_chart')) {
+
+    /** Round a maximum up to a multiple of 4, so the four gridline labels are whole numbers. */
+    function dash_chart_ceil(int $max): int
+    {
+        return max(4, (int) (ceil(max(1, $max) / 4) * 4));
+    }
+
+    /**
+     * @param array<int,array{label:string,value:int|string}> $items
+     * @param string $color  CSS colour for the bars
+     * @param array<string,string> $short  optional label => short-label map
+     * @param int    $vw     viewBox width; pass a larger value for a chart that
+     *                       spans the full page so its text and bars stay a
+     *                       sensible size instead of being scaled up. 0 = auto.
+     */
+    function dash_column_chart(array $items, string $color = 'var(--orange-500)', array $short = [], int $vw = 0): string
+    {
+        $items  = array_values(array_filter($items, static fn($it) => isset($it['label'])));
+        $values = array_map(static fn($it) => (int) $it['value'], $items);
+        $n      = count($items);
+
+        if ($n === 0 || array_sum($values) === 0) {
+            return '<div class="chart-empty">No data to chart yet.</div>';
+        }
+
+        $rotate = $n > 6;                              // tilt x-labels once bars get narrow
+        $W      = $vw > 0 ? $vw : max(360, min(1160, 90 + $n * 84));
+        $H      = $rotate ? 320 : 264;
+        $padL = 44; $padR = 18; $padT = 28; $padB = $rotate ? 96 : 52;
+        $plotW = $W - $padL - $padR;
+        $plotH = $H - $padT - $padB;
+
+        $ceil  = dash_chart_ceil(max($values));
+        $slot  = $plotW / $n;
+        $barW  = min(58.0, max(16.0, $slot * 0.56));
+        $baseY = $padT + $plotH;
+
+        $svg = '<svg class="chart" viewBox="0 0 ' . $W . ' ' . $H . '" preserveAspectRatio="xMidYMid meet" role="img">';
+
+        // Horizontal gridlines and the y-axis scale (0 .. ceil in four steps).
+        for ($i = 0; $i <= 4; $i++) {
+            $y = $baseY - $plotH * $i / 4;
+            $svg .= '<line class="chart-grid" x1="' . $padL . '" y1="' . round($y, 1)
+                  . '" x2="' . ($W - $padR) . '" y2="' . round($y, 1) . '"/>'
+                  . '<text class="chart-axis" x="' . ($padL - 12) . '" y="' . round($y + 4, 1)
+                  . '" text-anchor="end">' . (int) round($ceil * $i / 4) . '</text>';
+        }
+        $svg .= '<line class="chart-base" x1="' . $padL . '" y1="' . round($baseY, 1)
+              . '" x2="' . ($W - $padR) . '" y2="' . round($baseY, 1) . '"/>';
+
+        foreach ($items as $i => $it) {
+            $v   = (int) $it['value'];
+            $h   = $v > 0 ? max(3.0, $plotH * $v / $ceil) : 0.0;
+            $x   = $padL + $slot * $i + ($slot - $barW) / 2;
+            $y   = $baseY - $h;
+            $mid = $x + $barW / 2;
+
+            $label = (string) ($short[$it['label']] ?? $it['label']);
+            if (strlen($label) > 14) {
+                $label = rtrim(substr($label, 0, 13)) . '…';
+            }
+
+            if ($v > 0) {
+                $svg .= '<rect class="chart-bar" x="' . round($x, 1) . '" y="' . round($y, 1)
+                      . '" width="' . round($barW, 1) . '" height="' . round($h, 1) . '" rx="4"'
+                      . ' style="fill:' . $color . '"><title>' . e($it['label'] . ': ' . $v) . '</title></rect>';
+            }
+            $svg .= '<text class="chart-value" x="' . round($mid, 1) . '" y="' . round($y - 8, 1)
+                  . '" text-anchor="middle">' . $v . '</text>';
+
+            $ly = $baseY + ($rotate ? 16 : 24);
+            $svg .= $rotate
+                ? '<text class="chart-axis lbl" x="' . round($mid, 1) . '" y="' . $ly
+                  . '" text-anchor="end" transform="rotate(-32 ' . round($mid, 1) . ' ' . $ly . ')">' . e($label) . '</text>'
+                : '<text class="chart-axis lbl" x="' . round($mid, 1) . '" y="' . $ly
+                  . '" text-anchor="middle">' . e($label) . '</text>';
+        }
+
+        return $svg . '</svg>';
+    }
+
+    /**
+     * A donut chart as inline SVG — one arc per slice, a hole in the middle
+     * showing the total. Zero-value slices are dropped from the ring; the caller
+     * still lists them in the legend.
+     *
+     * @param array<int,array{label:string,value:int|string,color:string}> $slices
+     */
+    function dash_donut_chart(array $slices, string $centreCap = ''): string
+    {
+        $slices = array_values(array_filter($slices, static fn($s) => (int) $s['value'] > 0));
+        $total  = array_sum(array_map(static fn($s) => (int) $s['value'], $slices));
+        if ($total === 0) {
+            return '<div class="chart-empty">Nothing to chart yet.</div>';
+        }
+
+        $c = 80; $r = 56; $sw = 26;
+        $circ = 2 * M_PI * $r;
+
+        $svg  = '<svg class="donut" viewBox="0 0 160 160" role="img">';
+        $svg .= '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none"'
+              . ' stroke="var(--navy-100,#E7EBF3)" stroke-width="' . $sw . '"/>';
+
+        $offset = 0.0;
+        foreach ($slices as $s) {
+            $len = ((int) $s['value'] / $total) * $circ;
+            $svg .= '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none"'
+                  . ' stroke="' . $s['color'] . '" stroke-width="' . $sw . '"'
+                  . ' stroke-dasharray="' . round($len, 2) . ' ' . round($circ - $len, 2) . '"'
+                  . ' stroke-dashoffset="' . round(-$offset, 2) . '"'
+                  . ' transform="rotate(-90 ' . $c . ' ' . $c . ')">'
+                  . '<title>' . e($s['label'] . ': ' . (int) $s['value']) . '</title></circle>';
+            $offset += $len;
+        }
+
+        $svg .= '<text class="donut-total" x="' . $c . '" y="' . ($c + ($centreCap !== '' ? -2 : 6)) . '" text-anchor="middle">' . $total . '</text>';
+        if ($centreCap !== '') {
+            $svg .= '<text class="donut-cap" x="' . $c . '" y="' . ($c + 15) . '" text-anchor="middle">' . e($centreCap) . '</text>';
+        }
+
+        return $svg . '</svg>';
+    }
+}
 ?>
 
 <div class="page-head">
@@ -207,30 +338,44 @@ $deptUrl = function (string $dept) use ($data) {
 
 
 <!-- ==========================================================================
-     Departments (left) and the metric chart (right)
+     Departments and the records-by-category breakdown — each full width, with
+     a Raw Data / Graph switch that fills the row with whichever view is picked.
      ======================================================================= -->
-<div class="mt-5 <?= $showDepartments ? 'grid-1-2' : 'grid-1' ?>">
-
   <?php if ($showDepartments): ?>
-    <div class="card">
+    <?php
+      // Biggest department sets the length of the share bars.
+      $maxTotal   = max(1, ...array_column($rows, 'total'));
+      $allRecords = max(1, array_sum(array_column($rows, 'total')));
+
+      // Show the busiest department first.
+      $ranked = $rows;
+      usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
+
+      $deptChartItems = array_map(
+          fn($r) => ['label' => $r['department'], 'value' => (int) $r['total']],
+          $ranked
+      );
+    ?>
+    <div class="mt-5 card">
       <div class="card-head">
         <div>
           <div class="card-title">Departments</div>
-          <div class="card-sub">Click a heading to sort</div>
+          <div class="card-sub">Records by department &middot; <?= (int) $allRecords ?> total</div>
+        </div>
+        <div class="view-toggle" data-vt="dash-departments">
+          <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Raw Data</button>
+          <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Graph</button>
         </div>
       </div>
 
-      <div class="card-body">
-        <?php
-          // Biggest department sets the length of the share bars.
-          $maxTotal   = max(1, ...array_column($rows, 'total'));
-          $allRecords = max(1, array_sum(array_column($rows, 'total')));
+      <?php $deptVw = max(560, min(1180, count($deptChartItems) * 104 + 130)); ?>
+      <div class="card-body dash-graph" data-pane="graph">
+        <div style="max-width:<?= $deptVw ?>px;margin-inline:auto">
+          <?= dash_column_chart($deptChartItems, 'var(--orange-500)', [], $deptVw) ?>
+        </div>
+      </div>
 
-          // Show the busiest department first.
-          $ranked = $rows;
-          usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
-        ?>
-
+      <div class="card-body" data-pane="raw" hidden>
         <div class="table-wrap">
           <table class="data sortable" id="deptTable">
             <thead>
@@ -280,16 +425,37 @@ $deptUrl = function (string $dept) use ($data) {
     // One scale across every metric, so bar lengths are comparable between groups.
     $metricMax = max(1, ...array_map('intval', array_values($data['totals'])));
   ?>
-  <div class="card">
+  <?php
+    // One colour per category, matching the Department Breakdown legend below.
+    $groupColors = ['faculty' => '#2563EB', 'activity' => '#FF4F01', 'student' => '#059669'];
+    $catTotalAll = array_sum(array_map('intval', array_values($data['totals'])));
+  ?>
+  <div class="mt-5 card">
     <div class="card-head">
       <div>
         <div class="card-title">Records by Category</div>
-        <div class="card-sub">Every metric, grouped by what it measures</div>
+        <div class="card-sub">Every metric, grouped by what it measures &middot; <?= (int) $catTotalAll ?> total</div>
       </div>
-      <span class="tabular card-sub"><?= array_sum(array_map('intval', array_values($data['totals']))) ?> total</span>
+      <div class="view-toggle" data-vt="dash-records-category">
+        <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Raw Data</button>
+        <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Graph</button>
+      </div>
     </div>
 
-    <div class="card-body mg-wrap">
+    <div class="card-body dash-graph chart-wrap" data-pane="graph">
+      <?php foreach ($groupMeta as $gkey => $meta): ?>
+        <?php $items = $grouped[$gkey]; $gsum = array_sum(array_column($items, 'value')); ?>
+        <div class="chart-block">
+          <div class="chart-block-head">
+            <span class="mg-title"><?= icon($meta['icon'], 14) ?> <?= e($meta['title']) ?></span>
+            <span class="mg-sum tabular"><?= (int) $gsum ?></span>
+          </div>
+          <?= dash_column_chart($items, $groupColors[$gkey] ?? 'var(--orange-500)', $shortNames, 400) ?>
+        </div>
+      <?php endforeach; ?>
+    </div>
+
+    <div class="card-body mg-wrap" data-pane="raw" hidden>
       <?php foreach ($groupMeta as $gkey => $meta): ?>
         <?php $items = $grouped[$gkey]; $gsum = array_sum(array_column($items, 'value')); ?>
         <div class="mg-group">
@@ -310,8 +476,6 @@ $deptUrl = function (string $dept) use ($data) {
       <?php endforeach; ?>
     </div>
   </div>
-
-</div>
 
 <style>
   .mg-wrap { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:22px 28px; }
@@ -395,6 +559,89 @@ $deptUrl = function (string $dept) use ($data) {
   .story-detail > summary::-webkit-details-marker { display:none; }
   .story-detail > summary::marker { content:""; }
   .story-detail > summary:hover { color:var(--brand, #FF4F01); }
+
+  /* ---- Raw Data / Graph view toggle ---- */
+  .view-toggle { display:inline-flex; align-items:center; gap:2px; padding:3px; flex-shrink:0;
+      background:var(--navy-50, #F4F6FA); border:1px solid var(--hairline, #E4E9F2); border-radius:9px; }
+  .vt-btn { border:0; background:none; cursor:pointer; font:inherit; font-size:12px; font-weight:600;
+      line-height:1; color:var(--ink-muted, #5A6785); padding:6px 13px; border-radius:7px;
+      transition:background .12s ease, color .12s ease; }
+  .vt-btn:hover { color:var(--ink, #131D3B); }
+  .vt-btn.is-on { background:var(--ink, #131D3B); color:#fff; box-shadow:0 1px 2px rgba(19,29,59,.2); }
+  .vt-btn:focus-visible { outline:2px solid var(--orange-500, #FF4F01); outline-offset:1px; }
+
+  /* Only the chosen view is mounted; it always spans the whole card. */
+  [data-pane][hidden] { display:none; }
+  .card-body[data-pane] { padding-top:14px; animation:vtFade .18s ease; }
+  @keyframes vtFade { from { opacity:0; transform:translateY(3px); } to { opacity:1; transform:none; } }
+
+  /* Graph pane */
+  .dash-graph { width:100%; }
+  .dash-graph .chart { width:100%; height:auto; display:block; }
+  /* One chart, centred so a handful of bars don't stretch into a sparse band. */
+  .card-body.dash-graph:not(.chart-wrap) .chart { max-width:1180px; margin-inline:auto; }
+  /* The category breakdown: three charts that flow across the full width. */
+  .chart-wrap { display:grid; gap:26px 30px;
+      grid-template-columns:repeat(auto-fit, minmax(330px, 1fr)); }
+  .chart-block { min-width:0; }
+  .chart-block-head { display:flex; align-items:center; justify-content:space-between; gap:8px;
+      padding-bottom:8px; border-bottom:1px solid var(--hairline, #E4E9F2); }
+  .chart-block .chart { margin-top:10px; }
+  .chart-empty { padding:36px 0; text-align:center; color:var(--ink-faint, #8B96AE); font-size:13px; }
+
+  /* Clear, legible chart text and lines */
+  .card-body[data-pane] .chart-grid  { stroke:var(--navy-100, #E7EBF3); stroke-width:1; }
+  .card-body[data-pane] .chart-base  { stroke:var(--navy-200, #C9D2E4); stroke-width:1.5; }
+  .card-body[data-pane] .chart-axis  { font-size:12.5px; fill:var(--ink-muted, #5A6785); }
+  .card-body[data-pane] .chart-axis.lbl { font-weight:600; fill:var(--ink, #131D3B); }
+  .card-body[data-pane] .chart-value { font-size:13px; font-weight:800; fill:var(--ink, #131D3B); }
+  .card-body[data-pane] .chart-bar   { transition:opacity .12s ease; }
+  .card-body[data-pane] .chart-bar:hover { opacity:.85; }
+
+  @media (max-width:720px) {
+    .chart-wrap { grid-template-columns:1fr; }
+    .view-toggle { padding:2px; }
+    .vt-btn { padding:6px 10px; }
+  }
+
+  /* ---- Donut chart (Team accounts, Review Status) ---- */
+  .donut-card { display:flex; align-items:center; gap:24px; flex-wrap:wrap; }
+  .donut { width:150px; height:150px; flex-shrink:0; }
+  .donut circle { transition:stroke-dashoffset .4s ease; }
+  .donut-total { font-size:27px; font-weight:800; fill:var(--ink, #131D3B); font-variant-numeric:tabular-nums; }
+  .donut-cap { font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; fill:var(--ink-faint, #8B96AE); }
+  .donut-legend { list-style:none; margin:0; padding:0; flex:1 1 200px; min-width:0;
+      display:flex; flex-direction:column; gap:10px; }
+  .donut-legend li { display:flex; align-items:center; gap:10px; font-size:13px; }
+  .donut-legend .dl-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
+  .donut-legend .dl-nm { flex:1; min-width:0; color:var(--ink, #131D3B); white-space:nowrap;
+      overflow:hidden; text-overflow:ellipsis; }
+  .donut-legend .dl-n { font-weight:700; font-variant-numeric:tabular-nums; }
+  .donut-legend .dl-pc { min-width:42px; text-align:right; }
+
+  /* Keep Target Progress and Review Status the same size and tidily aligned */
+  .tp-rs-row { align-items:stretch; }
+  .tp-rs-row > .card { display:flex; flex-direction:column; }
+  .tp-rs-row > .card > .card-body { flex:1; display:flex; flex-direction:column; }
+  .tp-rs-row .donut-card { margin:auto 0; }          /* float the donut in its card */
+  .tp-rs-row .tp-overall { margin-top:4px; }
+
+  /* ---- Compact "Attainment by Target" ---- */
+  #targetChart .chart-filters { gap:8px 10px; }
+  #targetChart .chart-filters .select { width:auto; flex:1 1 150px; min-width:130px;
+      height:34px; padding:0 10px; font-size:13px; }
+  #targetChart .filter-bar { padding:10px 16px; }
+  #targetChart .attain-tiles { grid-template-columns:repeat(auto-fit, minmax(118px, 1fr));
+      gap:10px; margin-bottom:14px; }
+  #targetChart .attain-tile { padding:10px 12px; border-radius:10px; }
+  #targetChart .attain-tile .v { font-size:19px; margin-top:3px; }
+  #targetChart .attain-tile .v .of { font-size:12px; }
+  #targetChart .attain-tile .sub { margin-top:2px; }
+  #targetChart .attain-tile .tile-bar { margin-top:7px; }
+  #targetChart .attain-scroll { max-height:250px; }
+  #targetChart .attain-row { padding:8px; gap:14px; }
+  #targetChart .attain-nums .pct { font-size:15px; }
+  #targetChart .attain-foot { margin-top:10px; padding-top:10px; gap:16px; }
 </style>
 
 
@@ -408,7 +655,7 @@ $deptUrl = function (string $dept) use ($data) {
   // Health colour for an aggregate percentage.
   $tpTone = fn (int $p) => $p >= 75 ? '#059669' : ($p >= 40 ? '#FF4F01' : '#DC2626');
 ?>
-<div class="mt-5 grid-2-1">
+<div class="mt-5 <?= $isOversight ? 'grid-2-1' : 'grid-1-1' ?> tp-rs-row">
 
   <!-- Target Progress — the WHOLE set of targets, summarised -->
   <div class="card">
@@ -486,24 +733,24 @@ $deptUrl = function (string $dept) use ($data) {
       <?php if ($totalCount === 0): ?>
         <div class="card-sub">No records yet.</div>
       <?php else: ?>
-        <div class="rs-bar">
-          <?php foreach ($statusColours as $status => $colour): ?>
-            <?php $cnt = (int) ($breakdown[$status] ?? 0); ?>
-            <?php if ($cnt > 0): ?>
-              <span style="flex:<?= $cnt ?>;background:<?= $colour ?>" title="<?= $status ?>: <?= $cnt ?>"></span>
-            <?php endif; ?>
-          <?php endforeach; ?>
-        </div>
-        <div class="rs-legend">
-          <?php foreach ($statusColours as $status => $colour): ?>
-            <?php $cnt = (int) ($breakdown[$status] ?? 0); ?>
-            <div class="rs-row">
-              <span class="rs-dot" style="background:<?= $colour ?>"></span>
-              <span class="rs-nm"><?= $status ?></span>
-              <span class="rs-n tabular"><?= $cnt ?></span>
-              <span class="rs-pc tabular faint"><?= round($cnt / $totalCount * 100) ?>%</span>
-            </div>
-          <?php endforeach; ?>
+        <?php
+          $rsSlices = [];
+          foreach ($statusColours as $status => $colour) {
+              $rsSlices[] = ['label' => $status, 'value' => (int) ($breakdown[$status] ?? 0), 'color' => $colour];
+          }
+        ?>
+        <div class="donut-card">
+          <?= dash_donut_chart($rsSlices, 'records') ?>
+          <ul class="donut-legend">
+            <?php foreach ($rsSlices as $s): ?>
+              <li>
+                <span class="dl-dot" style="background:<?= $s['color'] ?>"></span>
+                <span class="dl-nm"><?= e($s['label']) ?></span>
+                <span class="dl-n tabular"><?= (int) $s['value'] ?></span>
+                <span class="dl-pc tabular faint"><?= round($s['value'] / $totalCount * 100) ?>%</span>
+              </li>
+            <?php endforeach; ?>
+          </ul>
         </div>
       <?php endif; ?>
     </div>
@@ -912,33 +1159,91 @@ $deptUrl = function (string $dept) use ($data) {
 
 
   <?php if ($isOversight): ?>
-    <!-- How many accounts of each role -->
+    <?php
+      // A steady colour per role, with a fallback palette for any extra roles.
+      $roleColors = [
+          'Admin' => '#131D3B', 'Director' => '#33456B', 'Dean' => '#2563EB',
+          'HoD'   => '#FF4F01', 'Coordinator' => '#059669', 'Faculty' => '#9FADCB',
+      ];
+      $rolePalette = ['#2563EB', '#FF4F01', '#059669', '#7C3AED', '#0891B2', '#DC2626', '#131D3B', '#9FADCB'];
+      $roleSlices = [];
+      $rpi = 0;
+      foreach ($data['usersByRole'] as $role => $count) {
+          $roleSlices[] = [
+              'label' => (string) $role,
+              'value' => (int) $count,
+              'color' => $roleColors[$role] ?? $rolePalette[$rpi++ % count($rolePalette)],
+          ];
+      }
+      $roleTotal = array_sum(array_column($roleSlices, 'value'));
+    ?>
+    <!-- Accounts by role, as a donut -->
     <div class="card">
       <div class="card-head">
         <div>
           <div class="card-title">Team</div>
           <div class="card-sub">Accounts by role</div>
         </div>
-        <span class="tabular card-sub"><?= array_sum($data['usersByRole']) ?> total</span>
+        <span class="tabular card-sub"><?= (int) $roleTotal ?> total</span>
       </div>
 
       <div class="card-body">
-        <?php $maxRole = max(1, ...array_values($data['usersByRole'])); ?>
-
-        <?php foreach ($data['usersByRole'] as $role => $count): ?>
-          <div class="bar-row thin">
-            <span class="bar-label"><?= e($role) ?></span>
-            <span class="bar-track">
-              <span class="bar-fill" style="width:<?= round($count / $maxRole * 100) ?>%"></span>
-            </span>
-            <span class="bar-num tabular"><?= (int) $count ?></span>
-          </div>
-        <?php endforeach; ?>
+        <div class="donut-card">
+          <?= dash_donut_chart($roleSlices, 'accounts') ?>
+          <ul class="donut-legend">
+            <?php foreach ($roleSlices as $s): ?>
+              <li>
+                <span class="dl-dot" style="background:<?= e($s['color']) ?>"></span>
+                <span class="dl-nm"><?= e($s['label']) ?></span>
+                <span class="dl-n tabular"><?= (int) $s['value'] ?></span>
+                <span class="dl-pc tabular faint"><?= $roleTotal ? round($s['value'] / $roleTotal * 100) : 0 ?>%</span>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
       </div>
     </div>
   <?php endif; ?>
 
 </div>
+
+
+<script>
+  /*
+   * Raw Data / Graph switch. Each .view-toggle flips the [data-pane] blocks
+   * inside its own card and remembers the choice per card in localStorage, so a
+   * reader who prefers the table keeps it. No dependencies; the graph pane is
+   * the default when nothing is stored (and when JavaScript is off).
+   */
+  (function () {
+    document.querySelectorAll('.view-toggle').forEach(function (toggle) {
+      var card = toggle.closest('.card');
+      if (!card) return;
+
+      var storeKey = 'dashview:' + (toggle.dataset.vt || '');
+      var buttons  = toggle.querySelectorAll('.vt-btn');
+      var panes    = card.querySelectorAll('[data-pane]');
+
+      function apply(view, remember) {
+        buttons.forEach(function (b) {
+          var on = b.dataset.view === view;
+          b.classList.toggle('is-on', on);
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        panes.forEach(function (p) { p.hidden = p.dataset.pane !== view; });
+        if (remember) { try { localStorage.setItem(storeKey, view); } catch (e) {} }
+      }
+
+      buttons.forEach(function (b) {
+        b.addEventListener('click', function () { apply(b.dataset.view, true); });
+      });
+
+      var saved = null;
+      try { saved = localStorage.getItem(storeKey); } catch (e) {}
+      apply(saved === 'raw' ? 'raw' : 'graph', false);
+    });
+  })();
+</script>
 
 
 <?php if ($showDepartments): ?>

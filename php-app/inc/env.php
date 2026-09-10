@@ -66,7 +66,7 @@ function env(string $key, $default = null)
         case 'true':  return true;
         case 'false': return false;
         case 'null':  return null;
-        case '':      return $default;
+        case '':      return '';
         default:      return $value;
     }
 }

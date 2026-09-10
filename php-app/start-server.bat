@@ -3,7 +3,7 @@ REM ===========================================================================
 REM  ATTS IQAC Portal - start the local web server
 REM
 REM  Double-click this file, then open:
-REM      http://localhost:8000/php-app/login.php
+REM      http://localhost:8000/login.php
 REM
 REM  Press Ctrl+C in this window (or just close it) to stop the server.
 REM  PHP lives in .php-runtime\ - it is portable, nothing was installed on
@@ -50,7 +50,7 @@ echo   ATTS IQAC Portal
 echo   ----------------------------------------------------------------
 echo   Open this address in your browser:
 echo.
-echo       http://localhost:8000/php-app/login.php
+echo       http://localhost:8000/login.php
 echo.
 echo   Sign in with any of these:
 echo       Admin        mohameduvaish132@gmail.com   uvaish123
@@ -64,6 +64,6 @@ echo   Keep this window open. Close it to stop the server.
 echo   ----------------------------------------------------------------
 echo.
 
-start "" "http://localhost:8000/php-app/login.php"
+start "" "http://localhost:8000/login.php"
 
 "%PHP_EXE%" -c "%PHP_INI%" -S localhost:8000 -t "%~dp0."
