@@ -131,14 +131,22 @@ if ($format === 'word') {
         }
     }
 
-    $xlsxData = SimpleXlsxWriter::createXlsx($hdr, $exportRows, 'Targets Report', $metaLines);
+    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
+        ? SimpleXlsxWriter::createXlsx($hdr, $exportRows, 'Targets Report', $metaLines)
+        : '';
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
-    header('Content-Length: ' . strlen($xlsxData));
-    header('Cache-Control: max-age=0');
-    echo $xlsxData;
-    exit;
+    if (!empty($xlsxData)) {
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
+        header('Content-Length: ' . strlen($xlsxData));
+        header('Cache-Control: max-age=0');
+        echo $xlsxData;
+        exit;
+    }
+
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 } else {
     header('Content-Type: text/html; charset=UTF-8');
 }

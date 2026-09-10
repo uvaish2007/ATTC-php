@@ -20,15 +20,22 @@ define('DB_USER', env('DB_USER', 'root'));
 define('DB_PASS', (string) env('DB_PASS', '1234'));
 
 // --- Application ---
-// The URL path the app is served from. Auto-detect if left blank in .env.
-$configuredBaseUrl = env('BASE_URL', null);
-if ($configuredBaseUrl !== null && $configuredBaseUrl !== '') {
-    define('BASE_URL', rtrim((string) $configuredBaseUrl, '/'));
+// The URL path the app is served from. Auto-detect if docroot is php-app/ or left blank in .env.
+$docRoot = str_replace('\\', '/', realpath($_SERVER['DOCUMENT_ROOT'] ?? '') ?: '');
+$appDir  = str_replace('\\', '/', realpath(dirname(__DIR__)) ?: '');
+
+if ($docRoot !== '' && $docRoot === $appDir) {
+    define('BASE_URL', '');
 } else {
-    // Auto-detect based on script location relative to document root
-    $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
-    $detectedBase = ($scriptDir === '/' || $scriptDir === '.') ? '' : rtrim($scriptDir, '/');
-    define('BASE_URL', $detectedBase);
+    $configuredBaseUrl = env('BASE_URL', null);
+    if ($configuredBaseUrl !== null && $configuredBaseUrl !== '') {
+        define('BASE_URL', rtrim((string) $configuredBaseUrl, '/'));
+    } else {
+        // Auto-detect based on script location relative to document root
+        $scriptDir = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? ''));
+        $detectedBase = ($scriptDir === '/' || $scriptDir === '.') ? '' : rtrim($scriptDir, '/');
+        define('BASE_URL', $detectedBase);
+    }
 }
 
 define('UPLOAD_DIR', dirname(__DIR__) . '/uploads');

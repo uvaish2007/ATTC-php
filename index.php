@@ -5,6 +5,19 @@ ini_set('display_errors', '1');
 // The server's document root is the project folder, but the app lives in php-app/.
 // Route direct file requests (e.g. /login.php -> /php-app/login.php) or fallback to /php-app/index.php.
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+
+// If request is already prefixed with /php-app/, serve/require that file directly.
+if (str_starts_with($path, '/php-app/')) {
+    $relPath = substr($path, 9);
+    $target  = __DIR__ . '/php-app/' . ltrim($relPath, '/');
+    if ($relPath !== '' && is_file($target)) {
+        require $target;
+        exit;
+    }
+    require __DIR__ . '/php-app/index.php';
+    exit;
+}
+
 $targetFile = basename($path);
 
 if ($targetFile !== '' && $targetFile !== 'index.php' && is_file(__DIR__ . '/php-app/' . $targetFile)) {

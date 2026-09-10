@@ -380,8 +380,8 @@ require __DIR__ . '/inc/header.php';
             <div class="tmpl-report-sub">Fixed vs Achieved targets &middot; <?= (int) $targetCount ?> target<?= $targetCount === 1 ? '' : 's' ?> in scope</div>
           </div>
           <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= $link('template-report.php', $mq, 'word') ?>"><?= icon('download') ?> Word</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $mq, 'excel') ?>">Excel</a>
+            <a class="btn btn-primary btn-sm" href="<?= $link('template-report.php', $mq, 'excel') ?>"><?= icon('download') ?> Excel</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $mq, 'word') ?>">Word</a>
             <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $mq, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
           </div>
         </div>
@@ -395,7 +395,7 @@ require __DIR__ . '/inc/header.php';
         <div class="tmpl-report-links">
           <a class="btn btn-primary btn-sm" href="<?= $link('export.php', $recordsQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
           <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'word') ?>">Word</a>
-          <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'csv') ?>">CSV</a>
+          <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
         </div>
       </div>
 
@@ -406,8 +406,8 @@ require __DIR__ . '/inc/header.php';
             <div class="tmpl-report-sub"><?= count($allSpecs) ?> metrics &middot; counts by review status</div>
           </div>
           <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= $link('metrics-report.php', $metricsQ, 'word') ?>"><?= icon('download') ?> Word</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('metrics-report.php', $metricsQ, 'excel') ?>">Excel</a>
+            <a class="btn btn-primary btn-sm" href="<?= $link('metrics-report.php', $metricsQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('metrics-report.php', $metricsQ, 'word') ?>">Word</a>
             <a class="btn btn-outline btn-sm" href="<?= $link('metrics-report.php', $metricsQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
           </div>
         </div>
@@ -427,8 +427,8 @@ require __DIR__ . '/inc/header.php';
             <div class="tmpl-report-sub"><?= $n ?> record<?= $n === 1 ? '' : 's' ?> in scope</div>
           </div>
           <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= $link('record-report.php', $q, 'word') ?>"><?= icon('download') ?> Word</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('record-report.php', $q, 'excel') ?>">Excel</a>
+            <a class="btn btn-primary btn-sm" href="<?= $link('record-report.php', $q, 'excel') ?>"><?= icon('download') ?> Excel</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('record-report.php', $q, 'word') ?>">Word</a>
             <a class="btn btn-outline btn-sm" href="<?= $link('record-report.php', $q, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
           </div>
         </div>
@@ -444,11 +444,15 @@ require __DIR__ . '/inc/header.php';
   .tmpl-report-row { display:flex; align-items:center; justify-content:space-between; gap:16px;
       padding:12px 0; border-bottom:1px solid var(--line,#e6e8ef); }
   .tmpl-report-row:last-child { border-bottom:0; }
-  .tmpl-report-info { min-width:0; }
+  .tmpl-report-info { min-width:0; flex:1; }
   .tmpl-report-name { font-weight:600; font-size:14px; display:flex; align-items:center; gap:7px; }
   .tmpl-report-sub { font-size:12px; color:var(--ink-muted,#64748b); margin-top:2px; }
-  .tmpl-report-links { display:flex; gap:8px; flex-shrink:0; }
-  @media (max-width:640px){ .tmpl-report-row{ flex-direction:column; align-items:flex-start; } }
+  .tmpl-report-links { display:grid; grid-template-columns:repeat(3, 82px); gap:8px; flex-shrink:0; }
+  .tmpl-report-links .btn { min-width:0; width:100%; justify-content:center; text-align:center; box-sizing:border-box; padding:6px 0; }
+  @media (max-width:640px){
+    .tmpl-report-row { flex-direction:column; align-items:flex-start; gap:10px; }
+    .tmpl-report-links { width:100%; grid-template-columns:repeat(3, 1fr); }
+  }
 </style>
 
 

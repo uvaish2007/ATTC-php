@@ -28,7 +28,7 @@ $type       = trim((string) input('type', '')) ?: null;
 $from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
 $to         = parse_date_input(input('to', ''));     // period end
 
-if (!in_array($format, ['csv', 'excel', 'word'], true)) {
+if (!in_array($format, ['csv', 'excel', 'word', 'pdf'], true)) {
     $format = 'csv';
 }
 
@@ -143,17 +143,27 @@ if ($format === 'excel') {
         'Department: ' . $scopeLabel,
         'Report Date: ' . $today
     ];
-    $xlsxData = SimpleXlsxWriter::createXlsx($columns, $exportRows, 'Academic Records', $metaLines);
+    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
+        ? SimpleXlsxWriter::createXlsx($columns, $exportRows, 'Academic Records', $metaLines)
+        : '';
 
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
-    header('Content-Length: ' . strlen($xlsxData));
-    header('Cache-Control: max-age=0');
-    echo $xlsxData;
-    exit;
-} else {
+    if (!empty($xlsxData)) {
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
+        header('Content-Length: ' . strlen($xlsxData));
+        header('Cache-Control: max-age=0');
+        echo $xlsxData;
+        exit;
+    }
+
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
+} elseif ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
+} else {
+    header('Content-Type: text/html; charset=UTF-8');
 }
 
 // Same letterhead, grid and sign-off as every other report (inc/report_layout).
@@ -165,6 +175,19 @@ $meta[] = ['Total Records', (string) count($records)];
 $meta[] = ['Report Date', $today];
 
 report_document_head($reportTitle . ' Report');
+?>
+
+<?php if ($format === 'pdf'): ?>
+  <div class="pdf-bar" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;
+       display:flex;align-items:center;justify-content:space-between;font-family:Arial,sans-serif;margin:-1.4cm -1.2cm 16px">
+    <span style="font-size:13px">Use your browser's print dialog and choose <strong>Save as PDF</strong>.</span>
+    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;
+       padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Print / Save as PDF</button>
+  </div>
+  <style>@media print { .pdf-bar { display:none !important; } }</style>
+<?php endif; ?>
+
+<?php
 report_letterhead($reportTitle, $meta);
 ?>
 

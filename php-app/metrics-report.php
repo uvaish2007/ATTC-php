@@ -74,6 +74,55 @@ if ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
 } elseif ($format === 'excel') {
+    require_once __DIR__ . '/inc/xlsx_writer.php';
+
+    $headers = ['S.No', 'Metric', 'Total', 'Approved', 'Pending', 'Rejected', 'Draft'];
+    $exportRows = [];
+    $i = 1;
+    foreach ($rows as $label => $c) {
+        $exportRows[] = [
+            $i++,
+            $label,
+            (int) $c['total'],
+            (int) $c['Approved'],
+            (int) $c['Submitted'],
+            (int) $c['Rejected'],
+            (int) $c['Draft']
+        ];
+    }
+    $exportRows[] = [
+        '',
+        'TOTAL',
+        (int) $grand['total'],
+        (int) $grand['Approved'],
+        (int) $grand['Submitted'],
+        (int) $grand['Rejected'],
+        (int) $grand['Draft']
+    ];
+
+    $metaLines = [
+        'MOHAMED SATHAK ENGINEERING COLLEGE',
+        'METRICS SUMMARY REPORT',
+        'Department: ' . $deptLabel,
+        'Report Date: ' . $today
+    ];
+    if ($periodLabel) {
+        $metaLines[] = 'Period: ' . $periodLabel;
+    }
+
+    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
+        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, 'Metrics Summary', $metaLines)
+        : '';
+
+    if (!empty($xlsxData)) {
+        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
+        header('Content-Length: ' . strlen($xlsxData));
+        header('Cache-Control: max-age=0');
+        echo $xlsxData;
+        exit;
+    }
+
     header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 } else {
