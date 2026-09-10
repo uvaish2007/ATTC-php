@@ -10,8 +10,7 @@
 --    faculty@atts.edu           / faculty123  (Faculty, CSBS)
 -- ============================================================================
 
-USE atts_main;
-
+-- (Database selection is handled by MySQL connection / phpMyAdmin)
 -- --- users -----------------------------------------------------------------
 INSERT INTO users (name, email, password, role, department) VALUES
   ('Mohamed Uvaish', 'mohameduvaish132@gmail.com', '$2b$10$odWGO0CYqZROCWNamUohveplY0xEWb5MGGfThJehpvIfsICSmWl.q', 'Admin',       NULL),

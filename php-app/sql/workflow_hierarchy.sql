@@ -4,8 +4,6 @@
 --  Migrates 'Submitted' records to 'HOD Pending'
 -- ---------------------------------------------------------------------------
 
-USE atts_main;
-
 -- 1. journal_publications
 ALTER TABLE journal_publications MODIFY COLUMN status VARCHAR(50) NOT NULL DEFAULT 'Draft';
 UPDATE journal_publications SET status = 'HOD Pending' WHERE status = 'Submitted';

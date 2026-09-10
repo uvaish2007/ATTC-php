@@ -8,12 +8,7 @@
 --  Engine: InnoDB, charset utf8mb4 (full Unicode incl. em-dashes in report text).
 -- ============================================================================
 
-CREATE DATABASE IF NOT EXISTS atts_main
-  CHARACTER SET utf8mb4
-  COLLATE utf8mb4_unicode_ci;
-
-USE atts_main;
-
+-- (Database selection is handled by MySQL connection / phpMyAdmin)
 SET FOREIGN_KEY_CHECKS = 0;
 
 -- ---------------------------------------------------------------------------
