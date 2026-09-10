@@ -114,7 +114,7 @@ function pending_approvals_count(array $user): int
     if ($role === 'Coordinator') {
         $targetStatuses = ['Submitted'];
     } elseif ($role === 'HoD') {
-        $targetStatuses = ['HOD Pending'];
+        $targetStatuses = ['HOD Pending', 'Submitted'];
     } elseif ($role === 'Dean') {
         $targetStatuses = ['Dean Pending'];
     } else {   // Admin — everything still awaiting a decision

@@ -225,8 +225,7 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     if ($role === 'Coordinator' || $stage === 'Submitted') {
         $targetStatuses = ['Submitted'];
     } elseif ($role === 'HoD' || $stage === 'HOD Pending') {
-        // The HoD's action queue is only what the Coordinator has passed up.
-        $targetStatuses = ['HOD Pending'];
+        $targetStatuses = ['HOD Pending', 'Submitted'];
     } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
         $targetStatuses = ['Dean Pending'];
     } else {
@@ -283,14 +282,12 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     $table = $types[$type]['table'];
 
-    // Review chain: Faculty -> Coordinator -> HoD -> Approved.
-    // The Coordinator clears the faculty stage ('Submitted'); the HoD only ever
-    // acts on what the Coordinator has already passed to them ('HOD Pending').
+    // Review chain: Coordinator / HoD approves record directly to Approved.
     if ($userRole === 'Coordinator') {
         $validCurrent = ['Submitted'];
-        $newStatus    = ($action === 'approve') ? 'HOD Pending' : 'Rejected';
+        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
     } elseif ($userRole === 'HoD') {
-        $validCurrent = ['HOD Pending'];
+        $validCurrent = ['HOD Pending', 'Submitted'];
         $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
     } elseif ($userRole === 'Dean') {
         $validCurrent = ['Dean Pending'];
@@ -344,9 +341,9 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
 
     if ($userRole === 'Coordinator') {
         $validCurrent = ['Submitted'];
-        $newStatus    = 'HOD Pending';
+        $newStatus    = 'Approved';
     } elseif ($userRole === 'HoD') {
-        $validCurrent = ['HOD Pending'];
+        $validCurrent = ['HOD Pending', 'Submitted'];
         $newStatus    = 'Approved';
     } else {
         $validCurrent = ['Dean Pending', 'HOD Pending', 'Submitted'];

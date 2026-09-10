@@ -131,10 +131,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
 
+    // Faculty members always submit records for their assigned department
+    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+        $_POST['department'] = $user['department'];
+    }
+
     foreach ($_POST as $k => $v) {
         if (!in_array($k, $allowed, true) || $v === '') continue;
         $fields[] = $k;
         $values[] = $v;
+        $placeholders[] = '?';
+    }
+
+    // Ensure department is populated if the table has the column
+    if (in_array('department', $allowed, true) && !in_array('department', $fields, true) && !empty($user['department'])) {
+        $fields[] = 'department';
+        $values[] = $user['department'];
         $placeholders[] = '?';
     }
 
@@ -185,6 +197,28 @@ $isLast    = $selIdx === count($typeKeys) - 1;
 $nextType  = $typeKeys[$selIdx + 1] ?? null;
 $prevType  = $selIdx > 0 ? $typeKeys[$selIdx - 1] : null;
 
+/**
+ * Render department input: locked readonly for Faculty (preserving their department),
+ * and selectable for other authorized roles (Admin, etc.).
+ */
+function render_dept_field(array $user, array $departments, string $label = 'Department', bool $required = false): void
+{
+    $req = $required ? ' <span class="req">*</span>' : '';
+    echo '<div class="field"><label>' . e($label) . $req . '</label>';
+    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+        echo '<input class="input" type="text" value="' . e($user['department']) . '" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;">';
+        echo '<input type="hidden" name="department" value="' . e($user['department']) . '">';
+    } else {
+        echo '<select class="select" name="department"' . ($required ? ' required' : '') . '>';
+        foreach ($departments as $d) {
+            $sel = ($user['department'] === $d['name']) ? ' selected' : '';
+            echo '<option value="' . e($d['name']) . '"' . $sel . '>' . e($d['name']) . '</option>';
+        }
+        echo '</select>';
+    }
+    echo '</div>';
+}
+
 $pageTitle = 'Upload Data'; $breadcrumb = 'Upload Data';
 require __DIR__ . '/inc/header.php';
 ?>
@@ -221,10 +255,7 @@ require __DIR__ . '/inc/header.php';
       <?php if (in_array($selectedType, ['journal','book','conference','patent','fdp'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
-        <div class="field"><label>Department <span class="req">*</span></label>
-          <select class="select" name="department" required>
-            <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?>
-          </select></div>
+        <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year <span class="req">*</span></label>
           <select class="select" name="academic_year">
             <?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?>
@@ -281,8 +312,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Certificate Link</label><input class="input" name="certificate_link" type="url"></div>
 
       <?php elseif ($selectedType === 'mou'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Signed Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date"></div>
         <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
         <div class="field"><label>Valid upto <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date"></div>
@@ -290,8 +320,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Document Link</label><input class="input" name="document_link" type="url"></div>
 
       <?php elseif ($selectedType === 'event'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date"></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type</label>
@@ -304,8 +333,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
 
       <?php elseif ($selectedType === 'nptel'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category</label>
           <select class="select js-other" name="category" data-other="category_other"><option>Faculty</option><option>Student</option><option>Others</option></select>
@@ -318,8 +346,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'internship'): ?>
         <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Dept / Branch'); ?>
         <div class="field" style="grid-column:span 2"><label>Title of Internship <span class="req">*</span></label><input class="input" name="title" required></div>
         <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address</label><input class="input" name="industry"></div>
         <div class="field"><label>Duration</label><input class="input" name="duration" placeholder="e.g. 1 month"></div>
@@ -329,8 +356,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'placement'): ?>
         <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
         <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Dept / Branch'); ?>
         <div class="field"><label>Job Name</label><input class="input" name="job_title"></div>
         <div class="field"><label>Mode <span class="card-sub">(On Campus / Off Campus)</span></label><select class="select" name="mode"><option>On Campus</option><option>Off Campus</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Company Name &amp; Address <span class="req">*</span> <span class="card-sub">(with Contact Details)</span></label><input class="input" name="company" required></div>
@@ -338,8 +364,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Appointment Order</label><input class="input" name="appointment_order_link" type="url"></div>
 
       <?php elseif ($selectedType === 'nss'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <div class="field"><label>Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date"></div>
         <div class="field"><label>Activity Type</label><select class="select" name="activity_type"><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
@@ -350,8 +375,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
 
       <?php elseif ($selectedType === 'online_course'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category</label><select class="select" name="category"><option>Faculty</option><option>Student</option></select></div>
@@ -362,8 +386,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Certificate Link</label><input class="input" name="certificate_link" type="url"></div>
 
       <?php elseif ($selectedType === 'student_achievement' || $selectedType === 'student_participation'): ?>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Dept / Branch'); ?>
         <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <?php if ($selectedType === 'student_participation'): ?>
         <div class="field"><label>Activity Category</label><select class="select" name="activity_category"><option>Co-curricular</option><option>Extra-curricular</option></select></div>
@@ -381,8 +404,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document</label><input class="input" name="certificate_link" type="url"></div>
 
       <?php elseif ($selectedType === 'summer_training'): ?>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Dept / Branch'); ?>
         <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
@@ -393,8 +415,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document</label><input class="input" name="certificate_link" type="url"></div>
 
       <?php elseif ($selectedType === 'value_added'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <div class="field"><label>From Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date"></div>
         <div class="field"><label>To Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date"></div>
@@ -405,8 +426,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
 
       <?php elseif ($selectedType === 'training'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
-          <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
+        <?php render_dept_field($user, $departments, 'Department'); ?>
         <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <div class="field"><label>Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date"></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
