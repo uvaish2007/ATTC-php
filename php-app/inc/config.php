@@ -16,22 +16,6 @@ define('DB_HOST', env('DB_HOST', 'localhost'));
 define('DB_PORT', env('DB_PORT', '3306'));
 define('DB_NAME', env('DB_NAME', 'atts_main'));
 define('DB_USER', env('DB_USER', 'root'));
-<<<<<<< HEAD
-define('DB_PASS', (string) env('DB_PASS', ''));
-$defaultSslCa = '';
-if (strpos((string) env('DB_HOST', ''), 'tidbcloud.com') !== false) {
-    $defaultSslCa = dirname(__DIR__) . '/certs/isrgrootx1.pem';
-}
-define('DB_SSL_CA', (string) env('DB_SSL_CA', $defaultSslCa));
-
-// --- Application ---
-// The URL path the app is served from. "/php-app" for XAMPP htdocs; "" if you
-// serve the folder itself at the root (e.g. `php -S localhost:8000 -t php-app`).
-$defaultBaseUrl = (isset($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/php-app') === 0) ? '/php-app' : '';
-$envBaseUrl     = env('BASE_URL');
-$resolvedBase   = ($envBaseUrl !== null && $envBaseUrl !== '') ? $envBaseUrl : $defaultBaseUrl;
-define('BASE_URL', rtrim((string) $resolvedBase, '/'));
-=======
 define('DB_PASS', (string) env('DB_PASS', '1234'));
 
 // --- Application ---
@@ -45,23 +29,16 @@ if ($configuredBaseUrl !== null && $configuredBaseUrl !== '') {
     $detectedBase = ($scriptDir === '/' || $scriptDir === '.') ? '' : rtrim($scriptDir, '/');
     define('BASE_URL', $detectedBase);
 }
->>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
 
 define('UPLOAD_DIR', dirname(__DIR__) . '/uploads');
 define('UPLOAD_URL', BASE_URL . '/uploads');
 
 define('SESSION_NAME', (string) env('SESSION_NAME', 'atts_session'));
 
-// Debug shows detailed errors. Keep FALSE in production (set in .env).
-define('APP_DEBUG', env('APP_DEBUG', false) === true);
-
-if (APP_DEBUG) {
-    error_reporting(E_ALL);
-    ini_set('display_errors', '1');
-} else {
-    error_reporting(0);
-    ini_set('display_errors', '0');
-}
+// Temporarily enable error reporting to diagnose remote server issues
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+define('APP_DEBUG', true);
 
 date_default_timezone_set((string) env('APP_TIMEZONE', 'Asia/Kolkata'));
 

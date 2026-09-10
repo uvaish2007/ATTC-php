@@ -61,18 +61,8 @@ $fromIso     = parse_date_input($rawFrom);
 $toIso       = parse_date_input($rawTo);
 $fromDisplay = format_date_display($rawFrom);
 $toDisplay   = format_date_display($rawTo);
-<<<<<<< HEAD
-$from        = $fromDisplay;
-$to          = $toDisplay;
-=======
-<<<<<<< Updated upstream
-$from        = $fromIso;
-$to          = $toIso;
-=======
 $from        = $fromDisplay !== '' ? $fromDisplay : null;
 $to          = $toDisplay !== '' ? $toDisplay : null;
->>>>>>> Stashed changes
->>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
 
 $rangeError = null;
 if ($fromIso && $toIso && $fromIso > $toIso) {

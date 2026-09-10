@@ -29,30 +29,7 @@ function db(): PDO
         PDO::ATTR_EMULATE_PREPARES   => false,
     ];
 
-    if (defined('DB_SSL_CA') && DB_SSL_CA !== '' && file_exists(DB_SSL_CA)) {
-        $sslCaAttr = defined('Pdo\Mysql::ATTR_SSL_CA')
-            ? Pdo\Mysql::ATTR_SSL_CA
-            : (defined('PDO::MYSQL_ATTR_SSL_CA') ? PDO::MYSQL_ATTR_SSL_CA : 1008);
-
-        $sslVerifyAttr = defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')
-            ? Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT
-            : (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT') ? PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT : 1013);
-
-        $caPath = realpath(DB_SSL_CA) ?: DB_SSL_CA;
-        $options[$sslCaAttr] = $caPath;
-        $options[$sslVerifyAttr] = true;
-    }
-
-    $options = [
-        PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
-    ];
-
     try {
-<<<<<<< HEAD
-        $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
-=======
         // For local connections (127.0.0.1 / localhost), connect directly with standard options
         $isLocal = in_array(DB_HOST, ['127.0.0.1', 'localhost', '::1'], true);
 
@@ -62,6 +39,14 @@ function db(): PDO
                 : __DIR__ . '/../certs/isrgrootx1.pem';
 
             if (is_file($caFile)) {
+                $sslCaAttr = defined('Pdo\Mysql::ATTR_SSL_CA')
+                    ? Pdo\Mysql::ATTR_SSL_CA
+                    : (defined('PDO::MYSQL_ATTR_SSL_CA') ? PDO::MYSQL_ATTR_SSL_CA : 1008);
+
+                $sslVerifyAttr = defined('Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT')
+                    ? Pdo\Mysql::ATTR_SSL_VERIFY_SERVER_CERT
+                    : (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT') ? PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT : 1013);
+
                 $sslOptions = $options + [
                     $sslCaAttr     => $caFile,
                     $sslVerifyAttr => true,
@@ -77,12 +62,20 @@ function db(): PDO
         } else {
             $pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         }
->>>>>>> 0c6079ce558eb483b73493026363c194d8b6f634
     } catch (PDOException $e) {
         http_response_code(500);
-        if (APP_DEBUG) {
-            die('Database connection failed: ' . htmlspecialchars($e->getMessage())
-                . '<br><br>Check inc/config.php and that MySQL is running and the "' . htmlspecialchars(DB_NAME) . '" database exists.');
+        if (APP_DEBUG || !is_file(dirname(__DIR__) . '/.env')) {
+            die('<div style="font-family:sans-serif;max-width:600px;margin:40px auto;padding:24px;border:1px solid #fee2e2;border-radius:12px;background:#fef2f2;color:#991b1b">'
+                . '<h2 style="margin-top:0;font-size:18px">Database Connection Notice</h2>'
+                . '<p style="font-size:14px;line-height:1.5">Could not connect to the database <strong>' . htmlspecialchars(DB_NAME) . '</strong> on <strong>' . htmlspecialchars(DB_HOST) . '</strong>.</p>'
+                . '<p style="font-size:13px;background:#fff;padding:10px;border-radius:6px;border:1px solid #fecaca;word-break:break-all"><strong>Error:</strong> ' . htmlspecialchars($e->getMessage()) . '</p>'
+                . '<hr style="border:none;border-top:1px solid #fecaca;margin:16px 0">'
+                . '<p style="font-size:13px;color:#7f1d1d;line-height:1.6"><strong>How to resolve on InfinityFree:</strong><br>'
+                . '1. Log into your InfinityFree Control Panel &rarr; <strong>MySQL Databases</strong>.<br>'
+                . '2. Copy the <strong>MySQL Hostname</strong> (e.g. <code>sqlXXX.infinityfree.com</code>), <strong>MySQL Username</strong>, and <strong>Database Name</strong>.<br>'
+                . '3. In InfinityFree File Manager, create/edit <code>htdocs/php-app/.env</code> with those credentials.<br>'
+                . '4. Open <strong>phpMyAdmin</strong> in InfinityFree and import <code>php-app/sql/schema.sql</code> and <code>php-app/sql/seed.sql</code>.</p>'
+                . '</div>');
         }
         die('Database connection failed.');
     }
