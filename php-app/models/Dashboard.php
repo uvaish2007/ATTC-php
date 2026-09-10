@@ -161,7 +161,14 @@ function dashboard_data(array $user): array
     }
 
     // ---- status pipeline (respects department + year, ignores status filter) ----
-    $statusBreakdown = ['Draft' => 0, 'Submitted' => 0, 'Approved' => 0, 'Rejected' => 0];
+    $statusBreakdown = [
+        'Approved'     => 0,
+        'Dean Pending' => 0,
+        'HOD Pending'  => 0,
+        'Submitted'    => 0,
+        'Rejected'     => 0,
+        'Draft'        => 0,
+    ];
     foreach ($metrics as $key => $m) {
         $expr   = metric_count_expr($m);
         $sql    = "SELECT status, $expr AS n FROM `{$m['table']}`";
@@ -192,7 +199,7 @@ function dashboard_data(array $user): array
         'metrics'     => (int) $pdo->query('SELECT COUNT(*) FROM metrics')->fetchColumn(),
         'targets'     => (int) $pdo->query('SELECT COUNT(*) FROM targets')->fetchColumn(),
         'totalRecords'=> $grandTotal,
-        'pendingApprovals' => $statusBreakdown['Submitted'],
+        'pendingApprovals' => (int) (($statusBreakdown['Dean Pending'] ?? 0) + ($statusBreakdown['HOD Pending'] ?? 0) + ($statusBreakdown['Submitted'] ?? 0)),
     ];
 
     // ---- users by role ----
@@ -655,7 +662,14 @@ function my_dashboard_data(array $user): array
     $uid = (int) $user['id'];
 
     $metrics = dept_metrics() + other_metrics();
-    $statusBreakdown = ['Draft' => 0, 'Submitted' => 0, 'Approved' => 0, 'Rejected' => 0];
+    $statusBreakdown = [
+        'Approved'     => 0,
+        'Dean Pending' => 0,
+        'HOD Pending'  => 0,
+        'Submitted'    => 0,
+        'Rejected'     => 0,
+        'Draft'        => 0,
+    ];
     $totals = [];
 
     foreach ($metrics as $key => $m) {
@@ -681,9 +695,9 @@ function my_dashboard_data(array $user): array
     return [
         'stats' => [
             'totalRecords' => $total,
-            'approved'     => $statusBreakdown['Approved'],
-            'pending'      => $statusBreakdown['Submitted'],
-            'rejected'     => $statusBreakdown['Rejected'],
+            'approved'     => (int) ($statusBreakdown['Approved'] ?? 0),
+            'pending'      => (int) (($statusBreakdown['Dean Pending'] ?? 0) + ($statusBreakdown['HOD Pending'] ?? 0) + ($statusBreakdown['Submitted'] ?? 0)),
+            'rejected'     => (int) ($statusBreakdown['Rejected'] ?? 0),
         ],
         'totals'          => $totals,
         'metricLabels'    => array_map(fn($m) => $m['label'], $metrics),

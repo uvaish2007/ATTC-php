@@ -119,7 +119,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values = [];
     $placeholders = [];
 
-    $initialStatus = ($user['role'] === 'HoD') ? 'Dean Pending' : 'HOD Pending';
+    // Review chain: Faculty -> Coordinator -> HoD. A Coordinator's own upload
+    // skips the Coordinator step; a HoD's or Admin's upload is already final.
+    if (in_array($user['role'], ['HoD', 'Admin'], true)) {
+        $initialStatus = 'Approved';
+    } elseif ($user['role'] === 'Coordinator') {
+        $initialStatus = 'HOD Pending';
+    } else {
+        $initialStatus = 'Submitted';
+    }
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
 
@@ -138,7 +146,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $sql = "INSERT INTO `$table` (" . implode(',', $fields) . ") VALUES (" . implode(',', $placeholders) . ")";
         $pdo->prepare($sql)->execute($values);
-        flash('success', $types[$type]['label'] . ' submitted for review.');
+
+        // A HoD/Admin upload lands Approved, so refresh any target it feeds.
+        if ($initialStatus === 'Approved') {
+            require_once __DIR__ . '/models/Target.php';
+            sync_target_achieved_for_type($type);
+        }
+
+        $where = $initialStatus === 'Approved' ? 'recorded' : 'submitted for review';
+        flash('success', $types[$type]['label'] . ' ' . $where . '.');
     } catch (\PDOException $e) {
         error_log('upload.php insert failed: ' . $e->getMessage());
         $err = 'Sorry, that record could not be saved. Please check the fields and try again.';

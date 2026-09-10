@@ -10,7 +10,7 @@
  */
 
 $isOversight = $data['isOversight'];                             // Admin / Director / Dean
-$isReviewer  = in_array($user['role'], ['Admin', 'Dean', 'HoD'], true);  // can approve
+$isReviewer  = in_array($user['role'], ['Admin', 'Dean', 'HoD', 'Coordinator'], true);  // can approve records
 $scopeLabel  = $data['scope']['department'] ?: 'All departments';
 $stats       = $data['stats'];
 
@@ -318,7 +318,7 @@ if (!function_exists('dash_column_chart')) {
 
 
 <!-- Counters -->
-<div class="stat-grid <?= $isOversight ? 'grid-6' : 'grid-4' ?>">
+<div class="stat-grid <?= $isOversight ? 'stat-kpi' : 'grid-4' ?>">
 
   <?php foreach ($cards as $c): ?>
     <div class="stat">
@@ -603,6 +603,37 @@ if (!function_exists('dash_column_chart')) {
     .view-toggle { padding:2px; }
     .vt-btn { padding:6px 10px; }
   }
+
+  /* Oversight (Dean / Admin) KPIs: 6 boxes filling the full width across the top in correct order */
+  .stat-grid.stat-kpi {
+    width: 100%;
+    max-width: 100%;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .stat-grid.stat-kpi .stat {
+    min-height: 108px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .stat-grid.stat-kpi .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); }
+  .stat-grid.stat-kpi .stat-top   { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .stat-grid.stat-kpi .stat-ic    { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
+  .stat-grid.stat-kpi .stat-label { font-size: 12px; font-weight: 600; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-grid.stat-kpi .stat-value { font-size: 24px; line-height: 1.2; font-weight: 700; margin-top: 6px; }
+  .stat-grid.stat-kpi .stat-desc  { font-size: 11px; color: var(--ink-faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-grid.stat-kpi .stat-bar   { margin: 6px 0 2px; }
+  @media (max-width: 1300px) { .stat-grid.stat-kpi { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 768px)  { .stat-grid.stat-kpi { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 480px)  { .stat-grid.stat-kpi { grid-template-columns: 1fr; } }
 
   /* ---- Donut chart (Team accounts, Review Status) ---- */
   .donut-card { display:flex; align-items:center; gap:24px; flex-wrap:wrap; }

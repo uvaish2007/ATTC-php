@@ -14,13 +14,16 @@ function fetch_header_notifications(array $user): array
     $userId = (int) ($user['id'] ?? 0);
     $markAllTime = $_SESSION['notifications_read_' . $userId] ?? 0;
 
-    // 1. Pending Approvals (Dean, Admin, HoD)
-    if (in_array($user['role'], ['Dean', 'Admin', 'HoD'], true)) {
+    // 1. Pending Approvals — something new is waiting for this reviewer.
+    //    (Faculty submit -> Coordinator -> HoD; Dean/Admin see the wider queue.)
+    if (in_array($user['role'], ['Dean', 'Admin', 'HoD', 'Coordinator'], true)) {
         try {
             $pendingCount = pending_approvals_count($user);
             if ($pendingCount > 0) {
-                $roleLabel = ($user['role'] === 'Dean') ? 'Dean' : (($user['role'] === 'HoD') ? 'HoD' : '');
-                $descLabel = $roleLabel ? "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting $roleLabel review." : "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting your review.";
+                $roleLabel = in_array($user['role'], ['Dean', 'HoD', 'Coordinator'], true) ? $user['role'] : '';
+                $descLabel = $roleLabel
+                    ? "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting $roleLabel review."
+                    : "$pendingCount record" . ($pendingCount > 1 ? 's' : '') . " awaiting your review.";
                 $notifications[] = [
                     'id'          => 'approval_pending',
                     'type'        => 'approval',
@@ -30,6 +33,40 @@ function fetch_header_notifications(array $user): array
                     'link'        => url('approvals.php'),
                     'unread'      => ($markAllTime === 0),
                     'icon'        => 'approvals'
+                ];
+            }
+        } catch (\Throwable $e) {}
+    }
+
+    // 1b. Recently approved — tell the Coordinator and HoD when records they
+    //     shepherded have been fully approved (and have fed the targets).
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true) && !empty($user['department'])) {
+        try {
+            require_once __DIR__ . '/../models/Record.php';
+            $dept = (string) $user['department'];
+            $recentApproved = 0;
+            foreach (record_types() as $t) {
+                try {
+                    $stmt = db()->prepare(
+                        "SELECT COUNT(*) FROM `{$t['table']}`
+                          WHERE status = 'Approved' AND department = ?
+                            AND updated_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
+                    );
+                    $stmt->execute([$dept]);
+                    $recentApproved += (int) $stmt->fetchColumn();
+                } catch (\PDOException $e) { /* table without the column — skip */ }
+            }
+            if ($recentApproved > 0) {
+                $notifications[] = [
+                    'id'          => 'records_approved_recent',
+                    'type'        => 'target',
+                    'title'       => 'Records approved',
+                    'description' => "$recentApproved record" . ($recentApproved > 1 ? 's' : '')
+                                   . " approved in $dept this week — target figures updated.",
+                    'time'        => 'This week',
+                    'link'        => url('targets.php'),
+                    'unread'      => ($markAllTime === 0),
+                    'icon'        => 'target'
                 ];
             }
         } catch (\Throwable $e) {}

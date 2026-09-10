@@ -30,12 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('academic_year'),
             (string) input('metric'),
             (int) input('target_value'),
-            (string) input('fixed_text'),
             (string) input('remarks'),
             (string) input('coordinator'),
             $targetStatus,
-            (string) input('target_deadline'),
-            input('fixed_text') !== null ? (string) input('fixed_text') : null
+            (string) input('target_deadline')
         );
     } elseif ($action === 'update') {
         [$ok, $msg] = target_update(
@@ -45,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('academic_year'),
             (string) input('metric'),
             (int) input('target_value'),
-            (string) input('fixed_text'),
             (int) input('achieved_value'),
             (string) input('remarks'),
             (string) input('coordinator'),
@@ -405,7 +402,7 @@ require __DIR__ . '/inc/header.php';
         <span class="tg-chev"><?= icon('chevron', 16) ?></span>
       </summary>
 
-      <div class="table-wrap"><table class="data" style="min-width:800px">
+      <div class="table-wrap"><table class="data" style="min-width:760px">
         <thead><tr>
           <?php if ($isHod): ?>
             <th style="padding-left:24px;width:75px">S.No</th>
@@ -428,6 +425,8 @@ require __DIR__ . '/inc/header.php';
         <tbody>
         <?php foreach ($deptTargets as $index => $t): ?>
           <?php
+            $pct      = $t['target_value'] > 0 ? min(100, round($t['achieved_value'] / $t['target_value'] * 100)) : 0;
+            $barColor = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
             $frozen   = target_is_frozen($t);
             $status   = (string) ($t['status'] ?? 'Draft');
             // Non-destructive suggestion: only compute for non-HoD view where the [Use] button is actually shown
@@ -671,7 +670,7 @@ require __DIR__ . '/inc/header.php';
     <div class="msub">Save as a draft to edit later, or submit for review immediately.</div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <div class="field" style="grid-column:span 2"><label>Target Details <span class="req">*</span></label>
+    <div class="field" style="grid-column:span 2"><label>Target / Details <span class="req">*</span></label>
       <input class="input" name="metric" list="metricList" required autocomplete="off"
              placeholder="e.g. Pass Percentage, Journal Publications, NPTEL…"></div>
     <div class="field"><label>Department <span class="req">*</span></label>
@@ -713,7 +712,7 @@ require __DIR__ . '/inc/header.php';
     <div class="msub" id="et-note"></div>
   </div></div>
   <div class="modal-body" style="display:grid;grid-template-columns:1fr 1fr;gap:0 16px">
-    <div class="field" style="grid-column:span 2"><label>Target Details</label>
+    <div class="field" style="grid-column:span 2"><label>Target / Details</label>
       <input class="input" name="metric" id="et-metric" list="metricList" autocomplete="off" required></div>
     <div class="field"><label>Department</label>
       <select class="select" name="department" id="et-dept" <?= $isHod ? 'disabled' : '' ?>>

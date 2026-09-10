@@ -3,10 +3,12 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD', 'Dean']);
+$user = require_role(['Admin', 'HoD', 'Dean', 'Coordinator']);
 
-// An HoD may only review their own department; Admin has no such limit.
-$scopeDept = ($user['role'] === 'HoD') ? ($user['department'] ?? null) : null;
+// A Coordinator or HoD may only review their own department; Admin/Dean may
+// review any. The Coordinator clears the first stage (faculty "Submitted"),
+// the HoD the second.
+$scopeDept = in_array($user['role'], ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
 
 // Handle approve/reject (single) and bulk approve-all-in-department.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
