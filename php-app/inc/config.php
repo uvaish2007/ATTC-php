@@ -10,6 +10,7 @@
 require_once __DIR__ . '/env.php';
 
 load_env(dirname(__DIR__) . '/.env');
+load_env(dirname(dirname(__DIR__)) . '/.env');
 
 // --- Database (MySQL / MariaDB) ---
 define('DB_HOST', env('DB_HOST', 'localhost'));
