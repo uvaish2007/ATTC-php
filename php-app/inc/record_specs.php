@@ -54,6 +54,22 @@ function record_report_specs(): array
             ],
         ],
 
+        'conference' => [
+            'title'   => 'CONFERENCE PUBLICATIONS',
+            'columns' => [
+                ['S.No', '#'],
+                ['Name of the Faculty', 'faculty_name'],
+                ['Dept', 'department'],
+                ['Author Type', 'author_type'],
+                ['Title of the Paper', 'paper_title'],
+                ['Conference Name', 'conference_name'],
+                ['Type', 'conference_type'],
+                ['Venue', 'venue'],
+                ['Conference Date (dd/mm/yyyy)', 'conference_date'],
+                ['Document Link', 'document_link'],
+            ],
+        ],
+
         'event' => [
             'title'    => 'LIST OF EVENTS ORGANIZED',
             'subtitle' => '(SEMINAR / WORKSHOP / WEBINAR / FDP / CONFERENCE / SYMPOSIUM)',

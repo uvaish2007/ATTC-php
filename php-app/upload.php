@@ -21,10 +21,13 @@ const PROOF_MAX_BYTES = 2 * 1024 * 1024;   // 2 MB
  * disk is random with a checked extension, so nothing executable can be written
  * and the uploads folder can never be escaped. Returns [storedName|null, error|null].
  */
-function save_upload_proof(?array $file): array
+function save_upload_proof(?array $file, bool $required = true): array
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
-        return [null, null];   // no file chosen — proof is optional
+        if ($required) {
+            return [null, 'Proof / Attachment is required. Please upload a PDF file (up to 2 MB).'];
+        }
+        return [null, null];
     }
     if (in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
         return [null, 'That PDF is too large. Please keep it under 2 MB.'];
@@ -36,7 +39,7 @@ function save_upload_proof(?array $file): array
     // PDF only, by extension and by actual content.
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if ($ext !== 'pdf') {
-        return [null, 'The proof must be a PDF file.'];
+        return [null, 'The proof must be a PDF file (.pdf).'];
     }
     $mime = function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '';
     if ($mime !== '' && stripos($mime, 'pdf') === false) {
@@ -80,23 +83,244 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // A member may have nothing to add for this metric (no journal, but a
-    // patent, say). The identifying field — the title — is what marks a real
-    // entry; if it is blank, save nothing and simply move on. This is what lets
-    // Next and Submit *skip* a metric instead of forcing it.
-    $titleCol = $types[$type]['title_col'] ?? '';
-    $hasEntry = $titleCol !== '' && trim((string) ($_POST[$titleCol] ?? '')) !== '';
+    // Server-Side Validation: Every user-editable field is mandatory
+    $requiredMap = [
+        'journal' => [
+            'faculty_name' => 'Faculty Name',
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'author_type' => 'Author Type',
+            'co_authors' => 'Names of Co-Authors at MSEC',
+            'paper_title' => 'Title of the Paper',
+            'journal_name' => 'Journal Name',
+            'journal_type' => 'Journal Type',
+            'issn' => 'ISSN Number',
+            'volume_issue' => 'Volume & Issue No',
+            'publication_month' => 'Month & Year of Publication',
+            'doi' => 'Link to the Article / DOI',
+            'journal_link' => 'Link to Journal Website',
+            'document_link' => 'Document Link',
+        ],
+        'book' => [
+            'faculty_name' => 'Faculty Name',
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'publication_category' => 'Book / Book Chapter',
+            'title' => 'Title of the Book / Book Chapter',
+            'publisher_name' => 'Publisher Name',
+            'isbn' => 'ISSN / ISBN Number',
+            'publication_month' => 'Month & Year of Publication',
+            'document_link' => 'Document Link',
+        ],
+        'conference' => [
+            'faculty_name' => 'Faculty Name',
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'author_type' => 'Author Type',
+            'paper_title' => 'Paper Title',
+            'conference_name' => 'Conference Name',
+            'conference_type' => 'Type',
+            'venue' => 'Venue',
+            'conference_date' => 'Conference Date',
+        ],
+        'patent' => [
+            'faculty_name' => 'Faculty Name',
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'category' => 'Patent / Copyright',
+            'title' => 'Title of the Patent / Copyright',
+            'patent_number' => 'Patent / Copyright Number',
+            'publication_date' => 'Date of Publication',
+            'document_link' => 'Document Link',
+        ],
+        'fdp' => [
+            'faculty_name' => 'Faculty Name',
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'duration' => 'Duration',
+            'event_type' => 'Event Type',
+            'title' => 'Name of the FDP / Seminar / Workshop',
+            'mode' => 'Mode',
+            'organized_by' => 'Organized By',
+            'from_date' => 'From Date',
+            'to_date' => 'To Date',
+            'certificate_link' => 'Certificate Link',
+        ],
+        'mou' => [
+            'department' => 'Department',
+            'signed_date' => 'Signed Date',
+            'organization' => 'Name & Address of Collaborating Body',
+            'valid_upto' => 'Valid upto',
+            'purpose' => 'Purpose of Collaboration',
+            'document_link' => 'Document Link',
+        ],
+        'event' => [
+            'department' => 'Department',
+            'event_date' => 'Date',
+            'event_title' => 'Event Title',
+            'event_type' => 'Event Type',
+            'mode' => 'Mode',
+            'resource_person' => 'Chief Guest / Resource Person',
+            'participants' => 'No. of Participants',
+            'sponsorship' => 'Sponsorship',
+            'report_link' => 'Web Link to Event Report',
+        ],
+        'nptel' => [
+            'department' => 'Department',
+            'candidate_name' => 'Candidate Name',
+            'category' => 'Category',
+            'course_title' => 'Course Title',
+            'session' => 'Session',
+            'grade' => 'Grade',
+            'certificate_link' => 'Certificate Link',
+        ],
+        'internship' => [
+            'reg_no' => 'Reg. No',
+            'student_name' => 'Name of the Student',
+            'department' => 'Dept / Branch',
+            'title' => 'Title of Internship',
+            'industry' => 'Industry/Institution Name & Address',
+            'duration' => 'Duration',
+            'days' => 'No. of Days',
+            'certificate_link' => 'Link to Certificate / Document',
+        ],
+        'placement' => [
+            'reg_no' => 'Reg. No',
+            'student_name' => 'Student Name',
+            'department' => 'Dept / Branch',
+            'job_title' => 'Job Name',
+            'mode' => 'Mode',
+            'company' => 'Company Name & Address',
+            'pay_scale' => 'Pay Scale',
+            'appointment_order_link' => 'Web Link to Appointment Order',
+        ],
+        'nss' => [
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'activity_date' => 'Date',
+            'activity_type' => 'Activity Type',
+            'activity_name' => 'Name of the Activity',
+            'venue' => 'Venue',
+            'participants' => 'No. of Students Participated',
+            'external_agency' => 'Name of External Agency / Member Involved',
+            'report_link' => 'Web Link to Event Report',
+        ],
+        'online_course' => [
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'candidate_name' => 'Candidate Name',
+            'category' => 'Category',
+            'course_title' => 'Course Title',
+            'provider' => 'Provider',
+            'duration' => 'Duration',
+            'month_year' => 'Month & Year',
+            'certificate_link' => 'Certificate Link',
+        ],
+        'student_achievement' => [
+            'department' => 'Dept / Branch',
+            'academic_year' => 'Academic Year',
+            'reg_no' => 'Reg. No',
+            'student_name' => 'Name of the Student',
+            'event_type' => 'Event Type',
+            'event_name' => 'Name of the Event',
+            'function_name' => 'Name of the Function / Programme',
+            'event_date' => 'Date of the Event',
+            'team_individual' => 'Team / Individual',
+            'level_secured' => 'Level',
+            'position_secured' => 'Position Secured',
+            'organising_institution' => 'Name of Organising Institution',
+            'certificate_link' => 'Link to Certificate / Document',
+        ],
+        'student_participation' => [
+            'department' => 'Dept / Branch',
+            'academic_year' => 'Academic Year',
+            'activity_category' => 'Activity Category',
+            'reg_no' => 'Reg. No',
+            'student_name' => 'Name of the Student',
+            'event_type' => 'Event Type',
+            'event_name' => 'Name of the Event',
+            'function_name' => 'Name of the Function / Programme',
+            'event_date' => 'Date of the Event',
+            'team_individual' => 'Team / Individual',
+            'level_secured' => 'Level',
+            'position_secured' => 'Position Secured',
+            'organising_institution' => 'Name of Organising Institution',
+            'certificate_link' => 'Link to Certificate / Document',
+        ],
+        'summer_training' => [
+            'department' => 'Dept / Branch',
+            'academic_year' => 'Academic Year',
+            'reg_no' => 'Reg. No',
+            'student_name' => 'Name of the Student',
+            'title' => 'Title of Training',
+            'industry' => 'Industry/Institution Name & Address',
+            'duration' => 'Duration',
+            'days' => 'No. of Days',
+            'certificate_link' => 'Link to Certificate / Document',
+        ],
+        'value_added' => [
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'from_date' => 'From Date',
+            'to_date' => 'To Date',
+            'course_title' => 'Course Title',
+            'mode' => 'Mode',
+            'participants' => 'No. of Participants',
+            'resource_person' => 'Resource Person',
+            'report_link' => 'Web Link to Event Report',
+        ],
+        'training' => [
+            'department' => 'Department',
+            'academic_year' => 'Academic Year',
+            'event_date' => 'Date',
+            'event_title' => 'Event Title',
+            'event_type' => 'Event Type',
+            'mode' => 'Mode',
+            'participants' => 'No. of Participants',
+            'sponsorship' => 'Sponsorship',
+            'resource_person' => 'Chief Guest / Resource Person',
+            'report_link' => 'Web Link to Event Report',
+        ],
+    ];
 
-    if (!$hasEntry) {
-        if ($nav === 'next') {
-            $idx = array_search($type, $typeKeys, true);
-            redirect('/upload.php?type=' . ($typeKeys[$idx + 1] ?? $type));
+    $validationErrors = [];
+    $expectedFields = $requiredMap[$type] ?? [];
+
+    foreach ($expectedFields as $fKey => $fLabel) {
+        $val = trim((string) ($_POST[$fKey] ?? ''));
+        if ($val === '') {
+            $validationErrors[] = "{$fLabel} is required.";
+            continue;
         }
-        if ($nav === 'add') {
-            flash('error', 'Enter the details first, then add another.');
-        } else {   // submit on the last panel with nothing here
-            flash('success', 'Done — everything you added is in for review.');
+
+        // Validate URL fields
+        if (in_array($fKey, ['doi', 'journal_link', 'document_link', 'certificate_link', 'report_link', 'appointment_order_link'], true)) {
+            if (!preg_match('/^https?:\/\/.+/i', $val)) {
+                $validationErrors[] = "{$fLabel} must be a valid URL starting with http:// or https://.";
+            }
         }
+        // Validate Date fields
+        if (in_array($fKey, ['conference_date', 'publication_date', 'from_date', 'to_date', 'signed_date', 'valid_upto', 'event_date', 'activity_date'], true)) {
+            if (strtotime($val) === false) {
+                $validationErrors[] = "{$fLabel} must be a valid date.";
+            }
+        }
+        // Validate Numeric fields
+        if (in_array($fKey, ['participants', 'days'], true)) {
+            if (!is_numeric($val) || (int)$val < 1) {
+                $validationErrors[] = "{$fLabel} must be a number greater than 0.";
+            }
+        }
+    }
+
+    // Check Proof file upload (mandatory)
+    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, true);
+    if ($proofError !== null) {
+        $validationErrors[] = $proofError;
+    }
+
+    if (!empty($validationErrors)) {
+        flash('error', implode('<br>', $validationErrors));
         redirect('/upload.php?type=' . $type);
     }
 
@@ -107,13 +331,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at'];
     $tableColumns = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_COLUMN);
     $allowed      = array_diff($tableColumns, $protected);
-
-    // The uploaded proof (optional).
-    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null);
-    if ($proofError !== null) {
-        flash('error', $proofError);
-        redirect('/upload.php?type=' . $type);
-    }
 
     $fields = [];
     $values = [];
@@ -179,14 +396,76 @@ require __DIR__ . '/inc/header.php';
 
 <!-- Type selector tabs -->
 <div class="card" style="margin-bottom:16px">
-  <div class="card-body" style="padding:8px 16px; overflow-x:auto; white-space:nowrap">
+  <div class="card-body js-category-nav-container" style="padding:8px 16px; overflow-x:auto; white-space:nowrap">
     <?php foreach ($types as $key => $t): ?>
       <a href="<?= e(url('upload.php?type=' . $key)) ?>"
-         class="btn btn-sm <?= $selectedType === $key ? 'btn-primary' : 'btn-ghost' ?>"
+         class="btn btn-sm js-category-tab <?= $selectedType === $key ? 'btn-primary active' : 'btn-ghost' ?>"
          style="margin:4px 2px; height:32px; font-size:12px"><?= e($t['label']) ?></a>
     <?php endforeach; ?>
   </div>
 </div>
+
+<script>
+(function () {
+  function ensureActiveCategoryVisible(activeElement, smooth) {
+    if (!activeElement) return;
+    var container = activeElement.closest('.js-category-nav-container') || activeElement.parentElement;
+    if (!container) return;
+
+    var containerRect = container.getBoundingClientRect();
+    var itemRect = activeElement.getBoundingClientRect();
+
+    var itemLeft = itemRect.left - containerRect.left;
+    var itemRight = itemRect.right - containerRect.left;
+    var padding = 16;
+
+    var currentScroll = container.scrollLeft;
+    var targetScroll = currentScroll;
+
+    if (itemLeft < padding) {
+      targetScroll += (itemLeft - padding);
+    } else if (itemRight > (container.clientWidth - padding)) {
+      targetScroll += (itemRight - container.clientWidth + padding);
+    } else {
+      return;
+    }
+
+    var maxScroll = Math.max(0, container.scrollWidth - container.clientWidth);
+    targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+
+    if (Math.abs(container.scrollLeft - targetScroll) > 1) {
+      if (smooth && typeof container.scrollTo === 'function') {
+        container.scrollTo({ left: targetScroll, behavior: 'smooth' });
+      } else {
+        container.scrollLeft = targetScroll;
+      }
+    }
+  }
+
+  function initCategoryNavScroll() {
+    var activeTab = document.querySelector('.js-category-nav-container .btn-primary, .js-category-nav-container .active');
+    if (activeTab) {
+      ensureActiveCategoryVisible(activeTab, false);
+      setTimeout(function () {
+        ensureActiveCategoryVisible(activeTab, true);
+      }, 50);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initCategoryNavScroll);
+  } else {
+    initCategoryNavScroll();
+  }
+
+  window.addEventListener('resize', function () {
+    var activeTab = document.querySelector('.js-category-nav-container .btn-primary, .js-category-nav-container .active');
+    if (activeTab) {
+      ensureActiveCategoryVisible(activeTab, false);
+    }
+  });
+})();
+</script>
 
 <!-- Upload form -->
 <div class="card" style="margin-bottom:20px">
@@ -210,202 +489,202 @@ require __DIR__ . '/inc/header.php';
             <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?>
           </select></div>
         <div class="field"><label>Academic Year <span class="req">*</span></label>
-          <select class="select" name="academic_year">
+          <select class="select" name="academic_year" required>
             <?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?>
           </select></div>
       <?php endif; ?>
 
       <?php if ($selectedType === 'journal'): ?>
         <?php /* Fields match the IQAC "Journal Publications" report template, in order. */ ?>
-        <div class="field"><label>Author Type</label><select class="select" name="author_type"><option>Author-1</option><option>Co-Author</option></select></div>
-        <div class="field"><label>Names of Co-Authors at MSEC</label><input class="input" name="co_authors" placeholder="Comma-separated names"></div>
+        <div class="field"><label>Author Type <span class="req">*</span></label><select class="select" name="author_type" required><option>Author-1</option><option>Co-Author</option></select></div>
+        <div class="field"><label>Names of Co-Authors at MSEC <span class="req">*</span></label><input class="input" name="co_authors" placeholder="Comma-separated names" required></div>
         <div class="field" style="grid-column:span 2"><label>Title of the Paper <span class="req">*</span></label><input class="input" name="paper_title" required></div>
-        <div class="field"><label>Journal Name</label><input class="input" name="journal_name"></div>
-        <div class="field"><label>Journal Type</label>
-          <select class="select js-other" name="journal_type" data-other="journal_type_other"><option>UGC Care</option><option>Scopus</option><option>SCI</option><option>Springer</option><option>Others</option></select>
+        <div class="field"><label>Journal Name <span class="req">*</span></label><input class="input" name="journal_name" required></div>
+        <div class="field"><label>Journal Type <span class="req">*</span></label>
+          <select class="select js-other" name="journal_type" data-other="journal_type_other" required><option>UGC Care</option><option>Scopus</option><option>SCI</option><option>Springer</option><option>Others</option></select>
           <input class="input js-other-text" name="journal_type_other" placeholder="Specify the journal type" style="margin-top:8px;display:none"></div>
-        <div class="field"><label>ISSN Number</label><input class="input" name="issn"></div>
-        <div class="field"><label>Volume &amp; Issue No</label><input class="input" name="volume_issue"></div>
-        <div class="field"><label>Month &amp; Year of Publication <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="publication_month" placeholder="e.g. 12/2025"></div>
-        <div class="field"><label>Link to the Article / DOI</label><input class="input" name="doi"></div>
-        <div class="field"><label>Link to Journal Website</label><input class="input" name="journal_link" type="url"></div>
-        <div class="field"><label>Document Link</label><input class="input" name="document_link" type="url"></div>
+        <div class="field"><label>ISSN Number <span class="req">*</span></label><input class="input" name="issn" required></div>
+        <div class="field"><label>Volume &amp; Issue No <span class="req">*</span></label><input class="input" name="volume_issue" required></div>
+        <div class="field"><label>Month &amp; Year of Publication <span class="req">*</span> <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="publication_month" placeholder="e.g. 12/2025" required></div>
+        <div class="field"><label>Link to the Article / DOI <span class="req">*</span></label><input class="input" name="doi" required></div>
+        <div class="field"><label>Link to Journal Website <span class="req">*</span></label><input class="input" name="journal_link" type="url" required></div>
+        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'book'): ?>
-        <div class="field"><label>Book / Book Chapter</label><select class="select" name="publication_category"><option>Book</option><option>Book Chapter</option></select></div>
+        <div class="field"><label>Book / Book Chapter <span class="req">*</span></label><select class="select" name="publication_category" required><option>Book</option><option>Book Chapter</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Title of the Book / Book Chapter <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field"><label>Publisher Name</label><input class="input" name="publisher_name"></div>
-        <div class="field"><label>ISSN / ISBN Number</label><input class="input" name="isbn"></div>
-        <div class="field"><label>Month &amp; Year of Publication <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="publication_month" placeholder="e.g. 01/2026"></div>
-        <div class="field"><label>Document Link</label><input class="input" name="document_link" type="url"></div>
+        <div class="field"><label>Publisher Name <span class="req">*</span></label><input class="input" name="publisher_name" required></div>
+        <div class="field"><label>ISSN / ISBN Number <span class="req">*</span></label><input class="input" name="isbn" required></div>
+        <div class="field"><label>Month &amp; Year of Publication <span class="req">*</span> <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="publication_month" placeholder="e.g. 01/2026" required></div>
+        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'conference'): ?>
-        <div class="field"><label>Author Type</label><select class="select" name="author_type"><option>Author-1</option><option>Co-Author</option></select></div>
+        <div class="field"><label>Author Type <span class="req">*</span></label><select class="select" name="author_type" required><option>Author-1</option><option>Co-Author</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Paper Title <span class="req">*</span></label><input class="input" name="paper_title" required></div>
-        <div class="field"><label>Conference Name</label><input class="input" name="conference_name"></div>
-        <div class="field"><label>Type</label><select class="select" name="conference_type"><option>National</option><option>International</option></select></div>
-        <div class="field"><label>Venue</label><input class="input" name="venue"></div>
-        <div class="field"><label>Conference Date</label><input class="input" name="conference_date" type="date"></div>
+        <div class="field"><label>Conference Name <span class="req">*</span></label><input class="input" name="conference_name" required></div>
+        <div class="field"><label>Type <span class="req">*</span></label><select class="select" name="conference_type" required><option>National</option><option>International</option></select></div>
+        <div class="field"><label>Venue <span class="req">*</span></label><input class="input" name="venue" required></div>
+        <div class="field"><label>Conference Date <span class="req">*</span></label><input class="input" name="conference_date" type="date" required></div>
 
       <?php elseif ($selectedType === 'patent'): ?>
-        <div class="field"><label>Patent / Copyright</label><select class="select" name="category"><option>Patent</option><option>Copyright</option></select></div>
+        <div class="field"><label>Patent / Copyright <span class="req">*</span></label><select class="select" name="category" required><option>Patent</option><option>Copyright</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Title of the Patent / Copyright <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field"><label>Patent / Copyright Number</label><input class="input" name="patent_number"></div>
-        <div class="field"><label>Date of Publication <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date"></div>
-        <div class="field"><label>Document Link</label><input class="input" name="document_link" type="url"></div>
+        <div class="field"><label>Patent / Copyright Number <span class="req">*</span></label><input class="input" name="patent_number" required></div>
+        <div class="field"><label>Date of Publication <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" required></div>
+        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'fdp'): ?>
-        <div class="field"><label>Duration</label><input class="input" name="duration" placeholder="e.g. 5 days / 1 week"></div>
-        <div class="field"><label>Event Type</label><select class="select" name="event_type"><option>FDP</option><option>Workshop</option><option>Seminar</option><option>STTP</option><option>Conference</option></select></div>
+        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 5 days / 1 week" required></div>
+        <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>FDP</option><option>Workshop</option><option>Seminar</option><option>STTP</option><option>Conference</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Name of the FDP / Seminar / Workshop <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field"><label>Mode</label><select class="select" name="mode"><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
-        <div class="field"><label>Organized By <span class="card-sub">(Institution / Agency)</span></label><input class="input" name="organized_by"></div>
-        <div class="field"><label>From Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date"></div>
-        <div class="field"><label>To Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date"></div>
-        <div class="field"><label>Certificate Link</label><input class="input" name="certificate_link" type="url"></div>
+        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
+        <div class="field"><label>Organized By <span class="req">*</span> <span class="card-sub">(Institution / Agency)</span></label><input class="input" name="organized_by" required></div>
+        <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
+        <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
+        <div class="field"><label>Certificate Link <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'mou'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Signed Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date"></div>
+        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
-        <div class="field"><label>Valid upto <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date"></div>
-        <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration</label><input class="input" name="purpose"></div>
-        <div class="field"><label>Document Link</label><input class="input" name="document_link" type="url"></div>
+        <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" required></div>
+        <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration <span class="req">*</span></label><input class="input" name="purpose" required></div>
+        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'event'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date"></div>
+        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
-        <div class="field"><label>Event Type</label>
-          <select class="select js-other" name="event_type" data-other="event_type_other"><option>Seminar</option><option>Workshop</option><option>Webinar</option><option>FDP</option><option>Conference</option><option>Symposium</option><option>Guest Lecture</option><option>Others</option></select>
+        <div class="field"><label>Event Type <span class="req">*</span></label>
+          <select class="select js-other" name="event_type" data-other="event_type_other" required><option>Seminar</option><option>Workshop</option><option>Webinar</option><option>FDP</option><option>Conference</option><option>Symposium</option><option>Guest Lecture</option><option>Others</option></select>
           <input class="input js-other-text" name="event_type_other" placeholder="Specify the event type" style="margin-top:8px;display:none"></div>
-        <div class="field"><label>Mode</label><select class="select" name="mode"><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
-        <div class="field" style="grid-column:span 2"><label>Chief Guest / Resource Person <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person"></div>
-        <div class="field"><label>No. of Participants</label><input class="input" name="participants" type="number" min="0"></div>
-        <div class="field"><label>Sponsorship <span class="card-sub">(if any)</span></label><input class="input" name="sponsorship"></div>
-        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
+        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
+        <div class="field" style="grid-column:span 2"><label>Chief Guest / Resource Person <span class="req">*</span> <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person" required></div>
+        <div class="field"><label>No. of Participants <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" required></div>
+        <div class="field"><label>Sponsorship <span class="req">*</span> <span class="card-sub">(if any, write N/A if none)</span></label><input class="input" name="sponsorship" required></div>
+        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'nptel'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
-        <div class="field"><label>Category</label>
-          <select class="select js-other" name="category" data-other="category_other"><option>Faculty</option><option>Student</option><option>Others</option></select>
+        <div class="field"><label>Category <span class="req">*</span></label>
+          <select class="select js-other" name="category" data-other="category_other" required><option>Faculty</option><option>Student</option><option>Others</option></select>
           <input class="input js-other-text" name="category_other" placeholder="Specify the category" style="margin-top:8px;display:none"></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
-        <div class="field"><label>Session</label><input class="input" name="session" placeholder="e.g. Jul 2025 - Dec 2025"></div>
-        <div class="field"><label>Grade</label><input class="input" name="grade"></div>
-        <div class="field"><label>Certificate Link</label><input class="input" name="certificate_link" type="url"></div>
+        <div class="field"><label>Session <span class="req">*</span></label><input class="input" name="session" placeholder="e.g. Jul 2025 - Dec 2025" required></div>
+        <div class="field"><label>Grade <span class="req">*</span></label><input class="input" name="grade" required></div>
+        <div class="field"><label>Certificate Link <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'internship'): ?>
-        <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
+        <div class="field"><label>Dept / Branch <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
         <div class="field" style="grid-column:span 2"><label>Title of Internship <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address</label><input class="input" name="industry"></div>
-        <div class="field"><label>Duration</label><input class="input" name="duration" placeholder="e.g. 1 month"></div>
-        <div class="field"><label>No. of Days</label><input class="input" name="days" type="number" min="0"></div>
-        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document</label><input class="input" name="certificate_link" type="url"></div>
+        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" required></div>
+        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 1 month" required></div>
+        <div class="field"><label>No. of Days <span class="req">*</span></label><input class="input" name="days" type="number" min="1" required></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'placement'): ?>
-        <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
+        <div class="field"><label>Dept / Branch <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Job Name</label><input class="input" name="job_title"></div>
-        <div class="field"><label>Mode <span class="card-sub">(On Campus / Off Campus)</span></label><select class="select" name="mode"><option>On Campus</option><option>Off Campus</option></select></div>
+        <div class="field"><label>Job Name <span class="req">*</span></label><input class="input" name="job_title" required></div>
+        <div class="field"><label>Mode <span class="req">*</span> <span class="card-sub">(On Campus / Off Campus)</span></label><select class="select" name="mode" required><option>On Campus</option><option>Off Campus</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Company Name &amp; Address <span class="req">*</span> <span class="card-sub">(with Contact Details)</span></label><input class="input" name="company" required></div>
-        <div class="field"><label>Pay Scale</label><input class="input" name="pay_scale"></div>
-        <div class="field" style="grid-column:span 2"><label>Web Link to Appointment Order</label><input class="input" name="appointment_order_link" type="url"></div>
+        <div class="field"><label>Pay Scale <span class="req">*</span></label><input class="input" name="pay_scale" required></div>
+        <div class="field" style="grid-column:span 2"><label>Web Link to Appointment Order <span class="req">*</span></label><input class="input" name="appointment_order_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'nss'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date"></div>
-        <div class="field"><label>Activity Type</label><select class="select" name="activity_type"><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
+        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" required></div>
+        <div class="field"><label>Activity Type <span class="req">*</span></label><select class="select" name="activity_type" required><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Name of the Activity <span class="req">*</span></label><input class="input" name="activity_name" required></div>
-        <div class="field"><label>Venue</label><input class="input" name="venue"></div>
-        <div class="field"><label>No. of Students Participated</label><input class="input" name="participants" type="number" min="0"></div>
-        <div class="field" style="grid-column:span 2"><label>Name of External Agency / Member Involved <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="external_agency"></div>
-        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
+        <div class="field"><label>Venue <span class="req">*</span></label><input class="input" name="venue" required></div>
+        <div class="field"><label>No. of Students Participated <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of External Agency / Member Involved <span class="req">*</span> <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="external_agency" required></div>
+        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'online_course'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
-        <div class="field"><label>Category</label><select class="select" name="category"><option>Faculty</option><option>Student</option></select></div>
+        <div class="field"><label>Category <span class="req">*</span></label><select class="select" name="category" required><option>Faculty</option><option>Student</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
-        <div class="field"><label>Provider <span class="card-sub">(Coursera / NPTEL / Udemy / …)</span></label><input class="input" name="provider"></div>
-        <div class="field"><label>Duration</label><input class="input" name="duration" placeholder="e.g. 8 weeks"></div>
-        <div class="field"><label>Month &amp; Year <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="month_year" placeholder="e.g. 03/2026"></div>
-        <div class="field"><label>Certificate Link</label><input class="input" name="certificate_link" type="url"></div>
+        <div class="field"><label>Provider <span class="req">*</span> <span class="card-sub">(Coursera / NPTEL / Udemy / …)</span></label><input class="input" name="provider" required></div>
+        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 8 weeks" required></div>
+        <div class="field"><label>Month &amp; Year <span class="req">*</span> <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="month_year" placeholder="e.g. 03/2026" required></div>
+        <div class="field"><label>Certificate Link <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'student_achievement' || $selectedType === 'student_participation'): ?>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
+        <div class="field"><label>Dept / Branch <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
         <?php if ($selectedType === 'student_participation'): ?>
-        <div class="field"><label>Activity Category</label><select class="select" name="activity_category"><option>Co-curricular</option><option>Extra-curricular</option></select></div>
+        <div class="field"><label>Activity Category <span class="req">*</span></label><select class="select" name="activity_category" required><option>Co-curricular</option><option>Extra-curricular</option></select></div>
         <?php endif; ?>
-        <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field"><label>Event Type</label><input class="input" name="event_type" placeholder="e.g. Technical / Sports / Cultural"></div>
-        <div class="field"><label>Name of the Event</label><input class="input" name="event_name"></div>
-        <div class="field" style="grid-column:span 2"><label>Name of the Function / Programme</label><input class="input" name="function_name"></div>
-        <div class="field"><label>Date of the Event <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date"></div>
-        <div class="field"><label>Team / Individual</label><select class="select" name="team_individual"><option>Individual</option><option>Team</option></select></div>
-        <div class="field"><label>Level</label><select class="select" name="level_secured"><option>University</option><option>State</option><option>National</option><option>International</option></select></div>
-        <div class="field"><label>Position Secured</label><input class="input" name="position_secured" placeholder="e.g. First / Winner / Participant"></div>
-        <div class="field" style="grid-column:span 2"><label>Name of the Organising Institution</label><input class="input" name="organising_institution"></div>
-        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document</label><input class="input" name="certificate_link" type="url"></div>
+        <div class="field"><label>Event Type <span class="req">*</span></label><input class="input" name="event_type" placeholder="e.g. Technical / Sports / Cultural" required></div>
+        <div class="field"><label>Name of the Event <span class="req">*</span></label><input class="input" name="event_name" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of the Function / Programme <span class="req">*</span></label><input class="input" name="function_name" required></div>
+        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
+        <div class="field"><label>Team / Individual <span class="req">*</span></label><select class="select" name="team_individual" required><option>Individual</option><option>Team</option></select></div>
+        <div class="field"><label>Level <span class="req">*</span></label><select class="select" name="level_secured" required><option>University</option><option>State</option><option>National</option><option>International</option></select></div>
+        <div class="field"><label>Position Secured <span class="req">*</span></label><input class="input" name="position_secured" placeholder="e.g. First / Winner / Participant" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of the Organising Institution <span class="req">*</span></label><input class="input" name="organising_institution" required></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'summer_training'): ?>
-        <div class="field"><label>Dept / Branch</label><select class="select" name="department">
+        <div class="field"><label>Dept / Branch <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Reg. No</label><input class="input" name="reg_no"></div>
+        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <div class="field" style="grid-column:span 2"><label>Title of Training <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address</label><input class="input" name="industry"></div>
-        <div class="field"><label>Duration</label><input class="input" name="duration" placeholder="e.g. 1 month"></div>
-        <div class="field"><label>No. of Days</label><input class="input" name="days" type="number" min="0"></div>
-        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document</label><input class="input" name="certificate_link" type="url"></div>
+        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" required></div>
+        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 1 month" required></div>
+        <div class="field"><label>No. of Days <span class="req">*</span></label><input class="input" name="days" type="number" min="1" required></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'value_added'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
-        <div class="field"><label>From Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date"></div>
-        <div class="field"><label>To Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date"></div>
+        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
+        <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
-        <div class="field"><label>Mode</label><select class="select" name="mode"><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
-        <div class="field"><label>No. of Participants</label><input class="input" name="participants" type="number" min="0"></div>
-        <div class="field" style="grid-column:span 2"><label>Resource Person <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person"></div>
-        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
+        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
+        <div class="field"><label>No. of Participants <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" required></div>
+        <div class="field" style="grid-column:span 2"><label>Resource Person <span class="req">*</span> <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person" required></div>
+        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'training'): ?>
-        <div class="field"><label>Department</label><select class="select" name="department">
+        <div class="field"><label>Department <span class="req">*</span></label><select class="select" name="department" required>
           <?php foreach($departments as $d):?><option value="<?=e($d['name'])?>" <?=$user['department']===$d['name']?'selected':''?>><?=e($d['name'])?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Academic Year</label><select class="select" name="academic_year"><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
-        <div class="field"><label>Date <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date"></div>
+        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
-        <div class="field"><label>Event Type</label><select class="select" name="event_type"><option>Career Guidance</option><option>Counselling</option><option>ICT</option><option>Life Skills</option><option>Soft Skills</option></select></div>
-        <div class="field"><label>Mode</label><select class="select" name="mode"><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
-        <div class="field"><label>No. of Participants</label><input class="input" name="participants" type="number" min="0"></div>
-        <div class="field"><label>Sponsorship <span class="card-sub">(if any)</span></label><input class="input" name="sponsorship"></div>
-        <div class="field" style="grid-column:span 2"><label>Chief Guest / Resource Person <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person"></div>
-        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report</label><input class="input" name="report_link" type="url"></div>
+        <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>Career Guidance</option><option>Counselling</option><option>ICT</option><option>Life Skills</option><option>Soft Skills</option></select></div>
+        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
+        <div class="field"><label>No. of Participants <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" required></div>
+        <div class="field"><label>Sponsorship <span class="req">*</span> <span class="card-sub">(if any, write N/A if none)</span></label><input class="input" name="sponsorship" required></div>
+        <div class="field" style="grid-column:span 2"><label>Chief Guest / Resource Person <span class="req">*</span> <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person" required></div>
+        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
       <?php endif; ?>
 
-        <!-- Proof / attachment (optional) — carried onto the report -->
+        <!-- Proof / attachment (mandatory) — carried onto the report -->
         <div class="field" style="grid-column:span 2">
-          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
-          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
+          <label>Proof / Attachment <span class="req">*</span> <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
+          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf" required>
           <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
         </div>
       </div>
@@ -419,12 +698,11 @@ require __DIR__ . '/inc/header.php';
           <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
         <?php endif; ?>
         <?php if (!$isLast): ?>
-          <!-- formnovalidate so you can move on even with nothing entered here -->
-          <button type="submit" name="nav" value="next" class="btn btn-primary" formnovalidate>
+          <button type="submit" name="nav" value="next" class="btn btn-primary">
             Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
           </button>
         <?php else: ?>
-          <button type="submit" name="nav" value="submit" class="btn btn-primary" formnovalidate><?= icon('check') ?> Submit for Review</button>
+          <button type="submit" name="nav" value="submit" class="btn btn-primary"><?= icon('check') ?> Submit for Review</button>
         <?php endif; ?>
       </div>
     </form>
@@ -483,6 +761,89 @@ require __DIR__ . '/inc/header.php';
           }
         });
       }
+
+      /* Per-category Draft State Persistence */
+      (function () {
+        var form = document.querySelector('.card-body form');
+        if (!form) return;
+
+        var userId = <?= json_encode((int)$user['id']) ?>;
+        var recordType = <?= json_encode($selectedType) ?>;
+        var storageKey = 'faculty_upload_draft_' + userId + '_' + recordType;
+
+        // Clear draft for current category if form was successfully submitted
+        var alertSuccess = document.querySelector('.alert-success');
+        if (alertSuccess && alertSuccess.textContent.indexOf('submitted for review') !== -1) {
+          try {
+            sessionStorage.removeItem(storageKey);
+          } catch (e) {}
+        }
+
+        function saveDraft() {
+          try {
+            var draft = {};
+            var elements = form.querySelectorAll('input, select, textarea');
+            elements.forEach(function (el) {
+              var name = el.name;
+              if (!name || name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
+              if (el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
+
+              if (el.type === 'checkbox' || el.type === 'radio') {
+                if (el.checked) {
+                  draft[name] = el.value || true;
+                }
+              } else {
+                draft[name] = el.value;
+              }
+            });
+            sessionStorage.setItem(storageKey, JSON.stringify(draft));
+          } catch (e) {
+            console.warn('Unable to save form draft to sessionStorage:', e);
+          }
+        }
+
+        function restoreDraft() {
+          try {
+            var raw = sessionStorage.getItem(storageKey);
+            if (!raw) return;
+            var draft = JSON.parse(raw);
+            if (!draft || typeof draft !== 'object') return;
+
+            Object.keys(draft).forEach(function (name) {
+              if (name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
+
+              var item = form.elements[name];
+              if (!item) return;
+
+              var nodes = (item instanceof NodeList || item instanceof HTMLCollection) ? Array.prototype.slice.call(item) : [item];
+
+              nodes.forEach(function (el) {
+                if (!el || el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
+
+                if (el.type === 'checkbox' || el.type === 'radio') {
+                  el.checked = (el.value === draft[name] || draft[name] === true);
+                } else if (el.tagName === 'SELECT') {
+                  el.value = draft[name];
+                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                  el.value = draft[name];
+                }
+              });
+            });
+          } catch (e) {
+            console.warn('Unable to restore form draft from sessionStorage:', e);
+          }
+        }
+
+        form.addEventListener('input', saveDraft);
+        form.addEventListener('change', saveDraft);
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', restoreDraft);
+        } else {
+          restoreDraft();
+        }
+      })();
     </script>
   </div>
 </div>
