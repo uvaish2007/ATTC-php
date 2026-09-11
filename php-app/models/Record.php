@@ -222,18 +222,14 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     $types = record_types();
     $all = [];
 
-    if ($role === 'HoD' || $stage === 'HOD Pending') {
+    if ($role === 'Coordinator' || $stage === 'Submitted') {
+        $targetStatuses = ['Submitted'];
+    } elseif ($role === 'HoD' || $stage === 'HOD Pending') {
         $targetStatuses = ['HOD Pending', 'Submitted'];
     } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
         $targetStatuses = ['Dean Pending'];
     } else {
-        if ($stage === 'HOD Pending') {
-            $targetStatuses = ['HOD Pending', 'Submitted'];
-        } elseif ($stage === 'Dean Pending') {
-            $targetStatuses = ['Dean Pending'];
-        } else {
-            $targetStatuses = ['Dean Pending', 'HOD Pending', 'Submitted'];
-        }
+        $targetStatuses = ['Dean Pending', 'HOD Pending', 'Submitted'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
@@ -286,9 +282,13 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     $table = $types[$type]['table'];
 
-    if ($userRole === 'HoD') {
+    // Review chain: Coordinator / HoD approves record directly to Approved.
+    if ($userRole === 'Coordinator') {
+        $validCurrent = ['Submitted'];
+        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
+    } elseif ($userRole === 'HoD') {
         $validCurrent = ['HOD Pending', 'Submitted'];
-        $newStatus    = ($action === 'approve') ? 'Dean Pending' : 'Rejected';
+        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
     } elseif ($userRole === 'Dean') {
         $validCurrent = ['Dean Pending'];
         $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
@@ -298,7 +298,7 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     }
 
     $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
-    $sql      = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ? WHERE id = ? AND status IN ($inClause)";
+    $sql      = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ?, updated_at = NOW() WHERE id = ? AND status IN ($inClause)";
     $params   = array_merge([$newStatus, $remark ?: null, $approvedBy, $id], $validCurrent);
 
     if ($scopeDept !== null) {
@@ -318,7 +318,11 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         sync_target_achieved_for_type($type);
     }
 
-    $msgStatus = ($newStatus === 'Dean Pending') ? 'approved by HOD and submitted for Dean review' : $newStatus;
+    $msgStatus = match ($newStatus) {
+        'HOD Pending'  => 'approved and sent to the HoD',
+        'Dean Pending' => 'approved by HOD and submitted for Dean review',
+        default        => strtolower($newStatus),
+    };
     return [true, "Record {$msgStatus}."];
 }
 
@@ -335,11 +339,14 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         return [false, 'You can only approve your own department.'];
     }
 
-    if ($userRole === 'HoD') {
+    if ($userRole === 'Coordinator') {
+        $validCurrent = ['Submitted'];
+        $newStatus    = 'Approved';
+    } elseif ($userRole === 'HoD') {
         $validCurrent = ['HOD Pending', 'Submitted'];
-        $newStatus    = 'Dean Pending';
+        $newStatus    = 'Approved';
     } else {
-        $validCurrent = ['Dean Pending'];
+        $validCurrent = ['Dean Pending', 'HOD Pending', 'Submitted'];
         $newStatus    = 'Approved';
     }
 
@@ -349,7 +356,7 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     foreach (record_types() as $t) {
         try {
             $stmt = db()->prepare(
-                "UPDATE `{$t['table']}` SET status = ?, approved_by = ?
+                "UPDATE `{$t['table']}` SET status = ?, approved_by = ?, updated_at = NOW()
                  WHERE status IN ($inClause) AND department = ?"
             );
             $params = array_merge([$newStatus, $approvedBy], $validCurrent, [$department]);
@@ -369,8 +376,12 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         sync_all_target_achieved();
     }
 
-    $msgStatus = ($newStatus === 'Dean Pending') ? 'submitted for Dean review' : 'approved';
-    return [true, "Approved {$total} record" . ($total === 1 ? '' : 's') . " in {$department} ({$msgStatus})."];
+    $msgStatus = match ($newStatus) {
+        'HOD Pending'  => 'sent to the HoD',
+        'Dean Pending' => 'submitted for Dean review',
+        default        => 'approved',
+    };
+    return [true, "Cleared {$total} record" . ($total === 1 ? '' : 's') . " in {$department} ({$msgStatus})."];
 }
 
 /** Get all records by the current user across all types. */

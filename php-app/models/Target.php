@@ -377,7 +377,7 @@ function targets_pending_count(): int
  * still have to send up. A HoD's department is taken from their account, never
  * from the form.
  */
-function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks = null, ?string $coordinator = null, string $status = 'Draft', ?string $targetDeadline = null, ?string $fixedText = null): array
+function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft', ?string $targetDeadline = null): array
 {
     if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
         return [false, 'Only a HoD or Dean enters targets.'];
@@ -411,12 +411,11 @@ function target_create(array $user, string $department, string $academicYear, st
     }
 
     $stmt = db()->prepare(
-        'INSERT INTO targets (department, academic_year, metric, target_value, target_deadline, fixed_text, remarks, coordinator, status, submitted_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO targets (department, academic_year, metric, target_value, target_deadline, remarks, coordinator, status, submitted_at, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     $stmt->execute([
-        $department, $academicYear, $metric, $targetValue, $targetDeadline, $fixedText ?: null,
-        $remarks ?: null, $coordinator ?: null,
+        $department, $academicYear, $metric, $targetValue, $targetDeadline, $remarks ?: null, $coordinator ?: null,
         $statusVal, $submittedAt, $user['id'],
     ]);
 
@@ -434,7 +433,7 @@ function target_create(array $user, string $department, string $academicYear, st
  * is rewritten so the record always shows who last set the figure. A HoD can
  * never move a target into another department.
  */
-function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue = 0, ?string $remarks = null, ?string $coordinator = null, ?string $targetDeadline = null, ?string $fixedText = null): array
+function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null, ?string $fixedText = null): array
 {
     $existing = target_find($id);
     if (!$existing) {

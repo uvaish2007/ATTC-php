@@ -54,6 +54,7 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',   'path' => 'upload.php',        'icon' => 'upload'],
+            ['section' => 'Workspace', 'label' => 'Approvals',     'path' => 'approvals.php',     'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Reports',       'path' => 'reports.php',       'icon' => 'reports'],
             ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],
@@ -89,8 +90,9 @@ function nav_href(string $path): string
 /** Total pending records a reviewer should act on, for the badge. */
 function pending_approvals_count(array $user): int
 {
-    // Admin/Dean/HoD review; HoD is scoped to their own department.
-    if (!in_array($user['role'], ['Admin', 'Dean', 'HoD'], true)) {
+    // Coordinator/HoD/Dean/Admin review; Coordinator and HoD are scoped to
+    // their own department.
+    if (!in_array($user['role'], ['Admin', 'Dean', 'HoD', 'Coordinator'], true)) {
         return 0;
     }
 
@@ -107,14 +109,16 @@ function pending_approvals_count(array $user): int
     require_once __DIR__ . '/../models/Record.php';   // record_types()
 
     $role = $user['role'];
-    $scopeDept = $role === 'HoD' ? ($user['department'] ?? null) : null;
+    $scopeDept = in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
 
-    if ($role === 'HoD') {
+    if ($role === 'Coordinator') {
+        $targetStatuses = ['Submitted'];
+    } elseif ($role === 'HoD') {
         $targetStatuses = ['HOD Pending', 'Submitted'];
     } elseif ($role === 'Dean') {
         $targetStatuses = ['Dean Pending'];
-    } else {
-        $targetStatuses = ['Dean Pending'];
+    } else {   // Admin — everything still awaiting a decision
+        $targetStatuses = ['Submitted', 'HOD Pending', 'Dean Pending'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));

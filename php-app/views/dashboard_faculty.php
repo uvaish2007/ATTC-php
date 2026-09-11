@@ -179,13 +179,14 @@ $cards = [
 
             <g transform="rotate(-90 80 80)"><!-- start at 12 o'clock -->
               <?php foreach ($statusColours as $status => $colour): ?>
-                <?php if ($breakdown[$status] > 0): ?>
-                  <?php $length = $circumference * ($breakdown[$status] / $totalCount); ?>
+                <?php $cnt = (int) ($breakdown[$status] ?? 0); ?>
+                <?php if ($cnt > 0): ?>
+                  <?php $length = $circumference * ($cnt / $totalCount); ?>
                   <circle cx="80" cy="80" r="<?= $radius ?>" class="donut-slice"
                           stroke="<?= $colour ?>"
                           stroke-dasharray="<?= round(max(0.5, $length - 2), 2) ?> <?= round($circumference, 2) ?>"
                           stroke-dashoffset="<?= round(-$drawn, 2) ?>">
-                    <title><?= $status ?>: <?= (int) $breakdown[$status] ?></title>
+                    <title><?= $status ?>: <?= $cnt ?></title>
                   </circle>
                   <?php $drawn += $length; ?>
                 <?php endif; ?>
@@ -198,11 +199,12 @@ $cards = [
 
           <div class="legend">
             <?php foreach ($statusColours as $status => $colour): ?>
+              <?php $cnt = (int) ($breakdown[$status] ?? 0); ?>
               <div class="legend-row">
                 <span class="legend-dot" style="background:<?= $colour ?>"></span>
                 <span class="nm"><?= $status ?></span>
-                <span class="n tabular"><?= (int) $breakdown[$status] ?></span>
-                <span class="pc tabular faint"><?= round($breakdown[$status] / $totalCount * 100) ?>%</span>
+                <span class="n tabular"><?= $cnt ?></span>
+                <span class="pc tabular faint"><?= $totalCount > 0 ? round($cnt / $totalCount * 100) : 0 ?>%</span>
               </div>
             <?php endforeach; ?>
           </div>
