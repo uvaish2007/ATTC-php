@@ -18,6 +18,10 @@ require_once __DIR__ . '/notifications.php';
 $user   = $user ?? current_user();
 $active = basename($_SERVER['SCRIPT_NAME']);
 
+// The one system-wide active academic year — read once per page load and
+// reused everywhere below (the badge counts and the topbar indicator).
+$atts_activeYear = active_academic_year();
+
 $headerNotifications = fetch_header_notifications($user);
 $unreadNotifCount    = count(array_filter($headerNotifications, fn($n) => !empty($n['unread'])));
 
@@ -31,7 +35,7 @@ $badgeCounts = [
     // told about them; for anyone else the count is noise. For an Admin the
     // badge also counts unlock requests, since those are actioned on the same
     // Targets page.
-    'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Dean'], true) ? targets_pending_count() : 0)
+    'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
 ];
 
@@ -310,8 +314,12 @@ $flashes      = take_flashes();
         <span class="cur"><?= e($breadcrumb) ?></span>
       </nav>
       <div class="topbar-right">
+        <span class="year-badge" title="ATTS is operating on academic year <?= e($atts_activeYear) ?>. Set by the Admin; every role sees this same year until it is changed.">
+          <?= icon('calendar', 13) ?> Academic Year: <?= e($atts_activeYear) ?>
+          <span class="yb-lock"><?= icon('lock', 11) ?> Locked by Admin</span>
+        </span>
         <span class="role-badge" title="You are signed in as <?= e($user['role']) ?>"><?= icon('shield', 13) ?> <?= e($user['role']) ?></span>
-        
+
         <div class="notif-wrapper" style="position:relative; display:inline-block;">
           <button type="button" class="icon-btn notif-bell-btn" id="notif_bell_btn" aria-label="Notifications" onclick="toggleNotificationPanel(event)">
             <?= icon('bell', 19) ?>

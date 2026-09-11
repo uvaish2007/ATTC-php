@@ -83,7 +83,12 @@ function dashboard_data(array $user): array
 
     $valid  = ['Draft', 'Submitted', 'Approved', 'Rejected'];
     $status = in_array(($_GET['status'] ?? ''), $valid, true) ? $_GET['status'] : null;
-    $year   = trim((string) ($_GET['year'] ?? '')) ?: null;
+
+    // The ONE centralized active academic year — every role reads the same
+    // system-wide value here, never a client-supplied $_GET['year']. This is
+    // what makes "Admin activates 2024-25 -> the whole system sees 2024-25"
+    // true for Faculty/Coordinator/HoD/Dean/Director too, not just Admin.
+    $year = active_academic_year();
 
     $metrics = all_metrics();
 
@@ -192,12 +197,17 @@ function dashboard_data(array $user): array
         }
     }
 
-    // ---- top-line stats ----
+    // ---- top-line stats (targets count scoped to active year if set) ----
+    $targetCountSql = 'SELECT COUNT(*) FROM targets' . ($year !== null ? ' WHERE academic_year = ?' : '');
+    $targetCountStmt = $pdo->prepare($targetCountSql);
+    $targetCountStmt->execute($year !== null ? [$year] : []);
+    $targetCount = (int) $targetCountStmt->fetchColumn();
+
     $stats = [
         'users'       => (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn(),
         'departments' => count($departments),
         'metrics'     => (int) $pdo->query('SELECT COUNT(*) FROM metrics')->fetchColumn(),
-        'targets'     => (int) $pdo->query('SELECT COUNT(*) FROM targets')->fetchColumn(),
+        'targets'     => $targetCount,
         'totalRecords'=> $grandTotal,
         'pendingApprovals' => (int) (($statusBreakdown['Dean Pending'] ?? 0) + ($statusBreakdown['HOD Pending'] ?? 0) + ($statusBreakdown['Submitted'] ?? 0)),
     ];
@@ -212,7 +222,7 @@ function dashboard_data(array $user): array
 
     // ---- recent submissions + how the targets are doing ----
     $recent  = recent_activity($departmentFilter, $status, null, $year);
-    $targets = target_progress($departmentFilter);
+    $targets = target_progress($departmentFilter, 6, $year);
 
     /*
      * Target-vs-achieved is an oversight-only card, and it costs one COUNT per
@@ -230,13 +240,15 @@ function dashboard_data(array $user): array
         $attainOptions = target_filter_options();
         $attainFilters = [
             'dept'   => trim((string) ($_GET['t_dept']   ?? '')) ?: null,
-            'year'   => trim((string) ($_GET['t_year']   ?? '')) ?: null,
+            // Always the system's active year — this mini-chart narrows by
+            // department/metric/status, but never by a different year.
+            'year'   => $year,
             'metric' => trim((string) ($_GET['t_metric'] ?? '')) ?: null,
             'status' => trim((string) ($_GET['t_status'] ?? '')) ?: null,
         ];
         // Only accept a value the data actually offers, so a hand-edited URL
         // cannot put the selects into a state the page can't show.
-        foreach (['dept' => 'departments', 'year' => 'years', 'metric' => 'metrics', 'status' => 'statuses'] as $key => $list) {
+        foreach (['dept' => 'departments', 'metric' => 'metrics', 'status' => 'statuses'] as $key => $list) {
             if ($attainFilters[$key] !== null && !in_array($attainFilters[$key], $attainOptions[$list], true)) {
                 $attainFilters[$key] = null;
             }
@@ -271,7 +283,7 @@ function dashboard_data(array $user): array
         ],
         'recent'         => $recent,
         'targetProgress' => $targets,
-        'targetSummary'  => target_summary($departmentFilter),
+        'targetSummary'  => target_summary($departmentFilter, $year),
         'targetAttainment' => $attainment,
         'targetFilters'    => $attainFilters,
         'targetOptions'    => $attainOptions,
@@ -284,14 +296,22 @@ function dashboard_data(array $user): array
  * The percentage is capped at 100 so a target that was beaten does not draw a
  * bar wider than its track; the raw numbers are still shown beside it.
  */
-function target_progress(?string $department, int $limit = 6): array
+function target_progress(?string $department, int $limit = 6, ?string $year = null): array
 {
     $sql    = 'SELECT department, academic_year, metric, target_value, achieved_value FROM targets';
+    $where  = [];
     $params = [];
 
     if ($department !== null) {
-        $sql .= ' WHERE department = ?';
+        $where[]  = 'department = ?';
         $params[] = $department;
+    }
+    if ($year !== null) {
+        $where[]  = 'academic_year = ?';
+        $params[] = $year;
+    }
+    if ($where) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
     }
 
     // LIMIT can't be a placeholder in MySQL, so it is cast to an int instead.
@@ -324,13 +344,21 @@ function target_progress(?string $department, int $limit = 6): array
  * achieved/target figure, a Met / On-track / Behind distribution, and a
  * per-department rollup (each department's aggregate progress).
  */
-function target_summary(?string $department): array
+function target_summary(?string $department, ?string $year = null): array
 {
     $sql    = 'SELECT department, target_value, achieved_value FROM targets';
+    $where  = [];
     $params = [];
     if ($department !== null) {
-        $sql .= ' WHERE department = ?';
+        $where[]  = 'department = ?';
         $params[] = $department;
+    }
+    if ($year !== null) {
+        $where[]  = 'academic_year = ?';
+        $params[] = $year;
+    }
+    if ($where) {
+        $sql .= ' WHERE ' . implode(' AND ', $where);
     }
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
@@ -655,11 +683,15 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
     return array_slice($rows, 0, 8);
 }
 
-/** Faculty personal view: only the signed-in user's own submissions. */
+/** Faculty personal view: only the signed-in user's own submissions, scoped
+ *  to the system's active academic year (tables that carry no academic_year
+ *  column — see all_metrics()'s 'year' flag — are shown regardless of year,
+ *  same convention the rest of the dashboard already uses). */
 function my_dashboard_data(array $user): array
 {
-    $pdo = db();
-    $uid = (int) $user['id'];
+    $pdo  = db();
+    $uid  = (int) $user['id'];
+    $year = active_academic_year();
 
     $metrics = dept_metrics() + other_metrics();
     $statusBreakdown = [
@@ -674,8 +706,15 @@ function my_dashboard_data(array $user): array
 
     foreach ($metrics as $key => $m) {
         try {
-            $stmt = $pdo->prepare("SELECT status, COUNT(*) AS n FROM `{$m['table']}` WHERE created_by = ? GROUP BY status");
-            $stmt->execute([$uid]);
+            $sql    = "SELECT status, COUNT(*) AS n FROM `{$m['table']}` WHERE created_by = ?";
+            $params = [$uid];
+            if (!empty($m['year'])) {
+                $sql .= ' AND academic_year = ?';
+                $params[] = $year;
+            }
+            $sql .= ' GROUP BY status';
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
             $sum = 0;
             foreach ($stmt as $row) {
                 $sum += (int) $row['n'];
@@ -702,6 +741,6 @@ function my_dashboard_data(array $user): array
         'totals'          => $totals,
         'metricLabels'    => array_map(fn($m) => $m['label'], $metrics),
         'statusBreakdown' => $statusBreakdown,
-        'recent'          => recent_activity(null, null, $uid),
+        'recent'          => recent_activity(null, null, $uid, $year),
     ];
 }

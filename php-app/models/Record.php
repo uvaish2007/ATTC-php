@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/../inc/db.php';
+require_once __DIR__ . '/Target.php';   // active_academic_year(), target_record_table_columns()
 
 /** All record types with their table names and display info. */
 function record_types(): array
@@ -46,8 +47,15 @@ function record_types(): array
     return $filtered;
 }
 
-/** Fetch records for a given type, with optional filters. */
-function records_list(string $type, ?string $department = null, ?string $status = null, ?int $createdBy = null, ?string $from = null, ?string $to = null): array
+/**
+ * Fetch records for a given type, with optional filters.
+ *
+ * $year scopes to one academic year — the active one, from every caller —
+ * but only for tables that actually carry an academic_year column; a table
+ * that doesn't (e.g. fdp, mou, nptel) is returned unfiltered by year, the
+ * same convention all_metrics() already uses on the dashboard.
+ */
+function records_list(string $type, ?string $department = null, ?string $status = null, ?int $createdBy = null, ?string $from = null, ?string $to = null, ?string $year = null): array
 {
     $types = record_types();
     if (!isset($types[$type])) {
@@ -66,6 +74,10 @@ function records_list(string $type, ?string $department = null, ?string $status 
     if ($department && $hasDept) {
         $sql .= ' AND department = ?';
         $params[] = $department;
+    }
+    if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
+        $sql .= ' AND academic_year = ?';
+        $params[] = $year;
     }
     if ($status) {
         if ($status === 'Submitted' || $status === 'Pending') {
@@ -110,7 +122,7 @@ function records_list(string $type, ?string $department = null, ?string $status 
  * Returns one flat list, newest first, with a few helper keys added:
  *   _type_key, _type_label, _title, _person
  */
-function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null): array
+function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null, ?string $year = null): array
 {
     $types = record_types();
 
@@ -136,7 +148,7 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
     foreach ($wanted as $key => $t) {
         // Every table now has a department column, so each type is scoped to the
         // caller's department (student records carry a "Dept / Branch" too).
-        foreach (records_list($key, $scopeDept, $status, $onlyMine, $from, $to) as $row) {
+        foreach (records_list($key, $scopeDept, $status, $onlyMine, $from, $to, $year) as $row) {
             $row['_type_key']   = $key;
             $row['_type_label'] = $t['label'];
             $row['_title']      = $row[$t['title_col']] ?? '(untitled)';
@@ -216,8 +228,15 @@ function user_record_counts(int $userId): array
     return $counts[$userId] ?? ['total' => 0, 'Approved' => 0, 'Submitted' => 0, 'Draft' => 0, 'Rejected' => 0];
 }
 
-/** Get all pending records across all types for approval view. */
-function pending_records(?string $department = null, ?string $stage = null, ?string $role = null): array
+/**
+ * Get all pending records across all types for approval view.
+ *
+ * $year scopes the queue to one academic year (the active one, from every
+ * caller) — section 9: a Coordinator/HoD/Dean approval queue must never show
+ * a pending record from a year other than the one ATTS is currently on.
+ * Tables without an academic_year column are unaffected by $year.
+ */
+function pending_records(?string $department = null, ?string $stage = null, ?string $role = null, ?string $year = null): array
 {
     $types = record_types();
     $all = [];
@@ -241,6 +260,10 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
         if ($department) {
             $sql .= ' AND department = ?';
             $params[] = $department;
+        }
+        if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
+            $sql .= ' AND academic_year = ?';
+            $params[] = $year;
         }
 
         $sql .= ' ORDER BY created_at DESC';
@@ -268,8 +291,13 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
  *
  * $scopeDept restricts the action to one department (an HoD may only review
  * their own). Passing null means no department restriction (Admin/Dean).
+ *
+ * $year is the defence-in-depth twin of pending_records()'s $year filter: the
+ * listing already only ever shows a record from the active year, but this
+ * makes the write itself refuse a forged id from a different year too, at no
+ * extra query cost (it is just one more bound parameter on the UPDATE).
  */
-function record_review(string $type, int $id, string $action, ?string $remark, int $approvedBy, ?string $scopeDept = null, string $userRole = 'Admin'): array
+function record_review(string $type, int $id, string $action, ?string $remark, int $approvedBy, ?string $scopeDept = null, string $userRole = 'Admin', ?string $year = null): array
 {
     $types = record_types();
     if (!isset($types[$type])) {
@@ -305,12 +333,16 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         $sql     .= ' AND department = ?';
         $params[] = $scopeDept;
     }
+    if ($year !== null && in_array('academic_year', target_record_table_columns($table), true)) {
+        $sql     .= ' AND academic_year = ?';
+        $params[] = $year;
+    }
 
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
 
     if ($stmt->rowCount() === 0) {
-        return [false, 'Record not found, already reviewed, or outside your department scope.'];
+        return [false, 'Record not found, already reviewed, outside your department scope, or not in the active academic year.'];
     }
 
     if ($newStatus === 'Approved') {
@@ -329,7 +361,7 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 /**
  * Approve every pending record of a department in one go.
  */
-function records_bulk_approve(string $department, int $approvedBy, ?string $scopeDept = null, string $userRole = 'HoD'): array
+function records_bulk_approve(string $department, int $approvedBy, ?string $scopeDept = null, string $userRole = 'HoD', ?string $year = null): array
 {
     $department = trim($department);
     if ($department === '') {
@@ -355,11 +387,14 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
 
     foreach (record_types() as $t) {
         try {
-            $stmt = db()->prepare(
-                "UPDATE `{$t['table']}` SET status = ?, approved_by = ?, updated_at = NOW()
-                 WHERE status IN ($inClause) AND department = ?"
-            );
+            $sql    = "UPDATE `{$t['table']}` SET status = ?, approved_by = ?, updated_at = NOW()
+                        WHERE status IN ($inClause) AND department = ?";
             $params = array_merge([$newStatus, $approvedBy], $validCurrent, [$department]);
+            if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
+                $sql      .= ' AND academic_year = ?';
+                $params[]  = $year;
+            }
+            $stmt = db()->prepare($sql);
             $stmt->execute($params);
             $total += $stmt->rowCount();
         } catch (\PDOException $e) {

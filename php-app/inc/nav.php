@@ -106,10 +106,11 @@ function pending_approvals_count(array $user): int
         return $memo[$memoKey];
     }
 
-    require_once __DIR__ . '/../models/Record.php';   // record_types()
+    require_once __DIR__ . '/../models/Record.php';   // record_types(), target_record_table_columns()
 
     $role = $user['role'];
     $scopeDept = in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
+    $year      = active_academic_year();   // the badge only counts the active year's pending records
 
     if ($role === 'Coordinator') {
         $targetStatuses = ['Submitted'];
@@ -127,14 +128,18 @@ function pending_approvals_count(array $user): int
     foreach (record_types() as $t) {
         $table = $t['table'];
         try {
+            $sql    = "SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)";
+            $params = $targetStatuses;
             if ($scopeDept !== null) {
-                $params = array_merge($targetStatuses, [$scopeDept]);
-                $stmt   = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause) AND department = ?");
-                $stmt->execute($params);
-            } else {
-                $stmt = db()->prepare("SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)");
-                $stmt->execute($targetStatuses);
+                $sql     .= ' AND department = ?';
+                $params[] = $scopeDept;
             }
+            if (in_array('academic_year', target_record_table_columns($table), true)) {
+                $sql     .= ' AND academic_year = ?';
+                $params[] = $year;
+            }
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
             $total += (int) $stmt->fetchColumn();
         } catch (\PDOException $e) {
             continue;

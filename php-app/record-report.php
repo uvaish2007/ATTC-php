@@ -38,7 +38,10 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 // to their own. This mirrors report_records()'s own scoping.
 $isOversight  = in_array($user['role'], ['Admin', 'Director'], true);
 $department   = $isOversight ? (trim((string) input('department')) ?: null) : ($user['department'] ?? null);
-$year         = trim((string) input('year')) ?: null;   // null = every year
+// The system's active academic year — never the client-supplied ?year=,
+// which a hand-built URL could set to any year (this page is reachable
+// directly, not only through reports.php's own, already year-locked links).
+$year         = active_academic_year();
 $singleDept   = $department !== null;
 
 // Optional review-status and submission-period filters (from the Reports page).
@@ -47,14 +50,8 @@ if (!in_array($status, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) { 
 $from = parse_date_input((string) input('from'));
 $to   = parse_date_input((string) input('to'));
 
-// Records of this type, in the user's scope, newest first.
-$records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to);
-
-// Narrow to the chosen year for the record types that carry an academic_year;
-// types without one (events, mou, …) are left as-is.
-if ($year !== null) {
-    $records = array_values(array_filter($records, fn($r) => empty($r['academic_year']) || $r['academic_year'] === $year));
-}
+// Records of this type, in the user's scope and the active year, newest first.
+$records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to, $year);
 
 // Columns: drop the consolidated "Dept" column for a single-department report.
 $columns = array_values(array_filter($spec['columns'], fn($c) => !($singleDept && $c[1] === 'department')));

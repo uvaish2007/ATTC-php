@@ -53,7 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
 $department = ($isAdmin || $isDean) ? (trim((string) input('department')) ?: null) : null;
 $status     = !$isDirector ? (trim((string) input('status')) ?: null) : null;
 $type       = !$isDirector ? (trim((string) input('type'))   ?: null) : null;
-$year       = $canFilter   ? (trim((string) input('year'))   ?: null) : null;
+// Reports show the system's ONE active academic year — never a client-chosen
+// year, and never mixed with any other year's figures (section 6).
+$year       = active_academic_year();
 $rawFrom    = $canFilter   ? trim((string) input('from'))    : '';
 $rawTo      = $canFilter   ? trim((string) input('to'))      : '';
 
@@ -69,7 +71,7 @@ if ($fromIso && $toIso && $fromIso > $toIso) {
     $rangeError = 'From Date cannot be later than To Date.';
 }
 
-$records = report_records($user, $department, $status, $type, $rangeError ? null : $fromIso, $rangeError ? null : $toIso);
+$records = report_records($user, $department, $status, $type, $rangeError ? null : $fromIso, $rangeError ? null : $toIso, $year);
 
 $types       = record_types();
 $departments = departments_all();
@@ -115,7 +117,8 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-<?php $activeCount = count(array_filter([$department, $year, $type, $status])) + (($fromDisplay || $toDisplay) ? 1 : 0); ?>
+<?php // $year isn't counted — it's always the active system year, not a chosen filter.
+  $activeCount = count(array_filter([$department, $type, $status])) + (($fromDisplay || $toDisplay) ? 1 : 0); ?>
 <div class="page-head">
   <div>
     <h1>Reports</h1>
@@ -142,16 +145,6 @@ require __DIR__ . '/inc/header.php';
                   <option value="">All departments</option>
                   <?php foreach ($departments as $d): ?>
                     <option value="<?= e($d['name']) ?>" <?= $department === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
-                  <?php endforeach; ?>
-                </select></div>
-            <?php endif; ?>
-
-            <?php if ($canFilter): ?>
-              <div class="ff-field"><label class="ff-label">Academic Year</label>
-                <select class="select" name="year" onchange="this.form.submit()">
-                  <option value="">All years</option>
-                  <?php foreach ($years as $y): ?>
-                    <option value="<?= e($y) ?>" <?= $year === $y ? 'selected' : '' ?>><?= e($y) ?></option>
                   <?php endforeach; ?>
                 </select></div>
             <?php endif; ?>
@@ -248,7 +241,7 @@ require __DIR__ . '/inc/header.php';
         <div class="card-title">Filters</div>
         <div class="card-sub">Applied to the reports and downloads below</div>
       </div>
-      <?php if ($recordsQ || $year): ?>
+      <?php if ($recordsQ): ?>
         <a class="btn btn-ghost btn-sm" href="<?= e(url('reports.php')) ?>">Clear</a>
       <?php endif; ?>
     </div>
@@ -262,13 +255,6 @@ require __DIR__ . '/inc/header.php';
             <?php endforeach; ?>
           </select>
         <?php endif; ?>
-
-        <select class="select" name="year" onchange="this.form.submit()">
-          <option value="">All years</option>
-          <?php foreach ($years as $y): ?>
-            <option value="<?= e($y) ?>" <?= $year === $y ? 'selected' : '' ?>><?= e($y) ?></option>
-          <?php endforeach; ?>
-        </select>
 
         <select class="select" name="type" onchange="this.form.submit()">
           <option value="">All types</option>
@@ -330,11 +316,9 @@ require __DIR__ . '/inc/header.php';
   ]);
 
   // Live figures: records in scope per type (dept/status/period + year), so
-  // every row shows how many records the download will contain.
+  // every row shows how many records the download will contain. $records is
+  // already scoped to the active year at the database level (report_records()).
   $scoped = $records;
-  if ($year) {
-      $scoped = array_filter($scoped, fn($r) => empty($r['academic_year']) || $r['academic_year'] === $year);
-  }
   $typeCounts = [];
   foreach ($scoped as $r) { $typeCounts[$r['_type_key']] = ($typeCounts[$r['_type_key']] ?? 0) + 1; }
   $totalScoped = count($scoped);

@@ -363,9 +363,18 @@ function target_find(int $id): ?array
     return $row ?: null;
 }
 
-/** How many targets are sitting in the review queue, for the nav badge. */
-function targets_pending_count(): int
+/**
+ * How many targets are sitting in the review queue, for the nav badge.
+ * Scoped to a year (the active one, from every caller) so the badge never
+ * counts a different year's leftover pending targets.
+ */
+function targets_pending_count(?string $year = null): int
 {
+    if ($year !== null) {
+        $stmt = db()->prepare("SELECT COUNT(*) FROM targets WHERE status IN ('Dean Pending', 'Pending Review') AND academic_year = ?");
+        $stmt->execute([$year]);
+        return (int) $stmt->fetchColumn();
+    }
     $stmt = db()->query("SELECT COUNT(*) FROM targets WHERE status IN ('Dean Pending', 'Pending Review')");
     return (int) $stmt->fetchColumn();
 }
@@ -382,6 +391,12 @@ function target_create(array $user, string $department, string $academicYear, st
     if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
         return [false, 'Only a HoD or Dean enters targets.'];
     }
+
+    // A new target always lands in the system's active academic year —
+    // regardless of what a caller passes in $academicYear (a page filter, a
+    // CSV import column, …). This is the one enforcement point for every
+    // caller, present and future; see active_academic_year().
+    $academicYear = active_academic_year();
 
     if ($user['role'] === 'HoD') {
         $department = (string) ($user['department'] ?? '');
@@ -453,7 +468,8 @@ function target_update(int $id, array $user, string $department, string $academi
     }
 
     if ($user['role'] !== 'Admin') {
-        $department = (string) $existing['department'];   // pinned to where it already is
+        $department   = (string) $existing['department'];      // pinned to where it already is
+        $academicYear = (string) $existing['academic_year'];   // a HoD/Dean cannot move a target to another year
     }
 
     $frozen = target_is_frozen($existing);
@@ -766,16 +782,71 @@ function target_apply_count(int $id, array $user): array
 }
 
 /**
+ * The earliest starting year for academic years (2000-01).
+ */
+const ACADEMIC_YEAR_FIRST_START = 2000;
+
+/**
+ * Determine the start year of the current academic year dynamically from current date.
+ * Academic year runs June–May, so from June onward the "current" year has rolled over.
+ */
+function current_academic_year_start(): int
+{
+    return (int) date('n') >= 6 ? (int) date('Y') : (int) date('Y') - 1;
+}
+
+/**
+ * Current academic year string in YYYY-YY format, e.g. "2026-27".
+ */
+function current_academic_year(): string
+{
+    $y = current_academic_year_start();
+    return sprintf('%d-%02d', $y, ($y + 1) % 100);
+}
+
+/**
+ * Validate an academic year format and ensure it is between 2000-01 and current academic year.
+ * Future academic years and years prior to 2000 are strictly rejected.
+ */
+function is_valid_academic_year(?string $year): bool
+{
+    if ($year === null) {
+        return false;
+    }
+    $year = trim($year);
+    if (!preg_match('/^(\d{4})-(\d{2})$/', $year, $matches)) {
+        return false;
+    }
+    $startYear = (int) $matches[1];
+    $endSuffix = (int) $matches[2];
+
+    if ($startYear < ACADEMIC_YEAR_FIRST_START) {
+        return false;
+    }
+
+    $currentStart = current_academic_year_start();
+    if ($startYear > $currentStart) {
+        return false;
+    }
+
+    if ($endSuffix !== (($startYear + 1) % 100)) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * All valid academic years up to the current one.
  *
  * An academic year runs June–May, so from June onward the "current" year has
- * already rolled over. The list runs from 2023-24 up to the current academic
+ * already rolled over. The list runs from 2000-01 up to the current academic
  * year (never showing future academic years), newest first.
  */
 function academic_years(): array
 {
-    $firstStart   = 2023;
-    $currentStart = (int) date('n') >= 6 ? (int) date('Y') : (int) date('Y') - 1;
+    $firstStart   = ACADEMIC_YEAR_FIRST_START;
+    $currentStart = current_academic_year_start();
     $lastStart    = $currentStart;   // current academic year only (no future years)
 
     $years = [];
@@ -783,6 +854,59 @@ function academic_years(): array
         $years[] = sprintf('%d-%02d', $y, ($y + 1) % 100);
     }
     return $years;
+}
+
+/* ==========================================================================
+   Global active academic year (Admin Year Control)
+
+   ONE centralized, system-wide "what year is ATTS operating on right now"
+   value — not per-browser-session, so the moment an Admin activates a year
+   every signed-in Faculty/Coordinator/HoD/Dean/Director sees it too, not just
+   the Admin's own session. Backed by the existing app_settings key/value
+   store (models/Setting.php) — the same mechanism already used for the
+   report-template choice ("choices an Admin makes once for everyone") — so
+   this does not introduce a second, conflicting settings system.
+
+   Every year-dependent page must call active_academic_year() to read it, and
+   never trust a client-supplied year for anything but display. Only
+   activate_academic_year() may change it, and only after validating the year
+   server-side (format, range, not in the future).
+   ========================================================================= */
+
+const ACTIVE_ACADEMIC_YEAR_SETTING = 'active_academic_year';
+
+/**
+ * The one active academic year for the whole system right now.
+ *
+ * Falls back to the real current academic year when nothing has ever been
+ * activated (fresh install) or the stored value is somehow no longer valid
+ * (e.g. the calendar rolled over past a year an Admin pinned long ago) —
+ * the system always has a sane, never-future year to operate on.
+ */
+function active_academic_year(): string
+{
+    $stored = setting_get(ACTIVE_ACADEMIC_YEAR_SETTING);
+    return is_valid_academic_year($stored) ? $stored : current_academic_year();
+}
+
+/**
+ * Admin activates a year as the system-wide active academic year.
+ *
+ * Validates strictly server-side — format, range 2000-01..current, never a
+ * future year — before writing. This only changes the application's
+ * CONTEXT/FILTER (the app_settings row); it never touches a single row of
+ * historical data in targets/records.
+ */
+function activate_academic_year(string $year, int $adminUserId): array
+{
+    $year = trim($year);
+    if (!is_valid_academic_year($year)) {
+        return [false, 'Please select a valid academic year (2000-01 through ' . current_academic_year() . '). Future academic years are not permitted.'];
+    }
+
+    setting_set(ACTIVE_ACADEMIC_YEAR_SETTING, $year, $adminUserId);
+
+    return [true, "Academic year {$year} is now active for the whole system."];
 }
 
 function metric_names(): array
@@ -882,11 +1006,15 @@ function target_defaults(): array
 /**
  * Ensure default targets exist for a department and academic year.
  * If targets already exist, does not duplicate them (safe idempotent seed).
+ *
+ * $academicYear defaults to the system's active academic year — never a
+ * hard-coded year — so seeding always lands in whichever year ATTS is
+ * currently operating on.
  */
-function ensure_default_targets(string $department, string $academicYear = '2025-26', ?int $createdBy = null): int
+function ensure_default_targets(string $department, ?string $academicYear = null, ?int $createdBy = null): int
 {
     $department = trim($department);
-    $academicYear = trim($academicYear);
+    $academicYear = trim((string) ($academicYear ?: active_academic_year()));
     if ($department === '' || $academicYear === '') {
         return 0;
     }

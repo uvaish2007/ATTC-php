@@ -106,6 +106,27 @@ function is_logged_in(): bool
     return isset($_SESSION['user']);
 }
 
+/**
+ * Login-flow gate: has THIS Admin session already stepped through Academic
+ * Year Selection? This is purely a per-login UX gate — it does not carry the
+ * active year itself. The active year is a system-wide value (see
+ * active_academic_year() / activate_academic_year() in models/Target.php),
+ * stored in app_settings so every role/session sees the same one; the gate
+ * just decides whether *this* Admin login still needs to see the picker.
+ */
+function admin_year_gate_passed(): bool
+{
+    auth_boot();
+    return !empty($_SESSION['admin_year_gate']);
+}
+
+/** Mark this Admin session as having activated (or confirmed) a year. */
+function admin_year_gate_set(): void
+{
+    auth_boot();
+    $_SESSION['admin_year_gate'] = true;
+}
+
 /** Gate a page to signed-in users; bounce to login otherwise. */
 function require_login(): array
 {

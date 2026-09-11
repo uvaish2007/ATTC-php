@@ -12,6 +12,7 @@ $types       = record_types();
 $departments = departments_all();
 $years       = academic_years();
 $typeKeys    = array_keys($types);
+$activeYear  = active_academic_year();
 
 /** The most a stored proof may weigh. */
 const PROOF_MAX_BYTES = 2 * 1024 * 1024;   // 2 MB
@@ -328,7 +329,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pdo   = db();
 
     // Columns the submitter is NEVER allowed to set from the form (server-owned).
-    $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at'];
+    // academic_year is server-owned too: every record is stamped with the
+    // system's active academic year, never whatever a visitor picked in the
+    // form (section 12 — never trust a client-supplied year).
+    $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at', 'academic_year'];
     $tableColumns = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_COLUMN);
     $allowed      = array_diff($tableColumns, $protected);
 
@@ -347,6 +351,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
+    if (in_array('academic_year', $tableColumns, true)) {
+        $fields[] = 'academic_year'; $values[] = $activeYear; $placeholders[] = '?';
+    }
 
     // Faculty members always submit records for their assigned department
     if ($user['role'] === 'Faculty' && !empty($user['department'])) {
@@ -535,10 +542,9 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label>
-          <select class="select" name="academic_year" required>
-            <?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?>
-          </select></div>
+        <div class="field"><label>Academic Year</label>
+          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
+        </div>
       <?php endif; ?>
 
       <?php if ($selectedType === 'journal'): ?>
@@ -644,7 +650,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'nss'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" required></div>
         <div class="field"><label>Activity Type <span class="req">*</span></label><select class="select" name="activity_type" required><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Name of the Activity <span class="req">*</span></label><input class="input" name="activity_name" required></div>
@@ -655,7 +661,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'online_course'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category <span class="req">*</span></label><select class="select" name="category" required><option>Faculty</option><option>Student</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
@@ -666,7 +672,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'student_achievement' || $selectedType === 'student_participation'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
         <?php if ($selectedType === 'student_participation'): ?>
         <div class="field"><label>Activity Category <span class="req">*</span></label><select class="select" name="activity_category" required><option>Co-curricular</option><option>Extra-curricular</option></select></div>
         <?php endif; ?>
@@ -684,7 +690,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'summer_training'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <div class="field" style="grid-column:span 2"><label>Title of Training <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -695,7 +701,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'value_added'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
         <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
         <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
@@ -706,7 +712,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'training'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year <span class="req">*</span></label><select class="select" name="academic_year" required><?php foreach($years as $y):?><option><?=e($y)?></option><?php endforeach;?></select></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>Career Guidance</option><option>Counselling</option><option>ICT</option><option>Life Skills</option><option>Soft Skills</option></select></div>

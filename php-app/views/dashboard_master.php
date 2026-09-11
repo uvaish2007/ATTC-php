@@ -234,8 +234,28 @@ if (!function_exists('dash_column_chart')) {
     </div>
   </div>
 
-  <!-- Picking a filter just reloads the page with it in the query string -->
+  <!-- Picking a department/status filter just reloads the page with it in the
+       query string. The academic year is NOT one of these page filters any
+       more — it is the single system-wide active year (shown in the topbar
+       indicator on every page); only the Admin switcher below can change it. -->
   <div class="actions">
+    <?php if ($user['role'] === 'Admin'): ?>
+      <form method="post" class="flex items-center gap-2" style="margin:0">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="switch_academic_year">
+        <label for="adminYearSelect" class="flex items-center gap-2" style="font-size:13px; font-weight:600; color:var(--ink-muted); margin:0;">
+          <span>Academic Year:</span>
+          <select class="select" id="adminYearSelect" name="academic_year" onchange="this.form.submit()" style="font-weight:600; min-width:110px;">
+            <?php foreach ($data['years'] as $y): ?>
+              <option value="<?= e($y) ?>" <?= $data['scope']['year'] === $y ? 'selected' : '' ?>>
+                <?= e($y) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+      </form>
+    <?php endif; ?>
+
     <form method="get" class="flex gap-2 items-center">
 
       <?php if ($isOversight): ?>
@@ -250,15 +270,6 @@ if (!function_exists('dash_column_chart')) {
       <?php else: ?>
         <span class="badge badge-neutral"><?= e($scopeLabel) ?></span>
       <?php endif; ?>
-
-      <select class="select" name="year" onchange="this.form.submit()">
-        <option value="">All years</option>
-        <?php foreach ($data['years'] as $y): ?>
-          <option value="<?= e($y) ?>" <?= ($data['scope']['year'] ?? '') === $y ? 'selected' : '' ?>>
-            <?= e($y) ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
 
       <select class="select" name="status" onchange="this.form.submit()">
         <option value="">All statuses</option>
@@ -821,12 +832,13 @@ if (!function_exists('dash_column_chart')) {
   <?php
     $tFilters = $data['targetFilters'];
     $tOptions = $data['targetOptions'];
-    $tActive  = array_filter($tFilters);   // any chart filter currently applied?
+    // 'year' isn't a user-chosen filter any more — it's always the active
+    // academic year — so it never counts toward "is a filter applied?".
+    $tActive  = array_filter(array_diff_key($tFilters, ['year' => null]));
 
     // Each select is the same markup with a different list behind it.
     $chartFilters = [
         ['t_dept',   'dept',   'All departments', $tOptions['departments']],
-        ['t_year',   'year',   'All years',       $tOptions['years']],
         ['t_metric', 'metric', 'All metrics',     $tOptions['metrics']],
         ['t_status', 'status', 'All statuses',    $tOptions['statuses']],
     ];

@@ -19,8 +19,8 @@ require_once __DIR__ . '/models/Target.php';
 $user = require_role(['HoD', 'Dean']);
 require_module('targets');
 
-$department = (string) ($user['department'] ?? 'CSE');
-$years      = academic_years();
+$department  = (string) ($user['department'] ?? 'CSE');
+$activeYear  = active_academic_year();
 $SESSION_KEY = 'target_import_preview';
 
 /** The columns the template and parser use, in order. */
@@ -36,28 +36,31 @@ if (($_GET['template'] ?? '') !== '') {
     fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM so Excel reads UTF-8
     fputcsv($out, $columns, ',', '"', '');
     // Two example rows to show the shape (delete before importing).
-    fputcsv($out, ['Journal Publications', '45', $years[0] ?? '2025-26', 'Dr. A. Kumar', 'SCI / Scopus indexed'], ',', '"', '');
-    fputcsv($out, ['Patents Filed', '10', $years[0] ?? '2025-26', '', ''], ',', '"', '');
+    fputcsv($out, ['Journal Publications', '45', $activeYear, 'Dr. A. Kumar', 'SCI / Scopus indexed'], ',', '"', '');
+    fputcsv($out, ['Patents Filed', '10', $activeYear, '', ''], ',', '"', '');
     fclose($out);
     exit;
 }
 
 /**
  * Validate one raw CSV row into a preview row.
+ *
+ * A target always lands in the system's active academic year (same rule
+ * target_create() itself enforces) — the CSV's academic_year column, if any,
+ * is shown back for reference but never trusted or used for the insert.
  * Returns [normalisedRow, error|null].
  */
-function import_validate_row(array $raw, array $years): array
+function import_validate_row(array $raw, string $activeYear): array
 {
     $metric = trim((string) ($raw['metric'] ?? ''));
     $valRaw = trim((string) ($raw['target_value'] ?? ''));
-    $year   = trim((string) ($raw['academic_year'] ?? ''));
     $coord  = trim((string) ($raw['coordinator'] ?? ''));
     $rem    = trim((string) ($raw['remarks'] ?? ''));
 
     $row = [
         'metric'        => $metric,
         'target_value'  => $valRaw,
-        'academic_year' => $year !== '' ? $year : ($years[0] ?? ''),
+        'academic_year' => $activeYear,
         'coordinator'   => $coord,
         'remarks'       => $rem,
     ];
@@ -70,9 +73,6 @@ function import_validate_row(array $raw, array $years): array
     }
     if ((int) $valRaw < 0) {
         return [$row, 'Target value cannot be negative.'];
-    }
-    if ($year !== '' && !in_array($year, $years, true)) {
-        return [$row, 'Academic year "' . $year . '" is not one of the allowed years.'];
     }
 
     return [$row, null];
@@ -130,7 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $raw[$name] = $cells[$i] ?? '';
             }
 
-            [$row, $error] = import_validate_row($raw, $years);
+            [$row, $error] = import_validate_row($raw, $activeYear);
             $row['_error'] = $error;
             if ($error === null) {
                 $okCount++;
@@ -217,7 +217,7 @@ require __DIR__ . '/inc/header.php';
     <div class="card-body">
       <ol class="import-steps">
         <li><a href="<?= e(url('target-import.php?template=1')) ?>"><?= icon('download', 14) ?> Download the CSV template</a></li>
-        <li>Fill a row per target — columns: <code><?= e(implode(', ', $columns)) ?></code>. Leave <code>academic_year</code> blank to use the current year.</li>
+        <li>Fill a row per target — columns: <code><?= e(implode(', ', $columns)) ?></code>. Every imported target lands in the active academic year (<?= e($activeYear) ?>); the <code>academic_year</code> column is for your own reference only.</li>
         <li>Upload it below. Every row is checked; bad rows are flagged, not saved.</li>
         <li>Confirm — valid rows are added as <strong>drafts</strong> you then send for review.</li>
       </ol>

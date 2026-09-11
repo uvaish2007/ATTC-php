@@ -10,6 +10,12 @@ $user = require_role(['Admin', 'HoD', 'Dean', 'Coordinator']);
 // the HoD the second.
 $scopeDept = in_array($user['role'], ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
 
+// The system-wide active academic year — every approval queue and every
+// approve/reject action is scoped to THIS year, never a client-supplied one
+// (section 9: an approval page for one year must never touch a record from
+// another year).
+$activeYear = active_academic_year();
+
 // Handle approve/reject (single) and bulk approve-all-in-department.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -18,14 +24,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'approve_all') {
         // $scopeDept is enforced inside records_bulk_approve, so an HoD can only
         // ever clear their own department.
-        [$ok, $msg] = records_bulk_approve((string) input('department'), (int) $user['id'], $scopeDept, $user['role']);
+        [$ok, $msg] = records_bulk_approve((string) input('department'), (int) $user['id'], $scopeDept, $user['role'], $activeYear);
     } else {
         $type   = (string) input('record_type');
         $id     = (int)    input('record_id');
         $remark = (string) input('review_remark');
-        // $scopeDept is enforced inside record_review, so a forged record_id for
-        // another department cannot be approved from here.
-        [$ok, $msg] = record_review($type, $id, $action, $remark, $user['id'], $scopeDept, $user['role']);
+        // $scopeDept and $activeYear are enforced inside record_review, so a
+        // forged record_id for another department or year cannot be approved
+        // from here.
+        [$ok, $msg] = record_review($type, $id, $action, $remark, $user['id'], $scopeDept, $user['role'], $activeYear);
     }
 
     flash($ok ? 'success' : 'error', $msg);
@@ -44,7 +51,7 @@ $search = trim((string) input('q'));
 // Department scope: an HoD is pinned to their own; an Admin uses the filter.
 $effectiveDept = $scopeDept ?? $filterDept;
 
-$records = pending_records($effectiveDept, null, $user['role']);
+$records = pending_records($effectiveDept, null, $user['role'], $activeYear);
 
 // Type + free-text narrowing happen in PHP over the already-scoped list.
 if ($filterType !== '') {

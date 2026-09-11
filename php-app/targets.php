@@ -18,6 +18,11 @@ require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
 
+// The ONE system-wide active academic year. Every write below that takes a
+// year uses THIS, never a client-supplied academic_year field — a target is
+// always created in whatever year ATTS is currently operating on.
+$activeYear = active_academic_year();
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
@@ -27,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_create(
             $user,
             (string) input('department'),
-            (string) input('academic_year'),
+            $activeYear,
             (string) input('metric'),
             (int) input('target_value'),
             (string) input('remarks'),
@@ -85,9 +90,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'submit_all' && in_array($user['role'], ['HoD', 'Dean'], true)) {
         $dept = $user['department'] ?? (trim((string) input('department')) ?: 'CSE');
-        $year = trim((string) input('academic_year')) ?: '2025-26';
         $stmt = db()->prepare("UPDATE targets SET status = 'Dean Pending', submitted_at = NOW() WHERE department = ? AND academic_year = ? AND status IN ('Draft', 'Changes Requested')");
-        $stmt->execute([$dept, $year]);
+        $stmt->execute([$dept, $activeYear]);
         $count = $stmt->rowCount();
         [$ok, $msg] = [true, "$count target" . ($count !== 1 ? 's' : '') . " submitted for Dean review."];
     } elseif ($action === 'submit') {
@@ -96,8 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_review((int) input('id'), $user, (string) input('decision'), (string) input('review_remark'));
     } elseif ($action === 'bulk_approve' && in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
         $dept = trim((string) input('department')) ?: null;
-        $year = trim((string) input('academic_year')) ?: null;
-        [$ok, $msg] = targets_bulk_approve($user, $dept, $year);
+        [$ok, $msg] = targets_bulk_approve($user, $dept, $activeYear);
     } elseif ($action === 'delete') {
         [$ok, $msg] = target_delete((int) input('id'), $user);
     } elseif ($action === 'apply_count') {
@@ -132,7 +135,10 @@ $isHodOrDean = $isHod || $isDean;
 $canCreate   = $isHod;
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
 $deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
-$yearFilter   = trim((string) ($_GET['year'] ?? '')) ?: null;
+// The academic year is never a page filter a visitor picks — every role
+// sees ONLY the system-wide active year's targets (section 8). $_GET['year']
+// is intentionally never read here.
+$yearFilter   = $activeYear;
 $statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
 $metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
 
@@ -144,9 +150,8 @@ if ($isDean) {
 }
 
 // Safe automatic seeding: ONLY for HoD for their own department; never seed on Dean browsing
-$seedYear = $yearFilter ?: '2025-26';
 if ($isHod && !empty($user['department'])) {
-    ensure_default_targets($user['department'], $seedYear, (int) $user['id']);
+    ensure_default_targets($user['department'], $activeYear, (int) $user['id']);
 }
 
 $targets     = targets_all($deptFilter, $yearFilter, $statFilter, $metricFilter, $isDean);
@@ -181,7 +186,9 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <div class="actions">
-    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($yearFilter ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
+    <?php // Academic year isn't counted here any more — it's always the active
+      // system year, not a filter a visitor chose. ?>
+    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
     <details class="filter-funnel">
       <summary class="btn btn-outline btn-sm">
         <?= icon('filter', 15) ?> Filters<?php if ($tgActive): ?> <span class="ff-dot"><?= $tgActive ?></span><?php endif; ?>
@@ -202,13 +209,6 @@ require __DIR__ . '/inc/header.php';
                 <?php endforeach; ?>
               </select></div>
           <?php endif; ?>
-          <div class="ff-field"><label class="ff-label">Academic Year</label>
-            <select class="select" name="year" onchange="this.form.submit()">
-              <option value="">All years</option>
-              <?php foreach ($years as $y): ?>
-                <option value="<?= e($y) ?>" <?= $yearFilter === $y ? 'selected' : '' ?>><?= e($y) ?></option>
-              <?php endforeach; ?>
-            </select></div>
           <div class="ff-field"><label class="ff-label">Metric</label>
             <select class="select" name="metric" onchange="this.form.submit()">
               <option value="">All metrics</option>
@@ -393,7 +393,7 @@ require __DIR__ . '/inc/header.php';
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="submit_all">
             <input type="hidden" name="department" value="<?= e($deptName) ?>">
-            <input type="hidden" name="academic_year" value="<?= e($yearFilter ?: '2025-26') ?>">
+            <input type="hidden" name="academic_year" value="<?= e($activeYear) ?>">
             <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Submit all <?= $draftCount ?> targets to the Dean for review?')">
               <?= icon('send', 14) ?> Submit All for Review (<?= $draftCount ?>)
             </button>
@@ -682,9 +682,8 @@ require __DIR__ . '/inc/header.php';
         </select>
       <?php endif; ?></div>
     <div class="field"><label>Academic Year</label>
-      <select class="select" name="academic_year">
-        <?php foreach ($years as $y): ?><option><?= e($y) ?></option><?php endforeach; ?>
-      </select></div>
+      <input class="input" value="<?= e($activeYear) ?>" disabled title="New targets are always created in the active academic year.">
+    </div>
     <div class="field"><label>Fixed (target value) <span class="req">*</span></label>
       <input class="input" type="number" name="target_value" min="0" required></div>
     <div class="field"><label>Target Deadline</label>
