@@ -94,7 +94,7 @@ $deptUrl = function (string $dept) use ($data) {
 };
 
 /*
- * The "Graph" side of the Raw Data / Graph toggle: a small inline-SVG column
+ * The "Analytics View" side of the Data View / Analytics View toggle: a small inline-SVG column
  * chart. The SVG has a fixed viewBox so it scales like a picture and the labels
  * can never overlap however wide the card gets. It reuses the dashboard's
  * existing .chart-* classes (app.css); only the bar colour is passed in.
@@ -350,7 +350,7 @@ if (!function_exists('dash_column_chart')) {
 
 <!-- ==========================================================================
      Departments and the records-by-category breakdown — each full width, with
-     a Raw Data / Graph switch that fills the row with whichever view is picked.
+     a Data View / Analytics View switch that fills the row with whichever view is picked.
      ======================================================================= -->
   <?php if ($showDepartments): ?>
     <?php
@@ -374,8 +374,8 @@ if (!function_exists('dash_column_chart')) {
           <div class="card-sub">Records by department &middot; <?= (int) $allRecords ?> total</div>
         </div>
         <div class="view-toggle" data-vt="dash-departments">
-          <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Raw Data</button>
-          <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Graph</button>
+          <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Data View</button>
+          <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Analytics View</button>
         </div>
       </div>
 
@@ -448,8 +448,8 @@ if (!function_exists('dash_column_chart')) {
         <div class="card-sub">Every metric, grouped by what it measures &middot; <?= (int) $catTotalAll ?> total</div>
       </div>
       <div class="view-toggle" data-vt="dash-records-category">
-        <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Raw Data</button>
-        <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Graph</button>
+        <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Data View</button>
+        <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Analytics View</button>
       </div>
     </div>
 
@@ -571,7 +571,7 @@ if (!function_exists('dash_column_chart')) {
   .story-detail > summary::marker { content:""; }
   .story-detail > summary:hover { color:var(--brand, #FF4F01); }
 
-  /* ---- Raw Data / Graph view toggle ---- */
+  /* ---- Data View / Analytics View toggle ---- */
   .view-toggle { display:inline-flex; align-items:center; gap:2px; padding:3px; flex-shrink:0;
       background:var(--navy-50, #F4F6FA); border:1px solid var(--hairline, #E4E9F2); border-radius:9px; }
   .vt-btn { border:0; background:none; cursor:pointer; font:inherit; font-size:12px; font-weight:600;
@@ -1253,7 +1253,7 @@ if (!function_exists('dash_column_chart')) {
 
 <script>
   /*
-   * Raw Data / Graph switch. Each .view-toggle flips the [data-pane] blocks
+   * Data View / Analytics View switch. Each .view-toggle flips the [data-pane] blocks
    * inside its own card and remembers the choice per card in localStorage, so a
    * reader who prefers the table keeps it. No dependencies; the graph pane is
    * the default when nothing is stored (and when JavaScript is off).

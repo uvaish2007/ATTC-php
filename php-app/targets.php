@@ -23,6 +23,33 @@ $user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
 // always created in whatever year ATTS is currently operating on.
 $activeYear = active_academic_year();
 
+// AJAX endpoint to fetch approved faculty records for a target
+if ((isset($_GET['action']) && $_GET['action'] === 'get_target_records') || (isset($_POST['action']) && $_POST['action'] === 'get_target_records')) {
+    header('Content-Type: application/json');
+    $id = (int) (input('id') ?: input('target_id'));
+    $target = target_find($id);
+    if (!$target) {
+        echo json_encode(['ok' => false, 'msg' => 'Target not found']);
+        exit;
+    }
+    if ($user['role'] === 'HoD' && !empty($user['department']) && $target['department'] !== $user['department']) {
+        echo json_encode(['ok' => false, 'msg' => 'Access restricted to your department.']);
+        exit;
+    }
+
+    $records = target_approved_records($target);
+    $suggestedType = target_suggested_type((string) ($target['metric'] ?? ''));
+
+    echo json_encode([
+        'ok'             => true,
+        'target'         => $target,
+        'suggested_type' => $suggestedType,
+        'count'          => count($records),
+        'records'        => $records,
+    ]);
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
@@ -149,15 +176,19 @@ if ($isDean) {
     }
 }
 
+$years       = academic_years();
+$currentYear = $years[0] ?? '2026-27';
+
 // Safe automatic seeding: ONLY for HoD for their own department; never seed on Dean browsing
+$seedYear = $activeYear ?? ($yearFilter ?: $currentYear);
 if ($isHod && !empty($user['department'])) {
-    ensure_default_targets($user['department'], $activeYear, (int) $user['id']);
+    ensure_default_targets($user['department'], '2025-26', (int) $user['id']);
+    ensure_default_targets($user['department'], $seedYear, (int) $user['id']);
 }
 
 $targets     = targets_all($deptFilter, $yearFilter, $statFilter, $metricFilter, $isDean);
 $departments = departments_all();
 $metrics     = metric_names();
-$years       = academic_years();
 $awaiting    = count(array_filter($targets, fn($t) => target_can_review($t, $user)));
 
 // Unlock workflow state:
@@ -405,12 +436,14 @@ require __DIR__ . '/inc/header.php';
       <div class="table-wrap"><table class="data" style="min-width:760px">
         <thead><tr>
           <?php if ($isHod): ?>
-            <th style="padding-left:24px;width:75px">S.No</th>
-            <th style="min-width:320px">Target Details</th>
-            <th class="num" style="width:130px">Fixed Target</th>
-            <th style="width:210px">Target Deadline</th>
-            <th style="width:150px">Status</th>
-            <th class="num" style="padding-right:24px;width:130px">Actions</th>
+            <th style="padding-left:24px;width:60px">S.No</th>
+            <th style="min-width:260px">Target Details</th>
+            <th class="num" style="width:110px">Fixed Target</th>
+            <th style="width:150px">Target Deadline</th>
+            <th class="num" style="width:110px">Achieved</th>
+            <th class="num" style="width:120px">Progress</th>
+            <th style="width:130px">Status</th>
+            <th class="num" style="padding-right:24px;width:120px">Actions</th>
           <?php else: ?>
             <th style="padding-left:24px">Metric</th>
             <th>Year</th>
@@ -425,12 +458,13 @@ require __DIR__ . '/inc/header.php';
         <tbody>
         <?php foreach ($deptTargets as $index => $t): ?>
           <?php
-            $pct      = $t['target_value'] > 0 ? min(100, round($t['achieved_value'] / $t['target_value'] * 100)) : 0;
-            $barColor = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
-            $frozen   = target_is_frozen($t);
-            $status   = (string) ($t['status'] ?? 'Draft');
-            // Non-destructive suggestion: only compute for non-HoD view where the [Use] button is actually shown
-            $recCount = !$isHod ? target_record_count($t) : null;
+            $recCount     = target_record_count($t);
+            $dispAchieved = ($recCount !== null) ? max((int) $t['achieved_value'], $recCount) : (int) $t['achieved_value'];
+            $pct          = $t['target_value'] > 0 ? min(100, round($dispAchieved / $t['target_value'] * 100)) : 0;
+            $barColor     = $pct >= 100 ? '#10B981' : ($pct >= 50 ? 'var(--orange-500)' : '#EF4444');
+            $frozen       = target_is_frozen($t);
+            $status       = (string) ($t['status'] ?? 'Draft');
+            $targetData   = array_merge($t, ['achieved_value' => $dispAchieved]);
           ?>
           <tr>
             <?php if ($isHod): ?>
@@ -494,6 +528,26 @@ require __DIR__ . '/inc/header.php';
                   </div>
                 <?php endif; ?>
               </td>
+              <td class="num tabular" style="font-weight:600">
+                <span style="font-size:14px;color:var(--navy-900)"><?= (int) $dispAchieved ?></span>
+                <?php if ($recCount !== null): ?>
+                  <div class="rec-suggest" style="margin-top:2px">
+                    <button type="button" class="rec-count" style="cursor:pointer;border:none;background:transparent;padding:0;color:var(--orange-600);font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px"
+                            onclick='viewTarget(<?= e(json_encode($targetData)) ?>)'
+                            title="Click to view approved faculty submissions">
+                      <?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records
+                    </button>
+                  </div>
+                <?php endif; ?>
+              </td>
+              <td class="num">
+                <div class="flex items-center gap-2" style="justify-content:flex-end">
+                  <span class="tabular" style="font-size:12px;font-weight:600;color:<?= $barColor ?>"><?= $pct ?>%</span>
+                  <span style="width:44px;height:6px;border-radius:999px;background:var(--navy-100);overflow:hidden;display:inline-block">
+                    <span style="display:block;height:100%;width:<?= $pct ?>%;background:<?= $barColor ?>;border-radius:999px"></span>
+                  </span>
+                </div>
+              </td>
               <td>
                 <?php if ($status === 'Draft'): ?>
                   <span class="badge badge-neutral">Draft</span>
@@ -512,8 +566,8 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td class="num" style="padding-right:24px">
                 <div class="dept-actions" style="justify-content:flex-end">
-                  <button type="button" class="mini-btn" title="View Target Details"
-                          onclick='viewTarget(<?= e(json_encode($t)) ?>)'><?= icon('eye', 15) ?></button>
+                  <button type="button" class="mini-btn" title="View Target Details & Approved Records"
+                          onclick='viewTarget(<?= e(json_encode($targetData)) ?>)'><?= icon('eye', 15) ?></button>
                   <?php if (target_can_submit($t, $user)): ?>
                     <form method="post" style="display:inline">
                       <?= csrf_field() ?>
@@ -577,10 +631,14 @@ require __DIR__ . '/inc/header.php';
                 <?php endif; ?>
               </td>
               <td class="num tabular" style="font-weight:600">
-                <?= (int) $t['achieved_value'] ?>
+                <?= (int) $dispAchieved ?>
                 <?php if ($recCount !== null): ?>
                   <div class="rec-suggest">
-                    <span class="rec-count" title="Approved records of this type in scope"><?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records</span>
+                    <button type="button" class="rec-count" style="cursor:pointer;border:none;background:transparent;padding:0;color:var(--orange-600);font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px"
+                            onclick='viewTarget(<?= e(json_encode($targetData)) ?>)'
+                            title="Click to view approved faculty submissions">
+                      <?= icon('file-stack', 11) ?> <?= (int) $recCount ?> in records
+                    </button>
                     <?php if ($recCount !== (int) $t['achieved_value'] && target_can_edit($t, $user)): ?>
                       <form method="post" style="display:inline">
                         <?= csrf_field() ?>
@@ -602,8 +660,8 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td class="num" style="padding-right:24px">
                 <div class="dept-actions" style="justify-content:flex-end">
-                  <button type="button" class="mini-btn" title="View Target Details"
-                          onclick='viewTarget(<?= e(json_encode($t)) ?>)'><?= icon('eye', 15) ?></button>
+                  <button type="button" class="mini-btn" title="View Target Details & Approved Records"
+                          onclick='viewTarget(<?= e(json_encode($targetData)) ?>)'><?= icon('eye', 15) ?></button>
                   <?php if (target_can_submit($t, $user)): ?>
                     <form method="post" style="display:inline">
                       <?= csrf_field() ?>
@@ -797,41 +855,72 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 <!-- View Target dialog -->
-<dialog class="modal" id="viewDlg" style="max-width:32rem">
+<dialog class="modal" id="viewDlg" style="max-width:44rem;width:92vw">
   <div class="modal-head"><div>
     <h3 id="vt-title">Target Details</h3>
     <div class="msub" id="vt-dept-year"></div>
   </div></div>
   <div class="modal-body" style="display:flex;flex-direction:column;gap:14px">
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--navy-50, #f8fafc);padding:14px;border-radius:8px">
+    <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;background:var(--navy-50, #f8fafc);padding:14px;border-radius:8px;border:1px solid var(--navy-100, #e2e8f0)">
       <div>
         <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Fixed Target</div>
         <div id="vt-target" style="font-size:18px;font-weight:700;color:var(--navy-900, #0f172a)">—</div>
       </div>
       <div>
-        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Target Deadline</div>
-        <div id="vt-deadline" style="font-size:15px;font-weight:600;color:var(--navy-800, #1e293b)">—</div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Achieved (Approved)</div>
+        <div id="vt-achieved" style="font-size:18px;font-weight:700;color:var(--navy-900, #0f172a)">0</div>
       </div>
       <div>
-        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Status</div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Progress</div>
+        <div id="vt-progress" style="display:flex;align-items:center;gap:6px;margin-top:4px">
+          <span id="vt-progress-pct" style="font-size:14px;font-weight:700;color:#10B981">0%</span>
+          <div style="flex:1;height:6px;background:var(--navy-200, #e2e8f0);border-radius:999px;overflow:hidden">
+            <div id="vt-progress-bar" style="width:0%;height:100%;background:#10B981;border-radius:999px"></div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Target Deadline</div>
+        <div id="vt-deadline" style="font-size:14px;font-weight:600;color:var(--navy-800, #1e293b);margin-top:2px">—</div>
+      </div>
+      <div>
+        <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Target Status</div>
         <div id="vt-status" style="margin-top:3px"></div>
       </div>
       <div>
         <div class="card-sub" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Coordinator</div>
-        <div id="vt-coordinator" style="font-size:14px;font-weight:500;margin-top:2px">—</div>
+        <div id="vt-coordinator" style="font-size:14px;font-weight:600;color:var(--navy-800);margin-top:2px">—</div>
       </div>
     </div>
     <div>
-      <div class="card-sub" style="font-weight:600;margin-bottom:4px">Target Metric / Details:</div>
-      <div id="vt-metric" style="font-weight:500;font-size:14px;line-height:1.4"></div>
+      <div class="card-sub" style="font-weight:600;margin-bottom:3px;font-size:11px;text-transform:uppercase;letter-spacing:0.5px">Target Metric / Details:</div>
+      <div id="vt-metric" style="font-weight:600;font-size:14px;color:var(--navy-900);line-height:1.45"></div>
     </div>
     <div id="vt-remarks-box">
-      <div class="card-sub" style="font-weight:600;margin-bottom:2px">Remarks / Notes:</div>
+      <div class="card-sub" style="font-weight:600;margin-bottom:2px;font-size:12px">Remarks / Notes:</div>
       <div id="vt-remarks" class="card-sub" style="color:var(--navy-700)">—</div>
     </div>
     <div id="vt-review-box" style="display:none;background:#fffbeb;border:1px solid #fef3c7;padding:10px 12px;border-radius:6px">
       <div style="font-size:12px;font-weight:600;color:#b45309">Dean / Reviewer Remark:</div>
       <div id="vt-review-remark" style="font-size:13px;color:#92400e;margin-top:2px"></div>
+    </div>
+
+    <!-- Approved Faculty Submissions Section -->
+    <div style="border-top:1px solid var(--navy-100, #e2e8f0);padding-top:14px;margin-top:2px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-weight:700;font-size:14px;color:var(--navy-900);display:flex;align-items:center;gap:8px">
+          <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:rgba(255,79,1,0.1);color:var(--orange-500);border-radius:5px">
+            <?= icon('check-circle', 13) ?>
+          </span>
+          Approved Faculty Submissions
+          <span class="badge badge-neutral" id="vt-rec-count-badge" style="font-size:11px;font-weight:600">0</span>
+        </div>
+        <div id="vt-rec-hint" class="card-sub" style="font-size:11px">Approved by Coordinator</div>
+      </div>
+
+      <div id="vt-records-container" style="max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:8px">
+        <!-- Records rendered dynamically via JavaScript -->
+      </div>
     </div>
   </div>
   <div class="modal-foot">
@@ -870,6 +959,23 @@ function viewTarget(t) {
   document.getElementById('vt-dept-year').textContent = (t.department || '') + (t.academic_year ? ' · ' + t.academic_year : '');
   document.getElementById('vt-target').textContent = t.fixed_text || (t.target_value != null ? t.target_value : '—');
 
+  var achVal = (t.achieved_value != null) ? parseInt(t.achieved_value, 10) : 0;
+  var targetVal = (t.target_value != null) ? parseInt(t.target_value, 10) : 0;
+  var pct = targetVal > 0 ? Math.min(100, Math.round(achVal / targetVal * 100)) : 0;
+  var pColor = pct >= 100 ? '#10B981' : (pct >= 50 ? 'var(--orange-500)' : '#EF4444');
+
+  document.getElementById('vt-achieved').textContent = achVal;
+  var pPctEl = document.getElementById('vt-progress-pct');
+  if (pPctEl) {
+    pPctEl.textContent = pct + '%';
+    pPctEl.style.color = pColor;
+  }
+  var pBarEl = document.getElementById('vt-progress-bar');
+  if (pBarEl) {
+    pBarEl.style.width = pct + '%';
+    pBarEl.style.background = pColor;
+  }
+
   var dl = t.target_deadline;
   if (dl) {
     var parts = dl.split('-');
@@ -904,7 +1010,105 @@ function viewTarget(t) {
     revBox.style.display = 'none';
   }
 
+  var badge = document.getElementById('vt-rec-count-badge');
+  var container = document.getElementById('vt-records-container');
+  badge.textContent = '…';
+  container.innerHTML = '<div style="text-align:center;padding:20px;color:var(--navy-500);font-size:13px">Loading approved records…</div>';
+
   document.getElementById('viewDlg').showModal();
+
+  // Fetch approved faculty records for this target
+  fetch('targets.php?action=get_target_records&id=' + encodeURIComponent(t.id))
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      if (!data || !data.ok) {
+        badge.textContent = '0';
+        container.innerHTML = '<div style="text-align:center;padding:16px;color:var(--navy-500);font-size:13px">Unable to load records.</div>';
+        return;
+      }
+
+      var records = data.records || [];
+      badge.textContent = records.length;
+
+      // If records count is known, dynamically refresh achieved in modal
+      if (records.length > achVal) {
+        achVal = records.length;
+        document.getElementById('vt-achieved').textContent = achVal;
+        var newPct = targetVal > 0 ? Math.min(100, Math.round(achVal / targetVal * 100)) : 0;
+        var newColor = newPct >= 100 ? '#10B981' : (newPct >= 50 ? 'var(--orange-500)' : '#EF4444');
+        if (pPctEl) { pPctEl.textContent = newPct + '%'; pPctEl.style.color = newColor; }
+        if (pBarEl) { pBarEl.style.width = newPct + '%'; pBarEl.style.background = newColor; }
+      }
+
+      if (records.length === 0) {
+        if (data.suggested_type) {
+          container.innerHTML = '<div style="background:var(--navy-50,#f8fafc);border:1px dashed var(--navy-200,#cbd5e1);padding:18px;border-radius:8px;text-align:center;color:var(--navy-600);font-size:13px">' +
+            'No faculty submissions have been approved by the Coordinator for this target yet.<br><span style="font-size:11px;color:var(--navy-400);margin-top:3px;display:inline-block">When faculty upload records in their dashboard and the Coordinator approves them, they will appear here.</span></div>';
+        } else {
+          container.innerHTML = '<div style="background:var(--navy-50,#f8fafc);border:1px dashed var(--navy-200,#cbd5e1);padding:18px;border-radius:8px;text-align:center;color:var(--navy-600);font-size:13px">' +
+            'This metric is measured institutionally and is not directly linked to faculty upload records.</div>';
+        }
+        return;
+      }
+
+      var html = '';
+      records.forEach(function(r) {
+        var title = r._title || '(untitled)';
+        var person = r._person || 'Faculty';
+        var approver = r.approver_name || 'Coordinator';
+        var proofBtn = '';
+        if (r._proof_url) {
+          proofBtn = '<a href="' + encodeURI(r._proof_url) + '" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px;color:var(--orange-600);border-color:var(--orange-300)">' +
+            'View Proof (PDF)</a>';
+        } else if (r._doc_url) {
+          proofBtn = '<a href="' + encodeURI(r._doc_url) + '" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;display:inline-flex;align-items:center;gap:4px">' +
+            'View Link</a>';
+        }
+
+        var dateStr = '';
+        if (r.updated_at) {
+          var d = new Date(r.updated_at.replace(/-/g, '/'));
+          dateStr = !isNaN(d) ? d.toLocaleDateString('en-GB') : r.updated_at;
+        } else if (r.created_at) {
+          var d = new Date(r.created_at.replace(/-/g, '/'));
+          dateStr = !isNaN(d) ? d.toLocaleDateString('en-GB') : r.created_at;
+        }
+
+        html += '<div style="background:#fff;border:1px solid var(--navy-100,#e2e8f0);border-radius:8px;padding:12px 14px;box-shadow:0 1px 3px rgba(0,0,0,0.03);display:flex;flex-direction:column;gap:6px">' +
+          '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px">' +
+            '<div style="flex:1">' +
+              '<div style="font-weight:600;font-size:13px;color:var(--navy-900);line-height:1.4">' + escapeHtml(title) + '</div>' +
+              '<div style="font-size:12px;color:var(--navy-600);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+                '<span><strong>Faculty:</strong> ' + escapeHtml(person) + '</span>' +
+                (r.academic_year ? '<span>&bull; Year: ' + escapeHtml(r.academic_year) + '</span>' : '') +
+                (r._type_label ? '<span class="badge badge-neutral" style="font-size:10px">' + escapeHtml(r._type_label) + '</span>' : '') +
+              '</div>' +
+            '</div>' +
+            (proofBtn ? '<div>' + proofBtn + '</div>' : '') +
+          '</div>' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--navy-500);border-top:1px solid var(--navy-50,#f8fafc);padding-top:6px;margin-top:2px">' +
+            '<span>Approved by: <strong style="color:var(--navy-700)">' + escapeHtml(approver) + '</strong></span>' +
+            (dateStr ? '<span>' + escapeHtml(dateStr) + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      });
+
+      container.innerHTML = html;
+    })
+    .catch(function(err) {
+      badge.textContent = '0';
+      container.innerHTML = '<div style="text-align:center;padding:16px;color:#DC2626;font-size:13px">Error loading records.</div>';
+    });
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 function delTarget(id, name) {

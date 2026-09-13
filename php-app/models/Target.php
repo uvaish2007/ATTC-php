@@ -660,15 +660,23 @@ function target_suggested_type(string $metric): ?string
     // conference ("Faculty participations in FDP … / Conference") maps to FDP,
     // not conference. This is a best-effort hint only; the HoD reviews it.
     $rules = [
-        'nptel'      => ['NPTEL'],
-        'internship' => ['INTERNSHIP'],
-        'placement'  => ['PLACEMENT'],
-        'patent'     => ['PATENT', 'COPY RIGHT', 'COPYRIGHT'],
-        'book'       => ['BOOK'],            // "BOOKS PUBLICATION" and "BOOK CHAPTER"
-        'mou'        => ['MOU'],
-        'fdp'        => ['FDP', 'STTP'],
-        'conference' => ['CONFERENCE'],
-        'journal'    => ['SCOPUS', 'SCI JOURNAL', 'UGC CARE', 'QUALITY PUBLICATION', 'JOURNAL'],
+        'nss'                   => ['NSS', 'YRC', 'RRC'],
+        'summer_training'       => ['SUMMER TRAINING', 'WINTER TRAINING'],
+        'value_added'           => ['VALUE ADDED', 'VALUE-ADDED'],
+        'online_course'         => ['ONLINE CERTIF', 'ONLINE COURSE'],
+        'student_achievement'   => ['AWARDS/PRIZES', 'AWARDS / MEDALS'],
+        'student_participation' => ['PARTICIPATION IN INTER-INSTITUTE', 'OUTSIDE STATE', 'SPORTS – STATE LEVEL', 'NATIONAL LEVEL'],
+        'nptel'                 => ['NPTEL'],
+        'internship'            => ['INTERNSHIP'],
+        'placement'             => ['PLACEMENT'],
+        'patent'                => ['PATENT', 'COPY RIGHT', 'COPYRIGHT'],
+        'book'                  => ['BOOK'],            // "BOOKS PUBLICATION" and "BOOK CHAPTER"
+        'mou'                   => ['MOU', 'INDUSTRY SUPPORTED LAB'],
+        'fdp'                   => ['FDP', 'STTP'],
+        'conference'            => ['CONFERENCE'],
+        'journal'               => ['SCOPUS', 'SCI JOURNAL', 'UGC CARE', 'QUALITY PUBLICATION', 'JOURNAL'],
+        'event'                 => ['INNOVATION EVENTS', 'IIC ACTIVITIES'],
+        'training'              => ['TRAINING PROGRAMME', 'TRAINING ACTIVITIES'],
     ];
 
     foreach ($rules as $type => $words) {
@@ -751,6 +759,77 @@ function target_record_count(array $target): ?int
         return $count;
     } catch (\PDOException $e) {
         return 0;
+    }
+}
+
+/**
+ * Return all approved faculty records contributing to a target.
+ * Includes contributor name, title, proof file URL, approver name/role, dates, etc.
+ */
+function target_approved_records(array $target): array
+{
+    $type = target_suggested_type((string) ($target['metric'] ?? ''));
+    if ($type === null) {
+        return [];
+    }
+
+    require_once __DIR__ . '/Record.php';
+    $types = record_types();
+    if (!isset($types[$type])) {
+        return [];
+    }
+
+    $tInfo = $types[$type];
+    $table = $tInfo['table'];
+    $cols  = target_record_table_columns($table);
+    if (!in_array('status', $cols, true)) {
+        return [];
+    }
+
+    $hasDept = in_array('department', $cols, true);
+    $hasYear = in_array('academic_year', $cols, true);
+
+    $sql = "SELECT r.*, u.name AS approver_name, u.role AS approver_role,
+                   creator.name AS creator_name, creator.email AS creator_email
+            FROM `{$table}` r
+            LEFT JOIN users u ON r.approved_by = u.id
+            LEFT JOIN users creator ON r.created_by = creator.id
+            WHERE r.status = 'Approved'";
+    $args = [];
+
+    if ($hasDept && !empty($target['department'])) {
+        $sql .= ' AND r.department = ?';
+        $args[] = $target['department'];
+    }
+    if ($hasYear && !empty($target['academic_year'])) {
+        $sql .= ' AND r.academic_year = ?';
+        $args[] = $target['academic_year'];
+    }
+
+    $sql .= ' ORDER BY r.updated_at DESC, r.created_at DESC';
+
+    try {
+        $stmt = db()->prepare($sql);
+        $stmt->execute($args);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $results = [];
+        foreach ($rows as $row) {
+            $row['_type_key']   = $type;
+            $row['_type_label'] = $tInfo['label'];
+            $row['_title']      = $row[$tInfo['title_col']] ?? '(untitled)';
+            $row['_person']     = $row['faculty_name']
+                ?? $row['candidate_name']
+                ?? $row['student_name']
+                ?? $row['creator_name']
+                ?? 'Faculty';
+            $row['_proof_url']  = !empty($row['proof_file']) ? url('uploads/proofs/' . $row['proof_file']) : null;
+            $row['_doc_url']    = !empty($row['document_link']) ? $row['document_link'] : (!empty($row['certificate_link']) ? $row['certificate_link'] : null);
+            $results[] = $row;
+        }
+        return $results;
+    } catch (\PDOException $e) {
+        return [];
     }
 }
 

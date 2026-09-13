@@ -52,7 +52,7 @@ echo   Open this address in your browser:
 echo.
 echo       http://localhost:8000/login.php
 echo.
-echo   Sign in with any of these:
+echo   Log in with any of these:
 echo       Admin        mohameduvaish132@gmail.com   uvaish123
 echo       Director     director@atts.edu            director123
 echo       Dean         dean@atts.edu                dean1234

@@ -309,9 +309,17 @@ $flashes      = take_flashes();
   <div class="main">
     <header class="topbar">
       <nav class="breadcrumb" aria-label="Breadcrumb">
-        <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS</a>
-        <span class="sep"><?= icon('chevron', 14) ?></span>
-        <span class="cur"><?= e($breadcrumb) ?></span>
+        <button type="button" class="topbar-back-btn" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href='<?= e(url('dashboard.php')) ?>'; }" title="Go back to past page" aria-label="Back">
+          <span class="topbar-back-arrow"><?= icon('arrow-left', 16) ?></span>
+          <span class="topbar-back-text">Back</span>
+        </button>
+        <?php if ($breadcrumb === 'Dashboard'): ?>
+          <span class="topbar-dash-label">ATTS DASHBOARD</span>
+        <?php else: ?>
+          <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS DASHBOARD</a>
+          <span class="sep"><?= icon('chevron', 14) ?></span>
+          <span class="cur"><?= e($breadcrumb) ?></span>
+        <?php endif; ?>
       </nav>
       <div class="topbar-right">
         <span class="year-badge" title="ATTS is operating on academic year <?= e($atts_activeYear) ?>. Set by the Admin; every role sees this same year until it is changed.">

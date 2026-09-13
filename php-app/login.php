@@ -35,11 +35,10 @@ $roles = [
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
-        $error = 'Your session or security token has expired. Please try signing in again.';
+        $error = 'Your session or security token has expired. Please try logging in again.';
         // Ensure a fresh token is generated for the new attempt
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
         $selectedRole = trim((string) input('role'));
-    } else {
         // Check if an authenticated Admin is selecting academic year
         if (is_logged_in()) {
             $currUser = current_user();
@@ -65,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $academicYear = trim((string) input('academic_year'));
 
             if ($selectedRole === '') {
-                $error = 'Please select your role before signing in.';
+                $error = 'Please select your role before logging in.';
             } else {
                 $failReason = null;
                 $user = attempt_login($email, $password, $selectedRole, $failReason);
@@ -107,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · ATTS IQAC</title>
+  <title>Login · ATTS IQAC</title>
   <link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>">
   <style>
     /* Role selector */
@@ -151,6 +150,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       from { opacity:0; transform:translateY(8px); }
       to { opacity:1; transform:translateY(0); }
     }
+
+    /* Password field with show/hide toggle */
+    .password-field-wrap {
+      position:relative;
+      display:flex;
+      align-items:center;
+      width:100%;
+    }
+    .password-field-wrap .input {
+      padding-right:44px;
+    }
+    .password-toggle-btn {
+      position:absolute;
+      right:8px;
+      top:50%;
+      transform:translateY(-50%);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:32px;
+      height:32px;
+      background:none;
+      border:none;
+      border-radius:8px;
+      color:var(--ink-muted);
+      cursor:pointer;
+      transition:color .15s ease, background-color .15s ease;
+      padding:0;
+    }
+    .password-toggle-btn:hover {
+      color:var(--orange-500);
+      background:var(--orange-50);
+    }
+    .password-toggle-btn:focus-visible {
+      outline:2px solid var(--orange-500);
+      outline-offset:1px;
+    }
+    .password-toggle-btn svg {
+      display:block;
+    }
   </style>
 </head>
 <body>
@@ -173,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div class="login-form-side">
     <div class="login-card" style="max-width:420px">
-      <h1 id="loginTitle"><?= $showStep3 ? 'Select Academic Year' : 'Sign in' ?></h1>
+      <h1 id="loginTitle"><?= $showStep3 ? 'Select Academic Year' : 'Login' ?></h1>
       <p class="lead" id="loginSubtitle"><?= $showStep3 ? 'Choose the academic year you want to manage.' : 'Select your role and enter credentials to access the portal.' ?></p>
 
       <!-- Step indicators -->
@@ -236,15 +275,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
           <div class="field">
             <label for="password">Password</label>
-            <input class="input" type="password" id="password" name="password" placeholder="••••••••">
+            <div class="password-field-wrap">
+              <input class="input" type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="password-toggle-btn" id="togglePasswordBtn" aria-label="Show password" title="Show password">
+                <span class="eye-show"><?= icon('eye', 18) ?></span>
+                <span class="eye-hide" style="display:none;"><?= icon('eye-off', 18) ?></span>
+              </button>
+            </div>
           </div>
 
-          <!-- If Admin, show Continue to Step 3; otherwise Sign In directly -->
+          <!-- If Admin, show Continue to Step 3; otherwise Login directly -->
           <button type="button" class="btn btn-primary" id="step2NextBtn" style="width:100%; height:48px; margin-top:8px; display:none">
             Continue
           </button>
           <button type="submit" class="btn btn-primary" id="step2SubmitBtn" style="width:100%; height:48px; margin-top:8px">
-            Sign In
+            Login
           </button>
         </div>
 
@@ -311,6 +356,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const passwordInput = document.getElementById('password');
   const loginForm = document.getElementById('loginForm');
   const logoutForm = document.getElementById('logoutForm');
+  const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+  const eyeShow = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-show') : null;
+  const eyeHide = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-hide') : null;
 
   function updateRoleMode(role) {
     if (role === 'Admin') {
@@ -362,6 +410,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     step1.offsetHeight;
     step1.style.animation = 'fadeInUp .3s ease';
     step2Bar.classList.remove('active');
+
+    // Reset password toggle to masked when returning to role selection
+    if (passwordInput.type === 'text') {
+      passwordInput.type = 'password';
+      if (eyeShow && eyeHide) {
+        eyeShow.style.display = 'inline-flex';
+        eyeHide.style.display = 'none';
+      }
+      togglePasswordBtn.setAttribute('aria-label', 'Show password');
+      togglePasswordBtn.title = 'Show password';
+    }
   });
 
   step2NextBtn.addEventListener('click', () => {
@@ -391,9 +450,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     step2.offsetHeight;
     step2.style.animation = 'fadeInUp .3s ease';
     step3Bar.classList.remove('active');
-    loginTitle.textContent = 'Sign in';
+    loginTitle.textContent = 'Login';
     loginSubtitle.textContent = 'Select your role and enter credentials to access the portal.';
   });
+
+  // Show / hide password toggle
+  if (togglePasswordBtn && passwordInput) {
+    togglePasswordBtn.addEventListener('click', () => {
+      const isCurrentlyPassword = passwordInput.type === 'password';
+      passwordInput.type = isCurrentlyPassword ? 'text' : 'password';
+
+      if (eyeShow && eyeHide) {
+        eyeShow.style.display = isCurrentlyPassword ? 'none' : 'inline-flex';
+        eyeHide.style.display = isCurrentlyPassword ? 'inline-flex' : 'none';
+      }
+
+      const newLabel = isCurrentlyPassword ? 'Hide password' : 'Show password';
+      togglePasswordBtn.setAttribute('aria-label', newLabel);
+      togglePasswordBtn.title = newLabel;
+      passwordInput.focus();
+    });
+  }
 
   // Handle form submissions
   loginForm.addEventListener('submit', (e) => {
@@ -408,7 +485,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = submitBtn === enterBtn ? 'Activating...' : 'Signing In...';
+      submitBtn.textContent = submitBtn === enterBtn ? 'Activating...' : 'Logging In...';
     }
   });
 
