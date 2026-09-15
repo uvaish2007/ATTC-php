@@ -127,79 +127,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 
-  <div class="actions">
-      <details class="filter-funnel">
-        <summary class="btn btn-outline btn-sm">
-          <?= icon('filter', 15) ?> Filters<?php if ($activeCount): ?> <span class="ff-dot"><?= $activeCount ?></span><?php endif; ?>
-        </summary>
-        <span class="filter-backdrop" onclick="this.closest('details').removeAttribute('open')"></span>
-        <div class="filter-pop">
-          <form method="get" onsubmit="return validatePeriodRange()">
-            <div class="ff-head">
-              <span>Filter reports</span>
-              <?php if ($activeCount): ?><a class="ff-clear" href="<?= e(url('reports.php')) ?>">Clear all</a><?php endif; ?>
-            </div>
-            <?php if ($isOversight): ?>
-              <div class="ff-field"><label class="ff-label">Department</label>
-                <select class="select" name="department" onchange="this.form.submit()">
-                  <option value="">All departments</option>
-                  <?php foreach ($departments as $d): ?>
-                    <option value="<?= e($d['name']) ?>" <?= $department === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
-                  <?php endforeach; ?>
-                </select></div>
-            <?php endif; ?>
-
-            <div class="ff-field"><label class="ff-label">Metric / Type</label>
-              <select class="select" name="type" onchange="this.form.submit()">
-                <option value="">All types</option>
-                <?php foreach ($types as $key => $t): ?>
-                  <option value="<?= e($key) ?>" <?= $type === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
-                <?php endforeach; ?>
-              </select></div>
-
-            <div class="ff-field"><label class="ff-label">Review Status</label>
-              <select class="select" name="status" onchange="this.form.submit()">
-                <option value="">All statuses</option>
-                <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
-                  <option value="<?= $o ?>" <?= $status === $o ? 'selected' : '' ?>><?= $o ?></option>
-                <?php endforeach; ?>
-              </select></div>
-
-            <?php if ($canFilter): ?>
-              <div class="ff-field">
-                <label class="ff-label">Submission Period</label>
-                <div class="ff-period" style="display:flex; align-items:center; gap:8px;">
-                  <div class="date-picker-wrap" style="position:relative; flex:1;">
-                    <input class="input date-input" type="text" name="from" id="from_date_input"
-                           placeholder="DD-MM-YYYY" value="<?= e($fromDisplay) ?>"
-                           maxlength="10" autocomplete="off" style="padding-right:28px;" onchange="validatePeriodRange()">
-                    <button type="button" class="date-picker-btn" onclick="openCustomCalendar('from_date_input', event)"
-                            title="Open calendar" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#6b7280;">
-                      <?= icon('calendar', 15) ?>
-                    </button>
-                  </div>
-                  <span style="color:#6b7280; font-weight:600;">–</span>
-                  <div class="date-picker-wrap" style="position:relative; flex:1;">
-                    <input class="input date-input" type="text" name="to" id="to_date_input"
-                           placeholder="DD-MM-YYYY" value="<?= e($toDisplay) ?>"
-                           maxlength="10" autocomplete="off" style="padding-right:28px;" onchange="validatePeriodRange()">
-                    <button type="button" class="date-picker-btn" onclick="openCustomCalendar('to_date_input', event)"
-                            title="Open calendar" style="position:absolute; right:6px; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#6b7280;">
-                      <?= icon('calendar', 15) ?>
-                    </button>
-                  </div>
-                </div>
-                <div id="period_range_error" style="display:none; color:#dc2626; font-size:12px; margin-top:4px; font-weight:600;"></div>
-              </div>
-            <?php endif; ?>
-
-            <div class="ff-actions">
-              <button class="btn btn-primary btn-sm" type="submit"><?= icon('filter', 14) ?> Apply filters</button>
-            </div>
-          </form>
-        </div>
-      </details>
-    </div>
 </div>
 
 
@@ -233,51 +160,73 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 
-<?php if ($canFilter): ?>
-  <!-- Filter bar: one set of filters shared by all three reports below -->
-  <div class="mt-5 card">
-    <div class="card-head">
-      <div>
-        <div class="card-title">Filters</div>
-        <div class="card-sub">Applied to the reports and downloads below</div>
+<?php if (!$isDirector): ?>
+  <!-- One filter bar for everything below it: the counters, the report hub
+       and every download follow these filters. A pill only appears for a role
+       whose filter the server actually applies (see "Filters" at the top). -->
+  <form method="get" class="fbar mt-5" onsubmit="return validatePeriodRange()">
+    <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
+
+    <?php if ($isAdmin || $isDean): ?>
+      <label class="fb-field"><span class="fb-k">Department</span>
+        <select name="department" onchange="this.form.submit()">
+          <option value="">All</option>
+          <?php foreach ($departments as $d): ?>
+            <option value="<?= e($d['name']) ?>" <?= $department === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    <?php endif; ?>
+
+    <label class="fb-field"><span class="fb-k">Type</span>
+      <select name="type" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach ($types as $key => $t): ?>
+          <option value="<?= e($key) ?>" <?= $type === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
+    <label class="fb-field"><span class="fb-k">Status</span>
+      <select name="status" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
+          <option value="<?= $o ?>" <?= $status === $o ? 'selected' : '' ?>><?= $o ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
+    <?php if ($canFilter): ?>
+      <div class="fb-field fb-range" title="Submission period, as DD-MM-YYYY">
+        <?= icon('calendar', 14) ?><span class="fb-k">Period</span>
+        <span class="fb-date date-picker-wrap">
+          <input type="text" name="from" id="from_date_input" placeholder="dd-mm-yyyy"
+                 value="<?= e($fromDisplay) ?>" maxlength="10" autocomplete="off"
+                 aria-label="From date, DD-MM-YYYY" onchange="periodChanged()">
+          <button type="button" class="date-picker-btn" onclick="openCustomCalendar('from_date_input', event)"
+                  title="Pick the start date" aria-label="Pick the start date"><?= icon('calendar', 13) ?></button>
+        </span>
+        <span class="fb-to">→</span>
+        <span class="fb-date date-picker-wrap">
+          <input type="text" name="to" id="to_date_input" placeholder="dd-mm-yyyy"
+                 value="<?= e($toDisplay) ?>" maxlength="10" autocomplete="off"
+                 aria-label="To date, DD-MM-YYYY" onchange="periodChanged()">
+          <button type="button" class="date-picker-btn" onclick="openCustomCalendar('to_date_input', event)"
+                  title="Pick the end date" aria-label="Pick the end date"><?= icon('calendar', 13) ?></button>
+        </span>
       </div>
-      <?php if ($recordsQ): ?>
-        <a class="btn btn-ghost btn-sm" href="<?= e(url('reports.php')) ?>">Clear</a>
+    <?php endif; ?>
+
+    <span class="fbar-end">
+      <?php if ($activeCount): ?>
+        <span class="fbar-count"><?= (int) $activeCount ?> active</span>
+        <a class="fbar-clear" href="<?= e(url('reports.php')) ?>"><?= icon('x', 13) ?> Clear all</a>
+      <?php else: ?>
+        <span class="fbar-note">Showing everything in scope</span>
       <?php endif; ?>
-    </div>
-    <div class="card-body">
-      <form method="get" class="flex gap-2 items-center" style="flex-wrap:wrap">
-        <?php if ($isAdmin): ?>
-          <select class="select" name="department" onchange="this.form.submit()">
-            <option value="">All departments</option>
-            <?php foreach ($departments as $d): ?>
-              <option value="<?= e($d['name']) ?>" <?= $department === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
-            <?php endforeach; ?>
-          </select>
-        <?php endif; ?>
-
-        <select class="select" name="type" onchange="this.form.submit()">
-          <option value="">All types</option>
-          <?php foreach ($types as $key => $t): ?>
-            <option value="<?= e($key) ?>" <?= $type === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <select class="select" name="status" onchange="this.form.submit()">
-          <option value="">All statuses</option>
-          <?php foreach (['Approved', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
-            <option value="<?= $o ?>" <?= $status === $o ? 'selected' : '' ?>><?= $o ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <label class="card-sub" style="display:flex;align-items:center;gap:6px">Period
-          <input class="input" type="date" name="from" value="<?= e((string) $from) ?>" onchange="this.form.submit()" style="width:150px">
-          <span>–</span>
-          <input class="input" type="date" name="to" value="<?= e((string) $to) ?>" onchange="this.form.submit()" style="width:150px">
-        </label>
-      </form>
-    </div>
-  </div>
+    </span>
+    <p class="fbar-err" id="period_range_error"><?= !empty($rangeError) ? e($rangeError) : '' ?></p>
+  </form>
 <?php endif; ?>
 
 
@@ -312,7 +261,7 @@ require __DIR__ . '/inc/header.php';
   $shownSpecs = ($type !== null && isset($allSpecs[$type])) ? [$type => $allSpecs[$type]] : $allSpecs;
   $reportScopeQ = array_filter([
       'department' => $department, 'year' => $year, 'status' => $status,
-      'from' => $from, 'to' => $to,
+      'from' => $fromIso, 'to' => $toIso,
   ]);
 
   // Live figures: records in scope per type (dept/status/period + year), so
@@ -337,7 +286,7 @@ require __DIR__ . '/inc/header.php';
       $department ? 'Dept: ' . $department : null,
       $year       ? 'Year: ' . $year       : null,
       $status     ? 'Status: ' . $status   : null,
-      ($from || $to) ? 'Period set' : null,
+      ($fromIso || $toIso) ? 'Period set' : null,
   ]);
 ?>
 <div class="mt-5 card">
@@ -511,80 +460,37 @@ require __DIR__ . '/inc/header.php';
 </style>
 
 <style>
+/* Date picker used by the Period pill. Brand palette; selection in navy, the
+   hover in orange, matching the filter pills. */
 .custom-calendar-popover {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 99999;
-  margin-top: 4px;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.15), 0 8px 10px -6px rgba(0,0,0,0.1);
-  padding: 12px;
-  width: 270px;
-  font-family: inherit;
-  font-size: 13px;
-  color: #1e293b;
+  position:absolute; top:100%; left:-6px; z-index:99999; margin-top:9px;
+  width:268px; padding:12px;
+  background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-lg);
+  box-shadow:var(--shadow-pop);
+  font-family:inherit; font-size:13px; color:var(--ink); cursor:default;
+  animation:pop-in .18s var(--ease-out);
 }
-.cal-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-  margin-bottom: 10px;
-}
+.cal-head { display:flex; align-items:center; justify-content:space-between; gap:4px; margin-bottom:10px; }
 .cal-head select {
-  padding: 4px 6px;
-  border-radius: 6px;
-  border: 1px solid #cbd5e1;
-  font-size: 12px;
-  background: #fff;
-  color: #0f172a;
+  height:30px; padding:0 6px; border-radius:var(--r-sm); border:1px solid var(--hairline);
+  font:inherit; font-size:12.5px; font-weight:600; background:var(--surface); color:var(--ink); cursor:pointer;
 }
 .cal-btn {
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 4px 8px;
-  cursor: pointer;
-  font-weight: bold;
-  color: #334155;
+  width:30px; height:30px; display:grid; place-items:center; padding:0;
+  background:var(--surface); border:1px solid var(--hairline); border-radius:var(--r-sm);
+  cursor:pointer; font-weight:700; color:var(--ink-muted);
+  transition:background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
-.cal-btn:hover {
-  background: #e2e8f0;
-}
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-  text-align: center;
-}
-.cal-day-hdr {
-  font-weight: 600;
-  color: #64748b;
-  font-size: 11px;
-  padding: 4px 0;
-}
+.cal-btn:hover { background:var(--navy-50); color:var(--ink); }
+.cal-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:2px; text-align:center; }
+.cal-day-hdr { font-weight:600; color:var(--ink-faint); font-size:10.5px; padding:4px 0; letter-spacing:.04em; }
 .cal-day {
-  padding: 6px 0;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
+  padding:6px 0; border-radius:var(--r-sm); cursor:pointer; font-variant-numeric:tabular-nums;
+  transition:background .12s var(--ease), color .12s var(--ease);
 }
-.cal-day:hover {
-  background: #eff6ff;
-  color: #2563eb;
-}
-.cal-day.selected {
-  background: #2563eb;
-  color: #ffffff;
-  font-weight: bold;
-}
-.cal-day.empty {
-  cursor: default;
-  background: transparent;
-}
+.cal-day:hover { background:var(--orange-50); color:var(--orange-700); }
+.cal-day.selected { background:var(--navy-900); color:#fff; font-weight:700; }
+.cal-day.empty { cursor:default; background:transparent; }
 </style>
 
 <script>
@@ -710,9 +616,21 @@ function selectCalDay(d) {
   const yearStr = currentCalDate.getFullYear();
   
   activeCalendarInput.value = `${dayStr}-${monthStr}-${yearStr}`;
+  activeCalendarInput.dispatchEvent(new Event('input', { bubbles: true }));   // pill turns "set"
   closeCustomCalendar();
-  
-  validatePeriodRange();
+
+  periodChanged();
+}
+
+/* Apply the period as soon as it is complete and valid — the other pills
+   apply on change too. A half-typed date just waits. */
+function periodChanged() {
+  const f = document.getElementById('from_date_input');
+  const t = document.getElementById('to_date_input');
+  if (!f || !t) return;
+  const full = /^\d{1,2}[-\/]\d{1,2}[-\/]\d{4}$/;
+  const complete = [f, t].every(el => !el.value.trim() || full.test(el.value.trim()));
+  if (complete && validatePeriodRange()) f.form.submit();
 }
 
 function closeCustomCalendar() {
@@ -750,16 +668,16 @@ function validatePeriodRange() {
       errEl.textContent = 'From Date cannot be later than To Date.';
       errEl.style.display = 'block';
     }
-    fromEl.style.borderColor = '#ef4444';
-    toEl.style.borderColor = '#ef4444';
+    const pill = fromEl.closest('.fb-range');
+    if (pill) pill.classList.add('has-error');
     return false;
   } else {
     if (errEl) {
       errEl.textContent = '';
       errEl.style.display = 'none';
     }
-    fromEl.style.borderColor = '';
-    toEl.style.borderColor = '';
+    const pill = fromEl.closest('.fb-range');
+    if (pill) pill.classList.remove('has-error');
     return true;
   }
 }

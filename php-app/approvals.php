@@ -83,48 +83,46 @@ require __DIR__ . '/inc/header.php';
     <div class="sub"><?= count($records) ?> record<?= count($records)!==1?'s':'' ?> awaiting review<?= $scopeDept ? ' · ' . e($scopeDept) : '' ?></div>
   </div>
 
-  <div class="actions">
-    <details class="filter-funnel">
-      <summary class="btn btn-outline btn-sm">
-        <?= icon('filter', 15) ?> Filters<?php if ($activeCount): ?> <span class="ff-dot"><?= $activeCount ?></span><?php endif; ?>
-      </summary>
-      <span class="filter-backdrop" onclick="this.closest('details').removeAttribute('open')"></span>
-      <div class="filter-pop">
-        <form method="get">
-          <div class="ff-head">
-            <span>Filter approvals</span>
-            <?php if ($hasFilter): ?><a class="ff-clear" href="<?= e(url('approvals.php')) ?>">Clear all</a><?php endif; ?>
-          </div>
-
-          <?php if (in_array($user['role'], ['Admin', 'Dean'], true)): ?>
-            <div class="ff-field"><label class="ff-label">Department</label>
-              <select class="select" name="department" onchange="this.form.submit()">
-                <option value="">All departments</option>
-                <?php foreach ($departments as $d): ?>
-                  <option value="<?= e($d['name']) ?>" <?= $filterDept === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
-                <?php endforeach; ?>
-              </select></div>
-          <?php endif; ?>
-
-          <div class="ff-field"><label class="ff-label">Record Type</label>
-            <select class="select" name="type" onchange="this.form.submit()">
-              <option value="">All types</option>
-              <?php foreach ($types as $key => $t): ?>
-                <option value="<?= e($key) ?>" <?= $filterType === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
-              <?php endforeach; ?>
-            </select></div>
-
-          <div class="ff-field"><label class="ff-label">Search</label>
-            <input class="input" type="search" name="q" value="<?= e($search) ?>" placeholder="Title, person or department…"></div>
-
-          <div class="ff-actions">
-            <button class="btn btn-primary btn-sm" type="submit"><?= icon('search', 14) ?> Apply filters</button>
-          </div>
-        </form>
-      </div>
-    </details>
-  </div>
 </div>
+
+<form method="get" class="fbar">
+  <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
+
+  <?php if (in_array($user['role'], ['Admin', 'Dean'], true)): ?>
+    <label class="fb-field"><span class="fb-k">Department</span>
+      <select name="department" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach ($departments as $d): ?>
+          <option value="<?= e($d['name']) ?>" <?= $filterDept === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+  <?php endif; ?>
+
+  <label class="fb-field"><span class="fb-k">Record type</span>
+    <select name="type" onchange="this.form.submit()">
+      <option value="">All</option>
+      <?php foreach ($types as $key => $t): ?>
+        <option value="<?= e($key) ?>" <?= $filterType === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+
+  <label class="fb-field fb-search">
+    <?= icon('search', 15) ?>
+    <input type="search" name="q" value="<?= e($search) ?>" placeholder="Search title, person or department…" aria-label="Search approvals">
+    <button type="submit" class="fb-go" title="Search" aria-label="Search"><?= icon('arrow-right', 14) ?></button>
+  </label>
+
+    <span class="fbar-end">
+      <?php if ($activeCount): ?>
+        <span class="fbar-count"><?= (int) ($activeCount) ?> active</span>
+        <a class="fbar-clear" href="<?= e(url('approvals.php')) ?>"><?= icon('x', 13) ?> Clear all</a>
+      <?php else: ?>
+        <span class="fbar-note">Showing everything in scope</span>
+      <?php endif; ?>
+    </span>
+</form>
 
 <?php $isYearLocked = academic_year_is_locked($activeYear); ?>
 <?php if ($isYearLocked): ?>

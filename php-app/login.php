@@ -69,48 +69,68 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login · ATTS IQAC</title>
+  <meta name="theme-color" content="#131D3B">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="<?= e(url('assets/css/app.css')) ?>">
   <style>
-    /* Role selector */
-    .role-selector { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+    /* ---- Role picker (step 1) -------------------------------------------
+       Cards two-up; the last one spans the row when the count is odd, so the
+       grid never ends on a ragged half-row. Descriptions wrap rather than
+       truncate, so nothing about a role is hidden. */
+    .role-selector { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
     .role-card {
-      position:relative; display:flex; align-items:center; gap:10px;
-      padding:12px 14px; border:2px solid var(--hairline); border-radius:12px;
-      cursor:pointer; transition:all .2s ease; background:var(--surface);
+      position:relative; display:flex; align-items:center; gap:11px;
+      padding:12px 26px 12px 13px; border:1px solid var(--hairline); border-radius:var(--r-lg);
+      cursor:pointer; background:var(--surface);
+      transition:border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+                 box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease-out);
     }
-    .role-card:hover { border-color:var(--navy-300); background:var(--navy-50); }
-    .role-card.selected { border-color:var(--orange-500); background:var(--orange-50); }
-    .role-card.selected .role-icon { background:var(--orange-500); color:#fff; }
+    .role-card:hover { border-color:var(--navy-200); box-shadow:var(--shadow-card); transform:translateY(-1px); }
+    .role-card.selected { border-color:var(--orange-500); background:var(--orange-50); box-shadow:var(--ring); transform:none; }
+    .role-card.selected .role-icon { background:var(--orange-500); color:#fff; box-shadow:var(--shadow-brand); }
     .role-card input { position:absolute; opacity:0; pointer-events:none; }
     .role-icon {
-      width:36px; height:36px; border-radius:10px; flex-shrink:0;
+      width:34px; height:34px; border-radius:var(--r-md); flex-shrink:0;
       display:grid; place-items:center; background:var(--navy-50); color:var(--navy-600);
-      transition:all .2s ease;
+      transition:background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
     }
-    .role-card .role-name { font-size:13px; font-weight:600; color:var(--ink); line-height:1.2; }
-    .role-card .role-desc { font-size:10px; color:var(--ink-faint); line-height:1.3; margin-top:2px; }
-    .role-card:last-child:nth-child(odd) { grid-column: span 2; }
-
-    /* Animated glow for selected role */
-    .role-card.selected::after {
-      content:''; position:absolute; inset:-2px; border-radius:13px; z-index:-1;
-      background:linear-gradient(135deg, var(--orange-200) 0%, transparent 60%);
-      opacity:.3;
+    .role-card .role-txt  { display:block; min-width:0; }
+    .role-card .role-name { display:block; font-size:13px; font-weight:600; color:var(--ink); line-height:1.2; }
+    .role-card .role-desc { display:block; font-size:10.5px; color:var(--ink-faint); line-height:1.35; margin-top:2px; }
+    .role-card:last-child:nth-child(odd) { grid-column:span 2; }
+    /* A tick in the corner, so the choice is not carried by colour alone. */
+    .role-tick {
+      position:absolute; top:8px; right:8px; width:16px; height:16px; border-radius:var(--r-pill);
+      background:var(--orange-500); color:#fff; display:grid; place-items:center;
+      opacity:0; transform:scale(.6);
+      transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease-out);
     }
+    .role-card.selected .role-tick { opacity:1; transform:scale(1); }
 
-    /* Step indicator */
-    .login-steps { display:flex; gap:8px; margin-bottom:24px; }
-    .login-step {
-      flex:1; height:4px; border-radius:999px; background:var(--navy-100);
-      transition:background .3s ease;
+    /* ---- Step indicator -------------------------------------------------- */
+    .login-steps { display:flex; gap:6px; margin:18px 0 22px; }
+    .login-step { flex:1; height:3px; border-radius:var(--r-pill); background:var(--navy-100);
+      overflow:hidden; position:relative; }
+    .login-step::after {
+      content:""; position:absolute; inset:0; border-radius:inherit; background:var(--orange-500);
+      transform:scaleX(0); transform-origin:left; transition:transform var(--dur-slow) var(--ease-out);
     }
-    .login-step.active { background:var(--orange-500); }
+    .login-step.active::after { transform:scaleX(1); }
 
-    /* Animated transition for step content */
-    .step-content { animation:fadeInUp .3s ease; }
+    .step-label { font-size:12.5px; font-weight:500; color:var(--ink-muted); margin-bottom:10px; }
+    .step-content { animation:fadeInUp .34s var(--ease-out); }
     @keyframes fadeInUp {
       from { opacity:0; transform:translateY(8px); }
-      to { opacity:1; transform:translateY(0); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .login-back { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+    .btn-block { width:100%; }
+
+    @media (max-width:420px) {
+      .role-selector { grid-template-columns:1fr; }
+      .role-card:last-child:nth-child(odd) { grid-column:auto; }
     }
 
     /* Password field with show/hide toggle */
@@ -145,10 +165,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       color:var(--orange-500);
       background:var(--orange-50);
     }
-    .password-toggle-btn:focus-visible {
-      outline:2px solid var(--orange-500);
-      outline-offset:1px;
-    }
+    .password-toggle-btn:focus-visible { outline:none; box-shadow:var(--ring); }
     .password-toggle-btn svg {
       display:block;
     }
@@ -168,23 +185,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div>
       <h2>Academic Target<br>Tracking System</h2>
       <p>Configure targets, record achievements, and generate IQAC reports across the institution.</p>
+      <ul class="login-points">
+        <li><span class="pt-ic"><?= icon('target', 14) ?></span> Set and track departmental targets</li>
+        <li><span class="pt-ic"><?= icon('approvals', 14) ?></span> Review and approve faculty records</li>
+        <li><span class="pt-ic"><?= icon('reports', 14) ?></span> Generate IQAC proformas on demand</li>
+      </ul>
     </div>
     <div class="foot">Internal Quality Assurance Cell</div>
   </div>
 
   <div class="login-form-side">
-    <div class="login-card" style="max-width:420px">
+    <div class="login-card">
       <h1 id="loginTitle">Login</h1>
       <p class="lead" id="loginSubtitle">Select your role and enter credentials to access the portal.</p>
 
       <!-- Step indicators -->
-      <div class="login-steps" style="margin-top:16px">
+      <div class="login-steps">
         <div class="login-step active" id="step1-bar"></div>
         <div class="login-step" id="step2-bar"></div>
       </div>
 
       <?php if ($error): ?>
-        <div class="alert alert-error" style="margin-bottom:16px"><?= e($error) ?></div>
+        <div class="alert alert-error"><?= icon('alert-triangle', 16) ?><span><?= e($error) ?></span></div>
       <?php endif; ?>
 
       <form method="post" id="loginForm">
@@ -193,39 +215,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Step 1: Role selector -->
         <div id="step1" class="step-content">
-          <div style="font-size:13px; font-weight:500; color:var(--ink-muted); margin-bottom:10px">Select your role</div>
+          <div class="step-label">Select your role</div>
           <div class="role-selector">
             <?php foreach ($roles as $roleName => $info): ?>
               <label class="role-card <?= $selectedRole === $roleName ? 'selected' : '' ?>" data-role="<?= e($roleName) ?>">
                 <input type="radio" name="role_select" value="<?= e($roleName) ?>" <?= $selectedRole === $roleName ? 'checked' : '' ?>>
-                <div class="role-icon"><?= icon($info['icon'], 16) ?></div>
-                <div>
-                  <div class="role-name"><?= e($roleName) ?></div>
-                  <div class="role-desc"><?= e($info['desc']) ?></div>
-                </div>
+                <span class="role-icon"><?= icon($info['icon'], 16) ?></span>
+                <span class="role-txt">
+                  <span class="role-name"><?= e($roleName) ?></span>
+                  <span class="role-desc"><?= e($info['desc']) ?></span>
+                </span>
+                <span class="role-tick"><?= icon('check', 10) ?></span>
               </label>
             <?php endforeach; ?>
           </div>
-          <button type="button" class="btn btn-primary" id="nextBtn" style="width:100%; height:44px; margin-top:12px" <?= $selectedRole ? '' : 'disabled' ?>>
-            Continue
+          <button type="button" class="btn btn-primary btn-block" id="nextBtn" style="margin-top:14px" <?= $selectedRole ? '' : 'disabled' ?>>
+            Continue <?= icon('arrow-right', 16) ?>
           </button>
         </div>
 
         <!-- Step 2: Credentials -->
         <div id="step2" class="step-content" style="display:none">
-          <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
-            <button type="button" class="btn btn-ghost btn-sm" id="backBtn" style="padding:0 8px; height:32px;">
-              ← Back
+          <div class="login-back">
+            <button type="button" class="btn btn-ghost btn-sm" id="backBtn" style="padding:0 10px">
+              <?= icon('arrow-left', 14) ?> Back
             </button>
-            <div style="flex:1">
-              <span class="badge badge-brand" id="selectedRoleBadge" style="font-size:12px"></span>
-            </div>
+            <span class="badge badge-brand" id="selectedRoleBadge"></span>
           </div>
 
           <div class="field">
             <label for="email">Email</label>
             <input class="input" type="email" id="email" name="email" placeholder="you@college.edu"
-                   value="<?= e($email) ?>" required>
+                   autocomplete="username" value="<?= e($email) ?>" required>
           </div>
 
           <div class="field">
@@ -239,7 +260,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
           </div>
 
-          <button type="submit" class="btn btn-primary" id="step2SubmitBtn" style="width:100%; height:48px; margin-top:8px">
+          <button type="submit" class="btn btn-primary btn-block" id="step2SubmitBtn" style="height:46px; margin-top:8px">
             Login
           </button>
         </div>

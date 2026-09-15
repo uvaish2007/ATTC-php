@@ -892,10 +892,11 @@ require __DIR__ . '/inc/header.php';
 
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
         <!-- LIVE SEARCH INPUT -->
-        <div class="ay-search-box">
+        <label class="fb-field fb-search" style="min-width:300px">
           <?= icon('search', 15) ?>
-          <input type="text" id="ay_registry_search" class="input" placeholder="Search year or status (e.g. 2025, locked)..." oninput="filterRegistryTable(this.value)">
-        </div>
+          <input type="search" id="ay_registry_search" placeholder="Search year or status (e.g. 2025, locked)…"
+                 oninput="filterRegistryTable(this.value)" aria-label="Search the academic years registry">
+        </label>
 
         <button type="button" class="btn btn-outline btn-sm" onclick="switchAyTab('overview')" style="font-weight:600">
           &larr; Back to Year Overview

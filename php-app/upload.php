@@ -948,41 +948,43 @@ require __DIR__ . '/inc/header.php';
   <div class="card-head">
     <div><div class="card-title">My Submissions</div>
       <div class="card-sub"><?= $mFilter ? count($shown) . ' of ' . count($myRecords) : count($myRecords) . ' total' ?> records</div></div>
-    <details class="filter-funnel">
-      <summary class="btn btn-outline btn-sm">
-        <?= icon('filter', 15) ?> Filters<?php if ($mActive): ?> <span class="ff-dot"><?= $mActive ?></span><?php endif; ?>
-      </summary>
-      <span class="filter-backdrop" onclick="this.closest('details').removeAttribute('open')"></span>
-      <div class="filter-pop">
-        <form method="get">
-          <input type="hidden" name="type" value="<?= e($selectedType) ?>">
-          <div class="ff-head">
-            <span>Filter submissions</span>
-            <?php if ($mFilter): ?><a class="ff-clear" href="<?= e(url('upload.php?type=' . $selectedType)) ?>">Clear all</a><?php endif; ?>
-          </div>
-          <div class="ff-field"><label class="ff-label">Record Type</label>
-            <select class="select" name="mtype" onchange="this.form.submit()">
-              <option value="">All types</option>
-              <?php foreach ($types as $key => $t): ?>
-                <option value="<?= e($key) ?>" <?= $mType === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
-              <?php endforeach; ?>
-            </select></div>
-          <div class="ff-field"><label class="ff-label">Status</label>
-            <select class="select" name="mstatus" onchange="this.form.submit()">
-              <option value="">All statuses</option>
-              <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
-                <option value="<?= $o ?>" <?= $mStatus === $o ? 'selected' : '' ?>><?= $o ?></option>
-              <?php endforeach; ?>
-            </select></div>
-          <div class="ff-field"><label class="ff-label">Search</label>
-            <input class="input" type="search" name="mq" value="<?= e($mQ) ?>" placeholder="Search title…"></div>
-          <div class="ff-actions">
-            <button class="btn btn-primary btn-sm" type="submit"><?= icon('search', 14) ?> Apply filters</button>
-          </div>
-        </form>
-      </div>
-    </details>
   </div>
+  <form method="get" class="fbar fbar-flush">
+    <input type="hidden" name="type" value="<?= e($selectedType) ?>">
+
+    <label class="fb-field"><span class="fb-k">Record type</span>
+      <select name="mtype" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach ($types as $key => $t): ?>
+          <option value="<?= e($key) ?>" <?= $mType === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
+    <label class="fb-field"><span class="fb-k">Status</span>
+      <select name="mstatus" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $o): ?>
+          <option value="<?= $o ?>" <?= $mStatus === $o ? 'selected' : '' ?>><?= $o ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
+    <label class="fb-field fb-search">
+      <?= icon('search', 15) ?>
+      <input type="search" name="mq" value="<?= e($mQ) ?>" placeholder="Search title…" aria-label="Search your submissions">
+      <button type="submit" class="fb-go" title="Search" aria-label="Search"><?= icon('arrow-right', 14) ?></button>
+    </label>
+
+    <span class="fbar-end">
+      <?php if ($mActive): ?>
+        <span class="fbar-count"><?= (int) ($mActive) ?> active</span>
+        <a class="fbar-clear" href="<?= e(url('upload.php?type=' . $selectedType)) ?>"><?= icon('x', 13) ?> Clear all</a>
+      <?php else: ?>
+        <span class="fbar-note">All your submissions</span>
+      <?php endif; ?>
+    </span>
+  </form>
   <div class="card-body" style="padding:0">
     <?php if (empty($shown)): ?>
       <div class="empty"><div class="ic"><?= icon($mFilter ? 'filter' : 'upload', 20) ?></div><p><?= $mFilter ? 'No submissions match these filters' : 'No submissions yet' ?></p></div>

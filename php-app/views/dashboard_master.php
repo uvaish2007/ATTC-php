@@ -240,46 +240,45 @@ if (!function_exists('dash_column_chart')) {
        indicator on every page); only the Admin switcher below can change it. -->
   <div class="actions">
     <?php if ($user['role'] === 'Admin'): ?>
-      <form method="post" class="flex items-center gap-2" style="margin:0">
+      <form method="post" class="fbar fbar-bare">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="switch_academic_year">
-        <label for="adminYearSelect" class="flex items-center gap-2" style="font-size:13px; font-weight:600; color:var(--ink-muted); margin:0;">
-          <span>Academic Year:</span>
-          <select class="select" id="adminYearSelect" name="academic_year" onchange="this.form.submit()" style="font-weight:600; min-width:110px;">
+        <?php // Switching the system year is not a filter, so this pill never
+              // shows the orange "narrowed" state: its default is the current year. ?>
+        <label class="fb-field" for="adminYearSelect" title="Switch the system-wide academic year">
+          <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
+          <select id="adminYearSelect" name="academic_year" onchange="this.form.submit()"
+                  data-default="<?= e($data['scope']['year']) ?>">
             <?php foreach ($data['years'] as $y): ?>
-              <option value="<?= e($y) ?>" <?= $data['scope']['year'] === $y ? 'selected' : '' ?>>
-                <?= e($y) ?>
-              </option>
+              <option value="<?= e($y) ?>" <?= $data['scope']['year'] === $y ? 'selected' : '' ?>><?= e($y) ?></option>
             <?php endforeach; ?>
           </select>
         </label>
       </form>
     <?php endif; ?>
 
-    <form method="get" class="flex gap-2 items-center">
-
+    <form method="get" class="fbar fbar-bare">
       <?php if ($isOversight): ?>
-        <select class="select" name="department" onchange="this.form.submit()">
-          <option value="">All departments</option>
-          <?php foreach ($data['departments'] as $dept): ?>
-            <option value="<?= e($dept) ?>" <?= $data['scope']['department'] === $dept ? 'selected' : '' ?>>
-              <?= e($dept) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
+        <label class="fb-field"><span class="fb-k">Department</span>
+          <select name="department" onchange="this.form.submit()">
+            <option value="">All</option>
+            <?php foreach ($data['departments'] as $dept): ?>
+              <option value="<?= e($dept) ?>" <?= $data['scope']['department'] === $dept ? 'selected' : '' ?>><?= e($dept) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
       <?php else: ?>
         <span class="badge badge-neutral"><?= e($scopeLabel) ?></span>
       <?php endif; ?>
 
-      <select class="select" name="status" onchange="this.form.submit()">
-        <option value="">All statuses</option>
-        <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $status): ?>
-          <option value="<?= $status ?>" <?= $data['scope']['status'] === $status ? 'selected' : '' ?>>
-            <?= $status ?>
-          </option>
-        <?php endforeach; ?>
-      </select>
-
+      <label class="fb-field"><span class="fb-k">Status</span>
+        <select name="status" onchange="this.form.submit()">
+          <option value="">All</option>
+          <?php foreach (['Approved', 'Dean Pending', 'HOD Pending', 'Submitted', 'Draft', 'Rejected'] as $status): ?>
+            <option value="<?= $status ?>" <?= $data['scope']['status'] === $status ? 'selected' : '' ?>><?= $status ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
     </form>
   </div>
 </div>
@@ -632,15 +631,20 @@ if (!function_exists('dash_column_chart')) {
     box-shadow: var(--shadow-card);
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
+    justify-content: flex-start;
     transition: transform .2s, box-shadow .2s;
   }
   .stat-grid.stat-kpi .stat:hover { transform: translateY(-2px); box-shadow: var(--shadow-card-hover); }
-  .stat-grid.stat-kpi .stat-top   { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  /* Six tiles across leaves ~160px each on a laptop. Labels wrap to a second
+     line instead of being cut off, and the top row has a fixed height, so
+     every tile's number still sits on the same line as its neighbours'. */
+  .stat-grid.stat-kpi .stat-top   { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
   .stat-grid.stat-kpi .stat-ic    { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
-  .stat-grid.stat-kpi .stat-label { font-size: 12px; font-weight: 600; color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-grid.stat-kpi .stat-label { font-size: 12px; font-weight: 600; color: var(--ink-muted); line-height: 1.3;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .stat-grid.stat-kpi .stat-value { font-size: 24px; line-height: 1.2; font-weight: 700; margin-top: 6px; }
-  .stat-grid.stat-kpi .stat-desc  { font-size: 11px; color: var(--ink-faint); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stat-grid.stat-kpi .stat-desc  { font-size: 11px; color: var(--ink-faint); line-height: 1.4; margin-top: auto; padding-top: 4px;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .stat-grid.stat-kpi .stat-bar   { margin: 6px 0 2px; }
   @media (max-width: 1300px) { .stat-grid.stat-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 768px)  { .stat-grid.stat-kpi { grid-template-columns: repeat(2, 1fr); } }

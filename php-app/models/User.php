@@ -11,8 +11,13 @@ function users_all(?string $roleFilter = null, ?string $deptFilter = null, ?stri
     $params = [];
 
     if ($roleFilter) {
-        $sql .= ' AND role = ?';
-        $params[] = $roleFilter;
+        if (in_array($roleFilter, ['Principal', 'Director'], true)) {
+            // One role under two names (see inc/auth.php): find both.
+            $sql .= " AND role IN ('Principal', 'Director')";
+        } else {
+            $sql .= ' AND role = ?';
+            $params[] = $roleFilter;
+        }
     }
     if ($deptFilter) {
         $sql .= ' AND department = ?';

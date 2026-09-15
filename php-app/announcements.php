@@ -496,52 +496,58 @@ a.cal-day:hover {
 
 
   <!-- ======================= Search and filters ======================= -->
-  <div class="mt-5 card">
-    <div class="card-body filter-bar">
-      <form method="get" id="filterForm" class="filter-row">
+  <?php $aActive = ($filters['search'] !== '' ? 1 : 0) + ($filters['category'] !== '' ? 1 : 0)
+                 + ($filters['sort'] !== 'newest' ? 1 : 0) + ($filters['scope'] !== 'all' ? 1 : 0); ?>
+  <form method="get" id="filterForm" class="fbar mt-5">
+    <label class="fb-field fb-search">
+      <?= icon('search', 15) ?>
+      <input type="search" name="q" id="searchBox" value="<?= e($filters['search']) ?>"
+             placeholder="Search announcements…" autocomplete="off" aria-label="Search announcements">
+    </label>
 
-        <label class="search-box">
-          <?= icon('search', 16) ?>
-          <input type="text" name="q" id="searchBox" value="<?= e($filters['search']) ?>"
-                 placeholder="Search announcements…" autocomplete="off">
-        </label>
+    <label class="fb-field"><span class="fb-k">Category</span>
+      <select name="category" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach ($categories as $category): ?>
+          <option value="<?= e($category) ?>" <?= $filters['category'] === $category ? 'selected' : '' ?>><?= e($category) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
 
-        <select class="select" name="category" onchange="this.form.submit()" aria-label="Category">
-          <option value="">All categories</option>
-          <?php foreach ($categories as $category): ?>
-            <option value="<?= e($category) ?>" <?= $filters['category'] === $category ? 'selected' : '' ?>>
-              <?= e($category) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
+    <label class="fb-field"><span class="fb-k">Sort</span>
+      <select name="sort" onchange="this.form.submit()">
+        <?php foreach (['newest' => 'Newest first', 'oldest' => 'Oldest first',
+                        'viewed' => 'Most viewed',  'unread' => 'Unread first'] as $key => $label): ?>
+          <option value="<?= $key ?>" <?= $filters['sort'] === $key ? 'selected' : '' ?>><?= $label ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
 
-        <select class="select" name="sort" onchange="this.form.submit()" aria-label="Sort by">
-          <?php foreach (['newest' => 'Newest first', 'oldest' => 'Oldest first',
-                          'viewed' => 'Most viewed',  'unread' => 'Unread first'] as $key => $label): ?>
-            <option value="<?= $key ?>" <?= $filters['sort'] === $key ? 'selected' : '' ?>><?= $label ?></option>
-          <?php endforeach; ?>
-        </select>
+    <label class="fb-field"><span class="fb-k">Show</span>
+      <select name="scope" onchange="this.form.submit()">
+        <?php
+          $scopes = ['all' => 'Active', 'bookmarked' => 'Bookmarked'];
+          if ($canManage) {
+              $scopes['expired']  = 'Past expired';
+              $scopes['archived'] = 'Archived';
+              $scopes['mine']     = 'Posted by me';
+          }
+        ?>
+        <?php foreach ($scopes as $key => $label): ?>
+          <option value="<?= $key ?>" <?= $filters['scope'] === $key ? 'selected' : '' ?>><?= $label ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
 
-        <select class="select" name="scope" onchange="this.form.submit()" aria-label="Show">
-          <?php
-            $scopes = ['all' => 'Active Announcements', 'bookmarked' => 'Bookmarked'];
-            if ($canManage) {
-                $scopes['expired']  = 'Past Expired (Stored in DB)';
-                $scopes['archived'] = 'Archived Notices';
-                $scopes['mine']     = 'Posted by me';
-            }
-          ?>
-          <?php foreach ($scopes as $key => $label): ?>
-            <option value="<?= $key ?>" <?= $filters['scope'] === $key ? 'selected' : '' ?>><?= $label ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <?php if ($filters['search'] !== '' || $filters['category'] !== '' || $filters['scope'] !== 'all'): ?>
-          <a class="btn btn-ghost btn-sm" href="<?= e(url('announcements.php')) ?>">Clear</a>
-        <?php endif; ?>
-      </form>
-    </div>
-  </div>
+    <span class="fbar-end">
+      <?php if ($aActive): ?>
+        <span class="fbar-count"><?= (int) ($aActive) ?> active</span>
+        <a class="fbar-clear" href="<?= e(url('announcements.php')) ?>"><?= icon('x', 13) ?> Clear all</a>
+      <?php else: ?>
+        <span class="fbar-note">Active announcements, newest first</span>
+      <?php endif; ?>
+    </span>
+  </form>
 
 
   <div class="mt-5 grid-2-1">

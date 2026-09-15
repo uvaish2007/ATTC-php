@@ -54,16 +54,23 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 
-  <div class="actions">
-    <form method="get" class="flex gap-2 items-center">
-      <input class="input input-sm" type="text" name="q" value="<?= e($search) ?>" placeholder="Search name or email…">
-      <button type="submit" class="btn btn-outline btn-sm"><?= icon('search', 15) ?> Search</button>
-      <?php if ($search !== ''): ?>
-        <a class="btn btn-ghost btn-sm" href="<?= e(url('faculty.php')) ?>">Clear</a>
-      <?php endif; ?>
-    </form>
-  </div>
 </div>
+
+<form method="get" class="fbar">
+  <label class="fb-field fb-search">
+    <?= icon('search', 15) ?>
+    <input type="search" name="q" value="<?= e($search) ?>" placeholder="Search name or email…" aria-label="Search faculty">
+    <button type="submit" class="fb-go" title="Search" aria-label="Search"><?= icon('arrow-right', 14) ?></button>
+  </label>
+    <span class="fbar-end">
+      <?php if (($search !== '' ? 1 : 0)): ?>
+        <span class="fbar-count"><?= (int) (($search !== '' ? 1 : 0)) ?> active</span>
+        <a class="fbar-clear" href="<?= e(url('faculty.php')) ?>"><?= icon('x', 13) ?> Clear all</a>
+      <?php else: ?>
+        <span class="fbar-note">Everyone in your department</span>
+      <?php endif; ?>
+    </span>
+</form>
 
 
 <?php if ($department === ''): ?>

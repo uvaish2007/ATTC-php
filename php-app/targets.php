@@ -224,50 +224,6 @@ require __DIR__ . '/inc/header.php';
     <?php // Academic year isn't counted here any more — it's always the active
       // system year, not a filter a visitor chose. ?>
     <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
-    <details class="filter-funnel">
-      <summary class="btn btn-outline btn-sm">
-        <?= icon('filter', 15) ?> Filters<?php if ($tgActive): ?> <span class="ff-dot"><?= $tgActive ?></span><?php endif; ?>
-      </summary>
-      <span class="filter-backdrop" onclick="this.closest('details').removeAttribute('open')"></span>
-      <div class="filter-pop">
-        <form method="get">
-          <div class="ff-head">
-            <span>Filter targets</span>
-            <?php if ($tgActive): ?><a class="ff-clear" href="<?= e(url('targets.php')) ?>">Clear all</a><?php endif; ?>
-          </div>
-          <?php if (!$isHod): ?>
-            <div class="ff-field"><label class="ff-label">Department</label>
-              <select class="select" name="department" onchange="this.form.submit()">
-                <option value="">All departments</option>
-                <?php foreach ($departments as $d): ?>
-                  <option value="<?= e($d['name']) ?>" <?= $deptFilter === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
-                <?php endforeach; ?>
-              </select></div>
-          <?php endif; ?>
-          <div class="ff-field"><label class="ff-label">Metric</label>
-            <select class="select" name="metric" onchange="this.form.submit()">
-              <option value="">All metrics</option>
-              <?php foreach ($metrics as $m): ?>
-                <option value="<?= e($m) ?>" <?= $metricFilter === $m ? 'selected' : '' ?>><?= e($m) ?></option>
-              <?php endforeach; ?>
-            </select></div>
-          <div class="ff-field"><label class="ff-label">Status</label>
-            <select class="select" name="status" onchange="this.form.submit()">
-              <?php if ($isDean): ?>
-                <option value="Dean Pending" <?= $statFilter === 'Dean Pending' ? 'selected' : '' ?>>Dean Pending</option>
-                <option value="Approved" <?= $statFilter === 'Approved' ? 'selected' : '' ?>>Approved</option>
-                <option value="Changes Requested" <?= $statFilter === 'Changes Requested' ? 'selected' : '' ?>>Changes Requested</option>
-              <?php else: ?>
-                <option value="">All statuses</option>
-                <?php foreach (target_statuses() as $s): ?>
-                  <option value="<?= e($s) ?>" <?= $statFilter === $s ? 'selected' : '' ?>><?= e($s) ?></option>
-                <?php endforeach; ?>
-              <?php endif; ?>
-            </select></div>
-          <div class="ff-actions"><button class="btn btn-primary btn-sm" type="submit"><?= icon('filter', 14) ?> Apply filters</button></div>
-        </form>
-      </div>
-    </details>
 
     <?php
       // The meeting report always reflects what is on screen: same department
@@ -296,6 +252,57 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
   </div>
 </div>
+
+<?php // A Dean's status is pinned to "Dean Pending" by default; that is the
+      // resting state, not a filter they chose, so it is not counted.
+      $tgShown = $tgActive - (($isDean && $statFilter === 'Dean Pending') ? 1 : 0); ?>
+<form method="get" class="fbar">
+  <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
+
+  <?php if (!$isHod): ?>
+    <label class="fb-field"><span class="fb-k">Department</span>
+      <select name="department" onchange="this.form.submit()">
+        <option value="">All</option>
+        <?php foreach ($departments as $d): ?>
+          <option value="<?= e($d['name']) ?>" <?= $deptFilter === $d['name'] ? 'selected' : '' ?>><?= e($d['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+  <?php endif; ?>
+
+  <label class="fb-field"><span class="fb-k">Metric</span>
+    <select name="metric" onchange="this.form.submit()">
+      <option value="">All</option>
+      <?php foreach ($metrics as $m): ?>
+        <option value="<?= e($m) ?>" <?= $metricFilter === $m ? 'selected' : '' ?>><?= e($m) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+
+  <label class="fb-field"><span class="fb-k">Status</span>
+    <select name="status" onchange="this.form.submit()">
+      <?php if ($isDean): ?>
+        <option value="Dean Pending" <?= $statFilter === 'Dean Pending' ? 'selected' : '' ?>>Dean Pending</option>
+        <option value="Approved" <?= $statFilter === 'Approved' ? 'selected' : '' ?>>Approved</option>
+        <option value="Changes Requested" <?= $statFilter === 'Changes Requested' ? 'selected' : '' ?>>Changes Requested</option>
+      <?php else: ?>
+        <option value="">All</option>
+        <?php foreach (target_statuses() as $s): ?>
+          <option value="<?= e($s) ?>" <?= $statFilter === $s ? 'selected' : '' ?>><?= e($s) ?></option>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </select>
+  </label>
+
+    <span class="fbar-end">
+      <?php if ($tgShown): ?>
+        <span class="fbar-count"><?= (int) ($tgShown) ?> active</span>
+        <a class="fbar-clear" href="<?= e(url('targets.php')) ?>"><?= icon('x', 13) ?> Clear all</a>
+      <?php else: ?>
+        <span class="fbar-note">Showing everything in scope</span>
+      <?php endif; ?>
+    </span>
+</form>
 
 <?php if (academic_year_is_locked($activeYear)): ?>
   <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
