@@ -19,6 +19,10 @@ $activeYear = active_academic_year();
 // Handle approve/reject (single) and bulk approve-all-in-department.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+    if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
+        flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Approvals are frozen for all roles.");
+        redirect('/approvals.php');
+    }
     $action = (string) input('review_action');
 
     if ($action === 'approve_all') {
@@ -122,6 +126,21 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
+<?php $isYearLocked = academic_year_is_locked($activeYear); ?>
+<?php if ($isYearLocked): ?>
+  <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px;color:#991B1B">Academic Year <?= e($activeYear) ?> Cycle is Locked</div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">
+        The Administrator has locked this academic year cycle following an Executive Meeting. Record reviews and approvals are frozen across all roles. <?= $user['role'] === 'Admin' ? 'As an Administrator, you retain review authority.' : 'Approvals cannot be made until the cycle is unlocked by an Administrator.' ?>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <?php if (empty($records)): ?>
   <div class="card"><div class="card-body" style="padding:0">
     <div class="empty" style="padding:80px 24px">
@@ -154,8 +173,10 @@ require __DIR__ . '/inc/header.php';
         <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
         <span class="badge badge-info"><?= count($deptRecs) ?> pending</span>
         <span class="ap-head-actions">
-          <button type="button" class="btn btn-sm ap-approve-all"
-            onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)"><?= icon('check', 14) ?> Approve all</button>
+          <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
+            <button type="button" class="btn btn-sm ap-approve-all"
+              onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)"><?= icon('check', 14) ?> Approve all</button>
+          <?php endif; ?>
           <span class="tg-chev"><?= icon('chevron', 16) ?></span>
         </span>
       </summary>
@@ -177,12 +198,18 @@ require __DIR__ . '/inc/header.php';
             <td><span class="badge badge-info"><?= e($r['_type_label']) ?></span></td>
             <td class="card-sub"><?= e(time_ago($r['created_at'])) ?></td>
             <td class="num" style="padding-right:24px">
-              <div class="flex gap-2" style="justify-content:flex-end">
-                <button class="btn btn-sm" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0;height:32px;padding:0 10px;font-size:12px"
-                  onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'approve')"><?= icon('check',14) ?> Approve</button>
-                <button class="btn btn-sm" style="background:#FEF2F2;color:#B91C1C;border-color:#FECACA;height:32px;padding:0 10px;font-size:12px"
-                  onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'reject')"><?= icon('x',14) ?> Reject</button>
-              </div>
+              <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
+                <div class="flex gap-2" style="justify-content:flex-end">
+                  <button class="btn btn-sm" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0;height:32px;padding:0 10px;font-size:12px"
+                    onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'approve')"><?= icon('check',14) ?> Approve</button>
+                  <button class="btn btn-sm" style="background:#FEF2F2;color:#B91C1C;border-color:#FECACA;height:32px;padding:0 10px;font-size:12px"
+                    onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'reject')"><?= icon('x',14) ?> Reject</button>
+                </div>
+              <?php else: ?>
+                <span style="display:inline-flex;align-items:center;gap:4px;color:#991B1B;background:#FEE2E2;border:1px solid #FECACA;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px">
+                  <?= icon('lock', 11) ?> Cycle Locked
+                </span>
+              <?php endif; ?>
             </td>
           </tr>
         <?php endforeach; ?>

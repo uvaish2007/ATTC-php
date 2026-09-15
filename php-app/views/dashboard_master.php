@@ -1205,8 +1205,8 @@ if (!function_exists('dash_column_chart')) {
     <?php
       // A steady colour per role, with a fallback palette for any extra roles.
       $roleColors = [
-          'Admin' => '#131D3B', 'Director' => '#33456B', 'Dean' => '#2563EB',
-          'HoD'   => '#FF4F01', 'Coordinator' => '#059669', 'Faculty' => '#9FADCB',
+          'Admin'     => '#131D3B', 'Principal' => '#33456B', 'Director' => '#33456B', 'Dean' => '#2563EB',
+          'HoD'       => '#FF4F01', 'Coordinator' => '#059669', 'Faculty' => '#9FADCB',
       ];
       $rolePalette = ['#2563EB', '#FF4F01', '#059669', '#7C3AED', '#0891B2', '#DC2626', '#131D3B', '#9FADCB'];
       $roleSlices = [];

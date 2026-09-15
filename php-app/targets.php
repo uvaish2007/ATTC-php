@@ -16,7 +16,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
 
 // The ONE system-wide active academic year. Every write below that takes a
 // year uses THIS, never a client-supplied academic_year field — a target is
@@ -116,6 +116,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     } elseif ($action === 'submit_all' && in_array($user['role'], ['HoD', 'Dean'], true)) {
+        if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
+            flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Targets cannot be submitted.");
+            redirect('/targets.php');
+        }
         $dept = $user['department'] ?? (trim((string) input('department')) ?: 'CSE');
         $stmt = db()->prepare("UPDATE targets SET status = 'Dean Pending', submitted_at = NOW() WHERE department = ? AND academic_year = ? AND status IN ('Draft', 'Changes Requested')");
         $stmt->execute([$dept, $activeYear]);
@@ -125,7 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_submit((int) input('id'), $user);
     } elseif ($action === 'review') {
         [$ok, $msg] = target_review((int) input('id'), $user, (string) input('decision'), (string) input('review_remark'));
-    } elseif ($action === 'bulk_approve' && in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
+    } elseif ($action === 'bulk_approve' && in_array($user['role'], ['Dean', 'Admin', 'Director', 'Principal'], true)) {
         $dept = trim((string) input('department')) ?: null;
         [$ok, $msg] = targets_bulk_approve($user, $dept, $activeYear);
     } elseif ($action === 'delete') {
@@ -159,7 +163,7 @@ $isHod       = $user['role'] === 'HoD';
 $isDean      = $user['role'] === 'Dean';
 $isHodOrDean = $isHod || $isDean;
 
-$canCreate   = $isHod;
+$canCreate   = $isHod && (!academic_year_is_locked($activeYear) || $user['role'] === 'Admin');
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
 $deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
 // The academic year is never a page filter a visitor picks — every role
@@ -292,6 +296,18 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
   </div>
 </div>
+
+<?php if (academic_year_is_locked($activeYear)): ?>
+  <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Academic Year <?= e($activeYear) ?> Cycle is Locked</div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">The Administrator has locked this academic year cycle following an Executive Meeting. Target submissions and edits are frozen across all roles. <?= $user['role'] === 'Admin' ? 'As an Administrator, you retain target management authority.' : 'Targets cannot be modified until the cycle is unlocked by an Administrator.' ?></div>
+    </div>
+  </div>
+<?php endif; ?>
 
 
 <?php /* ---- HoD / Dean: lock / request / countdown banner ---- */ ?>

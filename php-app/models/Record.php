@@ -129,7 +129,7 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
     // Admin and Dean may look at any department (or all, when none is picked);
     // Director only ever at the whole institution (never one department);
     // everyone else is pinned to their own department.
-    if ($user['role'] === 'Director') {
+    if ($user['role'] === 'Director' || $user['role'] === 'Principal') {
         $scopeDept = null;
     } elseif ($user['role'] === 'Admin' || $user['role'] === 'Dean') {
         $scopeDept = $department;
@@ -308,6 +308,11 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         return [false, 'Invalid review action.'];
     }
 
+    $effectiveYear = $year ?: active_academic_year();
+    if ($userRole !== 'Admin' && academic_year_is_locked($effectiveYear)) {
+        return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Record reviews are frozen for all roles."];
+    }
+
     $table = $types[$type]['table'];
 
     // Review chain: Coordinator / HoD approves record directly to Approved.
@@ -369,6 +374,11 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
     if ($scopeDept !== null && $scopeDept !== $department) {
         return [false, 'You can only approve your own department.'];
+    }
+
+    $effectiveYear = $year ?: active_academic_year();
+    if ($userRole !== 'Admin' && academic_year_is_locked($effectiveYear)) {
+        return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Approvals are frozen for all roles."];
     }
 
     if ($userRole === 'Coordinator') {

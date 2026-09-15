@@ -21,21 +21,30 @@ function report_templates(): array
 /** Read a setting, falling back to $default when it has never been set. */
 function setting_get(string $name, ?string $default = null): ?string
 {
-    static $cache = [];
+    global $g_settings_cache;
+    if (!is_array($g_settings_cache)) {
+        $g_settings_cache = [];
+    }
 
-    if (!array_key_exists($name, $cache)) {
+    if (!array_key_exists($name, $g_settings_cache)) {
         $stmt = db()->prepare('SELECT value FROM app_settings WHERE name = ?');
         $stmt->execute([$name]);
         $row = $stmt->fetch();
-        $cache[$name] = $row ? $row['value'] : null;
+        $g_settings_cache[$name] = $row ? $row['value'] : null;
     }
 
-    return $cache[$name] ?? $default;
+    return $g_settings_cache[$name] ?? $default;
 }
 
 /** Write a setting (upsert), stamping who changed it. */
 function setting_set(string $name, string $value, ?int $userId = null): void
 {
+    global $g_settings_cache;
+    if (!is_array($g_settings_cache)) {
+        $g_settings_cache = [];
+    }
+    $g_settings_cache[$name] = $value;
+
     $stmt = db()->prepare(
         'INSERT INTO app_settings (name, value, updated_by) VALUES (?, ?, ?)
          ON DUPLICATE KEY UPDATE value = VALUES(value), updated_by = VALUES(updated_by)'

@@ -29,7 +29,7 @@ require_module('reports');
 $role       = $user['role'];
 $isAdmin    = $role === 'Admin';
 $isHod      = $role === 'HoD';
-$isDirector = $role === 'Director';
+$isDirector = in_array($role, ['Director', 'Principal'], true);
 $isDean     = $role === 'Dean';
 $isOversight = $isAdmin || $isDirector || $isDean;
 $canFilter  = $isAdmin || $isHod || $isDean;     // Director never narrows; Dean/Admin/HoD filter

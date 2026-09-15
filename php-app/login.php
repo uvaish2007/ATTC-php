@@ -26,77 +26,39 @@ if (is_logged_in()) {
 // Fetch available roles for the role selector
 $roles = [
     'Admin'       => ['icon' => 'shield',     'desc' => 'Full system access, manage users & departments'],
-    'Director'    => ['icon' => 'eye',         'desc' => 'Institution-wide overview & reports'],
-    'Dean'        => ['icon' => 'award',       'desc' => 'Academic oversight & institution-wide approvals'],
-    'HoD'         => ['icon' => 'graduation',  'desc' => 'Department head, approve records'],
-    'Coordinator' => ['icon' => 'target',      'desc' => 'Upload data & generate reports'],
-    'Faculty'     => ['icon' => 'user',        'desc' => 'Submit academic records & track status'],
+    'Principal'   => ['icon' => 'eye',        'desc' => 'Institution-wide overview & reports'],
+    'Dean'        => ['icon' => 'award',      'desc' => 'Academic oversight & institution-wide approvals'],
+    'HoD'         => ['icon' => 'graduation', 'desc' => 'Department head, approve records'],
+    'Coordinator' => ['icon' => 'target',     'desc' => 'Upload data & generate reports'],
+    'Faculty'     => ['icon' => 'user',       'desc' => 'Submit academic records & track status'],
 ];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $error = 'Your session or security token has expired. Please try logging in again.';
-        // Ensure a fresh token is generated for the new attempt
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
         $selectedRole = trim((string) input('role'));
-        // Check if an authenticated Admin is selecting academic year
-        if (is_logged_in()) {
-            $currUser = current_user();
-            if ($currUser && $currUser['role'] === 'Admin') {
-                if (input('action') === 'logout') {
-                    logout();
-                    redirect('/login.php');
-                }
-                $academicYear = trim((string) input('academic_year'));
-                [$ok, $msg] = activate_academic_year($academicYear, (int) $currUser['id']);
-                if ($ok) {
-                    admin_year_gate_set();
-                    redirect('/dashboard.php');
-                } else {
-                    $error = $msg;
-                    $showStep3 = true;
-                }
-            }
+    } else {
+        $email        = trim((string) input('email'));
+        $password     = (string) input('password');
+        $selectedRole = trim((string) input('role'));
+
+        if ($selectedRole === '') {
+            $error = 'Please select your role before logging in.';
         } else {
-            $email        = trim((string) input('email'));
-            $password     = (string) input('password');
-            $selectedRole = trim((string) input('role'));
-            $academicYear = trim((string) input('academic_year'));
+            $failReason = null;
+            $user = attempt_login($email, $password, $selectedRole, $failReason);
 
-            if ($selectedRole === '') {
-                $error = 'Please select your role before logging in.';
+            if ($user) {
+                admin_year_gate_set();
+                redirect('/dashboard.php');
+            } elseif ($failReason === 'deactivated') {
+                $error = 'Your account has been deactivated. Please contact an administrator.';
+            } elseif ($failReason && str_starts_with($failReason, 'role_mismatch:')) {
+                $actualRole = substr($failReason, 14);
+                $error = 'The selected role does not match your account. You are registered as "' . htmlspecialchars($actualRole) . '".';
             } else {
-                $failReason = null;
-                $user = attempt_login($email, $password, $selectedRole, $failReason);
-
-                if ($user) {
-                    if ($user['role'] === 'Admin') {
-                        if ($academicYear !== '') {
-                            [$ok, $msg] = activate_academic_year($academicYear, (int) $user['id']);
-                        } else {
-                            $ok = false; $msg = '';
-                        }
-                        if ($ok) {
-                            admin_year_gate_set();
-                            redirect('/dashboard.php');
-                        } else {
-                            // Credentials valid, now require academic year selection
-                            $showStep3 = true;
-                            if ($academicYear !== '') {
-                                $error = $msg;
-                            }
-                        }
-                    } else {
-                        redirect('/dashboard.php');
-                    }
-                } elseif ($failReason === 'deactivated') {
-                    $error = 'Your account has been deactivated. Please contact an administrator.';
-                } elseif ($failReason && str_starts_with($failReason, 'role_mismatch:')) {
-                    $actualRole = substr($failReason, 14);
-                    $error = 'The selected role does not match your account. You are registered as "' . htmlspecialchars($actualRole) . '".';
-                } else {
-                    $error = 'Invalid email or password.';
-                }
+                $error = 'Invalid email or password.';
             }
         }
     }
@@ -212,32 +174,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   <div class="login-form-side">
     <div class="login-card" style="max-width:420px">
-      <h1 id="loginTitle"><?= $showStep3 ? 'Select Academic Year' : 'Login' ?></h1>
-      <p class="lead" id="loginSubtitle"><?= $showStep3 ? 'Choose the academic year you want to manage.' : 'Select your role and enter credentials to access the portal.' ?></p>
+      <h1 id="loginTitle">Login</h1>
+      <p class="lead" id="loginSubtitle">Select your role and enter credentials to access the portal.</p>
 
       <!-- Step indicators -->
       <div class="login-steps" style="margin-top:16px">
         <div class="login-step active" id="step1-bar"></div>
-        <div class="login-step <?= $showStep3 ? 'active' : '' ?>" id="step2-bar"></div>
-        <div class="login-step <?= $showStep3 ? 'active' : '' ?>" id="step3-bar" style="<?= ($selectedRole === 'Admin' || $showStep3) ? '' : 'display:none' ?>"></div>
+        <div class="login-step" id="step2-bar"></div>
       </div>
 
       <?php if ($error): ?>
         <div class="alert alert-error" style="margin-bottom:16px"><?= e($error) ?></div>
       <?php endif; ?>
 
-      <!-- Hidden logout form if authenticated admin clicks back -->
-      <form method="post" id="logoutForm" style="display:none">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="logout">
-      </form>
-
       <form method="post" id="loginForm">
         <?= csrf_field() ?>
         <input type="hidden" name="role" id="roleInput" value="<?= e($selectedRole) ?>">
 
         <!-- Step 1: Role selector -->
-        <div id="step1" class="step-content" style="<?= $showStep3 ? 'display:none' : '' ?>">
+        <div id="step1" class="step-content">
           <div style="font-size:13px; font-weight:500; color:var(--ink-muted); margin-bottom:10px">Select your role</div>
           <div class="role-selector">
             <?php foreach ($roles as $roleName => $info): ?>
@@ -270,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           <div class="field">
             <label for="email">Email</label>
             <input class="input" type="email" id="email" name="email" placeholder="you@college.edu"
-                   value="<?= e($email) ?>">
+                   value="<?= e($email) ?>" required>
           </div>
 
           <div class="field">
@@ -284,47 +239,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
           </div>
 
-          <!-- If Admin, show Continue to Step 3; otherwise Login directly -->
-          <button type="button" class="btn btn-primary" id="step2NextBtn" style="width:100%; height:48px; margin-top:8px; display:none">
-            Continue
-          </button>
           <button type="submit" class="btn btn-primary" id="step2SubmitBtn" style="width:100%; height:48px; margin-top:8px">
             Login
-          </button>
-        </div>
-
-        <!-- Step 3: Academic Year Selection (Admin Only) -->
-        <div id="step3" class="step-content" style="<?= $showStep3 ? 'display:block' : 'display:none' ?>">
-          <div class="field" style="margin-top:4px;">
-            <label for="academic_year" style="font-size:13px; font-weight:600; color:var(--ink); margin-bottom:8px; display:block;">
-              Select Academic Year
-            </label>
-            <div style="position:relative;">
-              <select class="select" id="academic_year" name="academic_year" style="width:100%; height:46px; border-radius:10px; font-size:14px; padding:0 36px 0 14px; appearance:none; -webkit-appearance:none; background-color:var(--surface);">
-                <?php
-                $currentYear = current_academic_year();
-                $defaultYear = active_academic_year();   // whatever is active now, not always "today's" year
-                foreach (academic_years() as $ay): ?>
-                  <option value="<?= e($ay) ?>" <?= $ay === $defaultYear ? 'selected' : '' ?>>
-                    <?= e($ay) ?><?= $ay === $currentYear ? ' (Current)' : '' ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-              <div style="position:absolute; right:14px; top:50%; transform:translateY(-50%); pointer-events:none; font-size:11px; color:var(--ink-muted);">
-                ▼
-              </div>
-            </div>
-            <div style="font-size:11px; color:var(--ink-faint); margin-top:6px;">
-              Past academic years from 2000-01 to <?= e($currentYear) ?> are available.
-            </div>
-          </div>
-
-          <button type="submit" class="btn btn-primary" id="enterBtn" style="width:100%; height:48px; margin-top:20px">
-            Activate Academic Year
-          </button>
-
-          <button type="button" class="btn btn-ghost" id="step3BackBtn" style="width:100%; height:40px; margin-top:8px">
-            ← Back
           </button>
         </div>
       </form>
@@ -334,52 +250,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </div>
 
 <script>
-  const isLoggedInAdmin = <?= (is_logged_in() && current_user()['role'] === 'Admin') ? 'true' : 'false' ?>;
   const roleCards = document.querySelectorAll('.role-card');
   const roleInput = document.getElementById('roleInput');
   const nextBtn = document.getElementById('nextBtn');
   const backBtn = document.getElementById('backBtn');
-  const step3BackBtn = document.getElementById('step3BackBtn');
-  const step2NextBtn = document.getElementById('step2NextBtn');
   const step2SubmitBtn = document.getElementById('step2SubmitBtn');
-  const enterBtn = document.getElementById('enterBtn');
   const step1 = document.getElementById('step1');
   const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
   const step1Bar = document.getElementById('step1-bar');
   const step2Bar = document.getElementById('step2-bar');
-  const step3Bar = document.getElementById('step3-bar');
   const roleBadge = document.getElementById('selectedRoleBadge');
-  const loginTitle = document.getElementById('loginTitle');
-  const loginSubtitle = document.getElementById('loginSubtitle');
   const emailInput = document.getElementById('email');
   const passwordInput = document.getElementById('password');
   const loginForm = document.getElementById('loginForm');
-  const logoutForm = document.getElementById('logoutForm');
   const togglePasswordBtn = document.getElementById('togglePasswordBtn');
   const eyeShow = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-show') : null;
   const eyeHide = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-hide') : null;
-
-  function updateRoleMode(role) {
-    if (role === 'Admin') {
-      step3Bar.style.display = 'block';
-      step2NextBtn.style.display = 'block';
-      step2SubmitBtn.style.display = 'none';
-      if (emailInput) emailInput.required = !isLoggedInAdmin;
-      if (passwordInput) passwordInput.required = !isLoggedInAdmin;
-    } else {
-      step3Bar.style.display = 'none';
-      step2NextBtn.style.display = 'none';
-      step2SubmitBtn.style.display = 'block';
-      if (emailInput) emailInput.required = true;
-      if (passwordInput) passwordInput.required = true;
-    }
-  }
-
-  // Initial role setup if preselected
-  if (roleInput.value) {
-    updateRoleMode(roleInput.value);
-  }
 
   roleCards.forEach(card => {
     card.addEventListener('click', () => {
@@ -388,7 +274,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       card.querySelector('input').checked = true;
       roleInput.value = card.dataset.role;
       nextBtn.disabled = false;
-      updateRoleMode(card.dataset.role);
     });
   });
 
@@ -423,37 +308,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   });
 
-  step2NextBtn.addEventListener('click', () => {
-    if (!emailInput.reportValidity() || !passwordInput.reportValidity()) {
-      return;
-    }
-    step2.style.display = 'none';
-    step3.style.display = 'block';
-    step3.style.animation = 'none';
-    step3.offsetHeight;
-    step3.style.animation = 'fadeInUp .3s ease';
-    step3Bar.classList.add('active');
-    loginTitle.textContent = 'Select Academic Year';
-    loginSubtitle.textContent = 'Choose the academic year you want to manage.';
-    document.getElementById('academic_year').focus();
-  });
-
-  step3BackBtn.addEventListener('click', () => {
-    if (isLoggedInAdmin) {
-      // If already logged in, back signs out cleanly
-      logoutForm.submit();
-      return;
-    }
-    step3.style.display = 'none';
-    step2.style.display = 'block';
-    step2.style.animation = 'none';
-    step2.offsetHeight;
-    step2.style.animation = 'fadeInUp .3s ease';
-    step3Bar.classList.remove('active');
-    loginTitle.textContent = 'Login';
-    loginSubtitle.textContent = 'Select your role and enter credentials to access the portal.';
-  });
-
   // Show / hide password toggle
   if (togglePasswordBtn && passwordInput) {
     togglePasswordBtn.addEventListener('click', () => {
@@ -474,18 +328,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
   // Handle form submissions
   loginForm.addEventListener('submit', (e) => {
-    const activeSubmit = document.activeElement;
-    const submitBtn = (activeSubmit && activeSubmit.type === 'submit')
-      ? activeSubmit
-      : (step3.style.display !== 'none' ? enterBtn : step2SubmitBtn);
-
-    if (submitBtn && submitBtn.disabled) {
+    if (step2SubmitBtn && step2SubmitBtn.disabled) {
       e.preventDefault();
       return;
     }
-    if (submitBtn) {
-      submitBtn.disabled = true;
-      submitBtn.textContent = submitBtn === enterBtn ? 'Activating...' : 'Logging In...';
+    if (step2SubmitBtn) {
+      step2SubmitBtn.disabled = true;
+      step2SubmitBtn.textContent = 'Logging In...';
     }
   });
 
@@ -496,23 +345,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   });
 
-  // If there's an error and a role was selected, show appropriate step
+  // If there's an error and a role was selected, show step 2
   <?php if ($error && $selectedRole): ?>
-    <?php if ($showStep3): ?>
-      step1.style.display = 'none';
-      step2.style.display = 'none';
-      step3.style.display = 'block';
-      step2Bar.classList.add('active');
-      step3Bar.classList.add('active');
-      step3Bar.style.display = 'block';
-      loginTitle.textContent = 'Select Academic Year';
-      loginSubtitle.textContent = 'Choose the academic year you want to manage.';
-    <?php else: ?>
-      step1.style.display = 'none';
-      step2.style.display = 'block';
-      step2Bar.classList.add('active');
-      roleBadge.textContent = '<?= e($selectedRole) ?>';
-    <?php endif; ?>
+    step1.style.display = 'none';
+    step2.style.display = 'block';
+    step2Bar.classList.add('active');
+    roleBadge.textContent = '<?= e($selectedRole) ?>';
+    emailInput.focus();
   <?php endif; ?>
 </script>
 </body>

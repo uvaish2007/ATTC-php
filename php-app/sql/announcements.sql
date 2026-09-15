@@ -28,8 +28,8 @@ CREATE TABLE IF NOT EXISTS announcements (
   audience      ENUM('Everyone','HoD','Coordinator','Faculty') NOT NULL DEFAULT 'Everyone',
   department    VARCHAR(150) NULL,
 
-  -- Draft = only the author sees it. Archived = kept, but out of the way.
-  status        ENUM('Draft','Published','Archived') NOT NULL DEFAULT 'Published',
+  -- Draft = only the author sees it. Archived/Expired = kept safely in database.
+  status        ENUM('Draft','Published','Archived','Expired') NOT NULL DEFAULT 'Published',
   pinned        TINYINT(1)   NOT NULL DEFAULT 0,
 
   -- publish_at in the future = scheduled. expires_at in the past = expired.

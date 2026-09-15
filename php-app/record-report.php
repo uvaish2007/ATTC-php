@@ -36,7 +36,7 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 
 // Scope: oversight roles choose a department (or all); everyone else is pinned
 // to their own. This mirrors report_records()'s own scoping.
-$isOversight  = in_array($user['role'], ['Admin', 'Director'], true);
+$isOversight  = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
 $department   = $isOversight ? (trim((string) input('department')) ?: null) : ($user['department'] ?? null);
 // The system's active academic year — never the client-supplied ?year=,
 // which a hand-built URL could set to any year (this page is reachable

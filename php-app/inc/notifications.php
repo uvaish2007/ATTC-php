@@ -128,8 +128,8 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 4. Important Target Updates (for Dean / Admin / Director)
-    if (in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
+    // 4. Important Target Updates (for Dean / Admin / Director / Principal)
+    if (in_array($user['role'], ['Dean', 'Admin', 'Director', 'Principal'], true)) {
         try {
             $targetCount = targets_pending_count();
             if ($targetCount > 0) {

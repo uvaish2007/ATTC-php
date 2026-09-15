@@ -21,7 +21,7 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Target.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Dean']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
 
 $format = strtolower(trim((string) input('format', 'word')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
@@ -32,7 +32,7 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
  * Scope by role: oversight roles (Admin, Director, Dean) may pick any department or
  * see all; everyone else is pinned to their own department.
  */
-$isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
+$isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
 $department  = $isOversight
     ? (trim((string) input('department')) ?: null)
     : ($user['department'] ?? null);

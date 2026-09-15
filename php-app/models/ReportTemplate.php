@@ -146,6 +146,35 @@ function template_move(string $table, int $id, string $dir): array
     return [true, ''];
 }
 
+/** Reorder an entire table of columns or rows given an array of IDs in new order. */
+function template_reorder(string $table, array $ids): array
+{
+    if (empty($ids)) {
+        return [false, 'No items to reorder.'];
+    }
+    $table = ($table === 'report_rows') ? 'report_rows' : 'report_columns';
+    $pdo = db();
+    $stmt = $pdo->prepare("UPDATE `$table` SET sort_order = ? WHERE id = ?");
+    $pdo->beginTransaction();
+    try {
+        $order = 1;
+        foreach ($ids as $id) {
+            $id = (int) $id;
+            if ($id > 0) {
+                $stmt->execute([$order++, $id]);
+            }
+        }
+        $pdo->commit();
+        return [true, 'Order updated.'];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return [false, 'Failed to update order: ' . $e->getMessage()];
+    }
+}
+
+
 function template_row_add(array $cells): array
 {
     $next = (int) db()->query('SELECT COALESCE(MAX(sort_order),0)+1 FROM report_rows')->fetchColumn();

@@ -35,7 +35,7 @@ $badgeCounts = [
     // told about them; for anyone else the count is noise. For an Admin the
     // badge also counts unlock requests, since those are actioned on the same
     // Targets page.
-    'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
+    'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
 ];
 
@@ -301,7 +301,7 @@ $flashes      = take_flashes();
       </div>
       <form method="post" action="<?= e(url('logout.php')) ?>">
         <?= csrf_field() ?>
-        <button type="submit" class="side-signout"><?= icon('logout') ?> Sign out</button>
+        <button type="submit" class="side-signout side-logout" title="Logout"><?= icon('logout') ?> Logout</button>
       </form>
     </div>
   </aside>
@@ -324,7 +324,12 @@ $flashes      = take_flashes();
       <div class="topbar-right">
         <span class="year-badge" title="ATTS is operating on academic year <?= e($atts_activeYear) ?>. Set by the Admin; every role sees this same year until it is changed.">
           <?= icon('calendar', 13) ?> Academic Year: <?= e($atts_activeYear) ?>
-          <span class="yb-lock"><?= icon('lock', 11) ?> Locked by Admin</span>
+          <?php if (academic_year_is_locked($atts_activeYear)): ?>
+            <?php $latestExec = executive_meeting_latest($atts_activeYear); ?>
+            <span class="yb-lock" style="color:#ffffff;"><?= icon('lock', 11) ?> Locked<?= $latestExec ? ' (M#' . e($latestExec['meeting_number']) . ')' : '' ?></span>
+          <?php else: ?>
+            <span class="yb-lock" style="color:rgba(255,255,255,0.85);border-left:1px solid rgba(255,255,255,0.3);"><?= icon('unlock', 11) ?> Cycle Open</span>
+          <?php endif; ?>
         </span>
         <span class="role-badge" title="You are signed in as <?= e($user['role']) ?>"><?= icon('shield', 13) ?> <?= e($user['role']) ?></span>
 

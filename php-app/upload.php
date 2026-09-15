@@ -67,6 +67,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $type = (string) input('record_type');
     $nav  = (string) input('nav', 'add');   // add | next | submit
 
+    $targetYear = trim((string) input('academic_year', $activeYear));
+    if ($user['role'] !== 'Admin' && (academic_year_is_locked($activeYear) || academic_year_is_locked($targetYear))) {
+        flash('error', "Academic year {$targetYear} cycle is currently locked by the Administrator. New record submissions for {$targetYear} are frozen.");
+        redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
+    }
+
     if (!isset($types[$type])) {
         flash('error', 'Invalid record type.');
         redirect('/upload.php');
@@ -524,6 +530,19 @@ require __DIR__ . '/inc/header.php';
 })();
 </script>
 
+<?php $isUploadLocked = academic_year_is_locked($activeYear); ?>
+<?php if ($isUploadLocked): ?>
+  <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Academic Year <?= e($activeYear) ?> Cycle is Locked</div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">The Administrator has frozen submissions for this academic year cycle following an Executive Meeting. <?= $user['role'] === 'Admin' ? 'As an Admin, you retain upload authority.' : 'New submissions are frozen across all roles until unlocked by an Administrator.' ?></div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <!-- Upload form -->
 <div class="card" style="margin-bottom:20px">
   <div class="card-head">
@@ -734,17 +753,32 @@ require __DIR__ . '/inc/header.php';
       <!-- Save this entry and add another of the same type, move on to the next
            metric, or finish on the last one. -->
       <div class="upload-actions">
-        <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
-        <div class="spacer"></div>
-        <?php if ($prevType): ?>
-          <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
-        <?php endif; ?>
-        <?php if (!$isLast): ?>
-          <button type="submit" name="nav" value="next" class="btn btn-primary">
-            Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
-          </button>
+        <?php if (!$isUploadLocked || $user['role'] === 'Admin'): ?>
+          <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
+          <div class="spacer"></div>
+          <?php if ($prevType): ?>
+            <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
+          <?php endif; ?>
+          <?php if (!$isLast): ?>
+            <button type="submit" name="nav" value="next" class="btn btn-primary">
+              Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
+            </button>
+          <?php else: ?>
+            <button type="submit" name="nav" value="submit" class="btn btn-primary"><?= icon('check') ?> Submit for Review</button>
+          <?php endif; ?>
         <?php else: ?>
-          <button type="submit" name="nav" value="submit" class="btn btn-primary"><?= icon('check') ?> Submit for Review</button>
+          <div style="display:flex;align-items:center;gap:8px;color:#991B1B;font-size:13px;font-weight:700">
+            <?= icon('lock', 16) ?> Submissions are disabled because Academic Year <?= e($activeYear) ?> is locked.
+          </div>
+          <div class="spacer"></div>
+          <?php if ($prevType): ?>
+            <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
+          <?php endif; ?>
+          <?php if (!$isLast): ?>
+            <a href="<?= e(url('upload.php?type=' . $nextType)) ?>" class="btn btn-primary">
+              Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
+            </a>
+          <?php endif; ?>
         <?php endif; ?>
       </div>
     </form>

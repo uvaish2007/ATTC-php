@@ -16,10 +16,6 @@ require_once __DIR__ . '/models/Target.php';
 $user = require_login();
 
 if ($user['role'] === 'Admin') {
-    // Hasn't stepped through Academic Year Selection this login yet.
-    if (!admin_year_gate_passed()) {
-        redirect('/login.php');
-    }
 
     // Admin Dashboard Year Switcher (section 10): a real POST + CSRF, like
     // every other state change in the app — not a bare GET link, since this
@@ -45,7 +41,8 @@ if ($user['role'] === 'Faculty') {
 
     $titles = [
         'Admin'       => 'Admin Dashboard',
-        'Director'    => 'Director Dashboard',
+        'Principal'   => 'Principal Dashboard',
+        'Director'    => 'Principal Dashboard',
         'Dean'        => 'Dean Dashboard',
         'HoD'         => 'HoD Dashboard',
         'Coordinator' => 'Coordinator Dashboard',

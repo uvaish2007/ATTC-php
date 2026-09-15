@@ -54,7 +54,7 @@ echo       http://localhost:8000/login.php
 echo.
 echo   Log in with any of these:
 echo       Admin        mohameduvaish132@gmail.com   uvaish123
-echo       Director     director@atts.edu            director123
+echo       Principal    principal@atts.edu           director123 (or director@atts.edu)
 echo       Dean         dean@atts.edu                dean1234
 echo       HoD          hod@atts.edu                 hod12345
 echo       Coordinator  coordinator@atts.edu         coord1234

@@ -60,3 +60,7 @@ coverage/
 # --- Real-data spreadsheets & editor workspace (public repo) ---
 *.xlsx
 *.code-workspace
+
+# --- Scratch temporary cookies ---
+scratch/*cookie.txt
+

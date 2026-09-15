@@ -107,21 +107,119 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // -------------------------------------------------------------------------
 // Filters (all live in the address bar, so a filtered view can be shared)
 // -------------------------------------------------------------------------
+// -------------------------------------------------------------------------
+// Calendar Anchors & Future Guard
+// -------------------------------------------------------------------------
+$curYear  = (int) date('Y');
+$curMonth = (int) date('n');
+$curDay   = (int) date('j');
+
+$calYear  = (int) input('cal_year', input('year', $curYear));
+$calMonth = (int) input('cal_month', input('month', $curMonth));
+$calDay   = (int) input('cal_day', input('day', 0));
+
+// STRICT FUTURE GUARD: Never allow future months or future years!
+if ($calYear > $curYear || ($calYear === $curYear && $calMonth > $curMonth)) {
+    $calYear  = $curYear;
+    $calMonth = $curMonth;
+    $calDay   = 0;
+}
+
+if ($calMonth < 1)  $calMonth = 1;
+if ($calMonth > 12) $calMonth = 12;
+if ($calYear < 2000) $calYear = 2000;
+
+$daysInMonth = (int) date('t', mktime(0, 0, 0, $calMonth, 1, $calYear));
+if ($calDay > $daysInMonth) {
+    $calDay = 0;
+}
+if ($calYear === $curYear && $calMonth === $curMonth && $calDay > $curDay) {
+    $calDay = 0; // cannot select future day in present month
+}
+
+$isCurrentMonth = ($calYear === $curYear && $calMonth === $curMonth);
+
+// Previous Month (Down arrow)
+$prevMonth = $calMonth - 1;
+$prevYear  = $calYear;
+if ($prevMonth < 1) {
+    $prevMonth = 12;
+    $prevYear  = $calYear - 1;
+}
+
+// Next Month (Upper arrow)
+$nextMonth = $calMonth + 1;
+$nextYear  = $calYear;
+if ($nextMonth > 12) {
+    $nextMonth = 1;
+    $nextYear  = $calYear + 1;
+}
+$hasNextMonth = !($nextYear > $curYear || ($nextYear === $curYear && $nextMonth > $curMonth));
+
+// Date navigation:
+$maxDayAllowed = $isCurrentMonth ? $curDay : $daysInMonth;
+$prevDay = $calDay > 1 ? $calDay - 1 : 0;
+$hasPrevDay = ($calDay > 1);
+$nextDay = ($calDay > 0 && $calDay < $maxDayAllowed) ? $calDay + 1 : ($calDay === 0 ? 1 : $calDay);
+$hasNextDay = ($calDay > 0 && $calDay < $maxDayAllowed);
+
+// -------------------------------------------------------------------------
+// Filters
+// -------------------------------------------------------------------------
 $filters = [
     'search'   => trim((string) input('q', '')),
     'category' => trim((string) input('category', '')),
     'sort'     => trim((string) input('sort', 'newest')),
     'scope'    => trim((string) input('scope', 'all')),
     'page'     => (int) input('page', 1),
+    'year'     => $calYear,
+    'month'    => $calMonth,
+    'day'      => $calDay,
 ];
 
-// The same filters as a query string, so links and forms keep the view.
+// Helper to build URL preserving filters
+if (!function_exists('ann_cal_url')) {
+    function ann_cal_url(array $overrides = [], ?array $activeFilters = null): string {
+        global $filters, $calYear, $calMonth, $calDay, $curYear, $curMonth;
+        $f = $activeFilters ?? $filters ?? [];
+        $y = array_key_exists('cal_year', $overrides) ? $overrides['cal_year'] : ($calYear ?? (int)date('Y'));
+        $m = array_key_exists('cal_month', $overrides) ? $overrides['cal_month'] : ($calMonth ?? (int)date('n'));
+        $d = array_key_exists('cal_day', $overrides) ? $overrides['cal_day'] : ($calDay ?? 0);
+        $cY = $curYear ?? (int)date('Y');
+        $cM = $curMonth ?? (int)date('n');
+
+        $params = [
+            'q'         => $f['search'] ?? '',
+            'category'  => $f['category'] ?? '',
+            'sort'      => ($f['sort'] ?? '') !== 'newest' ? ($f['sort'] ?? null) : null,
+            'scope'     => ($f['scope'] ?? '') !== 'all' ? ($f['scope'] ?? null) : null,
+            'cal_year'  => ($y && (int)$y !== $cY) ? (int)$y : null,
+            'cal_month' => ($m && (int)$m !== $cM) ? (int)$m : null,
+            'cal_day'   => $d ?: null,
+        ];
+        if ($y && $m && ($y !== $cY || $m !== $cM)) {
+            $params['cal_year']  = $y;
+            $params['cal_month'] = $m;
+        }
+        foreach ($overrides as $k => $v) {
+            if (!in_array($k, ['cal_year', 'cal_month', 'cal_day'], true)) {
+                $params[$k] = $v;
+            }
+        }
+        $query = http_build_query(array_filter($params, fn($v) => $v !== null && $v !== ''));
+        return url('announcements.php' . ($query ? '?' . $query : ''));
+    }
+}
+
 $backQuery = http_build_query(array_filter([
-    'q'        => $filters['search'],
-    'category' => $filters['category'],
-    'sort'     => $filters['sort'] !== 'newest' ? $filters['sort'] : null,
-    'scope'    => $filters['scope'] !== 'all' ? $filters['scope'] : null,
-    'page'     => $filters['page'] > 1 ? $filters['page'] : null,
+    'q'         => $filters['search'],
+    'category'  => $filters['category'],
+    'sort'      => $filters['sort'] !== 'newest' ? $filters['sort'] : null,
+    'scope'     => $filters['scope'] !== 'all' ? $filters['scope'] : null,
+    'cal_year'  => $calYear !== $curYear ? $calYear : null,
+    'cal_month' => $calMonth !== $curMonth ? $calMonth : null,
+    'cal_day'   => $calDay ?: null,
+    'page'      => $filters['page'] > 1 ? $filters['page'] : null,
 ]));
 
 // -------------------------------------------------------------------------
@@ -155,27 +253,189 @@ foreach ($list['rows'] as $index => $row) {
     }
 }
 
-// The little month calendar in the sidebar.
-$calYear  = (int) date('Y');
-$calMonth = (int) date('n');
+// Calendar grid setup for the sidebar
 $calDays  = announcement_calendar($user, $calYear, $calMonth);
-
-$firstDay    = (int) date('w', mktime(0, 0, 0, $calMonth, 1, $calYear));  // 0 = Sunday
-$daysInMonth = (int) date('t', mktime(0, 0, 0, $calMonth, 1, $calYear));
-$today       = (int) date('j');
+$firstDay = (int) date('w', mktime(0, 0, 0, $calMonth, 1, $calYear));  // 0 = Sunday
+$today    = ($isCurrentMonth) ? $curDay : 0;
 
 // Colour of the priority badge.
-$priorityClass = ['Urgent' => 'danger', 'Important' => 'warning', 'Normal' => 'neutral'];
+$priorityClass = [
+    'Urgent'    => 'urgent',
+    'Important' => 'important',
+    'Normal'    => 'normal',
+];
 
 $pageTitle  = 'Announcements';
 $breadcrumb = 'Announcements';
 require __DIR__ . '/inc/header.php';
 ?>
 
+<style>
+/* Priority Announcements: Urgent = Dark Red Box, Important = Dark Green Box, Normal = Default Color */
+.ann-card.priority-urgent,
+.ann-featured.priority-urgent {
+  border: 2px solid #991b1b !important;
+  border-left: 6px solid #7f1d1d !important;
+  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 130px) !important;
+  box-shadow: 0 4px 14px rgba(153, 27, 27, 0.12) !important;
+}
+.ann-card.priority-urgent:hover,
+.ann-featured.priority-urgent:hover {
+  border-color: #7f1d1d !important;
+  box-shadow: 0 8px 24px rgba(153, 27, 27, 0.22) !important;
+  transform: translateY(-2px);
+}
+.ann-card.priority-urgent .ann-title-link:hover .ann-title,
+.ann-featured.priority-urgent .ann-title-link:hover .ann-title {
+  color: #991b1b !important;
+}
+
+.ann-card.priority-important,
+.ann-featured.priority-important {
+  border: 2px solid #166534 !important;
+  border-left: 6px solid #14532d !important;
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 130px) !important;
+  box-shadow: 0 4px 14px rgba(22, 101, 52, 0.12) !important;
+}
+.ann-card.priority-important:hover,
+.ann-featured.priority-important:hover {
+  border-color: #14532d !important;
+  box-shadow: 0 8px 24px rgba(22, 101, 52, 0.22) !important;
+  transform: translateY(-2px);
+}
+.ann-card.priority-important .ann-title-link:hover .ann-title,
+.ann-featured.priority-important .ann-title-link:hover .ann-title {
+  color: #166534 !important;
+}
+
+.ann-card.priority-normal,
+.ann-featured.priority-normal {
+  border: 1px solid var(--hairline) !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+.ann-card.priority-normal.unread {
+  border-left: 3px solid var(--orange-500) !important;
+}
+
+.badge.badge-urgent,
+.badge.badge-priority-urgent {
+  background: #991b1b !important;
+  color: #ffffff !important;
+  border: 1px solid #7f1d1d !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.3px;
+  box-shadow: 0 1px 3px rgba(153, 27, 27, 0.25);
+}
+
+.badge.badge-important,
+.badge.badge-priority-important {
+  background: #166534 !important;
+  color: #ffffff !important;
+  border: 1px solid #14532d !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.3px;
+  box-shadow: 0 1px 3px rgba(22, 101, 52, 0.25);
+}
+
+.badge.badge-normal,
+.badge.badge-priority-normal {
+  background: var(--navy-50) !important;
+  color: var(--navy-600) !important;
+  border: 1px solid var(--navy-100) !important;
+  font-weight: 600 !important;
+}
+
+dialog.modal.priority-urgent {
+  border: 2px solid #991b1b !important;
+}
+dialog.modal.priority-urgent .modal-head {
+  background: linear-gradient(180deg, #fff1f2 0%, #ffffff 100%) !important;
+  border-bottom: 1px solid #fecaca !important;
+}
+
+dialog.modal.priority-important {
+  border: 2px solid #166534 !important;
+}
+dialog.modal.priority-important .modal-head {
+  background: linear-gradient(180deg, #f0fdf4 0%, #ffffff 100%) !important;
+  border-bottom: 1px solid #bbf7d0 !important;
+}
+
+/* Calendar Navigation & Clickable Dates */
+.cal-nav-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  border: 1px solid var(--hairline);
+  background: var(--surface);
+  color: var(--navy-800);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  text-decoration: none;
+}
+.cal-nav-btn:hover:not(.disabled) {
+  background: var(--orange-50);
+  border-color: var(--orange-300);
+  color: var(--orange-600);
+}
+.cal-nav-btn.disabled,
+.cal-nav-btn:disabled {
+  opacity: 0.25 !important;
+  cursor: not-allowed !important;
+  pointer-events: none;
+  background: var(--navy-50) !important;
+}
+
+a.cal-day {
+  cursor: pointer;
+  text-decoration: none;
+  display: block;
+  transition: transform 0.15s, background 0.15s, color 0.15s;
+}
+a.cal-day:hover {
+  background: var(--navy-100);
+  color: var(--navy-900);
+  transform: scale(1.08);
+}
+.cal-day.today {
+  background: var(--navy-900) !important;
+  color: #ffffff !important;
+  font-weight: 700;
+}
+.cal-day.selected {
+  background: var(--orange-500) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px rgba(255, 79, 1, 0.4) !important;
+}
+.cal-day.selected::after {
+  background: #ffffff !important;
+}
+.cal-day.disabled-future {
+  opacity: 0.3 !important;
+  cursor: not-allowed !important;
+}
+#announcements_notices_col,
+#announcements_calendar_card,
+#announcements_stats {
+  transition: opacity 0.18s ease;
+}
+.cal-loading {
+  opacity: 0.45 !important;
+  pointer-events: none !important;
+  cursor: wait !important;
+}
+</style>
+
 <div class="page-head">
   <div>
     <h1>Announcements</h1>
-    <div class="sub">Notices, circulars and deadlines from the Director's office</div>
+    <div class="sub">Notices, circulars and deadlines from the Principal's office</div>
   </div>
 
   <?php if ($canManage && $ready): ?>
@@ -217,12 +477,12 @@ require __DIR__ . '/inc/header.php';
     $cards = [
         ['Total Announcements', $stats['total'],    'megaphone', 'brand'],
         ['Active Now',          $stats['active'],   'check',     'navy'],
-        ['Expiring Soon',       $stats['expiring'], 'clock',     $stats['expiring'] ? 'brand' : 'navy'],
+        [$canManage ? 'Past Expired (Stored in DB)' : 'Expiring Soon', $canManage ? ($stats['expired'] ?? 0) : $stats['expiring'], 'clock', ($canManage ? ($stats['expired'] ?? 0) : $stats['expiring']) ? 'brand' : 'navy'],
         [$canManage ? 'Unread by Faculty' : 'Unread by You', $stats['unread'], 'eye', $stats['unread'] ? 'brand' : 'navy'],
     ];
   ?>
 
-  <div class="stat-grid grid-4">
+  <div class="stat-grid grid-4" id="announcements_stats">
     <?php foreach ($cards as [$label, $value, $iconName, $tone]): ?>
       <div class="stat">
         <div class="stat-top">
@@ -264,10 +524,11 @@ require __DIR__ . '/inc/header.php';
 
         <select class="select" name="scope" onchange="this.form.submit()" aria-label="Show">
           <?php
-            $scopes = ['all' => 'Everything', 'bookmarked' => 'Bookmarked'];
+            $scopes = ['all' => 'Active Announcements', 'bookmarked' => 'Bookmarked'];
             if ($canManage) {
+                $scopes['expired']  = 'Past Expired (Stored in DB)';
+                $scopes['archived'] = 'Archived Notices';
                 $scopes['mine']     = 'Posted by me';
-                $scopes['archived'] = 'Archived';
             }
           ?>
           <?php foreach ($scopes as $key => $label): ?>
@@ -286,15 +547,69 @@ require __DIR__ . '/inc/header.php';
   <div class="mt-5 grid-2-1">
 
     <!-- ======================= The notices ======================= -->
-    <div>
+    <div id="announcements_notices_col">
+
+      <?php if (!$isCurrentMonth || $calDay > 0): ?>
+        <!-- Calendar filter active banner -->
+        <div class="card" style="background:linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);border-left:4px solid var(--orange-500);border-radius:10px;padding:12px 18px;margin-bottom:18px;box-shadow:0 2px 6px rgba(0,0,0,0.03)">
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="width:36px;height:36px;border-radius:8px;background:rgba(255,79,1,0.12);color:var(--orange-600);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <?= icon('calendar', 20) ?>
+              </div>
+              <div>
+                <div style="font-weight:700;font-size:14px;color:var(--navy-900)">
+                  <?php if ($calDay > 0): ?>
+                    Showing Announcements for <?= e(date('d F Y', mktime(0, 0, 0, $calMonth, $calDay, $calYear))) ?>
+                  <?php else: ?>
+                    Showing Announcements for <?= e(date('F Y', mktime(0, 0, 0, $calMonth, 1, $calYear))) ?> (Past Month)
+                  <?php endif; ?>
+                </div>
+                <div style="font-size:12px;color:var(--navy-600);margin-top:2px">
+                  <?= $calDay > 0
+                        ? 'Filtered by specific date. Future dates and months are restricted.'
+                        : 'Viewing announcements for this past month. Future months are strictly restricted.' ?>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+              <?php if ($calDay > 0): ?>
+                <a class="btn btn-outline btn-sm cal-async-link" href="<?= ann_cal_url(['cal_day' => null, 'page' => null]) ?>">
+                  View All <?= e(date('M Y', mktime(0, 0, 0, $calMonth, 1, $calYear))) ?>
+                </a>
+              <?php endif; ?>
+              <a class="btn btn-primary btn-sm cal-async-link" href="<?= ann_cal_url(['cal_year' => $curYear, 'cal_month' => $curMonth, 'cal_day' => null, 'page' => null]) ?>">
+                Return to Present Month (<?= e(date('M Y')) ?>)
+              </a>
+            </div>
+          </div>
+        </div>
+      <?php endif; ?>
+
+      <?php if ($filters['scope'] === 'expired'): ?>
+        <!-- Institutional database archive banner for past expired announcements -->
+        <div class="card" style="background:linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);border-left:4px solid #ef4444;border-radius:10px;padding:14px 18px;margin-bottom:18px;box-shadow:0 2px 6px rgba(0,0,0,0.03)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="width:36px;height:36px;border-radius:8px;background:rgba(239,68,68,0.12);color:#dc2626;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <?= icon('clock', 20) ?>
+            </div>
+            <div>
+              <div style="font-weight:700;font-size:14px;color:var(--navy-900)">Past Expired Announcements Database Archive</div>
+              <div style="font-size:12px;color:var(--navy-600);margin-top:2px">
+                All announcements whose deadline or scheduled date has completed are automatically preserved and saved in the institutional database. They are kept permanently for audit records, IQAC compliance, and historical reference.
+              </div>
+            </div>
+          </div>
+        </div>
+      <?php endif; ?>
 
       <?php if ($pinned): ?>
         <!-- The one notice everybody should see first -->
-        <div class="card ann-featured">
+        <div class="card ann-featured priority-<?= strtolower($pinned['priority'] ?? 'normal') ?> <?= (int) $pinned['is_read'] === 0 ? 'unread' : '' ?>">
           <div class="card-body">
             <div class="ann-top">
               <span class="badge badge-brand"><?= icon('pin', 12) ?> Pinned</span>
-              <span class="badge badge-<?= $priorityClass[$pinned['priority']] ?? 'neutral' ?>"><?= e($pinned['priority']) ?></span>
+              <span class="badge badge-<?= $priorityClass[$pinned['priority']] ?? 'normal' ?>"><?= e($pinned['priority']) ?></span>
               <span class="badge badge-neutral"><?= e($pinned['category']) ?></span>
               <?php if ((int) $pinned['is_read'] === 0): ?>
                 <span class="badge badge-info">New</span>
@@ -319,7 +634,7 @@ require __DIR__ . '/inc/header.php';
             </div>
 
             <div class="ann-actions">
-              <a class="btn btn-primary btn-sm" href="<?= e(url('announcements.php?view=' . $pinned['id'] . ($backQuery ? '&' . $backQuery : ''))) ?>">
+              <a class="btn btn-primary btn-sm" href="<?= e(url('announcements.php?view=' . $pinned['id'] . ($backQuery ? '&' . $backQuery : ''))) ?>" onclick="if (openAnnModal(<?= (int) $pinned['id'] ?>)) { event.preventDefault(); return false; }">
                 View Details
               </a>
 
@@ -356,12 +671,25 @@ require __DIR__ . '/inc/header.php';
         <div class="card">
           <div class="card-body">
             <div class="empty">
-              <div class="ic"><?= icon('megaphone', 20) ?></div>
-              <p><?= $filters['search'] !== '' ? 'Nothing matches that search' : 'No announcements yet' ?></p>
+              <div class="ic"><?= icon('calendar', 20) ?></div>
+              <p>
+                <?= $calDay > 0
+                      ? 'No announcements on ' . e(date('d F Y', mktime(0, 0, 0, $calMonth, $calDay, $calYear)))
+                      : 'No announcements for ' . e(date('F Y', mktime(0, 0, 0, $calMonth, 1, $calYear))) ?>
+              </p>
               <div class="note">
-                <?= $canManage
-                      ? 'Use "New Announcement" to publish the first one.'
-                      : 'Notices from the Director\'s office will appear here.' ?>
+                <?php if (!$isCurrentMonth || $calDay > 0): ?>
+                  <a class="cal-async-link" href="<?= ann_cal_url(['cal_year' => $curYear, 'cal_month' => $curMonth, 'cal_day' => null, 'page' => null]) ?>"
+                     style="color:var(--orange-600);font-weight:600;display:inline-flex;align-items:center;gap:4px">
+                    <?= icon('refresh', 13) ?> Return to present month (<?= e(date('F Y')) ?>)
+                  </a>
+                <?php elseif ($filters['search'] !== ''): ?>
+                  Nothing matches that search
+                <?php else: ?>
+                  <?= $canManage
+                        ? 'Use "New Announcement" to publish the first one.'
+                        : 'Notices from the Principal\'s office will appear here.' ?>
+                <?php endif; ?>
               </div>
             </div>
           </div>
@@ -370,15 +698,19 @@ require __DIR__ . '/inc/header.php';
       <?php else: ?>
 
         <?php foreach ($list['rows'] as $row): ?>
-          <div class="card ann-card <?= (int) $row['is_read'] === 0 ? 'unread' : '' ?>">
+          <div class="card ann-card priority-<?= strtolower($row['priority'] ?? 'normal') ?> <?= (int) $row['is_read'] === 0 ? 'unread' : '' ?>">
             <div class="card-body">
 
               <div class="ann-top">
-                <span class="badge badge-<?= $priorityClass[$row['priority']] ?? 'neutral' ?>"><?= e($row['priority']) ?></span>
+                <span class="badge badge-<?= $priorityClass[$row['priority']] ?? 'normal' ?>"><?= e($row['priority']) ?></span>
                 <span class="badge badge-neutral"><?= e($row['category']) ?></span>
                 <span class="faint"><?= e($row['department'] ?: 'All departments') ?></span>
 
-                <?php if ($row['_state'] !== 'Active'): ?>
+                <?php if ($row['_state'] === 'Expired'): ?>
+                  <span class="badge badge-danger" style="display:inline-flex;align-items:center;gap:3px" title="Completed announcement safely stored in database">
+                    <?= icon('clock', 11) ?> Expired &middot; Stored in DB
+                  </span>
+                <?php elseif ($row['_state'] !== 'Active'): ?>
                   <span class="badge badge-info"><?= e($row['_state']) ?></span>
                 <?php endif; ?>
                 <?php if ((int) $row['is_read'] === 0): ?>
@@ -386,7 +718,7 @@ require __DIR__ . '/inc/header.php';
                 <?php endif; ?>
               </div>
 
-              <a class="ann-title-link" href="<?= e(url('announcements.php?view=' . $row['id'] . ($backQuery ? '&' . $backQuery : ''))) ?>">
+              <a class="ann-title-link" href="<?= e(url('announcements.php?view=' . $row['id'] . ($backQuery ? '&' . $backQuery : ''))) ?>" onclick="if (openAnnModal(<?= (int) $row['id'] ?>)) { event.preventDefault(); return false; }">
                 <h3 class="ann-title"><?= e($row['title']) ?></h3>
               </a>
 
@@ -395,6 +727,11 @@ require __DIR__ . '/inc/header.php';
               <div class="ann-meta">
                 <span><?= icon('user', 14) ?> <?= e($row['author_name'] ?: 'Office') ?></span>
                 <span><?= icon('calendar', 14) ?> <?= e(time_ago($row['created_at'])) ?></span>
+                <?php if ($row['expires_at'] && strtotime($row['expires_at']) < time()): ?>
+                  <span style="color:#dc2626;font-weight:600" title="Completed date">
+                    <?= icon('clock', 13) ?> Completed <?= e(date('d M Y', strtotime($row['expires_at']))) ?>
+                  </span>
+                <?php endif; ?>
                 <?php if ((int) $row['file_count'] > 0): ?>
                   <span><?= icon('paperclip', 14) ?> <?= (int) $row['file_count'] ?></span>
                 <?php endif; ?>
@@ -430,7 +767,7 @@ require __DIR__ . '/inc/header.php';
                     'page'     => $p > 1 ? $p : null,
                 ]));
               ?>
-              <a class="page-link <?= $p === $list['page'] ? 'active' : '' ?>"
+              <a class="page-link <?= $p === $list['page'] ? 'active' : '' ?> cal-async-link"
                  href="<?= e(url('announcements.php' . ($pageQuery ? '?' . $pageQuery : ''))) ?>"><?= $p ?></a>
             <?php endfor; ?>
           </div>
@@ -468,14 +805,98 @@ require __DIR__ . '/inc/header.php';
       </div>
 
       <!-- Calendar -->
-      <div class="card mt-5">
-        <div class="card-head">
+      <div class="card mt-5" id="announcements_calendar_card">
+        <div class="card-head" style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:16px 20px 12px">
           <div>
-            <div class="card-title"><?= e(date('F Y')) ?></div>
-            <div class="card-sub">Days with a deadline are marked</div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div class="card-title" style="font-size:16px;font-weight:700;color:var(--navy-900);">
+                <?= e(date('F Y', mktime(0, 0, 0, $calMonth, 1, $calYear))) ?>
+              </div>
+              <?php if ($isCurrentMonth): ?>
+                <span class="badge badge-brand" style="font-size:10px;font-weight:700;padding:2px 7px;">Present Month</span>
+              <?php else: ?>
+                <span class="badge badge-neutral" style="font-size:10px;font-weight:600;padding:2px 7px;background:var(--navy-100);">Past Month</span>
+              <?php endif; ?>
+            </div>
+            <div class="card-sub" style="font-size:12px;margin-top:3px;">
+              <?php if ($calDay > 0): ?>
+                <span>Date: <strong><?= $calDay ?> <?= e(date('M Y', mktime(0, 0, 0, $calMonth, 1, $calYear))) ?></strong></span>
+                &middot; <a class="cal-async-link" href="<?= ann_cal_url(['cal_day' => null, 'page' => null]) ?>" style="color:var(--orange-600);font-weight:600;">All month</a>
+              <?php else: ?>
+                <span>Days with notices/deadlines marked</span>
+              <?php endif; ?>
+            </div>
+          </div>
+
+          <!-- Left and Right Month Navigation Arrows -->
+          <div style="display:flex;flex-direction:row;gap:5px;align-items:center;" title="Change Month">
+            <a class="cal-nav-btn cal-async-link" href="<?= ann_cal_url(['cal_year' => $prevYear, 'cal_month' => $prevMonth, 'cal_day' => null, 'page' => null]) ?>"
+               title="Past Month (Left Arrow)" aria-label="Previous Month">
+              <?= icon('chevron-left', 16) ?>
+            </a>
+
+            <?php if ($hasNextMonth): ?>
+              <a class="cal-nav-btn cal-async-link" href="<?= ann_cal_url(['cal_year' => $nextYear, 'cal_month' => $nextMonth, 'cal_day' => null, 'page' => null]) ?>"
+                 title="Next Month (Right Arrow)" aria-label="Next Month">
+                <?= icon('chevron-right', 16) ?>
+              </a>
+            <?php else: ?>
+              <button class="cal-nav-btn disabled" disabled
+                      title="Future months are not available. Present month is the latest allowed."
+                      aria-label="Future months not allowed">
+                <?= icon('chevron-right', 16) ?>
+              </button>
+            <?php endif; ?>
           </div>
         </div>
-        <div class="card-body">
+
+        <!-- Date navigation stepper bar -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 18px;background:rgba(244,246,250,0.6);border-top:1px solid var(--hairline);border-bottom:1px solid var(--hairline);font-size:12px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="color:var(--ink-muted);font-weight:600;">Date:</span>
+            <?php if ($calDay > 0): ?>
+              <span style="font-weight:700;color:var(--orange-600);"><?= $calDay ?> <?= e(date('M Y', mktime(0, 0, 0, $calMonth, 1, $calYear))) ?></span>
+            <?php else: ?>
+              <span style="color:var(--ink-muted);">Entire Month</span>
+            <?php endif; ?>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:5px;">
+            <!-- Left arrow for date (previous date) -->
+            <?php if ($hasPrevDay): ?>
+              <a class="cal-nav-btn cal-async-link" href="<?= ann_cal_url(['cal_day' => $prevDay, 'page' => null]) ?>"
+                 title="Previous Date (Left Arrow)" style="width:24px;height:24px;">
+                <?= icon('chevron-left', 13) ?>
+              </a>
+            <?php else: ?>
+              <button class="cal-nav-btn disabled" disabled style="width:24px;height:24px;" title="No previous date">
+                <?= icon('chevron-left', 13) ?>
+              </button>
+            <?php endif; ?>
+
+            <!-- Right arrow for date (next date) -->
+            <?php if ($hasNextDay && $calDay > 0): ?>
+              <a class="cal-nav-btn cal-async-link" href="<?= ann_cal_url(['cal_day' => $nextDay, 'page' => null]) ?>"
+                 title="Next Date (Right Arrow)" style="width:24px;height:24px;">
+                <?= icon('chevron-right', 13) ?>
+              </a>
+            <?php else: ?>
+              <button class="cal-nav-btn disabled" disabled style="width:24px;height:24px;" title="<?= ($isCurrentMonth && $calDay >= $curDay) ? 'Future dates are not available' : 'Select a date first or at end of month' ?>">
+                <?= icon('chevron-right', 13) ?>
+              </button>
+            <?php endif; ?>
+
+            <?php if (!$isCurrentMonth || $calDay > 0): ?>
+              <a href="<?= ann_cal_url(['cal_year' => $curYear, 'cal_month' => $curMonth, 'cal_day' => null, 'page' => null]) ?>"
+                 class="btn btn-ghost btn-sm cal-async-link" style="padding:1px 8px;height:24px;font-size:11px;font-weight:600;color:var(--orange-600);"
+                 title="Reset to Present Month">
+                Today
+              </a>
+            <?php endif; ?>
+          </div>
+        </div>
+
+        <div class="card-body" style="padding:16px 18px;">
           <div class="cal">
             <?php foreach (['S', 'M', 'T', 'W', 'T', 'F', 'S'] as $dayName): ?>
               <div class="cal-head"><?= $dayName ?></div>
@@ -486,10 +907,28 @@ require __DIR__ . '/inc/header.php';
             <?php endfor; ?>
 
             <?php for ($day = 1; $day <= $daysInMonth; $day++): ?>
-              <div class="cal-day <?= $day === $today ? 'today' : '' ?> <?= isset($calDays[$day]) ? 'has-due' : '' ?>"
-                   <?= isset($calDays[$day]) ? 'title="' . (int) $calDays[$day] . ' deadline(s)"' : '' ?>>
-                <?= $day ?>
-              </div>
+              <?php
+                $isFutureDay = ($isCurrentMonth && $day > $curDay);
+                $isToday = ($isCurrentMonth && $day === $curDay);
+                $isSelected = ($calDay === $day);
+                $hasNotices = isset($calDays[$day]);
+                $dayTitle = ($isToday ? 'Today · ' : '') . ($hasNotices ? (int)$calDays[$day] . ' announcement(s)/deadline(s)' : 'Day ' . $day);
+                if ($isFutureDay) {
+                    $dayTitle = 'Future date (no past announcements)';
+                }
+              ?>
+              <?php if ($isFutureDay): ?>
+                <div class="cal-day disabled-future" title="<?= e($dayTitle) ?>" style="opacity:0.25;cursor:not-allowed;">
+                  <?= $day ?>
+                </div>
+              <?php else: ?>
+                <a class="cal-day <?= $isToday ? 'today' : '' ?> <?= $isSelected ? 'selected' : '' ?> <?= $hasNotices ? 'has-due' : '' ?> cal-async-link"
+                   href="<?= ann_cal_url(['cal_day' => ($isSelected ? null : $day), 'page' => null]) ?>"
+                   title="<?= e($dayTitle) ?>"
+                   style="<?= $isSelected ? 'background:var(--orange-500)!important;color:#fff!important;font-weight:700;' : '' ?>">
+                  <?= $day ?>
+                </a>
+              <?php endif; ?>
             <?php endfor; ?>
           </div>
         </div>
@@ -504,8 +943,9 @@ require __DIR__ . '/inc/header.php';
           <?php
             $quick = [['Bookmarked', 'bookmark', 'announcements.php?scope=bookmarked']];
             if ($canManage) {
-                $quick[] = ['Posted by me', 'megaphone', 'announcements.php?scope=mine'];
-                $quick[] = ['Archived',     'archive',   'announcements.php?scope=archived'];
+                $quick[] = ['Past Expired in DB', 'clock',     'announcements.php?scope=expired'];
+                $quick[] = ['Archived',           'archive',   'announcements.php?scope=archived'];
+                $quick[] = ['Posted by me',       'megaphone', 'announcements.php?scope=mine'];
             }
             $quick[] = ['Unread first', 'eye', 'announcements.php?sort=unread'];
           ?>
@@ -567,14 +1007,15 @@ require __DIR__ . '/inc/header.php';
     }
   ?>
 
+  <div id="announcements_modals_container">
   <?php foreach ($openRows as $row): ?>
     <?php $files = announcement_files((int) $row['id']); ?>
 
-    <dialog class="modal modal-wide" id="ann-<?= (int) $row['id'] ?>">
+    <dialog class="modal modal-wide priority-<?= strtolower($row['priority'] ?? 'normal') ?>" id="ann-<?= (int) $row['id'] ?>">
       <div class="modal-head">
         <div class="min-w-0">
           <div class="ann-top">
-            <span class="badge badge-<?= $priorityClass[$row['priority']] ?? 'neutral' ?>"><?= e($row['priority']) ?></span>
+            <span class="badge badge-<?= $priorityClass[$row['priority']] ?? 'normal' ?>"><?= e($row['priority']) ?></span>
             <span class="badge badge-neutral"><?= e($row['category']) ?></span>
             <?php if ($row['_state'] !== 'Active'): ?>
               <span class="badge badge-info"><?= e($row['_state']) ?></span>
@@ -594,10 +1035,16 @@ require __DIR__ . '/inc/header.php';
       <div class="modal-body">
 
         <?php if ($row['expires_at']): ?>
-          <div class="deadline-strip">
+          <?php $isNoticeExpired = (strtotime($row['expires_at']) < time()); ?>
+          <div class="deadline-strip" style="<?= $isNoticeExpired ? 'background:#fef2f2;border-color:#fecaca;color:#991b1b;' : '' ?>">
             <?= icon('clock', 15) ?>
-            <span>Deadline <strong><?= e(date('d M Y, H:i', strtotime($row['expires_at']))) ?></strong>
-              — <?= e(time_until($row['expires_at'])) ?></span>
+            <?php if ($isNoticeExpired): ?>
+              <span>Completed &amp; Expired on <strong><?= e(date('d M Y, h:i A', strtotime($row['expires_at']))) ?></strong>
+                &middot; <strong style="color:#b91c1c">Past announcement safely saved and stored in institutional database</strong></span>
+            <?php else: ?>
+              <span>Deadline <strong><?= e(date('d M Y, H:i', strtotime($row['expires_at']))) ?></strong>
+                — <?= e(time_until($row['expires_at'])) ?></span>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
 
@@ -729,6 +1176,7 @@ require __DIR__ . '/inc/header.php';
       </div>
     </dialog>
   <?php endforeach; ?>
+  </div>
 
 
   <?php if ($canManage): ?>
@@ -941,6 +1389,99 @@ require __DIR__ . '/inc/header.php';
       document.getElementById('delAnn').showModal();
     }
     <?php endif; ?>
+
+    /* Open announcement modal without full page reload */
+    function openAnnModal(id) {
+      var d = document.getElementById('ann-' + id);
+      if (d && typeof d.showModal === 'function') {
+        document.querySelectorAll('dialog[open]').forEach(function (openD) { openD.close(); });
+        d.showModal();
+        return true;
+      }
+      return false;
+    }
+
+    /* Asynchronous Calendar Navigation (Smooth update without full page refresh) */
+    function loadCalendarAsync(url, pushHistory) {
+      var noticesCol = document.getElementById('announcements_notices_col');
+      var calendarCard = document.getElementById('announcements_calendar_card');
+      var modalsContainer = document.getElementById('announcements_modals_container');
+      var curStats = document.getElementById('announcements_stats');
+
+      if (!noticesCol || !calendarCard) {
+        window.location.href = url;
+        return;
+      }
+
+      // Close open modals when switching calendar view
+      document.querySelectorAll('dialog[open]').forEach(function (d) { d.close(); });
+
+      // Visual smooth loading indicator
+      noticesCol.classList.add('cal-loading');
+      calendarCard.classList.add('cal-loading');
+
+      fetch(url, {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
+      .then(function (html) {
+        var parser = new DOMParser();
+        var doc = parser.parseFromString(html, 'text/html');
+
+        var newNotices = doc.getElementById('announcements_notices_col');
+        var newCalendar = doc.getElementById('announcements_calendar_card');
+        var newModals = doc.getElementById('announcements_modals_container');
+        var newStats = doc.getElementById('announcements_stats');
+
+        if (newNotices) noticesCol.innerHTML = newNotices.innerHTML;
+        if (newCalendar) calendarCard.innerHTML = newCalendar.innerHTML;
+        if (newModals && modalsContainer) modalsContainer.innerHTML = newModals.innerHTML;
+        if (newStats && curStats) curStats.innerHTML = newStats.innerHTML;
+
+        if (pushHistory && window.history && window.history.pushState) {
+          window.history.pushState({ calUrl: url }, '', url);
+        }
+      })
+      .catch(function (err) {
+        console.warn('Calendar AJAX fallback:', err);
+        window.location.href = url;
+      })
+      .finally(function () {
+        noticesCol.classList.remove('cal-loading');
+        calendarCard.classList.remove('cal-loading');
+      });
+    }
+
+    // Intercept clicks on calendar and calendar-filter links
+    document.addEventListener('click', function (e) {
+      var link = e.target.closest('#announcements_calendar_card a, .cal-async-link, a[data-cal-nav]');
+      if (!link) return;
+
+      if (link.classList.contains('disabled') || link.getAttribute('disabled') !== null || link.getAttribute('aria-disabled') === 'true') {
+        e.preventDefault();
+        return;
+      }
+
+      var href = link.getAttribute('href');
+      if (!href || href === '#' || href.indexOf('javascript:') === 0) return;
+
+      e.preventDefault();
+      loadCalendarAsync(href, true);
+    });
+
+    // Handle browser back/forward navigation seamlessly
+    window.addEventListener('popstate', function (e) {
+      var targetUrl = (e.state && e.state.calUrl) ? e.state.calUrl : window.location.href;
+      loadCalendarAsync(targetUrl, false);
+    });
+
+    // Record initial history state
+    if (window.history && window.history.replaceState && !window.history.state) {
+      window.history.replaceState({ calUrl: window.location.href }, '', window.location.href);
+    }
 
     <?php if ($openId > 0): ?>
     /* ?view=<id> in the address bar opens that announcement straight away. */

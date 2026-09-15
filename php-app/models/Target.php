@@ -224,7 +224,7 @@ function target_is_frozen(array $target): bool
 /** The HoD's own department, or null for anyone not scoped to one. */
 function target_owns(array $target, array $user): bool
 {
-    if (in_array($user['role'], ['Admin', 'Director', 'Dean'], true)) {
+    if (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true)) {
         return true;
     }
     return ($user['department'] ?? null) !== null
@@ -242,6 +242,11 @@ function target_can_edit(array $target, array $user): bool
 {
     if ($user['role'] === 'Admin') {
         return true;
+    }
+    // If the academic year cycle is locked by Admin, non-admins cannot edit
+    $ay = $target['academic_year'] ?? null;
+    if ($ay && academic_year_is_locked($ay)) {
+        return false;
     }
     if (!in_array($user['role'], ['HoD', 'Dean'], true) || !target_owns($target, $user)) {
         return false;
@@ -262,6 +267,13 @@ function target_can_edit(array $target, array $user): bool
 /** May this user send it up for review? Only the HoD who owns it. */
 function target_can_submit(array $target, array $user): bool
 {
+    if ($user['role'] !== 'Admin') {
+        $ay = $target['academic_year'] ?? null;
+        if ($ay && academic_year_is_locked($ay)) {
+            return false;
+        }
+    }
+
     return in_array($user['role'], ['HoD', 'Dean'], true)
         && target_owns($target, $user)
         && in_array($target['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true);
@@ -270,7 +282,14 @@ function target_can_submit(array $target, array $user): bool
 /** May this user approve it or send it back? Only while it is waiting. */
 function target_can_review(array $target, array $user): bool
 {
-    return in_array($user['role'], ['Admin', 'Director', 'Dean'], true)
+    if ($user['role'] !== 'Admin') {
+        $ay = $target['academic_year'] ?? null;
+        if ($ay && academic_year_is_locked($ay)) {
+            return false;
+        }
+    }
+
+    return in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true)
         && in_array($target['status'] ?? '', ['Dean Pending', 'Pending Review'], true);
 }
 
@@ -279,6 +298,11 @@ function target_can_delete(array $target, array $user): bool
 {
     if ($user['role'] === 'Admin') {
         return true;
+    }
+
+    $ay = $target['academic_year'] ?? null;
+    if ($ay && academic_year_is_locked($ay)) {
+        return false;
     }
 
     return in_array($user['role'], ['HoD', 'Dean'], true)
@@ -392,11 +416,14 @@ function target_create(array $user, string $department, string $academicYear, st
         return [false, 'Only a HoD or Dean enters targets.'];
     }
 
-    // A new target always lands in the system's active academic year —
-    // regardless of what a caller passes in $academicYear (a page filter, a
-    // CSV import column, …). This is the one enforcement point for every
-    // caller, present and future; see active_academic_year().
-    $academicYear = active_academic_year();
+    $targetYear = trim($academicYear) ?: active_academic_year();
+    $activeAy   = active_academic_year();
+
+    if ($user['role'] !== 'Admin' && (academic_year_is_locked($targetYear) || academic_year_is_locked($activeAy))) {
+        return [false, "Academic year {$targetYear} cycle is locked by Administrator. Target submissions are frozen."];
+    }
+
+    $academicYear = $targetYear;
 
     if ($user['role'] === 'HoD') {
         $department = (string) ($user['department'] ?? '');
@@ -565,8 +592,13 @@ function target_review(int $id, array $user, string $decision, ?string $remark):
  */
 function targets_bulk_approve(array $user, ?string $deptFilter = null, ?string $yearFilter = null): array
 {
-    if (!in_array($user['role'], ['Dean', 'Admin', 'Director'], true)) {
+    if (!in_array($user['role'], ['Dean', 'Admin', 'Director', 'Principal'], true)) {
         return [false, 'You are not authorized to approve targets.'];
+    }
+
+    $effectiveYear = $yearFilter ?: active_academic_year();
+    if ($user['role'] !== 'Admin' && academic_year_is_locked($effectiveYear)) {
+        return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Target approvals are frozen."];
     }
 
     $pdo = db();
@@ -916,17 +948,16 @@ function is_valid_academic_year(?string $year): bool
 }
 
 /**
- * All valid academic years up to the current one.
- *
- * An academic year runs June–May, so from June onward the "current" year has
- * already rolled over. The list runs from 2000-01 up to the current academic
- * year (never showing future academic years), newest first.
+ * All valid academic years up to the current real-time academic year and past years.
+ * Future academic years are strictly excluded.
+ * As the real-time calendar rolls over each year (June), the new current year is automatically included.
  */
-function academic_years(): array
+function academic_years(bool $includeUpcoming = false): array
 {
     $firstStart   = ACADEMIC_YEAR_FIRST_START;
     $currentStart = current_academic_year_start();
-    $lastStart    = $currentStart;   // current academic year only (no future years)
+    // Strictly up to the current academic year; no future years allowed
+    $lastStart    = $currentStart;
 
     $years = [];
     for ($y = $lastStart; $y >= $firstStart; $y--) {
@@ -956,11 +987,6 @@ const ACTIVE_ACADEMIC_YEAR_SETTING = 'active_academic_year';
 
 /**
  * The one active academic year for the whole system right now.
- *
- * Falls back to the real current academic year when nothing has ever been
- * activated (fresh install) or the stored value is somehow no longer valid
- * (e.g. the calendar rolled over past a year an Admin pinned long ago) —
- * the system always has a sane, never-future year to operate on.
  */
 function active_academic_year(): string
 {
@@ -970,22 +996,228 @@ function active_academic_year(): string
 
 /**
  * Admin activates a year as the system-wide active academic year.
- *
- * Validates strictly server-side — format, range 2000-01..current, never a
- * future year — before writing. This only changes the application's
- * CONTEXT/FILTER (the app_settings row); it never touches a single row of
- * historical data in targets/records.
  */
 function activate_academic_year(string $year, int $adminUserId): array
 {
     $year = trim($year);
     if (!is_valid_academic_year($year)) {
-        return [false, 'Please select a valid academic year (2000-01 through ' . current_academic_year() . '). Future academic years are not permitted.'];
+        return [false, 'Please select a valid academic year (2000-01 through ' . current_academic_year() . ').'];
     }
 
     setting_set(ACTIVE_ACADEMIC_YEAR_SETTING, $year, $adminUserId);
 
     return [true, "Academic year {$year} is now active for the whole system."];
+}
+
+/**
+ * Check if an academic year's cycle is locked (frozen against new submissions / changes).
+ */
+function academic_year_is_locked(?string $year = null): bool
+{
+    $year = $year ?: active_academic_year();
+    return setting_get("ay_locked_{$year}", '0') === '1';
+}
+
+/**
+ * Set the lock state for an academic year.
+ */
+function academic_year_set_lock(string $year, bool $locked, int $adminUserId, string $note = ''): array
+{
+    $year = trim($year);
+    if (!is_valid_academic_year($year)) {
+        return [false, 'Invalid academic year.'];
+    }
+
+    setting_set("ay_locked_{$year}", $locked ? '1' : '0', $adminUserId);
+    if ($note !== '') {
+        setting_set("ay_lock_note_{$year}", trim($note), $adminUserId);
+    }
+
+    $statusText = $locked ? 'Locked (Read-Only / Frozen)' : 'Unlocked (Open for submissions)';
+    return [true, "Academic year {$year} cycle is now {$statusText}."];
+}
+
+/**
+ * Detailed lock cycle metadata for an academic year.
+ */
+function academic_year_lock_info(string $year): array
+{
+    $locked = academic_year_is_locked($year);
+    $note   = setting_get("ay_lock_note_{$year}", '');
+
+    try {
+        $stmt = db()->prepare("SELECT s.updated_at, s.updated_by, u.name as admin_name 
+                               FROM app_settings s 
+                               LEFT JOIN users u ON u.id = s.updated_by 
+                               WHERE s.name = ?");
+        $stmt->execute(["ay_locked_{$year}"]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (\PDOException $e) {
+        $row = null;
+    }
+
+    return [
+        'year'       => $year,
+        'locked'     => $locked,
+        'note'       => $note,
+        'updated_at' => $row['updated_at'] ?? null,
+        'admin_name' => $row['admin_name'] ?? 'Admin',
+    ];
+}
+
+/**
+ * Summary statistics of records and targets for a specific academic year.
+ */
+function academic_year_summary_stats(string $year): array
+{
+    static $statsCache = [];
+    if (isset($statsCache[$year])) {
+        return $statsCache[$year];
+    }
+
+    require_once __DIR__ . '/Record.php';
+    $types = record_types();
+
+    $totalRecords = 0;
+    $approvedRecords = 0;
+
+    foreach ($types as $t) {
+        $table = $t['table'];
+        $cols = target_record_table_columns($table);
+        if (!in_array('academic_year', $cols, true)) {
+            continue;
+        }
+
+        try {
+            $stmt = db()->prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) as approved FROM `{$table}` WHERE academic_year = ?");
+            $stmt->execute([$year]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            $totalRecords += (int) ($row['total'] ?? 0);
+            $approvedRecords += (int) ($row['approved'] ?? 0);
+        } catch (\PDOException $e) {
+            continue;
+        }
+    }
+
+    $targetsCount = 0;
+    try {
+        $stmt = db()->prepare("SELECT COUNT(*) FROM targets WHERE academic_year = ?");
+        $stmt->execute([$year]);
+        $targetsCount = (int) $stmt->fetchColumn();
+    } catch (\PDOException $e) {
+        $targetsCount = 0;
+    }
+
+    return $statsCache[$year] = [
+        'records'          => $totalRecords,
+        'approved_records' => $approvedRecords,
+        'targets'          => $targetsCount,
+    ];
+}
+
+/**
+ * All executive meetings recorded for an academic year.
+ */
+function executive_meetings_for_year(string $year): array
+{
+    try {
+        $stmt = db()->prepare(
+            "SELECT m.*, u.name as admin_name 
+             FROM executive_meetings m 
+             LEFT JOIN users u ON u.id = m.created_by 
+             WHERE m.academic_year = ? 
+             ORDER BY m.meeting_date DESC, m.id DESC"
+        );
+        $stmt->execute([$year]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    } catch (\PDOException $e) {
+        return [];
+    }
+}
+
+/**
+ * Count of executive meetings finished for an academic year.
+ */
+function executive_meeting_count(string $year): int
+{
+    try {
+        $stmt = db()->prepare("SELECT COUNT(*) FROM executive_meetings WHERE academic_year = ? AND status = 'Finished'");
+        $stmt->execute([$year]);
+        return (int) $stmt->fetchColumn();
+    } catch (\PDOException $e) {
+        return 0;
+    }
+}
+
+/**
+ * Latest executive meeting recorded for an academic year.
+ */
+function executive_meeting_latest(string $year): ?array
+{
+    try {
+        $stmt = db()->prepare(
+            "SELECT m.*, u.name as admin_name 
+             FROM executive_meetings m 
+             LEFT JOIN users u ON u.id = m.created_by 
+             WHERE m.academic_year = ? 
+             ORDER BY m.meeting_date DESC, m.id DESC 
+             LIMIT 1"
+        );
+        $stmt->execute([$year]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $row ?: null;
+    } catch (\PDOException $e) {
+        return null;
+    }
+}
+
+/**
+ * Record a finished Executive Meeting and lock the academic year cycle for all roles.
+ */
+function executive_meeting_finish_and_lock(string $year, string $meetingNumber, string $meetingDate, ?string $notes, int $adminUserId): array
+{
+    $year = trim($year);
+    if (!is_valid_academic_year($year)) {
+        return [false, 'Invalid academic year.'];
+    }
+
+    $meetingNumber = trim($meetingNumber);
+    if ($meetingNumber === '') {
+        return [false, 'Please enter the Executive Meeting number (e.g. 1, 2, or Meeting #1).'];
+    }
+
+    $meetingDate = trim($meetingDate);
+    if ($meetingDate === '' || strtotime($meetingDate) === false) {
+        $meetingDate = date('Y-m-d');
+    }
+
+    $notes = trim((string) $notes);
+
+    try {
+        $stmt = db()->prepare(
+            "INSERT INTO executive_meetings (academic_year, meeting_number, meeting_date, notes, status, locked_cycle, created_by)
+             VALUES (?, ?, ?, ?, 'Finished', 1, ?)"
+        );
+        $stmt->execute([$year, $meetingNumber, $meetingDate, $notes ?: null, $adminUserId]);
+    } catch (\PDOException $e) {
+        return [false, 'Database error recording executive meeting: ' . $e->getMessage()];
+    }
+
+    // Lock the cycle
+    $lockNote = "Locked upon completion of Executive Meeting #{$meetingNumber} on " . date('d M Y', strtotime($meetingDate));
+    setting_set("ay_exec_meeting_{$year}", $meetingNumber, $adminUserId);
+    academic_year_set_lock($year, true, $adminUserId, $lockNote);
+
+    return [true, "Executive Meeting #{$meetingNumber} recorded as finished. Academic year {$year} cycle is now LOCKED for all roles."];
+}
+
+/**
+ * Unlock cycle while keeping executive meeting history.
+ */
+function executive_meeting_unlock(string $year, int $adminUserId, string $reason = ''): array
+{
+    $note = $reason ? trim($reason) : 'Cycle unlocked by Admin for submissions before next Executive Meeting';
+    return academic_year_set_lock($year, false, $adminUserId, $note);
 }
 
 function metric_names(): array

@@ -27,7 +27,7 @@ function announcement_priorities(): array
 /** Who is allowed to publish, edit, pin, archive and see the analytics. */
 function announcement_can_manage(array $user): bool
 {
-    return in_array($user['role'], ['Admin', 'Director'], true);
+    return in_array($user['role'], ['Admin', 'Director', 'Principal'], true);
 }
 
 /**
@@ -47,6 +47,37 @@ function announcements_ready(): bool
     }
 
     return $ready;
+}
+
+/**
+ * Automatically update database state for any published announcement whose expiry date
+ * has passed. Expired announcements are kept safely in the database forever as
+ * historical institutional records (never deleted).
+ */
+function announcement_sync_expired(): int
+{
+    if (!announcements_ready()) {
+        return 0;
+    }
+
+    static $synced = false;
+    if ($synced) {
+        return 0;
+    }
+    $synced = true;
+
+    try {
+        // Automatically set status to Expired and unpin from the top in the database
+        return (int) db()->exec(
+            "UPDATE announcements
+             SET status = 'Expired', pinned = 0
+             WHERE status = 'Published'
+               AND expires_at IS NOT NULL
+               AND expires_at < NOW()"
+        );
+    } catch (\PDOException $e) {
+        return 0;
+    }
 }
 
 /**
@@ -82,6 +113,7 @@ function announcement_state(array $row): string
 {
     if ($row['status'] === 'Draft')    return 'Draft';
     if ($row['status'] === 'Archived') return 'Archived';
+    if ($row['status'] === 'Expired')  return 'Expired';
 
     if ($row['publish_at'] && strtotime($row['publish_at']) > time()) return 'Scheduled';
     if ($row['expires_at'] && strtotime($row['expires_at']) < time()) return 'Expired';
@@ -104,6 +136,9 @@ function announcements_list(array $user, array $filters = []): array
         return ['rows' => [], 'total' => 0, 'page' => 1, 'pages' => 1];
     }
 
+    // Automatically synchronize any expired announcements and save state in database
+    announcement_sync_expired();
+
     [$visible, $params] = announcement_visibility($user);
 
     $where  = [$visible];
@@ -123,9 +158,30 @@ function announcements_list(array $user, array $filters = []): array
         $params[] = $category;
     }
 
+    // --- Calendar month & date filtering ---
+    $curYear  = (int) date('Y');
+    $curMonth = (int) date('n');
+
+    $targetYear  = isset($filters['year']) ? (int) $filters['year'] : $curYear;
+    $targetMonth = isset($filters['month']) ? (int) $filters['month'] : $curMonth;
+    $targetDay   = isset($filters['day']) ? (int) $filters['day'] : 0;
+
+    // Strict guard: Never allow future months!
+    if ($targetYear > $curYear || ($targetYear === $curYear && $targetMonth > $curMonth)) {
+        $targetYear  = $curYear;
+        $targetMonth = $curMonth;
+        $targetDay   = 0;
+    }
+
+    $isCurrentMonth = ($targetYear === $curYear && $targetMonth === $curMonth);
+
     $scope = (string) ($filters['scope'] ?? 'all');
     if ($scope === 'archived') {
         $where[] = "a.status = 'Archived'";
+
+    } elseif ($scope === 'expired') {
+        // Past expired notices safely stored and preserved in database
+        $where[] = "(a.status = 'Expired' OR (a.expires_at IS NOT NULL AND a.expires_at < NOW()))";
 
     } elseif ($scope === 'mine') {
         $where[]  = 'a.created_by = ?';
@@ -139,8 +195,43 @@ function announcements_list(array $user, array $filters = []): array
         $params[] = $userId;
 
     } else {
-        // The normal list keeps archived notices out of the way.
-        $where[] = "a.status <> 'Archived'";
+        // The normal list based on calendar month & date:
+        if ($targetDay > 0) {
+            // Specific day in the month:
+            $targetDate = sprintf('%04d-%02d-%02d', $targetYear, $targetMonth, $targetDay);
+            $where[] = "a.status NOT IN ('Archived', 'Draft') AND (
+                (DATE(a.created_at) = ?)
+                OR (a.expires_at IS NOT NULL AND DATE(a.expires_at) = ?)
+                OR (a.publish_at IS NOT NULL AND DATE(a.publish_at) = ?)
+            )";
+            $params[] = $targetDate;
+            $params[] = $targetDate;
+            $params[] = $targetDate;
+        } elseif ($isCurrentMonth) {
+            // Present month: show published/active notices that belong to this month or are active
+            $where[] = "a.status NOT IN ('Archived') AND (
+                (YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?)
+                OR (a.expires_at IS NOT NULL AND YEAR(a.expires_at) = ? AND MONTH(a.expires_at) = ?)
+                OR (a.status = 'Published' AND (a.expires_at IS NULL OR a.expires_at >= NOW()))
+            )";
+            $params[] = $targetYear;
+            $params[] = $targetMonth;
+            $params[] = $targetYear;
+            $params[] = $targetMonth;
+        } else {
+            // Past month: show notices created, published, or with deadlines in that past month (both Published & Expired)
+            $where[] = "a.status NOT IN ('Archived', 'Draft') AND (
+                (YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?)
+                OR (a.expires_at IS NOT NULL AND YEAR(a.expires_at) = ? AND MONTH(a.expires_at) = ?)
+                OR (a.publish_at IS NOT NULL AND YEAR(a.publish_at) = ? AND MONTH(a.publish_at) = ?)
+            )";
+            $params[] = $targetYear;
+            $params[] = $targetMonth;
+            $params[] = $targetYear;
+            $params[] = $targetMonth;
+            $params[] = $targetYear;
+            $params[] = $targetMonth;
+        }
     }
 
     $whereSql = implode(' AND ', $where);
@@ -373,10 +464,20 @@ function announcement_stats(array $user): array
     $stmt->execute($params);
     $expiring = (int) $stmt->fetchColumn();
 
+    // Expired notices safely preserved in database
+    $stmt = db()->prepare(
+        "SELECT COUNT(*) FROM announcements a
+         WHERE ($visible)
+           AND (a.status = 'Expired' OR (a.expires_at IS NOT NULL AND a.expires_at < NOW()))"
+    );
+    $stmt->execute($params);
+    $expired = (int) $stmt->fetchColumn();
+
     return [
         'total'    => $total,
         'active'   => $active,
         'expiring' => $expiring,
+        'expired'  => $expired,
         'unread'   => announcement_can_manage($user)
             ? unread_receipts_count()
             : unread_announcements_count($user),
@@ -469,19 +570,36 @@ function announcement_calendar(array $user, int $year, int $month): array
 
     [$visible, $params] = announcement_visibility($user);
 
+    $days = [];
+
+    // Deadlines in this month
     $stmt = db()->prepare(
         "SELECT DAY(a.expires_at) AS day, COUNT(*) AS n
          FROM announcements a
          WHERE ($visible)
+           AND a.status NOT IN ('Archived')
            AND a.expires_at IS NOT NULL
            AND YEAR(a.expires_at) = ? AND MONTH(a.expires_at) = ?
          GROUP BY DAY(a.expires_at)"
     );
     $stmt->execute(array_merge($params, [$year, $month]));
-
-    $days = [];
     foreach ($stmt as $row) {
         $days[(int) $row['day']] = (int) $row['n'];
+    }
+
+    // Also mark announcements created in this month
+    $stmt2 = db()->prepare(
+        "SELECT DAY(a.created_at) AS day, COUNT(*) AS n
+         FROM announcements a
+         WHERE ($visible)
+           AND a.status NOT IN ('Archived')
+           AND YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?
+         GROUP BY DAY(a.created_at)"
+    );
+    $stmt2->execute(array_merge($params, [$year, $month]));
+    foreach ($stmt2 as $row) {
+        $d = (int) $row['day'];
+        $days[$d] = ($days[$d] ?? 0) + (int) $row['n'];
     }
 
     return $days;
@@ -561,7 +679,7 @@ function announcement_update(int $id, array $fields): array
         announcement_clean_priority($fields['priority'] ?? ''),
         announcement_clean_audience($fields['audience'] ?? ''),
         ($fields['department'] ?? '') ?: null,
-        in_array($fields['status'] ?? '', ['Draft', 'Published', 'Archived'], true) ? $fields['status'] : 'Published',
+        in_array($fields['status'] ?? '', ['Draft', 'Published', 'Archived', 'Expired'], true) ? $fields['status'] : 'Published',
         !empty($fields['pinned']) ? 1 : 0,
         announcement_clean_datetime($fields['publish_at'] ?? ''),
         announcement_clean_datetime($fields['expires_at'] ?? ''),
@@ -591,7 +709,7 @@ function announcement_unpin(int $id): void
 /** Move a notice to Draft / Published / Archived. */
 function announcement_set_status(int $id, string $status): array
 {
-    if (!in_array($status, ['Draft', 'Published', 'Archived'], true)) {
+    if (!in_array($status, ['Draft', 'Published', 'Archived', 'Expired'], true)) {
         return [false, 'Unknown status.'];
     }
 

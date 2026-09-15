@@ -17,6 +17,7 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',      'path' => 'dashboard.php',      'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',  'path' => 'announcements.php',  'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Approvals',      'path' => 'approvals.php',      'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Workspace', 'label' => 'Academic Year',  'path' => 'academic-years.php', 'icon' => 'calendar'],
             ['section' => 'Workspace', 'label' => 'Reports',        'path' => 'reports.php',        'icon' => 'reports'],
             ['section' => 'Manage',    'label' => 'Users',          'path' => 'users.php',          'icon' => 'users'],
             ['section' => 'Manage',    'label' => 'Departments',    'path' => 'departments.php',    'icon' => 'building'],
@@ -24,11 +25,17 @@ function navigation_for(string $role): array
             ['section' => 'Manage',    'label' => 'Report Template','path' => 'report-template.php','icon' => 'reports'],
             ['section' => 'Account',   'label' => 'Settings',       'path' => 'settings.php',       'icon' => 'settings'],
         ],
+        'Principal' => [
+            ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Reports',       'path' => 'reports.php',       'icon' => 'reports'],
+            ['section' => 'Manage',    'label' => 'Targets',       'path' => 'targets.php',       'icon' => 'target', 'badge' => 'targets'],
+            ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
+        ],
         'Director' => [
             ['section' => 'Overview',  'label' => 'Dashboard',     'path' => 'dashboard.php',     'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements', 'path' => 'announcements.php', 'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Reports',       'path' => 'reports.php',       'icon' => 'reports'],
-            // Director reviews the targets a HoD sends up, so they need the page.
             ['section' => 'Manage',    'label' => 'Targets',       'path' => 'targets.php',       'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Account',   'label' => 'Profile',       'path' => 'profile.php',       'icon' => 'user'],
         ],

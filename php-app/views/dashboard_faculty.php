@@ -226,8 +226,8 @@ $cards = [
     <div class="card-body">
       <?php
         $next = [
-            ['Submit a record', 'Add a publication, FDP, patent or any other entry.', 'upload',    'upload.php'],
-            ['Read announcements', 'Notices and deadlines from the Director\'s office.', 'megaphone', 'announcements.php'],
+            ['Submit a record', 'Add a publication, FDP, patent or any entry.', 'upload',    'upload.php'],
+            ['Read announcements', 'Notices and deadlines from the Principal\'s office.', 'megaphone', 'announcements.php'],
             ['Your profile', 'Update your details or change your password.', 'user', 'profile.php'],
         ];
       ?>
