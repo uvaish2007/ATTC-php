@@ -56,7 +56,8 @@ $records = report_records($user, $isOversight ? $department : null, $status, $ty
 // Columns: drop the consolidated "Dept" column for a single-department report.
 $columns = array_values(array_filter($spec['columns'], fn($c) => !($singleDept && $c[1] === 'department')));
 
-$deptLabel = $singleDept ? strtoupper(department_full_name((string) $department)) : 'ALL DEPARTMENTS';
+$deptFullName = $singleDept ? department_full_name((string) $department) : null;
+$deptLabel    = $singleDept ? strtoupper($deptFullName) : 'ALL DEPARTMENTS';
 $today     = date('d.m.Y');
 $span      = max(1, count($columns));
 
@@ -75,7 +76,13 @@ if ($format === 'word') {
     foreach ($records as $r) {
         $rowVal = [];
         foreach ($columns as [$label, $field]) {
-            $rowVal[] = $field === '#' ? (string) $serial : (string) ($r[$field] ?? '');
+            if ($field === '#') {
+                $rowVal[] = (string) $serial;
+            } elseif ($field === 'department') {
+                $rowVal[] = department_full_name((string) ($r[$field] ?? ''));
+            } else {
+                $rowVal[] = (string) ($r[$field] ?? '');
+            }
         }
         $exportRows[] = $rowVal;
         $serial++;
@@ -85,7 +92,7 @@ if ($format === 'word') {
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
         $titleLine,
-        'Department: ' . ($singleDept ? (string) $department : 'All departments'),
+        'Department: ' . ($singleDept ? $deptFullName : 'All departments'),
         'Report Date: ' . $today
     ];
 
@@ -128,7 +135,7 @@ if ($singleDept)               { $mainTitle = 'DEPARTMENT OF ' . $deptLabel; $he
 else                           { $mainTitle = $reportTitle; }
 if (!empty($spec['subtitle'])) { $headingLines[] = $spec['subtitle']; }
 
-$meta = [['Department', $singleDept ? (string) $department : 'All departments']];
+$meta = [['Department', $singleDept ? $deptFullName : 'All departments']];
 if ($status !== null) { $meta[] = ['Status', $status]; }
 if ($from || $to) {
     $fmt = fn(?string $d) => $d ? date('d.m.Y', strtotime($d)) : '…';
@@ -136,7 +143,7 @@ if ($from || $to) {
 }
 $meta[] = ['Total Records', (string) count($records)];
 $meta[] = ['Report Date', $today];
-report_letterhead($mainTitle, $meta, $headingLines);
+report_letterhead($mainTitle, $meta, $headingLines, $format !== 'excel');
 ?>
 
   <table class="grid">
@@ -155,7 +162,15 @@ report_letterhead($mainTitle, $meta, $headingLines);
         <?php foreach ($records as $r): ?>
           <tr>
             <?php foreach ($columns as [$label, $field]): ?>
-              <?php $val = $field === '#' ? (string) $serial : (string) ($r[$field] ?? ''); ?>
+              <?php
+                if ($field === '#') {
+                    $val = (string) $serial;
+                } elseif ($field === 'department') {
+                    $val = department_full_name((string) ($r[$field] ?? ''));
+                } else {
+                    $val = (string) ($r[$field] ?? '');
+                }
+              ?>
               <td<?= $field === '#' ? ' class="num"' : '' ?>><?= e($val) ?></td>
             <?php endforeach; ?>
           </tr>
@@ -166,5 +181,5 @@ report_letterhead($mainTitle, $meta, $headingLines);
   </table>
 
 <?php
-report_signoff(['HOD' . ($singleDept ? ' / ' . $department : ''), 'DEAN / ACADEMICS', 'PRINCIPAL']);
+report_signoff(['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'PRINCIPAL']);
 report_document_foot();

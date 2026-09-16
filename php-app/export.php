@@ -43,8 +43,8 @@ $records = report_records($user, $department, $status, $type, $from, $to);
 // ---- Things that appear in the report heading ---------------------------
 $isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
 $scopeLabel  = $isOversight
-    ? ($department ?: 'ALL DEPARTMENTS')
-    : ($user['department'] ?: 'ALL DEPARTMENTS');
+    ? department_full_name($department ?: 'ALL DEPARTMENTS')
+    : department_full_name($user['department'] ?: 'ALL DEPARTMENTS');
 
 $reportTitle = 'ACADEMIC RECORDS';
 if ($type) {
@@ -85,7 +85,7 @@ function export_row(array $record, int $serial): array
         $record['_title'],
         $record['_type_label'],
         $record['_person'],
-        $record['department'] ?? '-',
+        !empty($record['department']) ? department_full_name($record['department']) : '-',
         $record['status'],
         date('d/m/Y', strtotime($record['created_at'])),
     ];
@@ -188,7 +188,7 @@ report_document_head($reportTitle . ' Report');
 <?php endif; ?>
 
 <?php
-report_letterhead($reportTitle, $meta);
+report_letterhead($reportTitle, $meta, [], $format !== 'excel');
 ?>
 
   <table class="grid">

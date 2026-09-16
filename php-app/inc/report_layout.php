@@ -43,21 +43,58 @@ function report_banner_datauri(): string
     return $uri;
 }
 
-/** Expand a department code to its full name for the report heading. */
-function department_full_name(string $dept): string
+/**
+ * Expand a department code/short name to its full name, for every report
+ * heading, meta line, "Dept" column and sign-off across the PDF/Excel/Word
+ * downloads. Matches regardless of spacing/punctuation/case, so "AI&ML",
+ * "AI & ML" and "aiml" all resolve the same way, and falls back to whatever
+ * an Admin has set up in Manage Departments before giving up and returning
+ * the value unchanged.
+ */
+function department_full_name(?string $dept): string
 {
-    $map = [
-        'CSE'     => 'Computer Science and Engineering',
-        'CSBS'    => 'Computer Science and Business Systems',
-        'AI & DS' => 'Artificial Intelligence and Data Science',
-        'ECE'     => 'Electronics and Communication Engineering',
-        'EEE'     => 'Electrical and Electronics Engineering',
-        'MECH'    => 'Mechanical Engineering',
-        'CIVIL'   => 'Civil Engineering',
-        'IT'      => 'Information Technology',
-        'Agri'    => 'Agriculture Engineering',
+    $dept = trim((string) $dept);
+    if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
+        return $dept;
+    }
+
+    static $map = [
+        'CSE'           => 'Computer Science and Engineering',
+        'CSBS'          => 'Computer Science and Business Systems',
+        'AIDS'          => 'Artificial Intelligence and Data Science',
+        'ECE'           => 'Electronics and Communication Engineering',
+        'EEE'           => 'Electrical and Electronics Engineering',
+        'MECH'          => 'Mechanical Engineering',
+        'CIVIL'         => 'Civil Engineering',
+        'IT'            => 'Information Technology',
+        'AGRI'          => 'Agriculture Engineering',
+        'AERO'          => 'Aeronautical Engineering',
+        'MARINE'        => 'Marine Engineering',
+        'AIML'          => 'Artificial Intelligence and Machine Learning',
+        'CYBER'         => 'Cyber Security',
+        'CYBERSECURITY' => 'Cyber Security',
+        'CHEM'          => 'Chemical Engineering',
+        'ARCH'          => 'Architecture',
+        'MCA'           => 'Master of Computer Applications',
+        'MBA'           => 'Master of Business Administration',
     ];
-    return $map[$dept] ?? $dept;
+
+    $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
+    if (isset($map[$key])) {
+        return $map[$key];
+    }
+
+    // Not a known abbreviation — check the Admin-managed department list, in
+    // case it already carries a fuller name than either the code or what was
+    // stored on the record.
+    require_once __DIR__ . '/../models/Department.php';
+    foreach (departments_all() as $d) {
+        if (strcasecmp($d['code'], $dept) === 0 || strcasecmp($d['name'], $dept) === 0) {
+            return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
+        }
+    }
+
+    return $dept;
 }
 
 /**
@@ -137,9 +174,19 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
  * left one left-aligned and the right one right-aligned, so an odd number ends
  * with a single left-aligned fact.
  */
-function report_letterhead(string $title, array $meta = [], array $headingLines = []): void
+function report_letterhead(string $title, array $meta = [], array $headingLines = [], ?bool $includeBanner = null): void
 {
-    $banner = report_banner_datauri();
+    // In Excel (.xls HTML table mode), Microsoft Excel cannot decode or display base64 data URIs
+    // and shows a broken image placeholder ("The linked image cannot be displayed...").
+    // We suppress the image banner for Excel exports and cleanly display the institution name.
+    if ($includeBanner === null) {
+        $reqFormat = function_exists('input') ? strtolower(trim((string) input('format', ''))) : '';
+        if (!$reqFormat && isset($_GET['format'])) {
+            $reqFormat = strtolower(trim((string) $_GET['format']));
+        }
+        $includeBanner = ($reqFormat !== 'excel');
+    }
+    $banner = $includeBanner ? report_banner_datauri() : '';
     ?>
   <div class="rpt-head">
     <?php if ($banner !== ''): ?>
