@@ -25,14 +25,8 @@ $format     = strtolower(trim((string) input('format', 'csv')));
 $department = trim((string) input('department', '')) ?: null;
 $status     = trim((string) input('status', '')) ?: null;
 $type       = trim((string) input('type', '')) ?: null;
-$category   = trim((string) input('category', '')) ?: null;   // faculty | activity | student
 $from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
 $to         = parse_date_input(input('to', ''));     // period end
-
-$categories = record_categories();
-if ($category !== null && !isset($categories[$category])) {
-    $category = null;
-}
 
 if (!in_array($format, ['csv', 'excel', 'word', 'pdf'], true)) {
     $format = 'csv';
@@ -46,24 +40,16 @@ if ($user['role'] === 'Director') {
 // ---- Get the records (role scope is applied inside) ---------------------
 $records = report_records($user, $department, $status, $type, $from, $to);
 
-// Same narrowing the Reports page applies, so the download matches the screen.
-if ($category !== null) {
-    $catTypes = record_category_types($category);
-    $records  = array_values(array_filter($records, fn($r) => in_array($r['_type_key'], $catTypes, true)));
-}
-
 // ---- Things that appear in the report heading ---------------------------
 $isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
 $scopeLabel  = $isOversight
-    ? ($department ?: 'ALL DEPARTMENTS')
-    : ($user['department'] ?: 'ALL DEPARTMENTS');
+    ? department_full_name($department ?: 'ALL DEPARTMENTS')
+    : department_full_name($user['department'] ?: 'ALL DEPARTMENTS');
 
 $reportTitle = 'ACADEMIC RECORDS';
 if ($type) {
     $types = record_types();
     $reportTitle = strtoupper($types[$type]['label'] ?? 'ACADEMIC RECORDS');
-} elseif ($category) {
-    $reportTitle = strtoupper($categories[$category]['label']);
 }
 
 // A human-readable period line for the heading, when a range was chosen.
@@ -99,7 +85,7 @@ function export_row(array $record, int $serial): array
         $record['_title'],
         $record['_type_label'],
         $record['_person'],
-        $record['department'] ?? '-',
+        !empty($record['department']) ? department_full_name($record['department']) : '-',
         $record['status'],
         date('d/m/Y', strtotime($record['created_at'])),
     ];
@@ -234,3 +220,4 @@ report_letterhead($reportTitle, $meta);
 <?php
 report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
 report_document_foot();
+

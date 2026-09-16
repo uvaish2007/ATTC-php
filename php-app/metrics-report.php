@@ -39,6 +39,9 @@ if ($user['role'] === 'HoD') {
 } else {
     $deptLabel = $department ?: 'ALL DEPARTMENTS';   // Admin/Director may narrow
 }
+// The full department name shown in the report itself; $deptLabel (raw code)
+// is kept only for building the download filename below.
+$deptDisplay = department_full_name($deptLabel);
 
 // ---- Aggregate: one row per record type, counted by review status ----------
 $statuses = ['Approved', 'Submitted', 'Rejected', 'Draft'];
@@ -103,7 +106,7 @@ if ($format === 'word') {
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
         'METRICS SUMMARY REPORT',
-        'Department: ' . $deptLabel,
+        'Department: ' . $deptDisplay,
         'Report Date: ' . $today
     ];
     if ($periodLabel) {
@@ -129,7 +132,7 @@ if ($format === 'word') {
     header('Content-Type: text/html; charset=UTF-8');
 }
 
-$meta = [['Department', $deptLabel]];
+$meta = [['Department', $deptDisplay]];
 if ($periodLabel) {
     $meta[] = ['Period', $periodLabel];
 }
@@ -192,5 +195,5 @@ report_document_head('Metrics Report');
   </table>
 
 <?php
-report_signoff(['HOD' . ($deptLabel !== 'ALL DEPARTMENTS' ? ' / ' . $deptLabel : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+report_signoff(['HOD' . ($deptLabel !== 'ALL DEPARTMENTS' ? ' / ' . $deptDisplay : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
 report_document_foot();
