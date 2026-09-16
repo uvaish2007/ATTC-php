@@ -20,6 +20,14 @@ function url(string $path = ''): string
 /** Redirect to an app path and stop. */
 function redirect(string $path): void
 {
+    if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
+        header('Location: ' . $path);
+        exit;
+    }
+    if (BASE_URL !== '' && strpos($path, BASE_URL) === 0) {
+        header('Location: ' . $path);
+        exit;
+    }
     header('Location: ' . url($path));
     exit;
 }

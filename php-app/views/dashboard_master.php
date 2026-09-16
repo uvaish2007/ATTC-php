@@ -94,6 +94,20 @@ $deptUrl = function (string $dept) use ($data) {
 };
 
 /*
+ * "View reports" from the Records by Category card. Passing a category opens
+ * Reports narrowed to that group (Faculty / Activities / Student); passing none
+ * opens the whole hub. The department the dashboard is scoped to carries over,
+ * so the reports match the figures the user is looking at.
+ */
+$reportsUrl = function (?string $category = null) use ($data) {
+    $q = array_filter([
+        'category'   => $category,
+        'department' => $data['scope']['department'] ?? '',
+    ]);
+    return url('reports.php') . ($q ? '?' . http_build_query($q) : '');
+};
+
+/*
  * The "Analytics View" side of the Data View / Analytics View toggle: a small inline-SVG column
  * chart. The SVG has a fixed viewBox so it scales like a picture and the labels
  * can never overlap however wide the card gets. It reuses the dashboard's
@@ -446,9 +460,15 @@ if (!function_exists('dash_column_chart')) {
         <div class="card-title">Records by Category</div>
         <div class="card-sub">Every metric, grouped by what it measures &middot; <?= (int) $catTotalAll ?> total</div>
       </div>
-      <div class="view-toggle" data-vt="dash-records-category">
-        <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Data View</button>
-        <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Analytics View</button>
+      <div class="cat-head-actions">
+        <div class="view-toggle" data-vt="dash-records-category">
+          <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Data View</button>
+          <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Analytics View</button>
+        </div>
+        <a class="btn btn-primary btn-sm" href="<?= e($reportsUrl()) ?>"
+           title="Open the Reports page for every category">
+          <?= icon('reports', 14) ?> View Reports
+        </a>
       </div>
     </div>
 
@@ -459,6 +479,10 @@ if (!function_exists('dash_column_chart')) {
           <div class="chart-block-head">
             <span class="mg-title"><?= icon($meta['icon'], 14) ?> <?= e($meta['title']) ?></span>
             <span class="mg-sum tabular"><?= (int) $gsum ?></span>
+            <a class="cat-report-btn" href="<?= e($reportsUrl($gkey)) ?>"
+               title="View <?= e($meta['title']) ?> reports" aria-label="View <?= e($meta['title']) ?> reports">
+              <?= icon('eye', 13) ?> Report
+            </a>
           </div>
           <?= dash_column_chart($items, $groupColors[$gkey] ?? 'var(--orange-500)', $shortNames, 400) ?>
         </div>
@@ -472,6 +496,10 @@ if (!function_exists('dash_column_chart')) {
           <div class="mg-head">
             <span class="mg-title"><?= icon($meta['icon'], 14) ?> <?= e($meta['title']) ?></span>
             <span class="mg-sum tabular"><?= (int) $gsum ?></span>
+            <a class="cat-report-btn" href="<?= e($reportsUrl($gkey)) ?>"
+               title="View <?= e($meta['title']) ?> reports" aria-label="View <?= e($meta['title']) ?> reports">
+              <?= icon('eye', 13) ?> Report
+            </a>
           </div>
           <?php foreach ($items as $it): ?>
             <div class="bar-row thin">
@@ -493,8 +521,20 @@ if (!function_exists('dash_column_chart')) {
   .mg-head { display:flex; align-items:center; justify-content:space-between; gap:8px;
       padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid var(--hairline, #e6e8ef); }
   .mg-title { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:700;
-      text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted, #64748b); }
+      text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted, #64748b);
+      flex:1; min-width:0; }
   .mg-sum { font-weight:700; font-size:15px; }
+  /* "Report" — opens the Reports page filtered to this category. */
+  .cat-report-btn { display:inline-flex; align-items:center; gap:4px; flex-shrink:0;
+      font-size:11.5px; font-weight:600; text-decoration:none; padding:3px 9px; border-radius:999px;
+      color:var(--ink-muted, #64748b); background:var(--navy-50, #F4F6FA);
+      border:1px solid var(--hairline, #E4E9F2);
+      transition:background .12s ease, color .12s ease, border-color .12s ease; }
+  .cat-report-btn:hover { background:var(--orange-50, #FFF3EC); color:var(--brand, #FF4F01);
+      border-color:var(--brand, #FF4F01); }
+  .cat-report-btn:focus-visible { outline:2px solid var(--orange-500, #FF4F01); outline-offset:1px; }
+  /* Card head: the view toggle and the View Reports button sit together. */
+  .cat-head-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; flex-shrink:0; }
   .group-row .group-th { text-align:center; font-size:11px; font-weight:700; text-transform:uppercase;
       letter-spacing:.04em; color:var(--ink-muted, #64748b); background:var(--surface-2, #f6f8fc);
       border-bottom:2px solid var(--hairline, #e6e8ef); }

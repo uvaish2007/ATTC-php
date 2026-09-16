@@ -48,6 +48,40 @@ function record_types(): array
 }
 
 /**
+ * The three categories records are grouped under, and which types belong to
+ * each. Same grouping the dashboard's "Records by Category" card uses (see
+ * all_metrics() in models/Dashboard.php), but keyed by record type so the
+ * Reports page can be narrowed to one category from a dashboard link.
+ *
+ * Types the database doesn't have are dropped, exactly as record_types() does.
+ */
+function record_categories(): array
+{
+    $cats = [
+        'faculty'  => ['label' => 'Faculty Contributions', 'icon' => 'file-text',
+                       'types' => ['journal', 'book', 'conference', 'patent', 'fdp', 'mou', 'nptel', 'online_course']],
+        'activity' => ['label' => 'Activities & Outreach', 'icon' => 'calendar',
+                       'types' => ['event', 'nss', 'value_added', 'training']],
+        'student'  => ['label' => 'Student Records',       'icon' => 'users',
+                       'types' => ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation']],
+    ];
+
+    $known = record_types();
+    foreach ($cats as $key => $cat) {
+        $cats[$key]['types'] = array_values(array_filter($cat['types'], fn($t) => isset($known[$t])));
+    }
+
+    return $cats;
+}
+
+/** The record types in one category, or every type when the category is unknown. */
+function record_category_types(?string $category): array
+{
+    $cats = record_categories();
+    return isset($cats[$category]) ? $cats[$category]['types'] : array_keys(record_types());
+}
+
+/**
  * Fetch records for a given type, with optional filters.
  *
  * $year scopes to one academic year — the active one, from every caller —
