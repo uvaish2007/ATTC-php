@@ -20,6 +20,14 @@ function url(string $path = ''): string
 /** Redirect to an app path and stop. */
 function redirect(string $path): void
 {
+    if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
+        header('Location: ' . $path);
+        exit;
+    }
+    if (BASE_URL !== '' && strpos($path, BASE_URL) === 0) {
+        header('Location: ' . $path);
+        exit;
+    }
     header('Location: ' . url($path));
     exit;
 }
@@ -290,3 +298,26 @@ function initials(string $name): string
     }
     return $out !== '' ? $out : 'U';
 }
+
+// Fallbacks for mbstring functions if the extension is not enabled in PHP
+if (!function_exists('mb_strtolower')) {
+    function mb_strtolower(string $string, ?string $encoding = null): string {
+        return strtolower($string);
+    }
+}
+if (!function_exists('mb_strpos')) {
+    function mb_strpos(string $haystack, string $needle, int $offset = 0, ?string $encoding = null) {
+        return strpos($haystack, $needle, $offset);
+    }
+}
+if (!function_exists('mb_substr')) {
+    function mb_substr(string $string, int $start, ?int $length = null, ?string $encoding = null): string {
+        return $length === null ? substr($string, $start) : substr($string, $start, $length);
+    }
+}
+if (!function_exists('mb_strlen')) {
+    function mb_strlen(string $string, ?string $encoding = null): int {
+        return strlen($string);
+    }
+}
+
