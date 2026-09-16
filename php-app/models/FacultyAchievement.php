@@ -118,27 +118,100 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
         }
     }
 
-    // Determine top category
-    $topCategory = '—';
-    if (!empty($categoryCounts)) {
-        arsort($categoryCounts);
-        $topCategory = array_key_first($categoryCounts);
+    // Calculate approved vs pending record counts across all record tables
+    $approvedRecords = 0;
+    $pendingRecords  = 0;
+
+    foreach ($categories as $catKey => $meta) {
+        if ($catFilter && $catFilter !== $catKey && $catFilter !== $meta['group']) {
+            continue;
+        }
+        try {
+            $cols = target_record_table_columns($meta['table']);
+        } catch (\Exception $e) {
+            continue;
+        }
+
+        $sql = "SELECT 
+                    SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS app_cnt,
+                    SUM(CASE WHEN status LIKE '%Pending%' OR status = 'Submitted' THEN 1 ELSE 0 END) AS pend_cnt
+                FROM `{$meta['table']}` WHERE 1=1";
+        $params = [];
+        if ($effDept) {
+            $sql .= " AND department = ?";
+            $params[] = $effDept;
+        }
+        if ($facultyIdFilter) {
+            $sql .= " AND created_by = ?";
+            $params[] = $facultyIdFilter;
+        }
+        if ($yearFilter && in_array('academic_year', $cols, true)) {
+            $sql .= " AND academic_year = ?";
+            $params[] = $yearFilter;
+        }
+
+        try {
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
+            $r = $stmt->fetch(PDO::FETCH_ASSOC);
+            $approvedRecords += (int) ($r['app_cnt'] ?? 0);
+            $pendingRecords  += (int) ($r['pend_cnt'] ?? 0);
+        } catch (\PDOException $e) {
+            // Ignore missing tables
+        }
     }
 
-    // Total active departments
+    $approvalRate = $totalAchievements > 0 ? round(($approvedRecords / $totalAchievements) * 100) : 0;
+
+    // Calculate targets met from targets table
+    $tSql = "SELECT COUNT(*) as total_targets, SUM(CASE WHEN achieved_value >= target_value AND target_value > 0 THEN 1 ELSE 0 END) as met_targets FROM targets WHERE 1=1";
+    $tParams = [];
     if ($effDept) {
-        $deptCount = 1;
-    } else {
-        $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
-        $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
+        $tSql .= " AND department = ?";
+        $tParams[] = $effDept;
     }
+    if ($yearFilter) {
+        $tSql .= " AND academic_year = ?";
+        $tParams[] = $yearFilter;
+    }
+
+    try {
+        $tStmt = db()->prepare($tSql);
+        $tStmt->execute($tParams);
+        $tRow = $tStmt->fetch(PDO::FETCH_ASSOC);
+        $totalTargets = (int) ($tRow['total_targets'] ?? 0);
+        $targetsMet   = (int) ($tRow['met_targets'] ?? 0);
+    } catch (\PDOException $e) {
+        $totalTargets = 0;
+        $targetsMet   = 0;
+    }
+
+    $targetAttainment = $totalTargets > 0 ? round(($targetsMet / $totalTargets) * 100) : 0;
+
+    // Total registered accounts (Team)
+    $teamSql = "SELECT COUNT(*) FROM users WHERE 1=1";
+    $teamParams = [];
+    if ($effDept) {
+        $teamSql .= " AND department = ?";
+        $teamParams[] = $effDept;
+    }
+    $teamStmt = db()->prepare($teamSql);
+    $teamStmt->execute($teamParams);
+    $registeredAccounts = (int) $teamStmt->fetchColumn();
 
     return [
-        'totalFaculty'      => $totalFaculty,
-        'totalAchievements' => $totalAchievements,
-        'departments'       => $deptCount,
-        'topCategory'       => $topCategory,
-        'categoryCounts'    => $categoryCounts,
+        'totalFaculty'       => $totalFaculty,
+        'totalAchievements'  => $totalAchievements,
+        'approvedRecords'    => $approvedRecords,
+        'pendingRecords'     => $pendingRecords,
+        'approvalRate'       => $approvalRate,
+        'targetAttainment'   => $targetAttainment,
+        'targetsMet'         => $targetsMet,
+        'totalTargets'       => $totalTargets,
+        'registeredAccounts' => $registeredAccounts,
+        'departments'        => $deptCount,
+        'topCategory'        => $topCategory,
+        'categoryCounts'     => $categoryCounts,
     ];
 }
 
