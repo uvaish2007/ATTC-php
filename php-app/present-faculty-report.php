@@ -383,6 +383,59 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
       width: 20px;
       border-radius: 999px;
     }
+
+    /* ---- Auto / Manual presentation mode ---- */
+    .mode-switch {
+      display: inline-flex;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 999px;
+      padding: 3px;
+      gap: 2px;
+      margin: 0 4px;
+    }
+    .mode-btn {
+      background: none;
+      border: 0;
+      color: #94A3B8;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .02em;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all .2s ease;
+    }
+    .mode-btn.active { background: var(--brand); color: #fff; }
+    .mode-btn:not(.active):hover { color: #fff; }
+
+    /* Countdown label — only filled in while Auto is running. */
+    .auto-count {
+      font-size: 12px;
+      font-weight: 700;
+      color: #94A3B8;
+      white-space: nowrap;
+      min-width: 108px;
+    }
+    .auto-count b { color: var(--brand); }
+
+    /* The 10 seconds, drawn across the top of the slide. */
+    .auto-bar {
+      position: absolute;
+      top: 0; left: 0;
+      height: 4px;
+      width: 0;
+      background: var(--brand);
+      border-radius: 16px 0 0 0;
+      z-index: 5;
+    }
+    .auto-bar.running { animation: pfCountdown linear forwards; }
+    @keyframes pfCountdown { from { width: 0; } to { width: 100%; } }
   </style>
 </head>
 <body>
@@ -411,7 +464,8 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
         <?= icon('maximize', 14) ?> <span id="fsText">Fullscreen</span>
       </button>
 
-      <a href="<?= e($exitUrl) ?>" class="btn-hdr btn-hdr-brand" title="Exit Presentation">
+      <a href="<?= e($exitUrl) ?>" class="btn-hdr btn-hdr-brand" title="Exit Presentation"
+         onclick="clearAutoTimer();">
         <?= icon('x', 14) ?> Exit Presentation
       </a>
     </div>
@@ -420,6 +474,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
   <!-- Viewport Area -->
   <main class="viewport">
     <div class="slide-card" id="slideCard">
+      <div class="auto-bar" id="autoBar"></div>
       <div class="slide-body" id="slideContent">
         <!-- Rendered dynamically by Javascript -->
       </div>
@@ -432,9 +487,24 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
       <button class="btn-nav" id="btnPrev" onclick="prevSlide()">
         <?= icon('arrow-left', 15) ?> Previous
       </button>
+
+      <!-- Presentation mode. Manual is active on load; Auto advances every 10s. -->
+      <div class="mode-switch" role="group" aria-label="Presentation mode">
+        <button type="button" class="mode-btn active" id="btnModeManual"
+                onclick="setPresentationMode('manual')" title="Advance slides yourself">
+          MANUAL MODE
+        </button>
+        <button type="button" class="mode-btn" id="btnModeAuto"
+                onclick="setPresentationMode('auto')" title="Advance automatically every 10 seconds">
+          <?= icon('play-circle', 13) ?> AUTO MODE
+        </button>
+      </div>
+
       <button class="btn-nav" id="btnNext" onclick="nextSlide()">
         Next <?= icon('arrow-right', 15) ?>
       </button>
+
+      <span class="auto-count" id="autoCount"></span>
     </div>
 
     <div class="dots" id="dotsContainer">
@@ -450,9 +520,107 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
     const slides = <?= $slidesJson ?>;
     let currentIndex = 0;
 
+    /* ---- Auto / Manual presentation mode --------------------------------
+       Manual is the default: nothing moves until the user asks for Auto.
+       renderSlide() stays the one place a slide changes, so every path —
+       Previous/Next, the dots, the arrow keys, and the timer itself — clears
+       the countdown and restarts it for whichever slide ends up on screen.
+       There is exactly ONE timer handle, and it is always cleared before
+       another is started, so slides can never skip or double-advance. */
+
+    const AUTO_ADVANCE_SECONDS = 10;   // 10 seconds per slide — not 3, 5 or 15
+    let presentationMode = 'manual';   // default on open
+    let autoTimer = null;              // the ONLY timer handle
+    let autoRemaining = 0;
+
+    function renderCountdown() {
+      const el = document.getElementById('autoCount');
+      if (!el) return;
+      el.innerHTML = (presentationMode === 'auto' && autoTimer !== null)
+        ? 'Next slide in <b>' + autoRemaining + '</b>s'
+        : '';
+    }
+
+    /** Stop any running countdown and reset its progress bar. Safe to call twice. */
+    function clearAutoTimer() {
+      if (autoTimer !== null) {
+        clearInterval(autoTimer);
+        autoTimer = null;
+      }
+      const bar = document.getElementById('autoBar');
+      if (bar) {
+        bar.classList.remove('running');
+        bar.style.animationDuration = '';
+        bar.style.width = '0';
+      }
+      renderCountdown();
+    }
+
+    /** Start the 10-second countdown for the slide currently on screen. */
+    function startAutoTimer() {
+      clearAutoTimer();                            // never two timers at once
+      if (presentationMode !== 'auto') return;
+
+      // Auto stops at the final slide rather than looping or stacking timers.
+      if (currentIndex >= slides.length - 1) {
+        setPresentationMode('manual');
+        return;
+      }
+
+      autoRemaining = AUTO_ADVANCE_SECONDS;
+      renderCountdown();
+
+      const bar = document.getElementById('autoBar');
+      if (bar) {
+        bar.style.animationDuration = AUTO_ADVANCE_SECONDS + 's';
+        void bar.offsetWidth;                      // restart the CSS animation
+        bar.classList.add('running');
+      }
+
+      // One interval, ten one-second ticks, then advance.
+      autoTimer = setInterval(() => {
+        autoRemaining -= 1;
+        renderCountdown();
+        if (autoRemaining <= 0) {
+          clearAutoTimer();
+          nextSlide();                             // re-renders and restarts
+        }
+      }, 1000);
+    }
+
+    /** Switch mode, keeping whichever slide is on screen. */
+    function setPresentationMode(next) {
+      presentationMode = (next === 'auto') ? 'auto' : 'manual';
+
+      document.getElementById('btnModeAuto').classList.toggle('active', presentationMode === 'auto');
+      document.getElementById('btnModeManual').classList.toggle('active', presentationMode === 'manual');
+
+      if (presentationMode === 'auto') {
+        startAutoTimer();     // counts 10s from the CURRENT slide, no skip
+      } else {
+        clearAutoTimer();     // manual stops the clock immediately
+      }
+    }
+
+    /** Leave the deck, making sure no timer outlives the page. */
+    function exitPresentation() {
+      clearAutoTimer();
+      if (document.fullscreenElement && document.exitFullscreen) {
+        document.exitFullscreen().catch(() => {});
+      }
+      location.href = '<?= e($exitUrl) ?>';
+    }
+
+    // Belt and braces: whatever tears the page down, the timer goes with it.
+    window.addEventListener('pagehide', clearAutoTimer);
+
     function renderSlide(index) {
       if (index < 0 || index >= slides.length) return;
       currentIndex = index;
+
+      clearAutoTimer();   // the outgoing slide's countdown never survives
+
+
 
       const slide = slides[currentIndex];
       const card = document.getElementById('slideCard');
@@ -693,6 +861,10 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
           dot.onclick = () => renderSlide(i);
           dotsContainer.appendChild(dot);
         });
+
+        // Restart the countdown for the slide now on screen. A no-op unless
+        // Auto is on, so Manual stays completely still.
+        startAutoTimer();
       }, 100);
     }
 
@@ -717,7 +889,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
         e.preventDefault();
         prevSlide();
       } else if (e.key === 'Escape') {
-        location.href = '<?= e($exitUrl) ?>';
+        exitPresentation();
       }
     });
 

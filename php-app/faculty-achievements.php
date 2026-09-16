@@ -8,6 +8,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
 require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/User.php';
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM filter
 
 $user = require_login();
 
@@ -27,7 +28,8 @@ if (input('ajax') === 'faculty_detail') {
         }
     }
 
-    $data = faculty_achievement_details($facId, $year, $cat);
+    // FEAT-07: the drill-down honours the same EM1/EM2 filter as the page.
+    $data = faculty_achievement_details($facId, $year, $cat, em_filter_window(em_filter_value(input('em')), $year));
     echo json_encode($data);
     exit;
 }
@@ -54,6 +56,11 @@ $category     = trim((string) input('category', '')) ?: null;
 $facultyId    = (int) input('faculty_id', 0) ?: null;
 $searchQuery  = trim((string) input('q', ''));
 
+// FEAT-07: Executive Meeting filter. The EM engine turns it into a date window
+// that every query below applies in SQL; "all" leaves them unchanged.
+$em       = em_filter_value(input('em'));
+$emWindow = em_filter_window($em, $academicYear ?: null);
+
 // Fetch departments and years
 $departments = departments_all();
 $years       = academic_years();
@@ -72,10 +79,10 @@ $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
 // ---- Fetch Data ---------------------------------------------------------
-$summary       = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId);
-$deptComp      = department_achievements_comparison($user, $academicYear, $category);
-$facGrid       = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5);
+$summary       = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
+$deptComp      = department_achievements_comparison($user, $academicYear, $category, $emWindow);
+$facGrid       = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
+$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
 
 // Query string for exports
 $exportQ = array_filter([
@@ -83,6 +90,7 @@ $exportQ = array_filter([
     'academic_year' => $academicYear,
     'category'      => $category,
     'faculty_id'    => $facultyId,
+    'em'            => $em !== 'all' ? $em : null,   // FEAT-07
 ]);
 $exportLink = fn(string $fmt) => e(url('export-faculty-achievements.php') . '?' . http_build_query($exportQ + ['format' => $fmt]));
 
@@ -233,6 +241,17 @@ require __DIR__ . '/inc/header.php';
     </select>
   </label>
 
+  <!-- Executive Meeting (FEAT-07) -->
+  <label class="fb-field" title="Achievements submitted during EM1 or EM2">
+    <span class="fb-k">Meeting</span>
+    <select name="em" onchange="this.form.submit()">
+      <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
+      <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
+        <option value="<?= e($emKey) ?>" <?= $em === $emKey ? 'selected' : '' ?>><?= e(em_filter_label($emKey, $academicYear ?: null)) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+
   <span class="fbar-end">
     <a class="btn btn-primary btn-sm" href="javascript:void(0)" onclick="document.getElementById('filterForm').submit()">Apply</a>
     <a class="fbar-clear" href="<?= e(url('faculty-achievements.php')) ?>"><?= icon('x', 13) ?> Reset</a>
@@ -314,6 +333,7 @@ require __DIR__ . '/inc/header.php';
       <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
       <input type="hidden" name="department" value="<?= e($department) ?>">
       <input type="hidden" name="category" value="<?= e($category) ?>">
+      <input type="hidden" name="em" value="<?= e($em) ?>">
       <label class="fb-field fb-search" style="min-width:240px;">
         <?= icon('search', 14) ?>
         <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">
@@ -491,7 +511,7 @@ function openFacultyModal(facId) {
   modal.style.display = 'flex';
   body.innerHTML = '<div class="empty"><div class="ic"><?= icon('refresh', 20) ?></div><p>Loading faculty achievements...</p></div>';
 
-  fetch('<?= e(url('faculty-achievements.php')) ?>?ajax=faculty_detail&faculty_id=' + facId + '&year=<?= e($academicYear) ?>')
+  fetch('<?= e(url('faculty-achievements.php')) ?>?ajax=faculty_detail&faculty_id=' + facId + '&year=<?= e($academicYear) ?>&em=<?= e($em) ?>')
     .then(res => res.json())
     .then(data => {
       if (!data || !data.faculty) {

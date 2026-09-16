@@ -49,6 +49,8 @@ $status = trim((string) input('status')) ?: null;
 if (!in_array($status, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) { $status = null; }
 $from = parse_date_input((string) input('from'));
 $to   = parse_date_input((string) input('to'));
+// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
+[$from, $to] = em_intersect_period(em_filter_value(input('em')), $from, $to, $year);
 
 // Records of this type, in the user's scope and the active year, newest first.
 $records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to, $year);

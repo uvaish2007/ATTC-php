@@ -2,6 +2,7 @@
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Record.php';
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 schedule
 
 $user = require_role(['Admin']);
 
@@ -35,6 +36,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = executive_meeting_unlock($year, (int) $user['id'], (string) input('reason', ''));
     } elseif ($action === 'toggle_lock') {
         [$ok, $msg] = academic_year_set_lock($year, input('lock_state') === '1', (int) $user['id'], (string) input('note', ''));
+    } elseif ($action === 'save_em_schedule') {
+        // FEAT-07. This page is already require_role(['Admin']) and CSRF-checked
+        // above; em_schedule_save() validates every date server-side.
+        [$ok, $msg] = em_schedule_save(
+            $year,
+            (string) input('em1_start'), (string) input('em1_end'),
+            (string) input('em2_start'), (string) input('em2_end'),
+            (int) $user['id']
+        );
+        if (!$ok) {
+            // Keep what the Admin typed so a validation error doesn't wipe the form.
+            $_SESSION['em_schedule_draft'] = [
+                'year'      => $year,
+                'em1_start' => (string) input('em1_start'), 'em1_end' => (string) input('em1_end'),
+                'em2_start' => (string) input('em2_start'), 'em2_end' => (string) input('em2_end'),
+            ];
+        }
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/academic-years.php?year=' . urlencode($year) . '#emScheduleBox');
     } else {
         [$ok, $msg] = [false, 'Unknown action.'];
     }
@@ -54,6 +74,18 @@ $selectedExecMeetings  = executive_meetings_for_year($selectedYear);
 $selectedExecCount     = count($selectedExecMeetings);
 $selectedLatestMeeting = $selectedExecMeetings[0] ?? null;
 $isSelectedActive      = ($selectedYear === $activeYear);
+
+// FEAT-07: the EM1/EM2 schedule for the year being viewed. The year comes from
+// this page's existing selection, not a second picker.
+$selectedEmStatus   = em_status($selectedYear);
+$selectedEmSchedule = $selectedEmStatus['schedule'];
+$selectedEmSpan     = em_academic_year_span($selectedYear);
+$emDraft            = $_SESSION['em_schedule_draft'] ?? null;
+unset($_SESSION['em_schedule_draft']);
+if ($emDraft && ($emDraft['year'] ?? null) !== $selectedYear) {
+    $emDraft = null;
+}
+$emValue = fn(string $k): string => (string) ($emDraft[$k] ?? $selectedEmSchedule[$k] ?? '');
 
 // Suggest the next meeting number: one past the highest numeric one so far.
 $nums = array_map('intval', array_filter(array_column($selectedExecMeetings, 'meeting_number'), 'ctype_digit'));
@@ -302,11 +334,19 @@ require __DIR__ . '/inc/header.php';
         <h2 class="card-title">Executive meeting &amp; lock</h2>
         <div class="card-sub">Recording a finished Executive Meeting locks <strong><?= e($selectedYear) ?></strong> for every role. You can reopen it later; the meeting stays on record.</div>
       </div>
-      <?php if ($isLocked): ?>
-        <span class="ay-pill locked"><?= icon('lock', 12) ?> Locked</span>
-      <?php else: ?>
-        <span class="ay-pill open"><?= icon('unlock', 12) ?> Open</span>
-      <?php endif; ?>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <?php // FEAT-06: present this year's meeting report full screen. ?>
+        <a class="btn btn-secondary btn-sm"
+           href="<?= e(url('executive-meeting-report.php') . '?' . http_build_query(['academic_year' => $selectedYear])) ?>"
+           title="Filter and present the Executive Meeting report for <?= e($selectedYear) ?>">
+          <?= icon('presentation', 14) ?> Present meeting report
+        </a>
+        <?php if ($isLocked): ?>
+          <span class="ay-pill locked"><?= icon('lock', 12) ?> Locked</span>
+        <?php else: ?>
+          <span class="ay-pill open"><?= icon('unlock', 12) ?> Open</span>
+        <?php endif; ?>
+      </div>
     </div>
     <div class="card-body">
 
@@ -377,6 +417,116 @@ require __DIR__ . '/inc/header.php';
       <?php endif; ?>
     </div>
   </section>
+
+  <!-- ---- Executive Meeting schedule (FEAT-07) ---- -->
+  <?php
+    $emPillClass = [
+        EM_STATE_NOT_CONFIGURED => 'term',
+        EM_STATE_BEFORE_EM1     => 'newer',
+        EM_STATE_EM1_ACTIVE     => 'active',
+        EM_STATE_BETWEEN        => 'locked',
+        EM_STATE_EM2_ACTIVE     => 'active',
+        EM_STATE_EM2_ENDED      => 'locked',
+    ][$selectedEmStatus['state']] ?? 'term';
+  ?>
+  <section id="emScheduleBox" class="card mt-5">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Executive Meeting schedule</h2>
+        <div class="card-sub">
+          When EM1 and EM2 run for <strong><?= e($selectedYear) ?></strong>. EM1 locks automatically once its end date
+          passes and EM2 opens on its start date — no button needed. This is separate from the academic-year lock above.
+        </div>
+      </div>
+      <span class="ay-pill <?= e($emPillClass) ?>">
+        <?= icon($selectedEmStatus['em1_locked'] ? 'lock' : 'calendar', 12) ?>
+        <?= $selectedEmStatus['configured'] ? e($selectedEmStatus['label']) : 'Not configured' ?>
+      </span>
+    </div>
+    <div class="card-body">
+
+      <?php if (!$selectedEmStatus['configured']): ?>
+        <div class="ay-empty-row">
+          <?= $isSelectedActive
+                ? e(EM_NOT_CONFIGURED_MESSAGE)
+                : 'Executive Meeting schedule is not configured for ' . e($selectedYear) . '.' ?>
+        </div>
+      <?php else: ?>
+        <div class="em-sched-now">
+          <div class="em-sched-now-t"><?= e($selectedEmStatus['detail']) ?></div>
+          <?php if (!empty($selectedEmSchedule['updated_at'])): ?>
+            <div class="em-sched-now-s">
+              Last saved <?= e($fmtDate($selectedEmSchedule['updated_at'])) ?>
+              <?php if (!empty($selectedEmSchedule['updated_by_name'])): ?>by <?= e($selectedEmSchedule['updated_by_name']) ?><?php endif; ?>
+            </div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
+
+      <form method="post" class="em-sched-form" action="<?= e(url('academic-years.php')) ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_em_schedule">
+        <input type="hidden" name="academic_year" value="<?= e($selectedYear) ?>">
+
+        <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
+          <fieldset class="em-sched-group">
+            <legend>
+              <?= e($emName) ?>
+              <?php if ($selectedEmStatus['current'] === $emKey): ?>
+                <span class="ay-pill active"><span class="dot"></span> In session</span>
+              <?php elseif ($emKey === 'em1' && $selectedEmStatus['em1_locked']): ?>
+                <span class="ay-pill locked"><?= icon('lock', 11) ?> Locked</span>
+              <?php elseif ($emKey === 'em2' && $selectedEmStatus['em2_upcoming']): ?>
+                <span class="ay-pill newer">Upcoming</span>
+              <?php endif; ?>
+            </legend>
+            <div class="field">
+              <label for="<?= $emKey ?>_start">Start date <span class="req">*</span></label>
+              <input type="date" class="input" id="<?= $emKey ?>_start" name="<?= $emKey ?>_start" required
+                     value="<?= e($emValue($emKey . '_start')) ?>"
+                     <?php if ($selectedEmSpan): ?>min="<?= e($selectedEmSpan['from']) ?>" max="<?= e($selectedEmSpan['to']) ?>"<?php endif; ?>>
+            </div>
+            <div class="field">
+              <label for="<?= $emKey ?>_end">End date <span class="req">*</span></label>
+              <input type="date" class="input" id="<?= $emKey ?>_end" name="<?= $emKey ?>_end" required
+                     value="<?= e($emValue($emKey . '_end')) ?>"
+                     <?php if ($selectedEmSpan): ?>min="<?= e($selectedEmSpan['from']) ?>" max="<?= e($selectedEmSpan['to']) ?>"<?php endif; ?>>
+            </div>
+          </fieldset>
+        <?php endforeach; ?>
+
+        <div class="em-sched-go">
+          <button type="submit" class="btn btn-primary"><?= icon('save', 15) ?> Save Schedule</button>
+        </div>
+      </form>
+      <p class="ay-form-note">
+        Each meeting runs from the start of its start date to the end of its end date.
+        EM2 must start after EM1 ends, and every date must fall within <?= e($selectedYear) ?>
+        <?php if ($selectedEmSpan): ?>(<?= e($fmtDate($selectedEmSpan['from'])) ?> – <?= e($fmtDate($selectedEmSpan['to'])) ?>)<?php endif; ?>.
+        Records submitted during EM1 become read-only for every role except Admin once EM1 locks; they stay available for viewing and reports.
+      </p>
+    </div>
+  </section>
+
+  <style>
+    .em-sched-now { padding:12px 14px; border:1px solid var(--hairline); border-radius:var(--r-lg);
+        background:var(--navy-50); margin-bottom:16px; }
+    .em-sched-now-t { font-size:13px; font-weight:600; color:var(--ink); }
+    .em-sched-now-s { font-size:12px; color:var(--ink-faint); margin-top:2px; }
+    .em-sched-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:14px; align-items:end; }
+    .em-sched-group { border:1px solid var(--hairline); border-radius:var(--r-lg); padding:10px 14px 14px; margin:0;
+        display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; min-width:0; }
+    .em-sched-group legend { padding:0 6px; font-size:13px; font-weight:700; color:var(--ink);
+        display:inline-flex; align-items:center; gap:8px; }
+    .em-sched-group .field { margin:0; min-width:0; }
+    .em-sched-go .btn { height:42px; white-space:nowrap; }
+    @media (max-width:900px) {
+      .em-sched-form { grid-template-columns:minmax(0,1fr); }
+    }
+    @media (max-width:520px) {
+      .em-sched-group { grid-template-columns:minmax(0,1fr); }
+    }
+  </style>
 
   <!-- ---- The year's data ---- -->
   <section class="card mt-5">

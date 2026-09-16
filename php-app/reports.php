@@ -24,6 +24,7 @@ require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Setting.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM filter
 
 $user = require_login();
 require_module('reports');
@@ -80,7 +81,14 @@ if ($fromIso && $toIso && $fromIso > $toIso) {
     $rangeError = 'From Date cannot be later than To Date.';
 }
 
-$records = report_records($user, $department, $status, $type, $rangeError ? null : $fromIso, $rangeError ? null : $toIso, $year);
+// FEAT-07: Executive Meeting filter (All / EM1 / EM2), offered to every role.
+// It only narrows within what report_records() already lets the role see, so
+// it widens nobody's scope. The EM engine turns it into a date window that is
+// intersected with any period above and applied in SQL.
+$em = em_filter_value(input('em'));
+[$recFrom, $recTo] = em_intersect_period($em, $rangeError ? null : $fromIso, $rangeError ? null : $toIso, $year);
+
+$records = report_records($user, $department, $status, $type, $recFrom, $recTo, $year);
 
 // A category keeps only the types in that group; a chosen type still wins,
 // so picking both never shows a record outside the type.
@@ -110,12 +118,13 @@ if ($isHod) {
 }
 
 // ---- Query strings each report link carries ------------------------------
+$emQ      = $em !== 'all' ? $em : null;   // carried so every download matches the screen
 $recordsQ = array_filter([
     'department' => $department, 'status' => $status, 'type' => $type,
-    'category' => $category, 'from' => $fromDisplay, 'to' => $toDisplay,
+    'category' => $category, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ,
 ]);
 $meetingQ = array_filter(['department' => $department, 'year' => $year]);
-$metricsQ = array_filter(['department' => $department, 'from' => $fromDisplay, 'to' => $toDisplay]);
+$metricsQ = array_filter(['department' => $department, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ]);
 
 $link = fn(string $file, array $q, string $fmt) =>
     e(url($file) . '?' . http_build_query($q + ['format' => $fmt]));
@@ -134,7 +143,7 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 <?php // $year isn't counted — it's always the active system year, not a chosen filter.
-  $activeCount = count(array_filter([$department, $type, $status, $category])) + (($fromDisplay || $toDisplay) ? 1 : 0); ?>
+  $activeCount = count(array_filter([$department, $type, $status, $category])) + (($fromDisplay || $toDisplay) ? 1 : 0) + ($em !== 'all' ? 1 : 0); ?>
 <div class="page-head">
   <div>
     <h1><?= $category ? e($categories[$category]['label']) : 'Reports' ?></h1>
@@ -222,6 +231,17 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
 
+    <?php // FEAT-07 ?>
+    <label class="fb-field" title="Executive Meeting period — records submitted during EM1 or EM2">
+      <span class="fb-k">Meeting</span>
+      <select name="em" onchange="this.form.submit()">
+        <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
+        <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
+          <option value="<?= e($emKey) ?>" <?= $em === $emKey ? 'selected' : '' ?>><?= e(em_filter_label($emKey, $year)) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
     <?php if ($canFilter): ?>
       <div class="fb-field fb-range" title="Submission period, as DD-MM-YYYY">
         <?= icon('calendar', 14) ?><span class="fb-k">Period</span>
@@ -252,6 +272,28 @@ require __DIR__ . '/inc/header.php';
       <?php endif; ?>
     </span>
     <p class="fbar-err" id="period_range_error"><?= !empty($rangeError) ? e($rangeError) : '' ?></p>
+  </form>
+<?php else: ?>
+  <?php // FEAT-07: Director/Principal keep no scope filters, but may view a
+        // single Executive Meeting — that narrows, it never widens. ?>
+  <form method="get" class="fbar mt-5">
+    <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
+    <label class="fb-field" title="Executive Meeting period — records submitted during EM1 or EM2">
+      <span class="fb-k">Meeting</span>
+      <select name="em" onchange="this.form.submit()">
+        <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
+        <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
+          <option value="<?= e($emKey) ?>" <?= $em === $emKey ? 'selected' : '' ?>><?= e(em_filter_label($emKey, $year)) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <span class="fbar-end">
+      <?php if ($em !== 'all'): ?>
+        <a class="fbar-clear" href="<?= e(url('reports.php')) ?>"><?= icon('x', 13) ?> Clear</a>
+      <?php else: ?>
+        <span class="fbar-note">Showing everything in scope</span>
+      <?php endif; ?>
+    </span>
   </form>
 <?php endif; ?>
 
@@ -293,7 +335,7 @@ require __DIR__ . '/inc/header.php';
   }
   $reportScopeQ = array_filter([
       'department' => $department, 'year' => $year, 'status' => $status,
-      'from' => $fromIso, 'to' => $toIso,
+      'from' => $fromIso, 'to' => $toIso, 'em' => $emQ,
   ]);
 
   // Live figures: records in scope per type (dept/status/period + year), so
@@ -320,6 +362,7 @@ require __DIR__ . '/inc/header.php';
       $year       ? 'Year: ' . $year       : null,
       $status     ? 'Status: ' . $status   : null,
       ($fromIso || $toIso) ? 'Period set' : null,
+      $em !== 'all' ? 'Meeting: ' . em_filter_label($em, $year) : null,
   ]);
 
   $canConsolidated = in_array($role, ['Admin', 'Dean', 'Principal', 'Director'], true);
@@ -371,7 +414,7 @@ require __DIR__ . '/inc/header.php';
     // HoD is strictly locked server-side to their own assigned department.
     // Admin, Principal, Director, Dean can view all departments or filter by the selected department.
     $effDeptForFaculty = $isHod ? ($user['department'] ?: null) : ($department ?: null);
-    $feat4FacultyGrid  = faculty_achievements_grid($user, $effDeptForFaculty, $year);
+    $feat4FacultyGrid  = faculty_achievements_grid($user, $effDeptForFaculty, $year, null, null, null, em_filter_window($em, $year));   // FEAT-07 Meeting filter
 
     // Group faculty members under their respective departments
     $feat4Grouped = [];
@@ -459,13 +502,13 @@ require __DIR__ . '/inc/header.php';
           <button type="button" class="btn btn-primary btn-sm" id="btnToggleFacultyReport" onclick="toggleFacultyAchievementsReport()" style="font-weight:600;">
             <?= icon('eye', 14) ?> <span id="toggleFacultyReportTxt">View Report</span> <span id="toggleFacultyReportIcon" style="display:inline-flex;"><?= icon('chevron-down', 13) ?></span>
           </button>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=excel')) ?>" title="Download Excel Spreadsheet">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=excel' . ($emQ ? '&em=' . $emQ : ''))) ?>" title="Download Excel Spreadsheet">
             <?= icon('download', 14) ?> Download Excel
           </a>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=pdf')) ?>" target="_blank" rel="noopener" title="Download PDF Document">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=pdf' . ($emQ ? '&em=' . $emQ : ''))) ?>" target="_blank" rel="noopener" title="Download PDF Document">
             <?= icon('file-text', 14) ?> Download PDF
           </a>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=word')) ?>" title="Download Word Document">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=word' . ($emQ ? '&em=' . $emQ : ''))) ?>" title="Download Word Document">
             <?= icon('file-text', 14) ?> Download Word
           </a>
         </div>
@@ -577,6 +620,31 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 <?php endif; ?>
+
+<!-- ========================================================================
+     EXECUTIVE MEETING PRESENTATION (FEAT-06)
+     Open to every role; what each one sees is scoped server-side.
+     ===================================================================== -->
+<div class="mt-5 card">
+  <div class="card-body">
+    <div class="hero-card-row">
+      <div style="max-width:550px;">
+        <div style="font-weight:600; font-size:14px; color:var(--ink,#131D3B); display:flex; align-items:center; gap:8px;">
+          <?= icon('presentation', 15) ?> Executive Meeting Presentation
+        </div>
+        <div class="card-sub" style="margin-top:2px;">
+          Filter the meeting report by department, academic year, faculty, student and Executive Meeting,
+          then present it full screen with auto or manual slide advance.
+        </div>
+      </div>
+      <div class="hero-card-actions">
+        <a class="btn btn-primary" href="<?= e(url('executive-meeting-report.php')) ?>">
+          <?= icon('play-circle', 16) ?> Open Presentation Report
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="mt-5 card">
   <div class="card-head">

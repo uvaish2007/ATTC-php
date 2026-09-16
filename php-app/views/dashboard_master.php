@@ -297,6 +297,8 @@ if (!function_exists('dash_column_chart')) {
   </div>
 </div>
 
+<?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
+
 
 <?php /* ---- HoD: the unlock window, shown with total + remaining time ---- */ ?>
 <?php if ($user['role'] === 'HoD'): ?>
