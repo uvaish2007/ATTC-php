@@ -56,7 +56,13 @@ SOURCE sql/schema.sql;
 SOURCE sql/seed.sql;
 -- 3) adds the Announcement Centre tables (already applied to atts_main)
 SOURCE sql/announcements.sql;
+-- 4) adds the Executive Meeting log behind the Academic Year page's lock
+SOURCE sql/executive_meetings.sql;
 ```
+
+`executive_meetings.sql` is also additive. The app creates the same table on
+first use if it is missing, so this step matters only when the database user is
+not allowed to create tables — the Academic Year page then says so.
 
 `announcements.sql` is additive — it only uses `CREATE TABLE IF NOT EXISTS`, so
 it is safe to run on a database that already holds records. Until it is run, the
