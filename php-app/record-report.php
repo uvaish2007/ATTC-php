@@ -143,7 +143,7 @@ if ($from || $to) {
 }
 $meta[] = ['Total Records', (string) count($records)];
 $meta[] = ['Report Date', $today];
-report_letterhead($mainTitle, $meta, $headingLines, $format !== 'excel');
+report_letterhead($mainTitle, $meta, $headingLines);
 ?>
 
   <table class="grid">

@@ -186,7 +186,7 @@ foreach ($deptsToRender as $dIndex => $dept):
     report_letterhead($deptHeading, [
         ['Total Rows', (string) count($rows)],
         ['Report Date', $today],
-    ], $headingLines, $format !== 'excel');
+    ], $headingLines);
 ?>
 
   <table class="grid">

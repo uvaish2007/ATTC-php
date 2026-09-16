@@ -18,10 +18,12 @@
 
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/record_specs.php';
+require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Setting.php';
+require_once __DIR__ . '/models/FacultyAchievement.php';
 
 $user = require_login();
 require_module('reports');
@@ -319,7 +321,263 @@ require __DIR__ . '/inc/header.php';
       $status     ? 'Status: ' . $status   : null,
       ($fromIso || $toIso) ? 'Period set' : null,
   ]);
+
+  $canConsolidated = in_array($role, ['Admin', 'Dean', 'Principal', 'Director'], true);
+  $canFacultyAchievementsBox = in_array($role, ['Admin', 'Dean', 'HoD', 'Principal', 'Director'], true);
 ?>
+
+<?php if ($canConsolidated): ?>
+  <!-- ========================================================================
+       CONSOLIDATED REPORT (FEAT-03)
+       ===================================================================== -->
+  <div class="mt-5 card">
+    <div class="card-head">
+      <div>
+        <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+          <?= icon('reports', 18) ?> Consolidated Report
+        </div>
+        <div class="card-sub">
+          College-wide consolidated institutional report &middot; All departments grouped department-wise &middot; Academic Year: <?= e($year) ?>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="hero-card-row">
+        <div style="max-width:550px;">
+          <div style="font-weight:600; font-size:14px; color:var(--ink,#131D3B);">Consolidated All-Department Academic Report</div>
+          <div class="card-sub" style="margin-top:2px;">
+            Single consolidated report retrieving data from all college departments, grouped department-wise with institutional summaries and target achievements.
+          </div>
+        </div>
+        <div class="hero-card-actions">
+          <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel')) ?>">
+            <?= icon('download') ?> Download Excel
+          </a>
+          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf')) ?>" target="_blank" rel="noopener">
+            <?= icon('file-text', 14) ?> Download PDF
+          </a>
+          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word')) ?>">
+            <?= icon('file-text', 14) ?> Download Word
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
+<?php if ($canFacultyAchievementsBox): ?>
+  <?php
+    // FEAT-04: Department & Faculty Achievements Report data
+    // HoD is strictly locked server-side to their own assigned department.
+    // Admin, Principal, Director, Dean can view all departments or filter by the selected department.
+    $effDeptForFaculty = $isHod ? ($user['department'] ?: null) : ($department ?: null);
+    $feat4FacultyGrid  = faculty_achievements_grid($user, $effDeptForFaculty, $year);
+
+    // Group faculty members under their respective departments
+    $feat4Grouped = [];
+    foreach ($feat4FacultyGrid as $f) {
+        $deptName = !empty($f['department']) && $f['department'] !== '—' ? $f['department'] : 'Other Department';
+        $feat4Grouped[$deptName][] = $f;
+    }
+
+    // Determine the list of departments to display
+    if ($isHod) {
+        $feat4Depts = [$user['department'] ?: 'My Department'];
+    } elseif ($department) {
+        $feat4Depts = [$department];
+    } else {
+        // Collect all official departments
+        $feat4Depts = [];
+        foreach ($departments as $d) {
+            $feat4Depts[] = $d['name'];
+        }
+        // In case any faculty member belongs to a department not in $departments list
+        foreach (array_keys($feat4Grouped) as $dName) {
+            if (!in_array($dName, $feat4Depts, true)) {
+                $feat4Depts[] = $dName;
+            }
+        }
+    }
+
+    // Prioritize departments with faculty so they appear first when viewed
+    $activeDepts = [];
+    $emptyDepts  = [];
+    foreach ($feat4Depts as $dName) {
+        if (!empty($feat4Grouped[$dName])) {
+            $activeDepts[] = $dName;
+        } else {
+            $emptyDepts[] = $dName;
+        }
+    }
+    sort($activeDepts);
+    sort($emptyDepts);
+    $feat4DeptsOrdered = array_merge($activeDepts, $emptyDepts);
+
+    // Summary counts for the card badge
+    $feat4TotalFaculty = count($feat4FacultyGrid);
+    $feat4TotalAchievements = array_sum(array_column($feat4FacultyGrid, 'total'));
+  ?>
+  <!-- ========================================================================
+       DEPARTMENT & FACULTY ACHIEVEMENTS REPORT (FEAT-04)
+       ===================================================================== -->
+  <div class="mt-5 card" style="border-left: 4px solid var(--brand, #FF4F01);">
+    <div class="card-head">
+      <div>
+        <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+          <?= icon('award', 18) ?> Department &amp; Faculty Achievements Report
+        </div>
+        <div class="card-sub">
+          Detailed staff achievement listing grouped department-wise &middot; Academic Year: <?= e($year) ?>
+          <?php if ($isHod): ?>
+            &middot; <strong style="color:var(--brand,#FF4F01);"><?= e(department_full_name($user['department'])) ?> only</strong>
+          <?php endif; ?>
+        </div>
+      </div>
+      <div class="hero-card-actions hero-card-actions--pill">
+        <span class="badge badge-neutral" style="font-size:12px; font-weight:600;">
+          <?= $feat4TotalFaculty ?> Faculty &middot; <?= $feat4TotalAchievements ?> Achievement<?= $feat4TotalAchievements === 1 ? '' : 's' ?>
+        </span>
+        <button type="button" class="btn btn-primary btn-sm" id="btnToggleFacultyReportHdr" onclick="toggleFacultyAchievementsReport()">
+          <?= icon('eye', 14) ?> <span id="toggleFacultyReportHdrTxt">View Report</span>
+        </button>
+        <a href="<?= e(url('faculty-achievements.php')) ?>" class="btn btn-secondary btn-sm">
+          <?= icon('award', 14) ?> Performance Matrix
+        </a>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="hero-card-row" style="padding-bottom:16px; border-bottom:1px solid var(--hairline,#E4E9F2);">
+        <div style="max-width:550px;">
+          <div style="font-weight:600; font-size:14px; color:var(--ink,#131D3B);">
+            <?= $isHod ? (e(department_full_name($user['department'])) . ' Faculty Achievements') : 'College-Wide Faculty Achievements' ?>
+          </div>
+          <div class="card-sub" style="margin-top:2px;">
+            Individual faculty member visibility. Click <strong>View Report</strong> to view faculty achievement details grouped department-wise.
+          </div>
+        </div>
+        <div class="hero-card-actions">
+          <button type="button" class="btn btn-primary btn-sm" id="btnToggleFacultyReport" onclick="toggleFacultyAchievementsReport()" style="font-weight:600;">
+            <?= icon('eye', 14) ?> <span id="toggleFacultyReportTxt">View Report</span> <span id="toggleFacultyReportIcon" style="display:inline-flex;"><?= icon('chevron-down', 13) ?></span>
+          </button>
+          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=excel')) ?>" title="Download Excel Spreadsheet">
+            <?= icon('download', 14) ?> Download Excel
+          </a>
+          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=pdf')) ?>" target="_blank" rel="noopener" title="Download PDF Document">
+            <?= icon('file-text', 14) ?> Download PDF
+          </a>
+          <a class="btn btn-outline btn-sm" href="<?= e(url('export-faculty-achievements.php?format=word')) ?>" title="Download Word Document">
+            <?= icon('file-text', 14) ?> Download Word
+          </a>
+        </div>
+      </div>
+
+      <!-- Department-wise Grouped Faculty Listing (Toggleable via View Report button) -->
+      <div id="feat4FacultyReportContainer" style="display:none; margin-top:20px;">
+        <?php if (empty($feat4DeptsOrdered)): ?>
+          <div class="empty" style="padding:24px 0;">
+            <div class="ic"><?= icon('building', 20) ?></div>
+            <p>No departments found in scope</p>
+          </div>
+        <?php else: ?>
+          <div class="feat4-dept-list">
+            <?php foreach ($feat4DeptsOrdered as $deptName): ?>
+              <?php
+                $facultyList = $feat4Grouped[$deptName] ?? [];
+                $deptAchievementTotal = array_sum(array_column($facultyList, 'total'));
+              ?>
+              <div class="feat4-dept-group" style="margin-bottom:24px;">
+                <div style="background:var(--navy-50,#F4F6FA); border:1px solid var(--hairline,#E4E9F2); border-radius:10px; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:8px; font-weight:700; font-size:14px; color:var(--ink,#131D3B);">
+                    <?= icon('building', 15) ?> Department: <?= e(department_full_name($deptName)) ?>
+                  </div>
+                  <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="badge badge-neutral" style="font-size:11.5px; font-weight:600;">
+                      <?= count($facultyList) ?> faculty member<?= count($facultyList) === 1 ? '' : 's' ?>
+                    </span>
+                    <span class="badge badge-neutral" style="font-size:11.5px; font-weight:700; color:var(--brand,#FF4F01);">
+                      <?= $deptAchievementTotal ?> achievement<?= $deptAchievementTotal === 1 ? '' : 's' ?>
+                    </span>
+                  </div>
+                </div>
+
+                <?php if (empty($facultyList)): ?>
+                  <div style="padding:14px 16px; background:#fff; border:1px dashed var(--hairline,#E4E9F2); border-radius:8px; color:var(--ink-muted,#64748b); font-size:13px; margin-bottom:12px;">
+                    No faculty achievement records available for this department in Academic Year <?= e($year) ?>.
+                  </div>
+                <?php else: ?>
+                  <div class="table-wrap mb-3" style="border:1px solid var(--hairline,#E4E9F2); border-radius:10px; overflow:hidden;">
+                    <table class="data wide" style="margin:0;">
+                      <thead style="background:var(--navy-50,#F4F6FA);">
+                        <tr>
+                          <th style="width:40px;">#</th>
+                          <th style="width:28%;">Faculty Member</th>
+                          <th style="width:20%;">Designation &amp; ID</th>
+                          <th>Achievement Information</th>
+                          <th style="text-align:center; width:130px;">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <?php foreach ($facultyList as $idx => $f): ?>
+                          <?php
+                            $tot = (int) $f['total'];
+                            $breakdownParts = [];
+                            if ($f['journals'] > 0)    $breakdownParts[] = (int) $f['journals'] . ' Journal' . ($f['journals'] > 1 ? 's' : '');
+                            if ($f['conferences'] > 0) $breakdownParts[] = (int) $f['conferences'] . ' Conf' . ($f['conferences'] > 1 ? 's' : '');
+                            if ($f['books'] > 0)       $breakdownParts[] = (int) $f['books'] . ' Book' . ($f['books'] > 1 ? 's' : '');
+                            if ($f['events'] > 0)      $breakdownParts[] = (int) $f['events'] . ' Event' . ($f['events'] > 1 ? 's' : '');
+                            if ($f['training'] > 0)    $breakdownParts[] = (int) $f['training'] . ' Training' . ($f['training'] > 1 ? 's' : '');
+                            if ($f['patents'] > 0)     $breakdownParts[] = (int) $f['patents'] . ' Patent' . ($f['patents'] > 1 ? 's' : '');
+                            if ($f['other'] > 0)       $breakdownParts[] = (int) $f['other'] . ' Other';
+                            $breakdownStr = !empty($breakdownParts) ? implode(' · ', $breakdownParts) : '';
+                          ?>
+                          <tr>
+                            <td class="faint tabular"><?= $idx + 1 ?></td>
+                            <td>
+                              <div class="fw-500" style="font-weight:600; color:var(--ink,#131D3B); font-size:13.5px;"><?= e($f['name']) ?></div>
+                              <div class="card-sub truncate" style="font-size:11.5px;"><?= e($f['email']) ?></div>
+                            </td>
+                            <td>
+                              <div style="font-size:12.5px; font-weight:500; color:var(--ink,#131D3B);"><?= e($f['designation']) ?></div>
+                              <div class="card-sub" style="font-size:11px;"><?= e($f['employee_id']) ?></div>
+                            </td>
+                            <td>
+                              <?php if ($tot > 0): ?>
+                                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                  <span class="badge badge-brand" style="font-size:12px; font-weight:700; background:var(--orange-50,#FFF3EC); color:var(--brand,#FF4F01); border:1px solid var(--orange-200,#FFC3A8);">
+                                    <?= $tot ?> Achievement<?= $tot === 1 ? '' : 's' ?>
+                                  </span>
+                                  <?php if ($breakdownStr !== ''): ?>
+                                    <span class="card-sub" style="font-size:11.5px; color:var(--ink-muted,#64748b);">
+                                      <?= e($breakdownStr) ?>
+                                    </span>
+                                  <?php endif; ?>
+                                </div>
+                              <?php else: ?>
+                                <span class="badge badge-neutral" style="font-size:11.5px; color:var(--ink-muted,#64748b);">
+                                  No achievements
+                                </span>
+                              <?php endif; ?>
+                            </td>
+                            <td style="text-align:center; white-space:nowrap;">
+                              <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?>" class="btn btn-primary btn-sm" style="border-radius:999px; padding:4px 12px; font-size:12px; display:inline-flex; align-items:center; gap:5px;" title="View detailed staff profile report for <?= e($f['name']) ?>">
+                                <?= icon('file-text', 13) ?> View Report
+                              </a>
+                            </td>
+                          </tr>
+                        <?php endforeach; ?>
+                      </tbody>
+                    </table>
+                  </div>
+                <?php endif; ?>
+              </div>
+            <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <div class="mt-5 card">
   <div class="card-head">
     <div>
@@ -422,9 +680,25 @@ require __DIR__ . '/inc/header.php';
   .tmpl-report-links { display:grid; grid-template-columns:repeat(3, 82px); gap:8px; flex-shrink:0; }
   .tmpl-report-links .btn { min-width:0; width:100%; justify-content:center; text-align:center; box-sizing:border-box; padding:6px 0; }
   .tmpl-report-extra[hidden], .rec-cat-body[hidden] { display:none !important; }
+
+  /* Hero cards (Consolidated / Faculty Achievements) — a plain wrapping row of
+     buttons. Kept separate from .tmpl-report-links, whose fixed 3x82px grid
+     stretches every button to full width and stacks them one per line. */
+  .hero-card-row { display:flex; align-items:center; justify-content:space-between; gap:16px 20px; flex-wrap:wrap; }
+  .hero-card-row > div:first-child { flex:1 1 300px; min-width:0; }
+  .hero-card-actions { display:flex; align-items:center; justify-content:flex-end; gap:8px; flex-wrap:wrap; flex-shrink:0; }
+  .hero-card-actions .btn { width:auto; display:inline-flex; align-items:center; justify-content:center;
+      gap:6px; white-space:nowrap; }
+  .hero-card-actions--pill .btn { border-radius:999px; }
+  @media (max-width:860px){
+    .hero-card-row { flex-direction:column; align-items:stretch; gap:12px; }
+    .hero-card-row > div:first-child { max-width:none !important; }
+    .hero-card-actions { justify-content:flex-start; }
+  }
   @media (max-width:640px){
     .tmpl-report-row { flex-direction:column; align-items:flex-start; gap:10px; }
     .tmpl-report-links { width:100%; grid-template-columns:repeat(3, 1fr); }
+    .hero-card-actions .btn { flex:1 1 auto; }
   }
 </style>
 
@@ -684,6 +958,38 @@ require __DIR__ . '/inc/header.php';
     const n = group.querySelectorAll('tbody tr').length;
     btn.dataset.on = open ? '1' : '0';
     label(btn, open ? 'Show less' : 'Show all ' + n);
+  }
+})();
+
+function toggleFacultyAchievementsReport() {
+  const c = document.getElementById('feat4FacultyReportContainer');
+  const txt = document.getElementById('toggleFacultyReportTxt');
+  const hdrTxt = document.getElementById('toggleFacultyReportHdrTxt');
+  const iconSpan = document.getElementById('toggleFacultyReportIcon');
+  const btn = document.getElementById('btnToggleFacultyReport');
+  if (!c) return;
+  const isHidden = (c.style.display === 'none' || c.hidden);
+  if (isHidden) {
+    c.style.display = 'block';
+    c.hidden = false;
+    if (txt) txt.textContent = 'Hide Report';
+    if (hdrTxt) hdrTxt.textContent = 'Hide Report';
+    if (iconSpan) iconSpan.innerHTML = '<?= icon('chevron-up', 13) ?>';
+    if (btn) btn.classList.add('active');
+    c.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } else {
+    c.style.display = 'none';
+    c.hidden = true;
+    if (txt) txt.textContent = 'View Report';
+    if (hdrTxt) hdrTxt.textContent = 'View Report';
+    if (iconSpan) iconSpan.innerHTML = '<?= icon('chevron-down', 13) ?>';
+    if (btn) btn.classList.remove('active');
+  }
+}
+
+(function() {
+  if (window.location.hash === '#faculty-achievements-report' || window.location.search.includes('view=faculty_report')) {
+    toggleFacultyAchievementsReport();
   }
 })();
 </script>

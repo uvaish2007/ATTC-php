@@ -29,6 +29,11 @@ if (!can_user_view_faculty_report($user, $targetFacultyId)) {
 $academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
 $category     = trim((string) input('category', '')) ?: null;
 
+// FEAT-02 global active year, kept separate from the filter above: the Dean
+// Report (FEAT-05) always covers the active year, whatever this page is
+// currently filtered to.
+$activeYear = active_academic_year();
+
 // Fetch data
 $data    = faculty_achievement_details($targetFacultyId, $academicYear, $category);
 $faculty = $data['faculty'];
@@ -72,8 +77,11 @@ require __DIR__ . '/inc/header.php';
 
   <div class="actions flex gap-2 items-center" style="flex-wrap:wrap;">
     <?php if (!$isSelf): ?>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>">
-        <?= icon('arrow-left', 14) ?> Back to Matrix
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
+        <?= icon('arrow-left', 14) ?> Back to Reports
+      </a>
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Go to Performance Matrix">
+        <?= icon('award', 14) ?> Performance Matrix
       </a>
     <?php endif; ?>
 
@@ -302,6 +310,40 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
   </div>
 </div>
+
+<?php if ($isSelf): ?>
+  <!-- FEAT-05: Dean Report — opens the signed-in faculty member's own
+       single-page report for the active academic year. Shown only on your own
+       report; an oversight viewer looking at someone else's page would get
+       their own data, which would be misleading. -->
+  <div class="card mt-4 feat5-dean-card">
+    <div class="card-body">
+      <div class="feat5-dean-row">
+        <div>
+          <div style="font-weight:600; font-size:14px; color:var(--ink,#131D3B);">Dean Report</div>
+          <div class="card-sub" style="margin-top:2px;">
+            Open your achievements as a single-page report for the active academic year
+            (<?= e($activeYear) ?>), ready to present to the Dean.
+          </div>
+        </div>
+        <a class="btn btn-primary" href="<?= e(url('dean-report.php')) ?>" title="Open my Dean Report">
+          <?= icon('file-text', 16) ?> Dean Report
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .feat5-dean-card { border-left:4px solid var(--brand,#FF4F01); }
+    .feat5-dean-row { display:flex; align-items:center; justify-content:space-between; gap:16px 20px; flex-wrap:wrap; }
+    .feat5-dean-row > div { flex:1 1 300px; min-width:0; max-width:560px; }
+    .feat5-dean-row .btn { flex-shrink:0; white-space:nowrap; }
+    @media (max-width:640px){
+      .feat5-dean-row { align-items:stretch; }
+      .feat5-dean-row > div { max-width:none; }
+    }
+  </style>
+<?php endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <script>

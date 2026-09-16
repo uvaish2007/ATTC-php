@@ -174,19 +174,9 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
  * left one left-aligned and the right one right-aligned, so an odd number ends
  * with a single left-aligned fact.
  */
-function report_letterhead(string $title, array $meta = [], array $headingLines = [], ?bool $includeBanner = null): void
+function report_letterhead(string $title, array $meta = [], array $headingLines = []): void
 {
-    // In Excel (.xls HTML table mode), Microsoft Excel cannot decode or display base64 data URIs
-    // and shows a broken image placeholder ("The linked image cannot be displayed...").
-    // We suppress the image banner for Excel exports and cleanly display the institution name.
-    if ($includeBanner === null) {
-        $reqFormat = function_exists('input') ? strtolower(trim((string) input('format', ''))) : '';
-        if (!$reqFormat && isset($_GET['format'])) {
-            $reqFormat = strtolower(trim((string) $_GET['format']));
-        }
-        $includeBanner = ($reqFormat !== 'excel');
-    }
-    $banner = $includeBanner ? report_banner_datauri() : '';
+    $banner = report_banner_datauri();
     ?>
   <div class="rpt-head">
     <?php if ($banner !== ''): ?>

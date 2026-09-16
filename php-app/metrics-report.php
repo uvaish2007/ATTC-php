@@ -152,7 +152,7 @@ report_document_head('Metrics Report');
   <style>@media print { .pdf-bar { display:none !important; } }</style>
 <?php endif; ?>
 
-<?php report_letterhead('Metrics Report', $meta, [], $format !== 'excel'); ?>
+<?php report_letterhead('Metrics Report', $meta); ?>
 
   <table class="grid">
     <colgroup><col style="width:6%"><col style="width:40%"><col><col><col><col><col></colgroup>
