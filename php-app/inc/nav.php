@@ -55,12 +55,8 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
-<<<<<<< HEAD
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target'],
-=======
-            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
->>>>>>> b4b4e74ccd8fdc44a84aac5fb5e8d46811b8de3c
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],
@@ -147,7 +143,10 @@ function pending_approvals_count(array $user): int
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
 
     $total = 0;
-    foreach (record_types() as $t) {
+    foreach (record_types() as $key => $t) {
+        if (!record_requires_approval($key)) {
+            continue;
+        }
         $table = $t['table'];
         try {
             $sql    = "SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)";

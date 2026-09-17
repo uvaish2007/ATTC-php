@@ -677,32 +677,17 @@ require __DIR__ . '/inc/header.php';
         </div>
       <?php endif; ?>
 
-      <?php if ($role === 'Coordinator'): ?>
-        <?php $coordTargetQ = array_filter(['department' => $user['department'], 'year' => $year]); ?>
-        <div class="tmpl-report-row">
-          <div class="tmpl-report-info">
-            <div class="tmpl-report-name"><?= icon('target', 15) ?> Target Report</div>
-            <div class="tmpl-report-sub">Fixed vs Achieved targets &middot; <?= (int) $targetCount ?> target<?= $targetCount === 1 ? '' : 's' ?> in scope</div>
-          </div>
-          <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= $link('template-report.php', $coordTargetQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $coordTargetQ, 'word') ?>">Word</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $coordTargetQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
-          </div>
+      <div class="tmpl-report-row">
+        <div class="tmpl-report-info">
+          <div class="tmpl-report-name"><?= icon('file-text', 15) ?> Academic Records</div>
+          <div class="tmpl-report-sub">Every uploaded record &middot; <?= (int) $totalScoped ?> in scope</div>
         </div>
-      <?php else: ?>
-        <div class="tmpl-report-row">
-          <div class="tmpl-report-info">
-            <div class="tmpl-report-name"><?= icon('file-text', 15) ?> Academic Records</div>
-            <div class="tmpl-report-sub">Every uploaded record &middot; <?= (int) $totalScoped ?> in scope</div>
-          </div>
-          <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= $link('export.php', $recordsQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'word') ?>">Word</a>
-            <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
-          </div>
+        <div class="tmpl-report-links">
+          <a class="btn btn-primary btn-sm" href="<?= $link('export.php', $recordsQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
+          <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'word') ?>">Word</a>
+          <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
         </div>
-      <?php endif; ?>
+      </div>
 
       <?php if ($canSummary): ?>
         <div class="tmpl-report-row">

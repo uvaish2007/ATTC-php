@@ -38,10 +38,9 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 // to their own. This mirrors report_records()'s own scoping.
 $isOversight  = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
 $department   = $isOversight ? (trim((string) input('department')) ?: null) : ($user['department'] ?? null);
-// The system's active academic year — never the client-supplied ?year=,
-// which a hand-built URL could set to any year (this page is reachable
-// directly, not only through reports.php's own, already year-locked links).
-$year         = active_academic_year();
+// Centralized active academic year system (with valid explicit year override)
+$yearInput = trim((string) input('year', ''));
+$year      = (is_valid_academic_year($yearInput) ? $yearInput : null) ?: active_academic_year();
 $singleDept   = $department !== null;
 
 // Optional review-status and submission-period filters (from the Reports page).
@@ -111,8 +110,8 @@ if ($format === 'word') {
         exit;
     }
 
-    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
+    http_response_code(500);
+    exit('Failed to generate Excel spreadsheet.');
 } else {
     header('Content-Type: text/html; charset=UTF-8');
 }

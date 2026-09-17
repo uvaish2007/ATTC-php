@@ -46,6 +46,7 @@ function resolve_faculty_achievement_scope(array $currentUser, ?string $requeste
  */
 function faculty_achievements_summary(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?int $facultyIdFilter = null, ?array $window = null): array
 {
+    journal_process_approval_expiry();
     $effDept = resolve_faculty_achievement_scope($currentUser, $deptFilter);
     $categories = faculty_achievement_categories();
 
@@ -206,6 +207,21 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     $teamStmt = db()->prepare($teamSql);
     $teamStmt->execute($teamParams);
     $registeredAccounts = (int) $teamStmt->fetchColumn();
+
+    // Determine top category
+    $topCategory = '—';
+    if (!empty($categoryCounts)) {
+        arsort($categoryCounts);
+        $topCategory = array_key_first($categoryCounts) ?: '—';
+    }
+
+    // Total active departments
+    if ($effDept) {
+        $deptCount = 1;
+    } else {
+        $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
+        $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
+    }
 
     return [
         'totalFaculty'       => $totalFaculty,

@@ -15,6 +15,7 @@ $scopeDept = in_array($user['role'], ['HoD', 'Coordinator'], true) ? ($user['dep
 // (section 9: an approval page for one year must never touch a record from
 // another year).
 $activeYear = active_academic_year();
+journal_process_approval_expiry();
 
 // Handle approve/reject (single) and bulk approve-all-in-department.
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -43,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/approvals.php');
 }
 
-$types       = record_types();
+$types       = array_filter(record_types(), fn($k) => record_requires_approval($k), ARRAY_FILTER_USE_KEY);
 $departments = departments_all();
 
 // Filters: Admin may narrow by department; anyone may narrow by type and search.
@@ -216,13 +217,9 @@ require __DIR__ . '/inc/header.php';
         <thead><tr>
           <th style="padding-left:24px">Record</th>
           <th>Type</th>
-<<<<<<< HEAD
           <th>Status</th>
-          <th>Submitted / Note</th>
-=======
           <th>Proof</th>
-          <th>Submitted</th>
->>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
+          <th>Submitted / Note</th>
           <th class="num" style="padding-right:24px">Actions</th>
         </tr></thead>
         <tbody>
@@ -234,24 +231,16 @@ require __DIR__ . '/inc/header.php';
               <?php if ($who !== ''): ?><div class="card-sub"><?= e($who) ?> &middot; Dept: <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
             </td>
             <td><span class="badge badge-info"><?= e($r['_type_label']) ?></span></td>
-<<<<<<< HEAD
             <td><span class="badge badge-<?= status_class($r['status']) ?>"><?= e($r['status']) ?></span></td>
-            <td class="card-sub">
+            <td>
+              <?= render_proof_cell($r['proof_file'] ?? null, $r['_type_key'] ?? null, (int)($r['id'] ?? 0)) ?>
+            </td>
+            <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>">
               <?= e(time_ago($r['created_at'])) ?>
               <?php if (!empty($r['review_remark'])): ?>
                 <div style="font-size:11px;color:#1D4ED8;margin-top:2px"><strong>Note:</strong> <?= e($r['review_remark']) ?></div>
               <?php endif; ?>
             </td>
-=======
-            <td>
-              <?php if (!empty($r['proof_file'])): ?>
-                <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
-              <?php else: ?>
-                <span class="card-sub">—</span>
-              <?php endif; ?>
-            </td>
-            <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
->>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
             <td class="num" style="padding-right:24px">
               <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
                 <div class="flex gap-2" style="justify-content:flex-end">

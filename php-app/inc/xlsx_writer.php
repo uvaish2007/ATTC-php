@@ -211,4 +211,29 @@ class SimpleXlsxWriter
         }
         return $letter;
     }
+
+    public static function writeXlsx(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function export(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function download(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function write(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function generate(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
 }
