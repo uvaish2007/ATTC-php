@@ -346,6 +346,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values = [];
     $placeholders = [];
 
+    $editId = (int) input('edit_id');
+    if ($editId > 0) {
+        $setPairs = [];
+        $updateValues = [];
+        foreach ($_POST as $k => $v) {
+            if (!in_array($k, $allowed, true) || $v === '') continue;
+            $setPairs[] = "`$k` = ?";
+            $updateValues[] = $v;
+        }
+        if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
+            $setPairs[] = "`proof_file` = ?";
+            $updateValues[] = $proofStored;
+        }
+        $setPairs[] = "`status` = ?";
+        $updateValues[] = 'Approved';
+        $setPairs[] = "`updated_at` = NOW()";
+
+        try {
+            $sql = "UPDATE `$table` SET " . implode(', ', $setPairs) . " WHERE id = ?";
+            $updateValues[] = $editId;
+            $pdo->prepare($sql)->execute($updateValues);
+
+            require_once __DIR__ . '/models/Target.php';
+            sync_target_achieved_for_type($type);
+
+            flash('success', $types[$type]['label'] . ' updated and saved to database.');
+            redirect('/approvals.php');
+        } catch (\PDOException $e) {
+            error_log('upload.php update failed: ' . $e->getMessage());
+            flash('error', 'Failed to update record.');
+            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
+        }
+    }
+
     // Review chain: Faculty -> Coordinator -> HoD. A Coordinator's own upload
     // skips the Coordinator step; a HoD's or Admin's upload is already final.
     if (in_array($user['role'], ['HoD', 'Admin'], true)) {

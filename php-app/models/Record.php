@@ -276,13 +276,13 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     $all = [];
 
     if ($role === 'Coordinator' || $stage === 'Submitted') {
-        $targetStatuses = ['Submitted'];
+        $targetStatuses = ['Submitted', 'Unlocked for Edit'];
     } elseif ($role === 'HoD' || $stage === 'HOD Pending') {
-        $targetStatuses = ['HOD Pending', 'Submitted'];
+        $targetStatuses = ['Approved', 'Submitted', 'HOD Pending'];
     } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
-        $targetStatuses = ['Dean Pending'];
+        $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {
-        $targetStatuses = ['Dean Pending', 'HOD Pending', 'Submitted'];
+        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
@@ -321,15 +321,7 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
 }
 
 /**
- * Approve or reject a record.
- *
- * $scopeDept restricts the action to one department (an HoD may only review
- * their own). Passing null means no department restriction (Admin/Dean).
- *
- * $year is the defence-in-depth twin of pending_records()'s $year filter: the
- * listing already only ever shows a record from the active year, but this
- * makes the write itself refuse a forged id from a different year too, at no
- * extra query cost (it is just one more bound parameter on the UPDATE).
+ * Approve, reject, or request edit for a record.
  */
 function record_review(string $type, int $id, string $action, ?string $remark, int $approvedBy, ?string $scopeDept = null, string $userRole = 'Admin', ?string $year = null): array
 {
@@ -338,7 +330,7 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         return [false, 'Invalid record type.'];
     }
 
-    if (!in_array($action, ['approve', 'reject'], true)) {
+    if (!in_array($action, ['approve', 'reject', 'request_edit', 'approve_edit'], true)) {
         return [false, 'Invalid review action.'];
     }
 
@@ -349,19 +341,32 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     $table = $types[$type]['table'];
 
-    // Review chain: Coordinator / HoD approves record directly to Approved.
+    // Review & Edit Request Chain:
+    // 1. Faculty uploads -> status 'Submitted'
+    // 2. Coordinator approves -> status 'Approved' (direct to DB, syncs targets)
+    // 3. HoD requests edit to Dean -> status 'Edit Requested'
+    // 4. Dean approves edit request -> status 'Unlocked for Edit'
+    // 5. Coordinator edits and resubmits -> status 'Approved'
     if ($userRole === 'Coordinator') {
-        $validCurrent = ['Submitted'];
-        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
+        $validCurrent = ['Submitted', 'Unlocked for Edit'];
+        $newStatus    = ($action === 'reject') ? 'Rejected' : 'Approved';
     } elseif ($userRole === 'HoD') {
-        $validCurrent = ['HOD Pending', 'Submitted'];
-        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
+        $validCurrent = ['Approved', 'Submitted', 'HOD Pending', 'Dean Pending'];
+        $newStatus    = ($action === 'request_edit') ? 'Edit Requested' : (($action === 'reject') ? 'Rejected' : 'Edit Requested');
     } elseif ($userRole === 'Dean') {
-        $validCurrent = ['Dean Pending'];
-        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
-    } else {
-        $validCurrent = ['HOD Pending', 'Dean Pending', 'Submitted'];
-        $newStatus    = ($action === 'approve') ? 'Approved' : 'Rejected';
+        $validCurrent = ['Edit Requested', 'Dean Pending'];
+        $newStatus    = ($action === 'reject') ? 'Rejected' : 'Unlocked for Edit';
+    } else { // Admin
+        $validCurrent = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Approved', 'Unlocked for Edit'];
+        if ($action === 'request_edit') {
+            $newStatus = 'Edit Requested';
+        } elseif ($action === 'approve_edit') {
+            $newStatus = 'Unlocked for Edit';
+        } elseif ($action === 'reject') {
+            $newStatus = 'Rejected';
+        } else {
+            $newStatus = 'Approved';
+        }
     }
 
     $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
@@ -390,9 +395,10 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     }
 
     $msgStatus = match ($newStatus) {
-        'HOD Pending'  => 'approved and sent to the HoD',
-        'Dean Pending' => 'approved by HOD and submitted for Dean review',
-        default        => strtolower($newStatus),
+        'Edit Requested'    => 'submitted as Edit Request to Dean',
+        'Unlocked for Edit' => 'unlocked by Dean for Coordinator to edit',
+        'Approved'          => 'approved and saved to database',
+        default             => strtolower($newStatus),
     };
     return [true, "Record {$msgStatus}."];
 }
@@ -419,10 +425,10 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         $validCurrent = ['Submitted'];
         $newStatus    = 'Approved';
     } elseif ($userRole === 'HoD') {
-        $validCurrent = ['HOD Pending', 'Submitted'];
-        $newStatus    = 'Approved';
+        $validCurrent = ['Approved', 'HOD Pending', 'Submitted'];
+        $newStatus    = 'Edit Requested';
     } else {
-        $validCurrent = ['Dean Pending', 'HOD Pending', 'Submitted'];
+        $validCurrent = ['Edit Requested', 'Dean Pending', 'HOD Pending', 'Submitted'];
         $newStatus    = 'Approved';
     }
 
@@ -447,7 +453,7 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
 
     if ($total === 0) {
-        return [false, 'Nothing pending to approve in ' . $department . '.'];
+        return [false, 'Nothing pending in ' . $department . '.'];
     }
 
     if ($newStatus === 'Approved') {
@@ -456,9 +462,9 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
 
     $msgStatus = match ($newStatus) {
-        'HOD Pending'  => 'sent to the HoD',
-        'Dean Pending' => 'submitted for Dean review',
-        default        => 'approved',
+        'Edit Requested'    => 'submitted as Edit Request to Dean',
+        'Unlocked for Edit' => 'unlocked for editing',
+        default             => 'approved',
     };
     return [true, "Cleared {$total} record" . ($total === 1 ? '' : 's') . " in {$department} ({$msgStatus})."];
 }
