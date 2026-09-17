@@ -44,7 +44,7 @@ function resolve_faculty_achievement_scope(array $currentUser, ?string $requeste
 /**
  * Calculates summary KPI metrics across the scoped faculty database.
  */
-function faculty_achievements_summary(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?int $facultyIdFilter = null): array
+function faculty_achievements_summary(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?int $facultyIdFilter = null, ?array $window = null): array
 {
     $effDept = resolve_faculty_achievement_scope($currentUser, $deptFilter);
     $categories = faculty_achievement_categories();
@@ -96,6 +96,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
             $sql .= " AND academic_year = ?";
             $params[] = $yearFilter;
         }
+        $sql .= em_window_sql($window, $params);   // FEAT-07 EM1/EM2 window, if any
         $sql .= " GROUP BY department";
 
         try {
@@ -217,7 +218,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
 /**
  * Returns aggregated per-faculty achievement counts for the main data table.
  */
-function faculty_achievements_grid(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?int $facultyIdFilter = null, ?string $search = null): array
+function faculty_achievements_grid(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?int $facultyIdFilter = null, ?string $search = null, ?array $window = null): array
 {
     $effDept = resolve_faculty_achievement_scope($currentUser, $deptFilter);
     $categories = faculty_achievement_categories();
@@ -293,6 +294,7 @@ function faculty_achievements_grid(array $currentUser, ?string $deptFilter = nul
             $q .= " AND academic_year = ?";
             $p[] = $yearFilter;
         }
+        $q .= em_window_sql($window, $p);   // FEAT-07 EM1/EM2 window, if any
 
         $q .= " GROUP BY created_by";
 
@@ -352,7 +354,7 @@ function can_user_view_faculty_report(array $currentUser, int $targetFacultyId):
 /**
  * Retrieves full detailed achievement records for a specific faculty member.
  */
-function faculty_achievement_details(int $facultyId, ?string $yearFilter = null, ?string $catFilter = null): array
+function faculty_achievement_details(int $facultyId, ?string $yearFilter = null, ?string $catFilter = null, ?array $window = null): array
 {
     // Fetch faculty user info
     $uStmt = db()->prepare("SELECT id, name, email, department, role, phone FROM users WHERE id = ?");
@@ -386,6 +388,7 @@ function faculty_achievement_details(int $facultyId, ?string $yearFilter = null,
             $sql .= " AND academic_year = ?";
             $params[] = $yearFilter;
         }
+        $sql .= em_window_sql($window, $params);   // FEAT-07 EM1/EM2 window, if any
 
         $sql .= " ORDER BY created_at DESC";
 
@@ -448,7 +451,7 @@ function uStmtFetch($stmt): ?array
 /**
  * Aggregates department-wise achievements for comparison charts.
  */
-function department_achievements_comparison(array $currentUser, ?string $yearFilter = null, ?string $catFilter = null): array
+function department_achievements_comparison(array $currentUser, ?string $yearFilter = null, ?string $catFilter = null, ?array $window = null): array
 {
     $effDept = resolve_faculty_achievement_scope($currentUser, null);
     $categories = faculty_achievement_categories();
@@ -498,6 +501,7 @@ function department_achievements_comparison(array $currentUser, ?string $yearFil
             $sql .= " AND academic_year = ?";
             $params[] = $yearFilter;
         }
+        $sql .= em_window_sql($window, $params);   // FEAT-07 EM1/EM2 window, if any
         $sql .= " GROUP BY department";
 
         try {
@@ -529,9 +533,9 @@ function department_achievements_comparison(array $currentUser, ?string $yearFil
 /**
  * Returns top N faculty contributors ranked by achievement count.
  */
-function top_faculty_contributors(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, int $limit = 5): array
+function top_faculty_contributors(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, int $limit = 5, ?array $window = null): array
 {
-    $grid = faculty_achievements_grid($currentUser, $deptFilter, $yearFilter, $catFilter);
+    $grid = faculty_achievements_grid($currentUser, $deptFilter, $yearFilter, $catFilter, null, null, $window);
     usort($grid, fn($a, $b) => $b['total'] <=> $a['total']);
     return array_slice($grid, 0, $limit);
 }

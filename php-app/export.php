@@ -27,6 +27,11 @@ $status     = trim((string) input('status', '')) ?: null;
 $type       = trim((string) input('type', '')) ?: null;
 $from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
 $to         = parse_date_input(input('to', ''));     // period end
+// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
+// A meeting window belongs to one academic year, so the year is pinned too;
+// with "all" em_filter_year() is null and this export is unchanged.
+$emFilter    = em_filter_value(input('em'));
+[$from, $to] = em_intersect_period($emFilter, $from, $to);
 
 if (!in_array($format, ['csv', 'excel', 'word', 'pdf'], true)) {
     $format = 'csv';
@@ -38,7 +43,7 @@ if ($user['role'] === 'Director') {
 }
 
 // ---- Get the records (role scope is applied inside) ---------------------
-$records = report_records($user, $department, $status, $type, $from, $to);
+$records = report_records($user, $department, $status, $type, $from, $to, em_filter_year($emFilter));
 
 // ---- Things that appear in the report heading ---------------------------
 $isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);

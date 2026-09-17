@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/Target.php';   // active_academic_year(), target_record_table_columns()
+require_once __DIR__ . '/ExecutiveMeeting.php';   // FEAT-07 EM1 lock
 
 /** All record types with their table names and display info. */
 function record_types(): array
@@ -341,12 +342,27 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     $table = $types[$type]['table'];
 
+<<<<<<< HEAD
     // Review & Edit Request Chain:
     // 1. Faculty uploads -> status 'Submitted'
     // 2. Coordinator approves -> status 'Approved' (direct to DB, syncs targets)
     // 3. HoD requests edit to Dean -> status 'Edit Requested'
     // 4. Dean approves edit request -> status 'Unlocked for Edit'
     // 5. Coordinator edits and resubmits -> status 'Approved'
+=======
+    // FEAT-07: a record submitted during EM1 is read-only once EM1 has closed.
+    // Checked here for a clear message, and again in the UPDATE's own WHERE
+    // below so the rule holds even if this read and that write were to race.
+    if (em_locked_windows($effectiveYear)) {
+        $lookup = db()->prepare("SELECT created_at FROM `$table` WHERE id = ?");
+        $lookup->execute([$id]);
+        if (em_record_is_locked($userRole, $lookup->fetchColumn() ?: null, $effectiveYear)) {
+            return [false, EM1_LOCKED_MESSAGE];
+        }
+    }
+
+    // Review chain: Coordinator / HoD approves record directly to Approved.
+>>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
     if ($userRole === 'Coordinator') {
         $validCurrent = ['Submitted', 'Unlocked for Edit'];
         $newStatus    = ($action === 'reject') ? 'Rejected' : 'Approved';
@@ -381,6 +397,8 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         $sql     .= ' AND academic_year = ?';
         $params[] = $year;
     }
+    // FEAT-07: never touch a row inside a locked EM window (Admin exempt).
+    $sql .= em_locked_exclusion_sql($userRole, $effectiveYear, $params);
 
     $stmt = db()->prepare($sql);
     $stmt->execute($params);
@@ -435,6 +453,11 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
     $total = 0;
 
+    // FEAT-07: pending records inside a locked EM window are left untouched
+    // (Admin exempt). Counted so the message can say what was held back.
+    $lockedWindows = ($userRole !== 'Admin') ? em_locked_windows($effectiveYear) : [];
+    $heldBack      = 0;
+
     foreach (record_types() as $t) {
         try {
             $sql    = "UPDATE `{$t['table']}` SET status = ?, approved_by = ?, updated_at = NOW()
@@ -444,6 +467,27 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
                 $sql      .= ' AND academic_year = ?';
                 $params[]  = $year;
             }
+
+            if ($lockedWindows) {
+                $countSql    = "SELECT COUNT(*) FROM `{$t['table']}` WHERE status IN ($inClause) AND department = ?";
+                $countParams = array_merge($validCurrent, [$department]);
+                if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
+                    $countSql     .= ' AND academic_year = ?';
+                    $countParams[] = $year;
+                }
+                $inWindow = [];
+                foreach ($lockedWindows as $w) {
+                    $inWindow[]    = '(created_at >= ? AND created_at <= ?)';
+                    $countParams[] = $w['from'];
+                    $countParams[] = $w['to'];
+                }
+                $countStmt = db()->prepare($countSql . ' AND (' . implode(' OR ', $inWindow) . ')');
+                $countStmt->execute($countParams);
+                $heldBack += (int) $countStmt->fetchColumn();
+            }
+
+            $sql .= em_locked_exclusion_sql($userRole, $effectiveYear, $params);
+
             $stmt = db()->prepare($sql);
             $stmt->execute($params);
             $total += $stmt->rowCount();
@@ -453,7 +497,13 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
 
     if ($total === 0) {
+<<<<<<< HEAD
         return [false, 'Nothing pending in ' . $department . '.'];
+=======
+        return [false, $heldBack
+            ? EM1_LOCKED_MESSAGE . " {$heldBack} pending EM1 record" . ($heldBack === 1 ? ' was' : 's were') . ' left unchanged.'
+            : 'Nothing pending to approve in ' . $department . '.'];
+>>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
     }
 
     if ($newStatus === 'Approved') {
@@ -466,7 +516,8 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         'Unlocked for Edit' => 'unlocked for editing',
         default             => 'approved',
     };
-    return [true, "Cleared {$total} record" . ($total === 1 ? '' : 's') . " in {$department} ({$msgStatus})."];
+    return [true, "Cleared {$total} record" . ($total === 1 ? '' : 's') . " in {$department} ({$msgStatus})."
+        . ($heldBack ? " {$heldBack} pending EM1 record" . ($heldBack === 1 ? ' was' : 's were') . ' left unchanged because EM1 is locked.' : '')];
 }
 
 /** Get all records by the current user across all types. */

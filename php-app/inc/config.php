@@ -42,7 +42,8 @@ error_reporting(E_ALL);
 ini_set('display_errors', '1');
 define('APP_DEBUG', true);
 
-date_default_timezone_set((string) env('APP_TIMEZONE', 'Asia/Kolkata'));
+define('APP_TIMEZONE', (string) env('APP_TIMEZONE', 'Asia/Kolkata'));
+date_default_timezone_set(APP_TIMEZONE);
 
 /**
  * Baseline security response headers. Sent once, before any output.

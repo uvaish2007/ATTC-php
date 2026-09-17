@@ -49,9 +49,11 @@ $category  = trim((string) input('category', '')) ?: null;
 $facultyId = (int) input('faculty_id', 0) ?: null;
 
 // Fetch faculty achievements dataset
-$summary   = faculty_achievements_summary($user, $effDept, $academicYear, $category, $facultyId);
-$deptComp  = department_achievements_comparison($user, $academicYear, $category);
-$facGrid   = faculty_achievements_grid($user, $effDept, $academicYear, $category, $facultyId);
+// FEAT-07: same Executive Meeting (EM1/EM2) window as the on-screen page.
+$emWindow  = em_filter_window(em_filter_value(input('em')), $academicYear);
+$summary   = faculty_achievements_summary($user, $effDept, $academicYear, $category, $facultyId, $emWindow);
+$deptComp  = department_achievements_comparison($user, $academicYear, $category, $emWindow);
+$facGrid   = faculty_achievements_grid($user, $effDept, $academicYear, $category, $facultyId, null, $emWindow);
 
 // Standardized filenames matching FEAT-04 specification
 $safeYear   = preg_replace('/[^A-Za-z0-9\-]/', '-', $academicYear);

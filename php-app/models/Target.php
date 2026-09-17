@@ -743,7 +743,7 @@ function target_record_table_columns(string $table): array
  * Scoped to the target's department (where the record type has that column) and
  * to its academic year (likewise), so the count matches the target's scope.
  */
-function target_record_count(array $target): ?int
+function target_record_count(array $target, ?string $from = null, ?string $to = null): ?int
 {
     static $countCache = [];
 
@@ -754,7 +754,10 @@ function target_record_count(array $target): ?int
 
     $dept = (string) ($target['department'] ?? '');
     $year = (string) ($target['academic_year'] ?? '');
-    $cacheKey = "{$type}|{$dept}|{$year}";
+    // $from / $to (Y-m-d, inclusive) optionally narrow the count to records
+    // submitted in a period — FEAT-07 uses this for one Executive Meeting.
+    // Omitted, the count is exactly what it always was.
+    $cacheKey = "{$type}|{$dept}|{$year}|{$from}|{$to}";
     if (array_key_exists($cacheKey, $countCache)) {
         return $countCache[$cacheKey];
     }
@@ -781,6 +784,14 @@ function target_record_count(array $target): ?int
     if (in_array('academic_year', $cols, true) && !empty($target['academic_year'])) {
         $sql .= ' AND academic_year = ?';
         $args[] = $target['academic_year'];
+    }
+    if ($from !== null) {
+        $sql .= ' AND created_at >= ?';
+        $args[] = $from . ' 00:00:00';
+    }
+    if ($to !== null) {
+        $sql .= ' AND created_at <= ?';
+        $args[] = $to . ' 23:59:59';
     }
 
     try {
@@ -855,7 +866,7 @@ function target_approved_records(array $target): array
                 ?? $row['student_name']
                 ?? $row['creator_name']
                 ?? 'Faculty';
-            $row['_proof_url']  = !empty($row['proof_file']) ? url('uploads/proofs/' . $row['proof_file']) : null;
+            $row['_proof_url']  = !empty($row['proof_file']) ? url('uploads/' . rawurlencode($row['proof_file'])) : null;
             $row['_doc_url']    = !empty($row['document_link']) ? $row['document_link'] : (!empty($row['certificate_link']) ? $row['certificate_link'] : null);
             $results[] = $row;
         }

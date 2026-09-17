@@ -140,6 +140,31 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
+<?php // FEAT-07: tell reviewers which pending records the server will refuse.
+  $emApprovals     = em_status($activeYear);
+  $emLockedPending = $emApprovals['em1_locked']
+      ? count(array_filter($records, fn($r) => em_record_is_locked($user['role'], $r['created_at'] ?? null, $activeYear)))
+      : 0;
+?>
+<?php if ($emApprovals['em1_locked'] && !$isYearLocked): ?>
+  <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px;color:#991B1B">EM1 is Locked</div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">
+        EM1 closed on <?= e(date('d M Y', strtotime($emApprovals['schedule']['em1_end']))) ?>. Records submitted during EM1 are read-only.
+        <?php if ($user['role'] === 'Admin'): ?>
+          As an Administrator, you retain review authority.
+        <?php elseif ($emLockedPending): ?>
+          <?= (int) $emLockedPending ?> pending record<?= $emLockedPending === 1 ? ' below was' : 's below were' ?> submitted during EM1 and can no longer be approved or rejected.
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <?php if (empty($records)): ?>
   <div class="card"><div class="card-body" style="padding:0">
     <div class="empty" style="padding:80px 24px">
@@ -191,8 +216,13 @@ require __DIR__ . '/inc/header.php';
         <thead><tr>
           <th style="padding-left:24px">Record</th>
           <th>Type</th>
+<<<<<<< HEAD
           <th>Status</th>
           <th>Submitted / Note</th>
+=======
+          <th>Proof</th>
+          <th>Submitted</th>
+>>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
           <th class="num" style="padding-right:24px">Actions</th>
         </tr></thead>
         <tbody>
@@ -204,6 +234,7 @@ require __DIR__ . '/inc/header.php';
               <?php if ($who !== ''): ?><div class="card-sub"><?= e($who) ?> &middot; Dept: <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
             </td>
             <td><span class="badge badge-info"><?= e($r['_type_label']) ?></span></td>
+<<<<<<< HEAD
             <td><span class="badge badge-<?= status_class($r['status']) ?>"><?= e($r['status']) ?></span></td>
             <td class="card-sub">
               <?= e(time_ago($r['created_at'])) ?>
@@ -211,6 +242,16 @@ require __DIR__ . '/inc/header.php';
                 <div style="font-size:11px;color:#1D4ED8;margin-top:2px"><strong>Note:</strong> <?= e($r['review_remark']) ?></div>
               <?php endif; ?>
             </td>
+=======
+            <td>
+              <?php if (!empty($r['proof_file'])): ?>
+                <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
+              <?php else: ?>
+                <span class="card-sub">—</span>
+              <?php endif; ?>
+            </td>
+            <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
+>>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
             <td class="num" style="padding-right:24px">
               <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
                 <div class="flex gap-2" style="justify-content:flex-end">

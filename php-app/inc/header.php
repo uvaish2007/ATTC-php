@@ -13,6 +13,7 @@ require_once __DIR__ . '/icons.php';
 require_once __DIR__ . '/nav.php';
 require_once __DIR__ . '/../models/Announcement.php';
 require_once __DIR__ . '/../models/Target.php';
+require_once __DIR__ . '/../models/ExecutiveMeeting.php';   // FEAT-07 status pill
 require_once __DIR__ . '/notifications.php';
 
 $user   = $user ?? current_user();
@@ -21,6 +22,9 @@ $active = basename($_SERVER['SCRIPT_NAME']);
 // The one system-wide active academic year — read once per page load and
 // reused everywhere below (the badge counts and the topbar indicator).
 $atts_activeYear = active_academic_year();
+
+// FEAT-07: the active year's Executive Meeting status, from the one EM engine.
+$atts_emStatus = em_status($atts_activeYear);
 
 $headerNotifications = fetch_header_notifications($user);
 $unreadNotifCount    = count(array_filter($headerNotifications, fn($n) => !empty($n['unread'])));
@@ -192,6 +196,12 @@ $flashes      = take_flashes();
             <span class="yb-lock" style="color:rgba(255,255,255,0.85);border-left:1px solid rgba(255,255,255,0.3);"><?= icon('unlock', 11) ?> Cycle Open</span>
           <?php endif; ?>
         </span>
+        <?php if ($atts_emStatus['configured']): ?>
+          <?php $emTone = $atts_emStatus['current'] ? 'active' : ($atts_emStatus['em1_locked'] ? 'locked' : 'upcoming'); ?>
+          <span class="em-badge em-<?= e($emTone) ?>" title="<?= e($atts_emStatus['detail']) ?>">
+            <span class="em-dot"></span><?= e($atts_emStatus['label']) ?>
+          </span>
+        <?php endif; ?>
         <span class="role-badge" title="You are signed in as <?= e($user['role']) ?>"><?= icon('shield', 13) ?> <?= e($user['role']) ?></span>
 
         <div class="notif-wrapper">

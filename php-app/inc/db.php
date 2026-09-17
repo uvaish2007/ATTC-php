@@ -70,7 +70,15 @@ function db(): PDO
             die('Database connection failed: ' . htmlspecialchars($e->getMessage())
                 . '<br><br>Check inc/config.php and that MySQL is running and the "' . htmlspecialchars(DB_NAME) . '" database exists.');
         }
-        die('Database connection failed.');
+    }
+
+    // Sync MySQL session timezone with application configured timezone
+    try {
+        $appTz = defined('APP_TIMEZONE') ? APP_TIMEZONE : (string) env('APP_TIMEZONE', 'Asia/Kolkata');
+        $offset = (new DateTime('now', new DateTimeZone($appTz)))->format('P');
+        $pdo->exec("SET time_zone = '{$offset}'");
+    } catch (Throwable $e) {
+        // Fallback silently if database rejects time_zone setting
     }
 
     return $pdo;

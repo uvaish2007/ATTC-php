@@ -29,9 +29,14 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 $department = trim((string) input('department')) ?: null;   // honoured only for Admin
 $from       = parse_date_input((string) input('from'));
 $to         = parse_date_input((string) input('to'));
+// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
+// A meeting window belongs to one academic year, so the year is pinned too;
+// with "all" em_filter_year() is null and this report is unchanged.
+$emFilter    = em_filter_value(input('em'));
+[$from, $to] = em_intersect_period($emFilter, $from, $to);
 
 // report_records applies the role scope (Director → all, HoD → own dept).
-$records = report_records($user, $department, null, null, $from, $to);
+$records = report_records($user, $department, null, null, $from, $to, em_filter_year($emFilter));
 
 // The label shown on the report reflects the scope actually applied.
 if ($user['role'] === 'HoD') {

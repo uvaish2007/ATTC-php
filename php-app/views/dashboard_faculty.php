@@ -42,6 +42,8 @@ $cards = [
   </div>
 </div>
 
+<?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
+
 
 <!-- Four counters across the top -->
 <div class="stat-grid grid-4">
