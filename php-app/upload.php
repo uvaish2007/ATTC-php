@@ -5,6 +5,7 @@ require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';   // academic_years()
 require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM1 lock
+require_once __DIR__ . '/models/UploadFlow.php';         // Academic Year → Data Type entry flow
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
@@ -62,14 +63,102 @@ function save_upload_proof(?array $file, bool $required = true): array
     return [$stored, null];
 }
 
+// ---- Upload Data entry flow: Academic Year → Data Type → this form ---------
+// Faculty and Coordinator pick both before the form opens (models/UploadFlow.php).
+// The choice is kept in the session and re-checked on every request here, so
+// neither screen can be skipped by editing the URL or posting directly. HoD
+// and Admin skip this block and use the page exactly as before.
+$uploadFlow = null;   // the validated choice once the form may open
+if (upload_flow_applies($user)) {
+    if (isset($_GET['reset']) || isset($_GET['new'])) {
+        upload_flow_store($user, ['year' => null, 'data_type' => null]);
+    } elseif (($_GET['step'] ?? '') === 'year') {
+        upload_flow_store($user, ['data_type' => null]);
+    }
+
+    $isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
+    if ($isPost) {
+        csrf_check();
+    }
+    $flowState = upload_flow_state($user);
+
+    // The two selection screens post back here.
+    if ($isPost && isset($_POST['upload_flow_step'])) {
+        if ($_POST['upload_flow_step'] === 'year') {
+            [$ok, $error] = upload_flow_choose_year($user, $_POST['academic_year'] ?? '');
+            if (!$ok) {
+                flash('error', $error);
+                redirect('/upload.php');
+            }
+            redirect('/upload.php?step=data-type');
+        }
+        if ($_POST['upload_flow_step'] === 'data_type') {
+            [$ok, $error] = upload_flow_choose_data_type($user, $_POST['data_type'] ?? '');
+            if (!$ok) {
+                flash('error', $error);
+                redirect($flowState['year'] === null ? '/upload.php' : '/upload.php?step=data-type');
+            }
+            $chosen = upload_flow_data_types()[upload_flow_state($user)['data_type']];
+            redirect('/upload.php?type=' . urlencode($chosen['types'][0]));
+        }
+        redirect('/upload.php');
+    }
+
+    // Show selection screen if visiting entry point, requested step, or no type asked
+    if (!$isPost && (!isset($_GET['type']) || isset($_GET['reset']) || isset($_GET['step']))) {
+        if (($_GET['step'] ?? '') === 'data-type' && $flowState['year'] !== null) {
+            $uploadFlowStep = 'data_type';
+        } else {
+            upload_flow_remember_return($user);
+            $flowState      = upload_flow_state($user);
+            $uploadFlowStep = 'year';
+        }
+        $pageTitle = 'Upload Data'; $breadcrumb = 'Upload Data';
+        require __DIR__ . '/inc/header.php';
+        require __DIR__ . '/views/upload_flow.php';
+        require __DIR__ . '/inc/footer.php';
+        exit;
+    }
+
+    // The form, or a record submitted from it: both choices must be in place.
+    if ($flowState['year'] === null) {
+        flash('error', $flowState['stale_year'] !== null
+            ? "Academic year {$flowState['stale_year']} is no longer open for uploads. Please select the academic year again."
+            : 'Please select an Academic Year to continue.');
+        redirect('/upload.php');
+    }
+    if ($flowState['data_type'] === null) {
+        flash('error', 'Please choose Faculty Data or Student Data before uploading data.');
+        redirect('/upload.php?step=data-type');
+    }
+
+    $flowDefs   = upload_flow_data_types();
+    $uploadFlow = $flowState + ['label' => $flowDefs[$flowState['data_type']]['label'],
+                                'icon'  => $flowDefs[$flowState['data_type']]['icon']];
+
+    // Only the chosen data type's record types can be opened or submitted.
+    $typeKeys  = $flowDefs[$flowState['data_type']]['types'];
+    $askedType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
+    if (!in_array($askedType, $typeKeys, true)) {
+        $belongsTo = upload_flow_data_type_of($askedType);
+        flash('error', $belongsTo !== null
+            ? $types[$askedType]['label'] . ' is part of ' . $flowDefs[$belongsTo]['label'] . '. You are uploading '
+              . $uploadFlow['label'] . ' for ' . $uploadFlow['year'] . '. Use "Back to Data Type" to switch.'
+            : 'Invalid record type.');
+        redirect('/upload.php?type=' . urlencode($typeKeys[0]));
+    }
+}
+
+$effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
+
 // Handle form submissions for new records
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $type = (string) input('record_type');
     $nav  = (string) input('nav', 'add');   // add | next | submit
 
-    $targetYear = trim((string) input('academic_year', $activeYear));
-    if ($user['role'] !== 'Admin' && (academic_year_is_locked($activeYear) || academic_year_is_locked($targetYear))) {
+    $targetYear = $uploadFlow ? $uploadFlow['year'] : trim((string) input('academic_year', $activeYear));
+    if ($user['role'] !== 'Admin' && academic_year_is_locked($targetYear)) {
         flash('error', "Academic year {$targetYear} cycle is currently locked by the Administrator. New record submissions for {$targetYear} are frozen.");
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
@@ -77,7 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // FEAT-07: once EM1 has closed and before EM2 opens, a new record could only
     // be a late EM1 submission, and EM1 is locked. Checked here, before any file
     // is stored or row inserted, so a direct POST cannot get past it.
-    if ($emBlock = em_submission_block_reason($user['role'], $activeYear)) {
+    if ($emBlock = em_submission_block_reason($user['role'], $targetYear)) {
         flash('error', $emBlock);
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
@@ -367,7 +456,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
     if (in_array('academic_year', $tableColumns, true)) {
-        $fields[] = 'academic_year'; $values[] = $activeYear; $placeholders[] = '?';
+        $fields[] = 'academic_year'; $values[] = $effectiveYear; $placeholders[] = '?';
     }
 
     // Faculty members always submit records for their assigned department
@@ -427,9 +516,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Current user's records
+$effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
 $myRecords = my_records($user['id']);
-$selectedType = trim((string)($_GET['type'] ?? 'journal'));
-if (!isset($types[$selectedType])) $selectedType = 'journal';
+$tabsToShow = $uploadFlow ? array_intersect_key($types, array_flip($typeKeys)) : $types;
+$defaultType = $typeKeys[0] ?? 'journal';
+$selectedType = trim((string)($_GET['type'] ?? $defaultType));
+if (!isset($types[$selectedType]) || !in_array($selectedType, $typeKeys, true)) {
+    $selectedType = $defaultType;
+}
 
 $selIdx    = array_search($selectedType, $typeKeys, true);
 $isLast    = $selIdx === count($typeKeys) - 1;
@@ -466,10 +560,33 @@ require __DIR__ . '/inc/header.php';
   <div><h1>Upload Data</h1><div class="sub">Submit academic records for review</div></div>
 </div>
 
+<?php if ($uploadFlow): ?>
+  <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg, rgba(37,99,235,0.04), rgba(79,70,229,0.08));border-color:var(--border, #e2e8f0)">
+    <div class="card-body" style="padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="badge badge-primary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
+          <?= icon('calendar', 14) ?> Academic Year: <strong><?= e($uploadFlow['year']) ?></strong>
+        </span>
+        <span class="badge badge-secondary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
+          <?= icon($uploadFlow['icon'] ?? 'folder', 14) ?> Scope: <strong><?= e($uploadFlow['label']) ?></strong>
+        </span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <a href="<?= e(url('upload.php?step=data-type')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
+          <?= icon('arrow-left', 14) ?> Change Data Type
+        </a>
+        <a href="<?= e(url('upload.php?reset=1')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
+          Change Academic Year
+        </a>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <!-- Type selector tabs -->
 <div class="card" style="margin-bottom:16px">
   <div class="card-body js-category-nav-container" style="padding:8px 16px; overflow-x:auto; white-space:nowrap">
-    <?php foreach ($types as $key => $t): ?>
+    <?php foreach ($tabsToShow as $key => $t): ?>
       <a href="<?= e(url('upload.php?type=' . $key)) ?>"
          class="btn btn-sm js-category-tab <?= $selectedType === $key ? 'btn-primary active' : 'btn-ghost' ?>"
          style="margin:4px 2px; height:32px; font-size:12px"><?= e($t['label']) ?></a>
@@ -539,14 +656,14 @@ require __DIR__ . '/inc/header.php';
 })();
 </script>
 
-<?php $isUploadLocked = academic_year_is_locked($activeYear); ?>
+<?php $isUploadLocked = academic_year_is_locked($effectiveYear); ?>
 <?php if ($isUploadLocked): ?>
   <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
     <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
       <?= icon('lock', 20) ?>
     </div>
     <div style="flex:1">
-      <div style="font-weight:700;font-size:13px">Academic Year <?= e($activeYear) ?> Cycle is Locked</div>
+      <div style="font-weight:700;font-size:13px">Academic Year <?= e($effectiveYear) ?> Cycle is Locked</div>
       <div style="font-size:12px;color:#B91C1C;margin-top:2px">The Administrator has frozen submissions for this academic year cycle following an Executive Meeting. <?= $user['role'] === 'Admin' ? 'As an Admin, you retain upload authority.' : 'New submissions are frozen across all roles until unlocked by an Administrator.' ?></div>
     </div>
   </div>
@@ -571,7 +688,7 @@ require __DIR__ . '/inc/header.php';
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label>
-          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
+          <input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
         </div>
       <?php endif; ?>
 
@@ -678,7 +795,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'nss'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" required></div>
         <div class="field"><label>Activity Type <span class="req">*</span></label><select class="select" name="activity_type" required><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Name of the Activity <span class="req">*</span></label><input class="input" name="activity_name" required></div>
@@ -689,7 +806,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'online_course'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category <span class="req">*</span></label><select class="select" name="category" required><option>Faculty</option><option>Student</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
@@ -700,7 +817,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'student_achievement' || $selectedType === 'student_participation'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <?php if ($selectedType === 'student_participation'): ?>
         <div class="field"><label>Activity Category <span class="req">*</span></label><select class="select" name="activity_category" required><option>Co-curricular</option><option>Extra-curricular</option></select></div>
         <?php endif; ?>
@@ -718,7 +835,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'summer_training'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <div class="field" style="grid-column:span 2"><label>Title of Training <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -729,7 +846,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'value_added'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
         <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
@@ -740,7 +857,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'training'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>Career Guidance</option><option>Counselling</option><option>ICT</option><option>Life Skills</option><option>Soft Skills</option></select></div>
@@ -777,7 +894,7 @@ require __DIR__ . '/inc/header.php';
           <?php endif; ?>
         <?php else: ?>
           <div style="display:flex;align-items:center;gap:8px;color:#991B1B;font-size:13px;font-weight:700">
-            <?= icon('lock', 16) ?> Submissions are disabled because Academic Year <?= e($activeYear) ?> is locked.
+            <?= icon('lock', 16) ?> Submissions are disabled because Academic Year <?= e($effectiveYear) ?> is locked.
           </div>
           <div class="spacer"></div>
           <?php if ($prevType): ?>

@@ -126,7 +126,7 @@ $flashes      = take_flashes();
           <div class="nav-section-label"><?= e($section) ?></div>
           <div class="nav-list">
             <?php foreach ($items as $item):
-              $isActive = ($item['path'] === $active);
+              $isActive = (strtok($item['path'], '?') === $active);
               $badge = isset($item['badge']) ? ($badgeCounts[$item['badge']] ?? 0) : 0;
               $locked = !module_is_active(module_for_path($item['path']));
             ?>

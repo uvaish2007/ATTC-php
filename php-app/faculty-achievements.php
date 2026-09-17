@@ -74,17 +74,10 @@ $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
 // ---- Fetch Data ---------------------------------------------------------
-<<<<<<< HEAD
-$summary       = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
-$deptComp      = department_achievements_comparison($user, $academicYear, $category, $emWindow);
-$facGrid       = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
+$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
+$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
+$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
-=======
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category);
-$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5);
->>>>>>> 4f3d7ba598006f31241c2695cdd3be3561132e3d
 
 // Query string for exports
 $exportQ = array_filter([
@@ -434,19 +427,6 @@ require __DIR__ . '/inc/header.php';
       <div class="card-sub">Every metric, grouped by what it measures &middot; <?= number_format($summary['totalAchievements']) ?> total</div>
     </div>
 
-<<<<<<< HEAD
-    <!-- Quick Search Input -->
-    <form method="get" class="fbar fbar-bare" style="margin:0;">
-      <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
-      <input type="hidden" name="department" value="<?= e($department) ?>">
-      <input type="hidden" name="category" value="<?= e($category) ?>">
-      <input type="hidden" name="em" value="<?= e($em) ?>">
-      <label class="fb-field fb-search" style="min-width:240px;">
-        <?= icon('search', 14) ?>
-        <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">
-      </label>
-    </form>
-=======
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
       <!-- Toggle Buttons: Data View | Analytics View -->
       <div class="pill-toggle-group">
@@ -458,7 +438,6 @@ require __DIR__ . '/inc/header.php';
         <?= icon('file-text', 13) ?> View Reports
       </a>
     </div>
->>>>>>> 4f3d7ba598006f31241c2695cdd3be3561132e3d
   </div>
 
   <div class="card-body">

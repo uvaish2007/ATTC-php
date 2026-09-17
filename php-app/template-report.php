@@ -21,11 +21,11 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Target.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
-$format = strtolower(trim((string) input('format', 'word')));
+$format = strtolower(trim((string) input('format', 'pdf')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
-    $format = 'word';
+    $format = 'pdf';
 }
 
 /*
@@ -151,7 +151,8 @@ if ($format === 'word') {
     header('Content-Type: text/html; charset=UTF-8');
 }
 
-report_document_head('Executive Meeting Report', 'landscape');
+$reportDocTitle = ($user['role'] === 'Coordinator') ? 'Target Report' : 'Executive Meeting Report';
+report_document_head($reportDocTitle, 'landscape');
 ?>
 
 <?php if ($format === 'pdf'): ?>

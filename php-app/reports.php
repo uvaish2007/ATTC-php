@@ -347,7 +347,7 @@ require __DIR__ . '/inc/header.php';
   $totalScoped = count($scoped);
 
   // The target proforma + metrics summary scope to the effective department.
-  $effDept = $isOversight ? $department : ($isHod ? ($user['department'] ?: null) : null);
+  $effDept = $isOversight ? $department : (in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?: null) : null);
   $tStmt   = db()->prepare('SELECT COUNT(*) FROM targets' . ($effDept ? ' WHERE department = ?' : ''));
   $tStmt->execute($effDept ? [$effDept] : []);
   $targetCount = (int) $tStmt->fetchColumn();
@@ -677,17 +677,32 @@ require __DIR__ . '/inc/header.php';
         </div>
       <?php endif; ?>
 
-      <div class="tmpl-report-row">
-        <div class="tmpl-report-info">
-          <div class="tmpl-report-name"><?= icon('file-text', 15) ?> Academic Records</div>
-          <div class="tmpl-report-sub">Every uploaded record &middot; <?= (int) $totalScoped ?> in scope</div>
+      <?php if ($role === 'Coordinator'): ?>
+        <?php $coordTargetQ = array_filter(['department' => $user['department'], 'year' => $year]); ?>
+        <div class="tmpl-report-row">
+          <div class="tmpl-report-info">
+            <div class="tmpl-report-name"><?= icon('target', 15) ?> Target Report</div>
+            <div class="tmpl-report-sub">Fixed vs Achieved targets &middot; <?= (int) $targetCount ?> target<?= $targetCount === 1 ? '' : 's' ?> in scope</div>
+          </div>
+          <div class="tmpl-report-links">
+            <a class="btn btn-primary btn-sm" href="<?= $link('template-report.php', $coordTargetQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $coordTargetQ, 'word') ?>">Word</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('template-report.php', $coordTargetQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
+          </div>
         </div>
-        <div class="tmpl-report-links">
-          <a class="btn btn-primary btn-sm" href="<?= $link('export.php', $recordsQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
-          <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'word') ?>">Word</a>
-          <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
+      <?php else: ?>
+        <div class="tmpl-report-row">
+          <div class="tmpl-report-info">
+            <div class="tmpl-report-name"><?= icon('file-text', 15) ?> Academic Records</div>
+            <div class="tmpl-report-sub">Every uploaded record &middot; <?= (int) $totalScoped ?> in scope</div>
+          </div>
+          <div class="tmpl-report-links">
+            <a class="btn btn-primary btn-sm" href="<?= $link('export.php', $recordsQ, 'excel') ?>"><?= icon('download') ?> Excel</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'word') ?>">Word</a>
+            <a class="btn btn-outline btn-sm" href="<?= $link('export.php', $recordsQ, 'pdf') ?>" target="_blank" rel="noopener">PDF</a>
+          </div>
         </div>
-      </div>
+      <?php endif; ?>
 
       <?php if ($canSummary): ?>
         <div class="tmpl-report-row">
@@ -812,9 +827,9 @@ require __DIR__ . '/inc/header.php';
                 data-on="0" title="Show every record in every category" style="border-radius:999px;">
           <?= icon('eye', 14) ?> <span>Show all <?= (int) $total ?> records</span>
         </button>
-        <button type="button" class="btn btn-outline btn-sm js-toggle-cats-all" id="toggleCatsAllBtn" data-open="1"
+        <button type="button" class="btn btn-outline btn-sm js-toggle-cats-all" id="toggleCatsAllBtn" data-open="0"
                 title="Expand or collapse all category sections" style="border-radius:999px;">
-          <?= icon('chevron-up', 14) ?> <span id="toggleCatsAllTxt">Collapse categories</span>
+          <?= icon('chevron-down', 14) ?> <span id="toggleCatsAllTxt">Expand categories</span>
         </button>
       <?php endif; ?>
     </div>
@@ -846,11 +861,11 @@ require __DIR__ . '/inc/header.php';
               </a>
             <?php endif; ?>
             <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
-              <?= icon('chevron-up', 13) ?> <span class="cat-btn-txt">Collapse</span>
+              <?= icon('chevron-down', 13) ?> <span class="cat-btn-txt">Expand</span>
             </button>
           </div>
         </div>
-        <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>">
+        <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>" hidden>
           <?php foreach ($catKeys as $key): ?>
             <?php
               $t      = $types[$key];
@@ -978,6 +993,15 @@ require __DIR__ . '/inc/header.php';
           if (txt) txt.textContent = isHidden ? 'Collapse' : 'Expand';
           btn.querySelector('svg').outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
         }
+        const anyOpen = Array.from(document.querySelectorAll('.rec-cat-body')).some(b => !b.hidden);
+        const allCatsBtn = document.getElementById('toggleCatsAllBtn');
+        if (allCatsBtn) {
+          allCatsBtn.dataset.open = anyOpen ? '1' : '0';
+          const txt = document.getElementById('toggleCatsAllTxt');
+          if (txt) txt.textContent = anyOpen ? 'Collapse categories' : 'Expand categories';
+          const svg = allCatsBtn.querySelector('svg');
+          if (svg) svg.outerHTML = anyOpen ? '<?= icon('chevron-up', 14) ?>' : '<?= icon('chevron-down', 14) ?>';
+        }
       }
       return;
     }
@@ -1013,6 +1037,20 @@ require __DIR__ . '/inc/header.php';
     const open = all.dataset.on !== '1';
     if (open) {
       document.querySelectorAll('.rec-cat-body').forEach(b => b.hidden = false);
+      const allCatsBtn = document.getElementById('toggleCatsAllBtn');
+      if (allCatsBtn) {
+        allCatsBtn.dataset.open = '1';
+        const txt = document.getElementById('toggleCatsAllTxt');
+        if (txt) txt.textContent = 'Collapse categories';
+        const svg = allCatsBtn.querySelector('svg');
+        if (svg) svg.outerHTML = '<?= icon('chevron-up', 14) ?>';
+      }
+      document.querySelectorAll('.js-cat-btn').forEach(btn => {
+        const txt = btn.querySelector('.cat-btn-txt');
+        if (txt) txt.textContent = 'Collapse';
+        const svg = btn.querySelector('svg');
+        if (svg) svg.outerHTML = '<?= icon('chevron-up', 13) ?>';
+      });
     }
     document.querySelectorAll('.rec-group').forEach(g => setGroup(g, open));
     all.dataset.on = open ? '1' : '0';

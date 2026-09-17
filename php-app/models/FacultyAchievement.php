@@ -118,6 +118,14 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
         }
     }
 
+    $deptCount   = count($activeDepts);
+    $topCategory = null;
+    if (!empty($categoryCounts)) {
+        $sortedCats = $categoryCounts;
+        arsort($sortedCats);
+        $topCategory = array_key_first($sortedCats);
+    }
+
     // Calculate approved vs pending record counts across all record tables
     $approvedRecords = 0;
     $pendingRecords  = 0;
