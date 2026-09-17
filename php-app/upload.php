@@ -20,11 +20,11 @@ $activeYear  = active_academic_year();
 const PROOF_MAX_BYTES = 2 * 1024 * 1024;   // 2 MB
 
 /**
- * Save one uploaded proof file. Only a PDF (up to 2 MB) is accepted. The name on
- * disk is random with a checked extension, so nothing executable can be written
- * and the uploads folder can never be escaped. Returns [storedName|null, error|null].
+ * Save one uploaded proof file. Only a PDF (up to 2 MB) is accepted.
+ * Files are stored safely in UPLOAD_DIR with pattern record_<unique-id>_<timestamp>.pdf.
+ * Returns [storedName|null, error|null].
  */
-function save_upload_proof(?array $file, bool $required = true): array
+function save_upload_proof(?array $file, bool $required = false): array
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
@@ -32,34 +32,73 @@ function save_upload_proof(?array $file, bool $required = true): array
         }
         return [null, null];
     }
-    if (in_array($file['error'], [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)) {
-        return [null, 'That PDF is too large. Please keep it under 2 MB.'];
+
+    $errorCode = $file['error'] ?? UPLOAD_ERR_OK;
+    if ($errorCode !== UPLOAD_ERR_OK) {
+        return match ($errorCode) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => [null, 'The uploaded PDF exceeds the 2 MB size limit. Please upload a smaller file.'],
+            UPLOAD_ERR_PARTIAL   => [null, 'The file was only partially uploaded. Please try again.'],
+            UPLOAD_ERR_NO_TMP_DIR => [null, 'Server configuration error: missing temporary folder.'],
+            UPLOAD_ERR_CANT_WRITE => [null, 'Server error: failed to write file to disk.'],
+            UPLOAD_ERR_EXTENSION  => [null, 'A server extension stopped the file upload.'],
+            default               => [null, 'File upload failed. Please try again.'],
+        };
     }
-    if ($file['error'] !== UPLOAD_ERR_OK || !is_uploaded_file($file['tmp_name'])) {
-        return [null, 'The proof could not be uploaded.'];
+
+    if (!is_uploaded_file($file['tmp_name'])) {
+        return [null, 'The proof could not be uploaded (invalid temporary file).'];
     }
 
     // PDF only, by extension and by actual content.
-    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
     if ($ext !== 'pdf') {
         return [null, 'The proof must be a PDF file (.pdf).'];
     }
-    $mime = function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '';
-    if ($mime !== '' && stripos($mime, 'pdf') === false) {
-        return [null, 'That file is not a valid PDF.'];
-    }
+
     if ($file['size'] > PROOF_MAX_BYTES) {
         return [null, 'The PDF is larger than 2 MB. Please upload a smaller one.'];
     }
 
-    $folder = UPLOAD_DIR . '/proofs';
-    if (!is_dir($folder)) {
-        @mkdir($folder, 0775, true);
+    // Validate MIME type and binary header magic bytes (%PDF-)
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime = $finfo ? (string) finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
+    if ($finfo) {
+        finfo_close($finfo);
     }
-    $stored = bin2hex(random_bytes(16)) . '.pdf';
-    if (!move_uploaded_file($file['tmp_name'], $folder . '/' . $stored)) {
-        return [null, 'The proof could not be saved.'];
+    if ($mime !== '' && stripos($mime, 'pdf') === false && stripos($mime, 'octet-stream') === false) {
+        return [null, 'That file is not a valid PDF document.'];
     }
+
+    $handle = @fopen($file['tmp_name'], 'rb');
+    $header = $handle ? fread($handle, 4) : '';
+    if ($handle) {
+        fclose($handle);
+    }
+    if ($header !== '%PDF') {
+        return [null, 'That file is not a valid PDF document.'];
+    }
+
+    $baseFolder = rtrim(UPLOAD_DIR, '/\\');
+    if (!is_dir($baseFolder)) {
+        @mkdir($baseFolder, 0775, true);
+    }
+    $proofsFolder = $baseFolder . '/proofs';
+    if (!is_dir($proofsFolder)) {
+        @mkdir($proofsFolder, 0775, true);
+    }
+
+    $uniqueId = bin2hex(random_bytes(8));
+    $timestamp = time();
+    $stored = "record_{$uniqueId}_{$timestamp}.pdf";
+
+    $destPath = $baseFolder . '/' . $stored;
+    if (!move_uploaded_file($file['tmp_name'], $destPath) || !file_exists($destPath)) {
+        return [null, 'The proof could not be saved to the upload directory.'];
+    }
+
+    // Keep mirrored copy in proofs/ for backward compatibility with older links
+    @copy($destPath, $proofsFolder . '/' . $stored);
+
     return [$stored, null];
 }
 
@@ -392,6 +431,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $expectedFields = $requiredMap[$type] ?? [];
 
     foreach ($expectedFields as $fKey => $fLabel) {
+        if ($fKey === 'academic_year') {
+            continue; // Server-owned; automatically populated with $activeYear
+        }
         $val = trim((string) ($_POST[$fKey] ?? ''));
         if ($val === '') {
             $validationErrors[] = "{$fLabel} is required.";
@@ -418,8 +460,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Check Proof file upload (mandatory)
-    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, true);
+    // Check Proof file upload (optional)
+    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, false);
     if ($proofError !== null) {
         $validationErrors[] = $proofError;
     }
@@ -444,6 +486,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $values = [];
     $placeholders = [];
 
+    $editId = (int) input('edit_id');
+    if ($editId > 0) {
+        $setPairs = [];
+        $updateValues = [];
+        foreach ($_POST as $k => $v) {
+            if (!in_array($k, $allowed, true) || $v === '') continue;
+            $setPairs[] = "`$k` = ?";
+            $updateValues[] = $v;
+        }
+        if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
+            $setPairs[] = "`proof_file` = ?";
+            $updateValues[] = $proofStored;
+        }
+        $setPairs[] = "`status` = ?";
+        $updateValues[] = 'Approved';
+        $setPairs[] = "`updated_at` = NOW()";
+
+        try {
+            $sql = "UPDATE `$table` SET " . implode(', ', $setPairs) . " WHERE id = ?";
+            $updateValues[] = $editId;
+            $pdo->prepare($sql)->execute($updateValues);
+
+            require_once __DIR__ . '/models/Target.php';
+            sync_target_achieved_for_type($type);
+
+            flash('success', $types[$type]['label'] . ' updated and saved to database.');
+            redirect('/approvals.php');
+        } catch (\PDOException $e) {
+            error_log('upload.php update failed: ' . $e->getMessage());
+            flash('error', 'Failed to update record.');
+            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
+        }
+    }
+
     // Review chain: Faculty -> Coordinator -> HoD. A Coordinator's own upload
     // skips the Coordinator step; a HoD's or Admin's upload is already final.
     if (in_array($user['role'], ['HoD', 'Admin'], true)) {
@@ -457,6 +533,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
     if (in_array('academic_year', $tableColumns, true)) {
         $fields[] = 'academic_year'; $values[] = $effectiveYear; $placeholders[] = '?';
+    }
+    if (in_array('created_at', $tableColumns, true)) {
+        $fields[] = 'created_at';
+        $values[] = date('Y-m-d H:i:s');
+        $placeholders[] = '?';
     }
 
     // Faculty members always submit records for their assigned department
@@ -482,6 +563,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
         $fields[] = 'proof_file'; $values[] = $proofStored; $placeholders[] = '?';
     }
+    if ($proofStored !== null && in_array('proofs', $tableColumns, true) && !in_array('proofs', $fields, true)) {
+        $fields[] = 'proofs'; $values[] = json_encode([$proofStored]); $placeholders[] = '?';
+    }
 
     try {
         $sql = "INSERT INTO `$table` (" . implode(',', $fields) . ") VALUES (" . implode(',', $placeholders) . ")";
@@ -495,7 +579,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $where = $initialStatus === 'Approved' ? 'recorded' : 'submitted for review';
         flash('success', $types[$type]['label'] . ' ' . $where . '.');
+        $_SESSION['submitted_draft_type'] = $type;
     } catch (\PDOException $e) {
+        if ($proofStored !== null) {
+            @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
+            @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
+        }
         error_log('upload.php insert failed: ' . $e->getMessage());
         $err = 'Sorry, that record could not be saved. Please check the fields and try again.';
         if (defined('APP_DEBUG') && APP_DEBUG) {
@@ -518,12 +607,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Current user's records
 $effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
 $myRecords = my_records($user['id']);
+<<<<<<< HEAD
 $tabsToShow = $uploadFlow ? array_intersect_key($types, array_flip($typeKeys)) : $types;
 $defaultType = $typeKeys[0] ?? 'journal';
 $selectedType = trim((string)($_GET['type'] ?? $defaultType));
 if (!isset($types[$selectedType]) || !in_array($selectedType, $typeKeys, true)) {
     $selectedType = $defaultType;
 }
+=======
+$submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
+unset($_SESSION['submitted_draft_type']);
+$selectedType = trim((string)($_GET['type'] ?? 'journal'));
+if (!isset($types[$selectedType])) $selectedType = 'journal';
+>>>>>>> b4b4e74ccd8fdc44a84aac5fb5e8d46811b8de3c
 
 $selIdx    = array_search($selectedType, $typeKeys, true);
 $isLast    = $selIdx === count($typeKeys) - 1;
@@ -585,36 +681,81 @@ require __DIR__ . '/inc/header.php';
 
 <!-- Type selector tabs -->
 <div class="card" style="margin-bottom:16px">
+<<<<<<< HEAD
   <div class="card-body js-category-nav-container" style="padding:8px 16px; overflow-x:auto; white-space:nowrap">
     <?php foreach ($tabsToShow as $key => $t): ?>
+=======
+  <div class="card-body js-category-nav-container" style="padding:8px 16px 14px; overflow-x:auto; white-space:nowrap; position:relative; scrollbar-width:thin;">
+    <?php foreach ($types as $key => $t): ?>
+>>>>>>> b4b4e74ccd8fdc44a84aac5fb5e8d46811b8de3c
       <a href="<?= e(url('upload.php?type=' . $key)) ?>"
          class="btn btn-sm js-category-tab <?= $selectedType === $key ? 'btn-primary active' : 'btn-ghost' ?>"
-         style="margin:4px 2px; height:32px; font-size:12px"><?= e($t['label']) ?></a>
+         data-type="<?= e($key) ?>"
+         style="margin:4px 3px; height:32px; font-size:12px; position:relative; z-index:1; flex-shrink:0"><?= e($t['label']) ?></a>
     <?php endforeach; ?>
+    <!-- Sliding active-tab indicator line -->
+    <div class="js-category-indicator" id="categoryNavIndicator"
+         style="position:absolute; bottom:5px; height:3px; background:var(--orange-500, #FF4F01); border-radius:3px; z-index:2; pointer-events:none; left:0; width:0; transition:transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), width 0.28s cubic-bezier(0.32, 0.72, 0, 1); will-change:transform, width;"></div>
   </div>
 </div>
 
 <script>
 (function () {
+  var container = document.querySelector('.js-category-nav-container');
+  var indicator = document.getElementById('categoryNavIndicator');
+  if (!container || !indicator) return;
+
+  function getActiveTab() {
+    return container.querySelector('.js-category-tab.active') ||
+           container.querySelector('.js-category-tab.btn-primary') ||
+           container.querySelector('.js-category-tab');
+  }
+
+  /**
+   * Dynamically position the sliding indicator directly underneath the active tab.
+   * Uses DOM measurements: active tab position, container position, and current scrollLeft.
+   */
+  function updateIndicator(activeElement, smooth) {
+    if (!activeElement || !container || !indicator) return;
+
+    var containerRect = container.getBoundingClientRect();
+    var tabRect = activeElement.getBoundingClientRect();
+    var currentScroll = container.scrollLeft;
+
+    // Dynamic calculation based on active tab position, container position, and current scrollLeft
+    var targetLeft = (tabRect.left - containerRect.left - (container.clientLeft || 0)) + currentScroll;
+    var targetWidth = tabRect.width || activeElement.offsetWidth;
+
+    if (smooth) {
+      indicator.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), width 0.28s cubic-bezier(0.32, 0.72, 0, 1)';
+    } else {
+      indicator.style.transition = 'none';
+    }
+
+    indicator.style.width = Math.round(targetWidth) + 'px';
+    indicator.style.transform = 'translateX(' + Math.round(targetLeft) + 'px)';
+  }
+
+  /**
+   * Automatically scroll the tab container so that the active tab is comfortably in view.
+   */
   function ensureActiveCategoryVisible(activeElement, smooth) {
-    if (!activeElement) return;
-    var container = activeElement.closest('.js-category-nav-container') || activeElement.parentElement;
-    if (!container) return;
+    if (!activeElement || !container) return;
 
     var containerRect = container.getBoundingClientRect();
     var itemRect = activeElement.getBoundingClientRect();
+    var padding = 24;
 
     var itemLeft = itemRect.left - containerRect.left;
     var itemRight = itemRect.right - containerRect.left;
-    var padding = 16;
 
     var currentScroll = container.scrollLeft;
     var targetScroll = currentScroll;
 
-    if (itemLeft < padding) {
-      targetScroll += (itemLeft - padding);
-    } else if (itemRight > (container.clientWidth - padding)) {
-      targetScroll += (itemRight - container.clientWidth + padding);
+    // Center the active tab in view if it is near or beyond visible edges
+    if (itemLeft < padding || itemRight > (container.clientWidth - padding)) {
+      var itemCenter = activeElement.offsetLeft + (activeElement.offsetWidth / 2);
+      targetScroll = itemCenter - (container.clientWidth / 2);
     } else {
       return;
     }
@@ -631,25 +772,59 @@ require __DIR__ . '/inc/header.php';
     }
   }
 
-  function initCategoryNavScroll() {
-    var activeTab = document.querySelector('.js-category-nav-container .btn-primary, .js-category-nav-container .active');
+  // Handle tab clicks: smoothly slide indicator and scroll to clicked tab
+  var tabs = container.querySelectorAll('.js-category-tab');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+
+      tabs.forEach(function (t) {
+        t.classList.remove('btn-primary', 'active');
+        t.classList.add('btn-ghost');
+      });
+      this.classList.remove('btn-ghost');
+      this.classList.add('btn-primary', 'active');
+
+      updateIndicator(this, true);
+      ensureActiveCategoryVisible(this, true);
+    });
+  });
+
+  // Keep indicator aligned during horizontal scrolling
+  container.addEventListener('scroll', function () {
+    var activeTab = getActiveTab();
     if (activeTab) {
+      updateIndicator(activeTab, false);
+    }
+  }, { passive: true });
+
+  // Initialise on load and after initial rendering
+  function initNav() {
+    var activeTab = getActiveTab();
+    if (activeTab) {
+      updateIndicator(activeTab, false);
       ensureActiveCategoryVisible(activeTab, false);
       setTimeout(function () {
+        updateIndicator(activeTab, false);
         ensureActiveCategoryVisible(activeTab, true);
       }, 50);
+      setTimeout(function () {
+        updateIndicator(activeTab, false);
+      }, 200);
     }
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initCategoryNavScroll);
+    document.addEventListener('DOMContentLoaded', initNav);
   } else {
-    initCategoryNavScroll();
+    initNav();
   }
 
+  // Window resize handler
   window.addEventListener('resize', function () {
-    var activeTab = document.querySelector('.js-category-nav-container .btn-primary, .js-category-nav-container .active');
+    var activeTab = getActiveTab();
     if (activeTab) {
+      updateIndicator(activeTab, false);
       ensureActiveCategoryVisible(activeTab, false);
     }
   });
@@ -672,7 +847,7 @@ require __DIR__ . '/inc/header.php';
 <!-- Upload form -->
 <div class="card" style="margin-bottom:20px">
   <div class="card-head">
-    <div><div class="card-title">New <?= e($types[$selectedType]['label']) ?></div><div class="card-sub">Fill in the details and submit for review</div></div>
+    <div><div class="card-title">New <?= e($types[$selectedType]['label']) ?> <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span></div><div class="card-sub">Fill in the details and submit for review</div></div>
     <?php if (record_report_spec($selectedType) !== null): ?>
       <a class="btn btn-secondary btn-sm" href="<?= e(url('record-report.php?type=' . $selectedType . '&format=word')) ?>"><?= icon('download') ?> Download this report</a>
     <?php endif; ?>
@@ -868,10 +1043,10 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
       <?php endif; ?>
 
-        <!-- Proof / attachment (mandatory) — carried onto the report -->
+        <!-- Proof / attachment (optional) — carried onto the report -->
         <div class="field" style="grid-column:span 2">
-          <label>Proof / Attachment <span class="req">*</span> <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
-          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf" required>
+          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
+          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
           <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
         </div>
       </div>
@@ -969,41 +1144,84 @@ require __DIR__ . '/inc/header.php';
         var form = document.querySelector('.card-body form');
         if (!form) return;
 
-        var userId = <?= json_encode((int)$user['id']) ?>;
+        var activeYear = <?= json_encode($activeYear) ?>;
         var recordType = <?= json_encode($selectedType) ?>;
-        var storageKey = 'faculty_upload_draft_' + userId + '_' + recordType;
+        var storageKey = 'atts_upload_draft_' + activeYear + '_' + recordType;
 
-        // Clear draft for current category if form was successfully submitted
-        var alertSuccess = document.querySelector('.alert-success');
-        if (alertSuccess && alertSuccess.textContent.indexOf('submitted for review') !== -1) {
+        // Clear submitted category draft if server indicated successful insert
+        var submittedDraftType = <?= json_encode($submittedDraftType) ?>;
+        if (submittedDraftType) {
           try {
-            sessionStorage.removeItem(storageKey);
+            sessionStorage.removeItem('atts_upload_draft_' + activeYear + '_' + submittedDraftType);
+            sessionStorage.removeItem('faculty_upload_draft_' + <?= json_encode((int)$user['id']) ?> + '_' + submittedDraftType);
           } catch (e) {}
+        }
+
+        function showDraftStatus(text) {
+          var statusEl = document.querySelector('.js-draft-status');
+          if (!statusEl) return;
+          statusEl.textContent = text;
+          statusEl.style.opacity = '1';
+          setTimeout(function () {
+            statusEl.style.opacity = '0';
+          }, 2000);
+        }
+
+        function getDraftData() {
+          var draft = {};
+          var elements = form.querySelectorAll('input, select, textarea');
+          elements.forEach(function (el) {
+            var name = el.name;
+            if (!name || name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
+            if (el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
+
+            if (el.type === 'checkbox') {
+              draft[name] = el.checked;
+            } else if (el.type === 'radio') {
+              if (el.checked) {
+                draft[name] = el.value;
+              }
+            } else {
+              draft[name] = el.value;
+            }
+          });
+          return draft;
+        }
+
+        function hasDraftData(draft) {
+          if (!draft || typeof draft !== 'object') return false;
+          var keys = Object.keys(draft);
+          for (var i = 0; i < keys.length; i++) {
+            var k = keys[i];
+            if (k === 'faculty_name' || k === 'department' || k === 'academic_year') continue;
+            var val = draft[k];
+            if (typeof val === 'string' && val.trim() !== '') return true;
+            if (typeof val === 'boolean' && val) return true;
+          }
+          return false;
         }
 
         function saveDraft() {
           try {
-            var draft = {};
-            var elements = form.querySelectorAll('input, select, textarea');
-            elements.forEach(function (el) {
-              var name = el.name;
-              if (!name || name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
-              if (el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
-
-              if (el.type === 'checkbox' || el.type === 'radio') {
-                if (el.checked) {
-                  draft[name] = el.value || true;
-                }
-              } else {
-                draft[name] = el.value;
-              }
-            });
-            sessionStorage.setItem(storageKey, JSON.stringify(draft));
+            var draft = getDraftData();
+            if (hasDraftData(draft)) {
+              sessionStorage.setItem(storageKey, JSON.stringify(draft));
+              showDraftStatus('Draft saved');
+            } else {
+              sessionStorage.removeItem(storageKey);
+            }
           } catch (e) {
             console.warn('Unable to save form draft to sessionStorage:', e);
           }
         }
 
+        var saveTimeout = null;
+        function debouncedSaveDraft() {
+          clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(saveDraft, 200);
+        }
+
+        var isRestoring = false;
         function restoreDraft() {
           try {
             var raw = sessionStorage.getItem(storageKey);
@@ -1011,34 +1229,94 @@ require __DIR__ . '/inc/header.php';
             var draft = JSON.parse(raw);
             if (!draft || typeof draft !== 'object') return;
 
+            isRestoring = true;
+            var restoredAny = false;
+
+            // Phase 1: Restore selects first and trigger change event so dynamic boxes ("Others") reveal
             Object.keys(draft).forEach(function (name) {
-              if (name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
+              var el = form.elements[name];
+              if (!el) return;
+              if (el.tagName === 'SELECT') {
+                el.value = draft[name];
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                restoredAny = true;
+              }
+            });
 
-              var item = form.elements[name];
-              if (!item) return;
+            // Phase 2: Restore text, number, date, URL, textarea, checkbox, radio
+            Object.keys(draft).forEach(function (name) {
+              var el = form.elements[name];
+              if (!el) return;
+              if (el.tagName === 'SELECT') return;
 
-              var nodes = (item instanceof NodeList || item instanceof HTMLCollection) ? Array.prototype.slice.call(item) : [item];
+              var nodes = (el instanceof NodeList || el instanceof HTMLCollection) ? Array.prototype.slice.call(el) : [el];
 
-              nodes.forEach(function (el) {
-                if (!el || el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
+              nodes.forEach(function (input) {
+                if (!input || input.type === 'file' || input.type === 'password' || input.type === 'hidden') return;
 
-                if (el.type === 'checkbox' || el.type === 'radio') {
-                  el.checked = (el.value === draft[name] || draft[name] === true);
-                } else if (el.tagName === 'SELECT') {
-                  el.value = draft[name];
-                  el.dispatchEvent(new Event('change', { bubbles: true }));
+                if (input.type === 'checkbox') {
+                  input.checked = !!draft[name];
+                  restoredAny = true;
+                } else if (input.type === 'radio') {
+                  input.checked = (input.value === draft[name]);
+                  restoredAny = true;
                 } else {
-                  el.value = draft[name];
+                  input.value = draft[name];
+                  restoredAny = true;
                 }
               });
             });
+
+            // Phase 3: Resync any .js-other boxes specifically
+            document.querySelectorAll('.js-other').forEach(function (sel) {
+              var otherName = sel.getAttribute('data-other');
+              var box = otherName ? form.elements[otherName] : null;
+              if (box) {
+                var on = sel.value === 'Others';
+                box.style.display = on ? '' : 'none';
+                box.required = on;
+                if (on && draft[otherName] !== undefined) {
+                  box.value = draft[otherName];
+                }
+              }
+            });
+
+            if (restoredAny) {
+              showDraftStatus('Draft restored');
+            }
           } catch (e) {
             console.warn('Unable to restore form draft from sessionStorage:', e);
+          } finally {
+            isRestoring = false;
           }
         }
 
-        form.addEventListener('input', saveDraft);
-        form.addEventListener('change', saveDraft);
+        form.addEventListener('input', function () {
+          if (isRestoring) return;
+          debouncedSaveDraft();
+        });
+        form.addEventListener('change', function () {
+          if (isRestoring) return;
+          saveDraft();
+        });
+
+        // Immediately save draft upon clicking any category tab before navigation unloads the DOM
+        document.querySelectorAll('.js-category-tab').forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            clearTimeout(saveTimeout);
+            saveDraft();
+          });
+        });
+
+        // Flush on beforeunload and pagehide
+        window.addEventListener('beforeunload', function () {
+          clearTimeout(saveTimeout);
+          saveDraft();
+        });
+        window.addEventListener('pagehide', function () {
+          clearTimeout(saveTimeout);
+          saveDraft();
+        });
 
         if (document.readyState === 'loading') {
           document.addEventListener('DOMContentLoaded', restoreDraft);
@@ -1126,13 +1404,13 @@ require __DIR__ . '/inc/header.php';
           <td><span class="badge badge-neutral"><?= e($r['_type_label']) ?></span></td>
           <td>
             <?php if (!empty($r['proof_file'])): ?>
-              <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/proofs/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
+              <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
             <?php else: ?>
               <span class="card-sub">—</span>
             <?php endif; ?>
           </td>
           <td><span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span></td>
-          <td class="card-sub"><?= e(time_ago($r['created_at'])) ?></td>
+          <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
         </tr>
       <?php endforeach; ?></tbody></table></div>
     <?php endif; ?>

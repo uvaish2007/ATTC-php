@@ -529,6 +529,7 @@ require __DIR__ . '/inc/header.php';
         <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
         <input type="hidden" name="department" value="<?= e($department) ?>">
         <input type="hidden" name="category" value="<?= e($category) ?>">
+        <input type="hidden" name="em" value="<?= e($em) ?>">
         <label class="fb-field fb-search" style="min-width:240px;">
           <?= icon('search', 14) ?>
           <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">
