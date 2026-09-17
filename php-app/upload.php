@@ -4,6 +4,7 @@ require_once __DIR__ . '/inc/record_specs.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';   // academic_years()
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM1 lock
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
@@ -109,6 +110,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $targetYear = trim((string) input('academic_year', $activeYear));
     if ($user['role'] !== 'Admin' && (academic_year_is_locked($activeYear) || academic_year_is_locked($targetYear))) {
         flash('error', "Academic year {$targetYear} cycle is currently locked by the Administrator. New record submissions for {$targetYear} are frozen.");
+        redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
+    }
+
+    // FEAT-07: once EM1 has closed and before EM2 opens, a new record could only
+    // be a late EM1 submission, and EM1 is locked. Checked here, before any file
+    // is stored or row inserted, so a direct POST cannot get past it.
+    if ($emBlock = em_submission_block_reason($user['role'], $activeYear)) {
+        flash('error', $emBlock);
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
 

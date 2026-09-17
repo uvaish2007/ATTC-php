@@ -139,6 +139,31 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
+<?php // FEAT-07: tell reviewers which pending records the server will refuse.
+  $emApprovals     = em_status($activeYear);
+  $emLockedPending = $emApprovals['em1_locked']
+      ? count(array_filter($records, fn($r) => em_record_is_locked($user['role'], $r['created_at'] ?? null, $activeYear)))
+      : 0;
+?>
+<?php if ($emApprovals['em1_locked'] && !$isYearLocked): ?>
+  <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px;color:#991B1B">EM1 is Locked</div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">
+        EM1 closed on <?= e(date('d M Y', strtotime($emApprovals['schedule']['em1_end']))) ?>. Records submitted during EM1 are read-only.
+        <?php if ($user['role'] === 'Admin'): ?>
+          As an Administrator, you retain review authority.
+        <?php elseif ($emLockedPending): ?>
+          <?= (int) $emLockedPending ?> pending record<?= $emLockedPending === 1 ? ' below was' : 's below were' ?> submitted during EM1 and can no longer be approved or rejected.
+        <?php endif; ?>
+      </div>
+    </div>
+  </div>
+<?php endif; ?>
+
 <?php if (empty($records)): ?>
   <div class="card"><div class="card-body" style="padding:0">
     <div class="empty" style="padding:80px 24px">

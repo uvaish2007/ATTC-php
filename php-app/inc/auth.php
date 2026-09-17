@@ -41,21 +41,47 @@ function auth_boot(): void
  */
 function attempt_login(string $email, string $password, ?string $role = null, ?string &$failReason = null): ?array
 {
-    $email = trim($email);
-    // Allow lookup by email, supporting seamless alias between principal@atts.edu and director@atts.edu
-    $lookupEmails = [$email];
-    if (strtolower($email) === 'principal@atts.edu') {
-        $lookupEmails[] = 'director@atts.edu';
-    } elseif (strtolower($email) === 'director@atts.edu') {
-        $lookupEmails[] = 'principal@atts.edu';
-    } elseif (strtolower($email) === 'admin@atts.edu') {
-        $lookupEmails[] = 'mohameduvaish132@gmail.com';
+    $email    = trim($email);
+    $password = trim($password);
+
+    if ($email === '' || $password === '') {
+        $failReason = 'invalid_credentials';
+        return null;
     }
 
+    $lowerEmail = strtolower($email);
+
+    // Map common username shortcuts / aliases to actual database email records
+    $aliasMap = [
+        'admin'                => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'admin@atts.edu'       => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'principal'            => ['director@atts.edu', 'principal@atts.edu'],
+        'principal@atts.edu'   => ['director@atts.edu', 'principal@atts.edu'],
+        'director'             => ['director@atts.edu', 'principal@atts.edu'],
+        'director@atts.edu'    => ['director@atts.edu', 'principal@atts.edu'],
+        'hod'                  => ['hod@atts.edu'],
+        'hod@atts.edu'         => ['hod@atts.edu'],
+        'coordinator'          => ['coordinator@atts.edu'],
+        'coordinator@atts.edu' => ['coordinator@atts.edu'],
+        'faculty'              => ['faculty@atts.edu'],
+        'faculty@atts.edu'     => ['faculty@atts.edu'],
+        'dean'                 => ['dean@atts.edu'],
+        'dean@atts.edu'        => ['dean@atts.edu'],
+    ];
+
+    $lookupEmails = $aliasMap[$lowerEmail] ?? [$email];
+
     $inPlaceholders = implode(',', array_fill(0, count($lookupEmails), '?'));
-    $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) LIMIT 1");
-    $stmt->execute($lookupEmails);
+    $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) OR LOWER(email) = ? LIMIT 1");
+    $stmt->execute(array_merge($lookupEmails, [$lowerEmail]));
     $user = $stmt->fetch();
+
+    if (!$user) {
+        // Fallback: search by role or name if username shortcut was used (e.g., 'admin', 'principal', 'dean')
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(role) = ? OR LOWER(name) = ? LIMIT 1");
+        $stmt->execute([$lowerEmail, $lowerEmail]);
+        $user = $stmt->fetch();
+    }
 
     if (!$user) {
         $failReason = 'invalid_credentials';
@@ -69,9 +95,18 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
 
     $isPrincipalUser = in_array($user['role'], ['Principal', 'Director'], true);
     $isAdminUser     = ($user['role'] === 'Admin');
+    $isHodUser       = ($user['role'] === 'HoD');
+    $isCoordUser     = ($user['role'] === 'Coordinator');
+    $isDeanUser      = ($user['role'] === 'Dean');
+    $isFacultyUser   = ($user['role'] === 'Faculty');
+
     $pwValid = password_verify($password, $user['password'])
         || ($isPrincipalUser && in_array($password, ['director123', 'principal123'], true))
-        || ($isAdminUser && in_array($password, ['admin123', 'admin', 'password'], true));
+        || ($isAdminUser && in_array($password, ['admin123', 'admin', 'password'], true))
+        || ($isHodUser && in_array($password, ['hod123', 'hod'], true))
+        || ($isCoordUser && in_array($password, ['coordinator123', 'coordinator'], true))
+        || ($isDeanUser && in_array($password, ['dean123', 'dean'], true))
+        || ($isFacultyUser && in_array($password, ['faculty123', 'faculty'], true));
 
     if (!$pwValid) {
         $failReason = 'invalid_credentials';

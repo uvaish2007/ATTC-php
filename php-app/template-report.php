@@ -110,7 +110,7 @@ if ($format === 'word') {
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
         'EXECUTIVE MEETING REPORT - TARGETS FIXED & ACHIEVED',
-        'Department: ' . ($department ?: 'ALL DEPARTMENTS'),
+        'Department: ' . ($department ? department_full_name($department) : 'ALL DEPARTMENTS'),
         'Report Date: ' . $today
     ];
 
@@ -307,6 +307,6 @@ foreach ($deptsToRender as $dIndex => $dept):
   </table>
 
 <?php
-    report_signoff(['HOD' . ($dept ? ' / ' . $dept : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+    report_signoff(['HOD' . ($dept ? ' / ' . department_full_name($dept) : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
 endforeach;
 report_document_foot();

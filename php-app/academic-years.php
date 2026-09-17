@@ -1,16 +1,17 @@
-<?php
+`<?php
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Record.php';
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 schedule
 
 $user = require_role(['Admin']);
 
 // Active operating academic year
 $activeYear     = active_academic_year();
 $currentCalYear = current_academic_year();
-$allYears       = academic_years();
+$allYears       = academic_years();          // newest first, up to the current term
 
-// Selected academic year to view & manage (defaults to activeYear, only current year and past years)
+// The year being viewed (defaults to the active one; never a future year).
 $selectedYear = trim((string) input('year', $activeYear));
 if (!is_valid_academic_year($selectedYear) || !in_array($selectedYear, $allYears, true)) {
     $selectedYear = $activeYear;
@@ -20,87 +21,122 @@ if (!is_valid_academic_year($selectedYear) || !in_array($selectedYear, $allYears
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
+    $year   = (string) input('academic_year', $selectedYear);
+    // Come back to the tab the change was made from.
+    $tabQs  = input('tab') === 'registry' ? '&tab=registry' : '';
 
     if ($action === 'activate') {
-        $year = (string) input('academic_year');
         [$ok, $msg] = activate_academic_year($year, (int) $user['id']);
-        flash($ok ? 'success' : 'error', $msg);
-        redirect('/academic-years.php?year=' . urlencode($year));
-
     } elseif ($action === 'finish_executive_meeting') {
-        $year          = (string) input('academic_year', $selectedYear);
-        $meetingNumber = (string) input('meeting_number');
-        $meetingDate   = (string) input('meeting_date', date('Y-m-d'));
-        $notes         = (string) input('notes', '');
-        [$ok, $msg] = executive_meeting_finish_and_lock($year, $meetingNumber, $meetingDate, $notes, (int) $user['id']);
-        flash($ok ? 'success' : 'error', $msg);
-        redirect('/academic-years.php?year=' . urlencode($year));
-
+        [$ok, $msg] = executive_meeting_finish_and_lock(
+            $year, (string) input('meeting_number'), (string) input('meeting_date', date('Y-m-d')),
+            (string) input('notes', ''), (int) $user['id']
+        );
     } elseif ($action === 'unlock_cycle') {
-        $year   = (string) input('academic_year', $selectedYear);
-        $reason = (string) input('reason', '');
-        [$ok, $msg] = executive_meeting_unlock($year, (int) $user['id'], $reason);
-        flash($ok ? 'success' : 'error', $msg);
-        redirect('/academic-years.php?year=' . urlencode($year));
-
+        [$ok, $msg] = executive_meeting_unlock($year, (int) $user['id'], (string) input('reason', ''));
     } elseif ($action === 'toggle_lock') {
-        $year      = (string) input('academic_year', $selectedYear);
-        $lockState = (input('lock_state') === '1');
-        $note      = (string) input('note', '');
-        [$ok, $msg] = academic_year_set_lock($year, $lockState, (int) $user['id'], $note);
+        [$ok, $msg] = academic_year_set_lock($year, input('lock_state') === '1', (int) $user['id'], (string) input('note', ''));
+    } elseif ($action === 'save_em_schedule') {
+        // FEAT-07. This page is already require_role(['Admin']) and CSRF-checked
+        // above; em_schedule_save() validates every date server-side.
+        [$ok, $msg] = em_schedule_save(
+            $year,
+            (string) input('em1_start'), (string) input('em1_end'),
+            (string) input('em2_start'), (string) input('em2_end'),
+            (int) $user['id']
+        );
+        if (!$ok) {
+            // Keep what the Admin typed so a validation error doesn't wipe the form.
+            $_SESSION['em_schedule_draft'] = [
+                'year'      => $year,
+                'em1_start' => (string) input('em1_start'), 'em1_end' => (string) input('em1_end'),
+                'em2_start' => (string) input('em2_start'), 'em2_end' => (string) input('em2_end'),
+            ];
+        }
         flash($ok ? 'success' : 'error', $msg);
-        redirect('/academic-years.php?year=' . urlencode($year));
+        redirect('/academic-years.php?year=' . urlencode($year) . '#emScheduleBox');
+    } else {
+        [$ok, $msg] = [false, 'Unknown action.'];
     }
+    flash($ok ? 'success' : 'error', $msg);
+    redirect('/academic-years.php?year=' . urlencode($year) . $tabQs);
 }
 
-// Metadata for the selected academic year
-$selectedLockInfo   = academic_year_lock_info($selectedYear);
-$selectedStats      = academic_year_summary_stats($selectedYear);
-$selectedExecMeetings = executive_meetings_for_year($selectedYear);
-$selectedExecCount  = count($selectedExecMeetings);
-$selectedLatestMeeting = $selectedExecMeetings[0] ?? null;
-$selectedNextMeetingNum = $selectedExecCount + 1;
-$isSelectedActive   = ($selectedYear === $activeYear);
-$isSelectedCurrentCal = ($selectedYear === $currentCalYear);
+// ---- Every year at once (registry, picker, stepper) -------------------------
+$overview        = academic_years_overview($allYears);
+$meetingsReady   = executive_meetings_ready();
 
-// Detailed Category Breakdown for the selected academic year
+// ---- The year being viewed --------------------------------------------------
+$selectedLockInfo      = academic_year_lock_info($selectedYear);
+$isLocked              = $selectedLockInfo['locked'];
+$selectedStats         = $overview[$selectedYear];
+$selectedExecMeetings  = executive_meetings_for_year($selectedYear);
+$selectedExecCount     = count($selectedExecMeetings);
+$selectedLatestMeeting = $selectedExecMeetings[0] ?? null;
+$isSelectedActive      = ($selectedYear === $activeYear);
+
+// FEAT-07: the EM1/EM2 schedule for the year being viewed. The year comes from
+// this page's existing selection, not a second picker.
+$selectedEmStatus   = em_status($selectedYear);
+$selectedEmSchedule = $selectedEmStatus['schedule'];
+$selectedEmSpan     = em_academic_year_span($selectedYear);
+$emDraft            = $_SESSION['em_schedule_draft'] ?? null;
+unset($_SESSION['em_schedule_draft']);
+if ($emDraft && ($emDraft['year'] ?? null) !== $selectedYear) {
+    $emDraft = null;
+}
+$emValue = fn(string $k): string => (string) ($emDraft[$k] ?? $selectedEmSchedule[$k] ?? '');
+
+// Suggest the next meeting number: one past the highest numeric one so far.
+$nums = array_map('intval', array_filter(array_column($selectedExecMeetings, 'meeting_number'), 'ctype_digit'));
+$selectedNextMeetingNum = ($nums ? max($nums) : 0) + 1;
+
+// Where a year sits relative to the operating year. The current calendar term
+// is often NEWER than the operating year (the calendar rolls over in June;
+// the Admin switches when ready) — that is not a past year.
+$yearStart = fn(string $y): int => (int) substr($y, 0, 4);
+$yearKind  = fn(string $y): string => $y === $activeYear ? 'active'
+                                     : ($yearStart($y) > $yearStart($activeYear) ? 'newer' : 'past');
+$kindLabel = ['active' => 'Active', 'newer' => 'Not yet active', 'past' => 'Past'];
+$selectedKind = $yearKind($selectedYear);
+
+// Newer / older neighbours for the stepper ($allYears runs newest first).
+$idx       = array_search($selectedYear, $allYears, true);
+$newerYear = $allYears[$idx - 1] ?? null;
+$olderYear = $allYears[$idx + 1] ?? null;
+
+// ---- Records by category (viewed year) --------------------------------------
 $selectedCategoryData = [];
 foreach (record_types() as $k => $t) {
     $tbl = $t['table'];
-    $cols = target_record_table_columns($tbl);
-    if (!in_array('academic_year', $cols, true)) continue;
+    if (!in_array('academic_year', target_record_table_columns($tbl), true)) continue;
     try {
-        $stmt = db()->prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) as approved FROM `{$tbl}` WHERE academic_year = ?");
+        $stmt = db()->prepare("SELECT COUNT(*) AS total, SUM(status = 'Approved') AS approved FROM `{$tbl}` WHERE academic_year = ?");
         $stmt->execute([$selectedYear]);
         $r = $stmt->fetch(PDO::FETCH_ASSOC);
-        $total = (int) ($r['total'] ?? 0);
-        $approved = (int) ($r['approved'] ?? 0);
-        if ($total > 0 || $approved > 0) {
-            $selectedCategoryData[$k] = [
-                'label'    => $t['label'],
-                'total'    => $total,
-                'approved' => $approved,
-            ];
+        if ((int) ($r['total'] ?? 0) > 0) {
+            $selectedCategoryData[$k] = ['label' => $t['label'], 'total' => (int) $r['total'], 'approved' => (int) $r['approved']];
         }
     } catch (\PDOException $e) {}
 }
 
-// Department Targets Breakdown for the selected academic year
+// ---- Targets by department (viewed year) ------------------------------------
+// Every target status has a column, so each row adds up to its total.
 $selectedDeptTargets = [];
 try {
     $stmt = db()->prepare(
-        "SELECT department, COUNT(*) as total_targets,
-                SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) as approved_targets,
-                SUM(CASE WHEN status='Dean Pending' THEN 1 ELSE 0 END) as pending_targets,
-                SUM(CASE WHEN status='Draft' THEN 1 ELSE 0 END) as draft_targets
-         FROM targets
-         WHERE academic_year = ?
-         GROUP BY department
-         ORDER BY department ASC"
+        "SELECT department, COUNT(*) AS total_targets,
+                SUM(status = 'Approved')          AS approved_targets,
+                SUM(status = 'Dean Pending')      AS pending_targets,
+                SUM(status = 'Changes Requested') AS returned_targets,
+                SUM(status = 'Draft')             AS draft_targets
+         FROM targets WHERE academic_year = ?
+         GROUP BY department ORDER BY department ASC"
     );
     $stmt->execute([$selectedYear]);
     $selectedDeptTargets = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (\PDOException $e) {}
+<<<<<<< HEAD
 
 // Calendar calculation for the current real-time month
 $now = new DateTime('now', new DateTimeZone(defined('APP_TIMEZONE') ? APP_TIMEZONE : (string) env('APP_TIMEZONE', 'Asia/Kolkata')));
@@ -133,666 +169,439 @@ if ($now < $ayStartDate) {
     } else {
         $cyclePhase = 'Phase 3: IQAC Audit & Year-End Lock Cycle';
     }
+=======
+$tgtTotals = ['approved' => 0, 'pending' => 0, 'returned' => 0, 'draft' => 0];
+foreach ($selectedDeptTargets as $dt) {
+    $tgtTotals['approved'] += (int) $dt['approved_targets'];
+    $tgtTotals['pending']  += (int) $dt['pending_targets'];
+    $tgtTotals['returned'] += (int) $dt['returned_targets'];
+    $tgtTotals['draft']    += (int) $dt['draft_targets'];
+>>>>>>> 20b1106e91e8192bbc6d9af1710fa281ac7ef570
 }
+
+// ---- The term, June to May --------------------------------------------------
+// Matches current_academic_year_start(): the year rolls over on 1 June. (This
+// page used to draw a July–June term, so in June it disagreed with the rest
+// of the system about which year was current.)
+$ayStartYear = $yearStart($selectedYear);
+$termStart   = new DateTime(sprintf('%d-06-01', $ayStartYear));
+$termEnd     = new DateTime(sprintf('%d-05-31', $ayStartYear + 1));
+$today       = new DateTime('today');
+if ($today < $termStart) {
+    $termState = 'upcoming'; $monthNow = -1;
+} elseif ($today > $termEnd) {
+    $termState = 'ended';    $monthNow = 12;
+} else {
+    $termState = 'running';
+    $monthNow  = ((int) $today->format('n') - 6 + 12) % 12;    // 0 = June … 11 = May
+}
+$termPct = $termState === 'running'
+    ? (int) round(($today->getTimestamp() - $termStart->getTimestamp()) / max(1, $termEnd->getTimestamp() - $termStart->getTimestamp()) * 100)
+    : ($termState === 'ended' ? 100 : 0);
+$phases = [
+    ['Odd semester',  'Setup & data entry',      0, 3],
+    ['Even semester', 'Progress & verification', 4, 8],
+    ['IQAC audit',    'Year-end review & lock',  9, 11],
+];
+
+$fmtDate = fn(?string $d): string => $d ? date('d M Y', strtotime($d)) : '';
 
 $pageTitle  = 'Academic Year & Lock Cycle';
 $breadcrumb = 'Academic Year';
 require __DIR__ . '/inc/header.php';
 ?>
 
-<style>
-/* ---- Academic Year & Lock Cycle UI Enhancements ---- */
-.ay-tabs-nav {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 2px solid var(--navy-100, #e2e8f0);
-  margin-bottom: 24px;
-  overflow-x: auto;
-  padding-bottom: 2px;
-}
-.ay-tab-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 18px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--navy-600, #475569);
-  background: transparent;
-  border: none;
-  border-bottom: 3px solid transparent;
-  border-radius: 8px 8px 0 0;
-  cursor: pointer;
-  transition: all 0.18s ease;
-  white-space: nowrap;
-  margin-bottom: -2px;
-}
-.ay-tab-btn:hover {
-  color: var(--navy-900, #0f172a);
-  background: var(--navy-50, #f8fafc);
-}
-.ay-tab-btn.active {
-  color: var(--orange-600, #ea580c);
-  border-bottom-color: var(--orange-500, #ff4f01);
-  background: rgba(255, 79, 1, 0.05);
-}
-.ay-stat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-  gap: 18px;
-  margin-bottom: 24px;
-}
-.ay-stat-card {
-  background: var(--surface, #ffffff);
-  border: 1px solid var(--navy-100, #e2e8f0);
-  border-radius: 12px;
-  padding: 20px;
-  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 215px;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.ay-stat-card:hover {
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.07);
-}
-.ay-card-scope { border-top: 3px solid var(--orange-500, #ff4f01); }
-.ay-card-lock  { border-top: 3px solid <?= $selectedLockInfo['locked'] ? '#DC2626' : '#10B981' ?>; }
-.ay-card-cal   { border-top: 3px solid var(--navy-700, #334155); }
-
-.ay-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 14px;
-  margin-bottom: 14px;
-}
-.ay-form-bottom {
-  display: flex;
-  align-items: flex-end;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.ay-form-bottom .field {
-  flex: 1;
-  min-width: 260px;
-  margin: 0;
-}
-.ay-registry-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  background: #fafbfc;
-  border-bottom: 1px solid var(--navy-100, #e2e8f0);
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.ay-search-box {
-  position: relative;
-  min-width: 260px;
-  max-width: 360px;
-  flex: 1;
-}
-.ay-search-box svg {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--ink-faint, #94a3b8);
-  pointer-events: none;
-}
-.ay-search-box input {
-  padding-left: 36px;
-  height: 38px;
-  font-size: 13px;
-  width: 100%;
-}
-.ay-quick-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 5px 12px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  font-family: monospace;
-  text-decoration: none;
-  transition: all 0.15s ease;
-}
-.ay-quick-chip:hover {
-  transform: translateY(-1px);
-}
-</style>
-
-<!-- PAGE HEADER -->
 <div class="page-head">
   <div>
-    <div style="display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--navy-600);background:var(--navy-50,#f1f5f9);padding:3px 10px;border-radius:20px;margin-bottom:6px;border:1px solid var(--navy-100,#e2e8f0)">
-      <?= icon('calendar', 14) ?>
-      <span>Institutional Workspace &middot; Executive Meeting &amp; Multi-Year Cycle Lock</span>
-    </div>
-    <h1 style="font-size:24px;font-weight:700;color:var(--navy-900);letter-spacing:-.02em;margin:0">Academic Year &amp; Lock Cycle</h1>
-    <div class="sub" style="font-size:13px;color:var(--navy-500);margin-top:4px">
-      Manage active operating year, inspect past years' records &amp; targets, record finished executive meetings, and lock cycles for all roles.
-    </div>
+    <h1>Academic Year &amp; Lock Cycle</h1>
+    <div class="sub">Set the operating year, review any year's figures, and lock a year once its Executive Meeting has finished.</div>
   </div>
-  <div class="actions" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <!-- BUTTON: ON-DEMAND REGISTRY VIEW -->
-    <button type="button" class="btn btn-outline btn-sm" id="btnToggleRegistry" onclick="switchAyTab('registry')" style="font-weight:700">
-      <?= icon('file-stack', 14) ?> View Academic Years Registry (<?= count($allYears) ?>)
-    </button>
+  <div class="actions">
     <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('switchYearDlg').showModal()">
-      <?= icon('refresh', 14) ?> Switch Operating Year
+      <?= icon('refresh', 14) ?> Switch operating year
     </button>
-    <?php if ($selectedLockInfo['locked']): ?>
-      <button type="button" class="btn btn-primary btn-sm" style="background:#059669;border-color:#059669" onclick="openUnlockModal('<?= e($selectedYear) ?>')">
-        <?= icon('unlock', 14) ?> Unlock Year <?= e($selectedYear) ?>
+    <?php if ($isLocked): ?>
+      <button type="button" class="btn btn-success btn-sm" onclick="openUnlockModal(<?= e(json_encode($selectedYear)) ?>)">
+        <?= icon('unlock', 14) ?> Unlock <?= e($selectedYear) ?>
       </button>
     <?php else: ?>
-      <button type="button" class="btn btn-primary btn-sm" style="background:#DC2626;border-color:#DC2626" onclick="openExecMeetingForm()">
-        <?= icon('lock', 14) ?> Lock Year <?= e($selectedYear) ?>
+      <button type="button" class="btn btn-danger btn-sm" onclick="openExecMeetingForm()">
+        <?= icon('lock', 14) ?> Lock <?= e($selectedYear) ?> after meeting
       </button>
     <?php endif; ?>
   </div>
 </div>
 
-<!-- =========================================================================
-     STRUCTURED NAVIGATION TABS
-     ========================================================================= -->
-<div class="ay-tabs-nav">
-  <button type="button" class="ay-tab-btn active" id="ay_nav_overview" onclick="switchAyTab('overview')">
-    <?= icon('dashboard', 16) ?>
-    <span>Year Overview &amp; Cycle Lock &middot; <strong style="font-family:monospace"><?= e($selectedYear) ?></strong></span>
-    <?php if ($selectedLockInfo['locked']): ?>
-      <span style="background:#DC2626;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">Locked</span>
-    <?php else: ?>
-      <span style="background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:8px">Open</span>
-    <?php endif; ?>
+<div class="tabs" role="tablist">
+  <button type="button" class="tab active" id="ay_nav_overview" role="tab" onclick="switchAyTab('overview')">
+    <?= icon('dashboard', 15) ?> Overview <span class="tab-count"><?= e($selectedYear) ?></span>
   </button>
-  <button type="button" class="ay-tab-btn" id="ay_nav_registry" onclick="switchAyTab('registry')">
-    <?= icon('building', 16) ?>
-    <span>Academic Years Registry</span>
-    <span class="badge badge-neutral" style="font-size:10px;padding:2px 7px"><?= count($allYears) ?> Years</span>
+  <button type="button" class="tab" id="ay_nav_registry" role="tab" onclick="switchAyTab('registry')">
+    <?= icon('layers', 15) ?> All years <span class="tab-count"><?= count($allYears) ?></span>
   </button>
 </div>
 
 <!-- =========================================================================
-     TAB 1: YEAR OVERVIEW & CYCLE LOCK WORKSPACE
+     OVERVIEW
      ========================================================================= -->
 <div id="ay_tab_overview">
 
-  <!-- ACADEMIC YEAR SELECTOR & SCOPE BANNER -->
-  <div class="card" style="background:linear-gradient(135deg, #1e293b 0%, var(--navy-900,#131D3B) 100%);color:#ffffff;border:none;border-radius:12px;padding:16px 20px;margin-bottom:20px;box-shadow:0 4px 14px rgba(15,23,42,0.08)">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,0.12);display:flex;align-items:center;justify-content:center;color:#ffffff;flex-shrink:0">
-          <?= icon('calendar', 20) ?>
-        </div>
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:rgba(255,255,255,0.7)">
-              Active Scope:
-            </span>
-            <span style="font-family:monospace;font-size:18px;font-weight:800;color:#ffffff">
-              <?= e($selectedYear) ?>
-            </span>
-            <?php if ($isSelectedActive): ?>
-              <span style="background:#10B981;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">
-                ★ Active System Year
-              </span>
-            <?php else: ?>
-              <span style="background:rgba(255,255,255,0.18);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px">
-                Past Academic Year
-              </span>
-            <?php endif; ?>
-            <?php if ($selectedLockInfo['locked']): ?>
-              <span style="background:#DC2626;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:3px">
-                <?= icon('lock', 10) ?> Locked for All Roles
-              </span>
-            <?php else: ?>
-              <span style="background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:3px">
-                <?= icon('unlock', 10) ?> Cycle Open
-              </span>
-            <?php endif; ?>
-          </div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:2px">
-            Inspect historical records, targets, executive meetings, and cycle lock states for this academic year.
-          </div>
-        </div>
-      </div>
+  <?php if (!$meetingsReady): ?>
+    <div class="alert alert-warning"><?= icon('alert-triangle', 16) ?>
+      <span>Executive meetings can't be recorded yet: the <strong>executive_meetings</strong> table is missing and
+      could not be created automatically. Run <strong>sql/executive_meetings.sql</strong> on the database.</span></div>
+  <?php endif; ?>
 
-      <!-- Quick Chips & Selector Dropdown -->
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:6px">
-          <?php foreach (array_slice($allYears, 0, 4) as $chipY):
-              $isChipSelected = ($chipY === $selectedYear);
-              $chipLocked     = academic_year_is_locked($chipY);
-          ?>
-            <a href="<?= e(url('academic-years.php?year=' . urlencode($chipY))) ?>" class="ay-quick-chip"
-               style="<?= $isChipSelected ? 'background:#ff4f01;color:#ffffff;box-shadow:0 2px 6px rgba(255,79,1,0.4);' : 'background:rgba(255,255,255,0.12);color:rgba(255,255,255,0.9);' ?>">
-              <?= e($chipY) ?>
-              <?php if ($chipLocked): ?>
-                <span title="Locked" style="color:<?= $isChipSelected ? '#fff' : '#f87171' ?>">🔒</span>
-              <?php endif; ?>
-              <?php if ($chipY === $activeYear): ?>
-                <span title="Active Operating Year" style="font-size:9px">★</span>
-              <?php endif; ?>
-            </a>
-          <?php endforeach; ?>
-        </div>
-
-        <div style="min-width:200px">
-          <select class="select" style="height:36px;font-size:13px;font-weight:700;background:#ffffff;color:var(--navy-900);border-radius:8px"
-                  onchange="location.href='academic-years.php?year=' + encodeURIComponent(this.value)">
-            <option value="" disabled>-- Select Academic Year --</option>
-            <?php foreach ($allYears as $optY):
-                $optStats  = academic_year_summary_stats($optY);
-                $optLocked = academic_year_is_locked($optY);
-            ?>
-              <option value="<?= e($optY) ?>" <?= $optY === $selectedYear ? 'selected' : '' ?>>
-                <?= e($optY) ?> <?= $optY === $activeYear ? '★ Active' : '' ?> <?= $optLocked ? '[Locked]' : '[Open]' ?> (<?= (int)$optStats['records'] ?> rec)
-              </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- TOP 3 HERO CARDS (BALANCED, NEAT STRUCTURE) -->
-  <div class="ay-stat-grid">
-
-    <!-- CARD 1: ACADEMIC SCOPE & CYCLE PROGRESS -->
-    <div class="ay-stat-card ay-card-scope">
+  <!-- ---- The year being viewed ---- -->
+  <section class="card ay-hero">
+    <div class="ay-hero-top">
       <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy-500)">
-            Academic Scope Details
-          </span>
-          <?php if ($isSelectedActive): ?>
-            <span class="badge badge-success" style="font-size:11px;padding:3px 8px;font-weight:700">
-              <?= icon('check', 11) ?> Active Operating
-            </span>
+        <div class="ay-eyebrow">Viewing</div>
+        <div class="ay-year"><?= e($selectedYear) ?></div>
+        <div class="ay-pills">
+          <span class="ay-pill <?= $selectedKind ?>"><span class="dot"></span><?= $selectedKind === 'active' ? 'Active operating year' : e($kindLabel[$selectedKind]) ?></span>
+          <?php if ($isLocked): ?>
+            <span class="ay-pill locked"><?= icon('lock', 12) ?> Locked for all roles</span>
           <?php else: ?>
-            <span class="badge badge-neutral" style="font-size:11px;padding:3px 8px">
-              Past Year Data
-            </span>
+            <span class="ay-pill open"><?= icon('unlock', 12) ?> Open</span>
+          <?php endif; ?>
+          <?php if ($selectedYear === $currentCalYear): ?>
+            <span class="ay-pill term" title="The academic year the calendar is in today"><?= icon('calendar', 12) ?> Current term</span>
           <?php endif; ?>
         </div>
-
-        <div style="display:flex;align-items:baseline;gap:8px">
-          <span style="font-size:30px;font-weight:800;color:var(--navy-900);letter-spacing:-.03em;font-family:monospace">
-            <?= e($selectedYear) ?>
-          </span>
-          <?php if ($isSelectedCurrentCal): ?>
-            <span class="badge badge-neutral" style="font-size:10px">Current Cal Year</span>
-          <?php endif; ?>
-        </div>
-
-        <p style="font-size:12px;color:var(--navy-600);line-height:1.45;margin-top:6px;margin-bottom:0">
-          <?php if ($isSelectedActive): ?>
-            All institutional roles (<strong>Faculty, Coordinator, HoD, Dean, Principal</strong>) currently submit live data in this active year.
+        <p class="ay-lede">
+          <?php if ($selectedKind === 'active'): ?>
+            Every role — Faculty, Coordinators, HoDs, Deans and the Principal — is working in this year right now.
+            <?php if ($termState === 'ended'): ?>Its term ended on <?= e($termEnd->format('d M Y')) ?>; switch the operating year when you're ready to move everyone to <?= e($currentCalYear) ?>.<?php endif; ?>
+          <?php elseif ($selectedKind === 'newer'): ?>
+            The calendar has reached this year, but ATTS is still operating in <strong><?= e($activeYear) ?></strong>.
+            Make it the operating year when you're ready to move everyone over.
           <?php else: ?>
-            Historical data, records, and performance targets preserved permanently for Academic Year <strong><?= e($selectedYear) ?></strong>.
+            A past year. Its records, targets and meetings are kept here permanently for reference.
           <?php endif; ?>
         </p>
       </div>
 
-      <div style="margin-top:14px;border-top:1px solid var(--navy-100,#e2e8f0);padding-top:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;font-weight:600;color:var(--navy-700);margin-bottom:5px">
-          <span><?= e($cyclePhase) ?></span>
-          <span><?= (int) $cyclePct ?>%</span>
-        </div>
-        <div style="height:6px;background:var(--navy-100,#e2e8f0);border-radius:3px;overflow:hidden;margin-bottom:8px">
-          <div style="width:<?= (int) $cyclePct ?>%;height:100%;background:<?= $selectedLockInfo['locked'] ? '#EF4444' : 'var(--orange-500,#ff4f01)' ?>;border-radius:3px"></div>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--navy-600)">
-          <span><strong><?= (int) $selectedStats['records'] ?></strong> Records (<?= (int)$selectedStats['approved_records'] ?> app.)</span>
-          <span><strong><?= (int) $selectedStats['targets'] ?></strong> Targets</span>
-        </div>
+      <div class="ay-nav">
+        <a class="ay-step<?= $olderYear ? '' : ' is-off' ?>" href="<?= $olderYear ? e(url('academic-years.php?year=' . urlencode($olderYear))) : '#' ?>"
+           title="Previous year"<?= $olderYear ? '' : ' aria-disabled="true" tabindex="-1"' ?>><?= icon('arrow-left', 14) ?> <?= e($olderYear ?? '') ?></a>
+        <label class="fb-field" title="Go to any year">
+          <span class="fb-k">Year</span>
+          <select onchange="location.href=<?= e(json_encode(url('academic-years.php?year='))) ?> + encodeURIComponent(this.value)"
+                  data-default="<?= e($selectedYear) ?>" aria-label="Academic year to view">
+            <?php foreach ($allYears as $y): ?>
+              <option value="<?= e($y) ?>" <?= $y === $selectedYear ? 'selected' : '' ?>><?= e($y) ?><?= $y === $activeYear ? ' — active' : '' ?><?= $overview[$y]['locked'] ? ' — locked' : '' ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <a class="ay-step next<?= $newerYear ? '' : ' is-off' ?>" href="<?= $newerYear ? e(url('academic-years.php?year=' . urlencode($newerYear))) : '#' ?>"
+           title="Next year"<?= $newerYear ? '' : ' aria-disabled="true" tabindex="-1"' ?>><?= e($newerYear ?? '') ?> <?= icon('arrow-right', 14) ?></a>
       </div>
     </div>
 
-    <!-- CARD 2: CYCLE LOCK STATUS -->
-    <div class="ay-stat-card ay-card-lock">
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy-500)">
-            Cycle Lock Status
-          </span>
-          <?php if ($selectedLockInfo['locked']): ?>
-            <span style="display:inline-flex;align-items:center;gap:4px;background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">
-              <?= icon('lock', 11) ?> LOCKED
-            </span>
+    <!-- The term, month by month -->
+    <div class="ay-term">
+      <div class="ay-term-head">
+        <span>Term <strong><?= e($termStart->format('d M Y')) ?> – <?= e($termEnd->format('d M Y')) ?></strong></span>
+        <span>
+          <?php if ($termState === 'running'): ?>
+            Month <strong><?= $monthNow + 1 ?> of 12</strong> · <?= $termPct ?>% through · today <?= e($today->format('D, d M')) ?>
+          <?php elseif ($termState === 'ended'): ?>
+            Term ended <?= e($termEnd->format('d M Y')) ?>
           <?php else: ?>
-            <span style="display:inline-flex;align-items:center;gap:4px;background:#ECFDF5;color:#065F46;border:1px solid #A7F3D0;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:700">
-              <?= icon('unlock', 11) ?> OPEN
-            </span>
+            Starts <?= e($termStart->format('d M Y')) ?>
           <?php endif; ?>
-        </div>
-
-        <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-          <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:<?= $selectedLockInfo['locked'] ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)' ?>;color:<?= $selectedLockInfo['locked'] ? '#DC2626' : '#059669' ?>;flex-shrink:0">
-            <?= icon($selectedLockInfo['locked'] ? 'lock' : 'unlock', 22) ?>
-          </div>
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--navy-900)">
-              <?= $selectedLockInfo['locked'] ? 'Submissions Frozen for All Roles' : 'Submissions Active for All Roles' ?>
-            </div>
-            <div style="font-size:11px;color:var(--navy-500);margin-top:2px">
-              <?php if ($selectedLockInfo['locked'] && $selectedLatestMeeting): ?>
-                Locked following Meeting #<?= e($selectedLatestMeeting['meeting_number']) ?> (<?= date('d M Y', strtotime($selectedLatestMeeting['meeting_date'])) ?>)
-              <?php elseif ($selectedLockInfo['locked']): ?>
-                Administrative lock enforced
-              <?php else: ?>
-                Open for uploads, target creation, and approvals
-              <?php endif; ?>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style="border-top:1px solid var(--navy-100,#e2e8f0);padding-top:12px;margin-top:14px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:11px;color:var(--navy-600)">
-          <strong><?= $selectedExecCount ?></strong> Executive Meeting<?= $selectedExecCount === 1 ? '' : 's' ?> Held
         </span>
-        <?php if ($selectedLockInfo['locked']): ?>
-          <button type="button" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 10px;color:#059669;border-color:#A7F3D0" onclick="openUnlockModal('<?= e($selectedYear) ?>')">
-            <?= icon('unlock', 12) ?> Unlock Year
-          </button>
-        <?php else: ?>
-          <button type="button" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 10px;color:#DC2626;border-color:#FECACA" onclick="openExecMeetingForm()">
-            <?= icon('lock', 12) ?> Lock via Meeting
-          </button>
-        <?php endif; ?>
+      </div>
+      <div class="ay-months" aria-hidden="true">
+        <?php for ($i = 0; $i < 12; $i++):
+            $m  = ($i + 5) % 12 + 1;                          // 6..12, 1..5
+            $yy = $i < 7 ? $ayStartYear : $ayStartYear + 1;
+            $cls = $i < $monthNow ? 'done' : ($i === $monthNow ? 'now' : '');
+        ?>
+          <div class="ay-month <?= $cls ?>"><?= date('M', mktime(0, 0, 0, $m, 1)) ?><?php if ($i === 0 || $i === 7): ?><small><?= $yy ?></small><?php endif; ?></div>
+        <?php endfor; ?>
+      </div>
+      <div class="ay-phases">
+        <?php foreach ($phases as [$pName, $pSub, $from, $to]):
+            $pCls = $monthNow > $to ? 'is-done' : ($monthNow >= $from && $monthNow <= $to ? 'is-now' : '');
+        ?>
+          <div class="ay-phase <?= $pCls ?>"><b><?= e($pName) ?></b><?= e($pSub) ?></div>
+        <?php endforeach; ?>
       </div>
     </div>
+  </section>
 
-    <!-- CARD 3: CURRENT CALENDAR (COMPACT & CLEAN) -->
-    <div class="ay-stat-card ay-card-cal">
-      <div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--navy-500)">
-            Current Calendar
-          </span>
-          <span style="font-size:12px;font-weight:700;color:var(--navy-800)">
-            <?= e($monthName . ' ' . $currentYearNum) ?>
-          </span>
-        </div>
-
-        <div style="display:grid;grid-template-columns:repeat(7, 1fr);gap:3px;text-align:center;font-size:10px">
-          <?php foreach (['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'] as $dow): ?>
-            <div style="font-weight:700;color:var(--navy-400);padding:2px 0"><?= $dow ?></div>
-          <?php endforeach; ?>
-
-          <?php
-          for ($i = 0; $i < $firstDayOfMonth; $i++) {
-              echo '<div style="color:transparent;padding:2px 0">&middot;</div>';
-          }
-          for ($d = 1; $d <= $daysInMonth; $d++) {
-              $isToday = ($d === $currentDayNum);
-              $style = 'padding:2px 0;border-radius:5px;font-size:10px;';
-              if ($isToday) {
-                  $style .= 'background:var(--orange-500,#ff4f01);color:#ffffff;font-weight:700;box-shadow:0 1px 4px rgba(255,79,1,0.3);';
-              } else {
-                  $style .= 'color:var(--navy-700);';
-              }
-              echo "<div style=\"{$style}\">{$d}</div>";
-          }
-          ?>
-        </div>
-      </div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--navy-100,#e2e8f0);padding-top:10px;margin-top:10px;font-size:11px;color:var(--navy-600)">
-        <span>Today: <strong><?= $now->format('D, d M Y') ?></strong></span>
-        <span style="color:var(--orange-600);font-weight:600">Active IST</span>
+  <!-- ---- The four figures ---- -->
+  <?php $appPct = $selectedStats['records'] > 0 ? (int) round($selectedStats['approved_records'] / $selectedStats['records'] * 100) : 0; ?>
+  <div class="stat-grid grid-4">
+    <div class="stat">
+      <div class="stat-top"><span class="stat-label">Records</span><span class="stat-ic brand"><?= icon('layers', 16) ?></span></div>
+      <div class="stat-value"><?= (int) $selectedStats['records'] ?></div>
+      <div class="stat-desc"><?= $selectedStats['records'] ? (int) $selectedStats['approved_records'] . ' approved · ' . $appPct . '%' : 'None submitted in this year' ?></div>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><span class="stat-label">Targets</span><span class="stat-ic navy"><?= icon('target', 16) ?></span></div>
+      <div class="stat-value"><?= (int) $selectedStats['targets'] ?></div>
+      <?php $tgtOpen = $tgtTotals['pending'] + $tgtTotals['returned'] + $tgtTotals['draft']; ?>
+      <div class="stat-desc"><?= !$selectedStats['targets'] ? 'None set in this year' : ($tgtOpen ? $tgtTotals['approved'] . ' approved · ' . $tgtOpen . ' in progress' : 'All approved') ?></div>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><span class="stat-label">Executive meetings</span><span class="stat-ic navy"><?= icon('award', 16) ?></span></div>
+      <div class="stat-value"><?= $selectedExecCount ?></div>
+      <div class="stat-desc"><?= $selectedLatestMeeting ? 'Last: #' . e($selectedLatestMeeting['meeting_number']) . ' on ' . e($fmtDate($selectedLatestMeeting['meeting_date'])) : 'None recorded yet' ?></div>
+    </div>
+    <div class="stat">
+      <div class="stat-top"><span class="stat-label">Cycle</span><span class="stat-ic <?= $isLocked ? 'brand' : 'navy' ?>"><?= icon($isLocked ? 'lock' : 'unlock', 16) ?></span></div>
+      <div class="stat-value"><?= $isLocked ? 'Locked' : 'Open' ?></div>
+      <div class="stat-desc">
+        <?php if ($isLocked): ?>Since <?= e($fmtDate($selectedLockInfo['updated_at'])) ?> · <?= e($selectedLockInfo['admin_name']) ?>
+        <?php elseif (!empty($selectedLockInfo['updated_at'])): ?>Reopened <?= e($fmtDate($selectedLockInfo['updated_at'])) ?>
+        <?php else: ?>Uploads, targets and approvals are on<?php endif; ?>
       </div>
     </div>
-
   </div>
 
-  <!-- =========================================================================
-       EXECUTIVE MEETING & CYCLE LOCK CONTROL (SPACIOUS, STRUCTURED FORM)
-       ========================================================================= -->
-  <div id="execMeetingBox" class="card" style="background:#ffffff;border:1px solid var(--navy-200,#cbd5e1);border-radius:12px;box-shadow:0 3px 10px rgba(15,23,42,0.04);margin-bottom:24px;overflow:hidden">
-    <div style="background:linear-gradient(135deg, var(--navy-900,#131D3B) 0%, #1e293b 100%);color:#ffffff;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
-      <div style="display:flex;align-items:center;gap:12px">
-        <div style="width:38px;height:38px;border-radius:8px;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;color:#ffffff">
-          <?= icon('award', 20) ?>
-        </div>
-        <div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <h2 style="font-size:16px;font-weight:700;color:#ffffff;margin:0">Executive Meeting &amp; Cycle Lock Control</h2>
-            <span style="background:rgba(255,79,1,0.95);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;font-family:monospace">
-              <?= e($selectedYear) ?>
-            </span>
-          </div>
-          <div style="font-size:12px;color:rgba(255,255,255,0.7);margin-top:2px">
-            Record a finished executive meeting to immediately lock academic year <strong><?= e($selectedYear) ?></strong> across all roles.
-          </div>
-        </div>
+  <!-- ---- Executive meeting & lock ---- -->
+  <section id="execMeetingBox" class="card">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Executive meeting &amp; lock</h2>
+        <div class="card-sub">Recording a finished Executive Meeting locks <strong><?= e($selectedYear) ?></strong> for every role. You can reopen it later; the meeting stays on record.</div>
       </div>
-
-      <div style="display:flex;align-items:center;gap:10px">
-        <span class="badge badge-neutral" style="background:rgba(255,255,255,0.15);color:#fff;font-size:11px;padding:4px 10px">
-          <?= $selectedExecCount ?> Meeting<?= $selectedExecCount === 1 ? '' : 's' ?> Recorded
-        </span>
-        <?php if ($selectedLockInfo['locked']): ?>
-          <span style="background:#DC2626;color:#ffffff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">
-            <?= icon('lock', 11) ?> Cycle Locked
-          </span>
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <?php // FEAT-06: present this year's meeting report full screen. ?>
+        <a class="btn btn-secondary btn-sm"
+           href="<?= e(url('executive-meeting-report.php') . '?' . http_build_query(['academic_year' => $selectedYear])) ?>"
+           title="Filter and present the Executive Meeting report for <?= e($selectedYear) ?>">
+          <?= icon('presentation', 14) ?> Present meeting report
+        </a>
+        <?php if ($isLocked): ?>
+          <span class="ay-pill locked"><?= icon('lock', 12) ?> Locked</span>
         <?php else: ?>
-          <span style="background:#059669;color:#ffffff;padding:4px 10px;border-radius:6px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px">
-            <?= icon('unlock', 11) ?> Cycle Open
-          </span>
+          <span class="ay-pill open"><?= icon('unlock', 12) ?> Open</span>
         <?php endif; ?>
       </div>
     </div>
+    <div class="card-body">
 
-    <div style="padding:20px">
-      <?php if ($selectedLockInfo['locked']): ?>
-        <!-- LOCKED ALERT BANNER -->
-        <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;border-radius:8px;padding:12px 16px;margin-bottom:18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="width:32px;height:32px;border-radius:6px;background:#FEE2E2;color:#DC2626;display:flex;align-items:center;justify-content:center;flex-shrink:0">
-              <?= icon('lock', 16) ?>
-            </div>
-            <div>
-              <div style="font-weight:700;font-size:13px;color:#991B1B">
-                Academic Year <?= e($selectedYear) ?> is currently Locked
-                <?php if ($selectedLatestMeeting): ?>
-                  &middot; Meeting #<?= e($selectedLatestMeeting['meeting_number']) ?> (<?= date('d M Y', strtotime($selectedLatestMeeting['meeting_date'])) ?>)
-                <?php endif; ?>
-              </div>
-              <div style="font-size:12px;color:#B91C1C;margin-top:1px">
-                Data uploads and targets are frozen in read-only mode for Faculty, Coordinators, HoDs, and Deans.
-              </div>
-            </div>
+      <?php if ($isLocked): ?>
+        <div class="ay-lockstrip">
+          <div class="ic"><?= icon('lock', 17) ?></div>
+          <div>
+            <div class="t"><?= e($selectedYear) ?> is locked<?php if ($selectedLatestMeeting): ?> · after Meeting #<?= e($selectedLatestMeeting['meeting_number']) ?> on <?= e($fmtDate($selectedLatestMeeting['meeting_date'])) ?><?php endif; ?></div>
+            <div class="s">Uploads and target edits are read-only for Faculty, Coordinators, HoDs and Deans.<?php if ($selectedLockInfo['note'] !== ''): ?> Note: <?= e($selectedLockInfo['note']) ?><?php endif; ?></div>
           </div>
-          <button type="button" class="btn btn-primary btn-sm" style="background:#059669;border-color:#059669;font-weight:700" onclick="openUnlockModal('<?= e($selectedYear) ?>')">
-            <?= icon('unlock', 13) ?> Reopen / Unlock Year
-          </button>
+          <button type="button" class="btn btn-success btn-sm" onclick="openUnlockModal(<?= e(json_encode($selectedYear)) ?>)"><?= icon('unlock', 14) ?> Unlock year</button>
         </div>
       <?php endif; ?>
 
-      <!-- STRUCTURED MEETING ENTRY FORM -->
-      <div style="background:var(--navy-50,#f8fafc);border:1px solid var(--navy-100,#e2e8f0);border-radius:10px;padding:18px;margin-bottom:20px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-          <div style="font-size:13px;font-weight:700;color:var(--navy-900);display:flex;align-items:center;gap:6px">
-            <?= icon('pencil', 14) ?>
-            <span>Record Finished Executive Meeting &amp; Lock Academic Year</span>
-          </div>
-          <div style="font-size:11px;color:var(--navy-500)">
-            Next Suggested: <strong>Meeting #<?= $selectedNextMeetingNum ?></strong>
-          </div>
+      <?php // The same form either way; while the year is already locked it is
+            // folded away, because recording another meeting is then the exception. ?>
+      <?php if ($isLocked): ?><details class="ay-more" id="meetFormWrap"><summary><?= icon('chevron', 14) ?> Record another meeting for <?= e($selectedYear) ?></summary><?php endif; ?>
+      <form method="post" class="ay-meet-form"
+            onsubmit="return confirm(<?= e(json_encode($isLocked ? 'Record this Executive Meeting for ' . $selectedYear . '?' : 'Record this Executive Meeting and lock ' . $selectedYear . ' for all roles?')) ?>);">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="finish_executive_meeting">
+        <input type="hidden" name="academic_year" value="<?= e($selectedYear) ?>">
+        <div class="field">
+          <label for="meeting_number">Meeting number <span class="req">*</span></label>
+          <input type="text" class="input" id="meeting_number" name="meeting_number" value="<?= $selectedNextMeetingNum ?>"
+                 placeholder="e.g. 3" maxlength="50" required <?= $meetingsReady ? '' : 'disabled' ?>>
         </div>
-
-        <form method="post" onsubmit="return confirm('Record this Executive Meeting and lock academic year ' + document.getElementById('meeting_academic_year').value + ' for all roles?');">
-          <?= csrf_field() ?>
-          <input type="hidden" name="action" value="finish_executive_meeting">
-
-          <!-- Row 1: Academic Year, Meeting Number, Date Finished -->
-          <div class="ay-form-grid">
-            <div class="field" style="margin:0">
-              <label for="meeting_academic_year" style="font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:5px;display:block">
-                Choose Year to Lock <span style="color:#DC2626">*</span>
-              </label>
-              <select class="select" id="meeting_academic_year" name="academic_year" style="width:100%;height:40px;font-weight:700;font-size:13px;font-family:monospace"
-                      onchange="if(this.value !== '<?= e($selectedYear) ?>') location.href='academic-years.php?year=' + encodeURIComponent(this.value);">
-                <?php foreach ($allYears as $optY): ?>
-                  <option value="<?= e($optY) ?>" <?= $optY === $selectedYear ? 'selected' : '' ?>>
-                    <?= e($optY) ?><?= $optY === $activeYear ? ' (Active System Year)' : '' ?>
-                  </option>
-                <?php endforeach; ?>
-              </select>
-            </div>
-
-            <div class="field" style="margin:0">
-              <label for="meeting_number" style="font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:5px;display:block">
-                Meeting Number <span style="color:#DC2626">*</span>
-              </label>
-              <input type="text" class="input" id="meeting_number" name="meeting_number" value="<?= $selectedNextMeetingNum ?>" placeholder="e.g. 1" required style="width:100%;height:40px;font-weight:700;font-size:13px">
-            </div>
-
-            <div class="field" style="margin:0">
-              <label for="meeting_date" style="font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:5px;display:block">
-                Date Finished <span style="color:#DC2626">*</span>
-              </label>
-              <input type="date" class="input" id="meeting_date" name="meeting_date" value="<?= date('Y-m-d') ?>" required style="width:100%;height:40px;font-size:13px">
-            </div>
-          </div>
-
-          <!-- Row 2: Minutes Remarks + Lock Button -->
-          <div class="ay-form-bottom">
-            <div class="field">
-              <label for="meeting_notes" style="font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:5px;display:block">
-                Meeting Minutes / Remarks Summary (Optional)
-              </label>
-              <input type="text" class="input" id="meeting_notes" name="notes" placeholder="e.g. Executive Committee reviewed semester targets, audits complete." style="width:100%;height:40px;font-size:13px">
-            </div>
-
-            <div>
-              <button type="submit" class="btn btn-primary" style="height:40px;background:#DC2626;border-color:#DC2626;color:#ffffff;display:inline-flex;align-items:center;gap:6px;font-weight:700;white-space:nowrap;padding:0 20px">
-                <?= icon('lock', 14) ?> Finish &amp; Lock Cycle
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-
-      <!-- AUDIT TRAIL LOG OF EXECUTIVE MEETINGS -->
-      <div>
-        <div style="font-size:13px;font-weight:700;color:var(--navy-800);margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
-          <span>Executive Meetings Finished for <?= e($selectedYear) ?> (<?= $selectedExecCount ?> Total)</span>
-          <span style="font-size:11px;color:var(--navy-500)">Institutional Audit Trail Log</span>
+        <div class="field">
+          <label for="meeting_date">Date finished <span class="req">*</span></label>
+          <input type="date" class="input" id="meeting_date" name="meeting_date" value="<?= e($today->format('Y-m-d')) ?>"
+                 max="<?= e($today->format('Y-m-d')) ?>" required <?= $meetingsReady ? '' : 'disabled' ?>>
         </div>
+        <div class="field ay-f-notes">
+          <label for="meeting_notes">Minutes / remarks <span class="faint">(optional)</span></label>
+          <input type="text" class="input" id="meeting_notes" name="notes" maxlength="1000"
+                 placeholder="e.g. Committee reviewed semester targets; audits complete." <?= $meetingsReady ? '' : 'disabled' ?>>
+        </div>
+        <div class="ay-f-go">
+          <button type="submit" class="btn <?= $isLocked ? 'btn-secondary' : 'btn-danger' ?>" <?= $meetingsReady ? '' : 'disabled' ?>>
+            <?= icon($isLocked ? 'check' : 'lock', 15) ?> <?= $isLocked ? 'Record meeting' : 'Finish &amp; lock ' . e($selectedYear) ?>
+          </button>
+        </div>
+      </form>
+      <?php if ($isLocked): ?></details><?php else: ?>
+        <p class="ay-form-note">Next number suggested from the meetings already recorded. The date can't be later than today.</p>
+      <?php endif; ?>
 
-        <?php if ($selectedExecCount === 0): ?>
-          <div style="background:var(--navy-50,#f8fafc);border:1px dashed var(--navy-200,#cbd5e1);padding:16px;border-radius:8px;text-align:center;color:var(--navy-500);font-size:12px">
-            No executive meetings recorded for Academic Year <strong><?= e($selectedYear) ?></strong> yet.
-          </div>
-        <?php else: ?>
-          <div class="table-wrap" style="margin:0;border:1px solid var(--navy-100,#e2e8f0);border-radius:8px">
-            <table class="table" style="width:100%;font-size:12px">
-              <thead>
-                <tr style="background:#fafbfc">
-                  <th style="width:130px">Meeting #</th>
-                  <th style="width:130px">Date Finished</th>
-                  <th style="width:150px">Recorded By</th>
-                  <th>Remarks / Minutes Summary</th>
-                  <th style="width:140px;text-align:right">Cycle State</th>
+      <div class="ay-section-title">Meetings for <?= e($selectedYear) ?> <span><?= $selectedExecCount ?> recorded · audit trail</span></div>
+      <?php if ($selectedExecCount === 0): ?>
+        <div class="ay-empty-row">No Executive Meetings recorded for <?= e($selectedYear) ?> yet.</div>
+      <?php else: ?>
+        <div class="ay-table-box table-wrap">
+          <table class="data ay-t">
+            <thead><tr><th>Meeting</th><th>Date finished</th><th>Recorded by</th><th>Minutes / remarks</th><th class="num">State</th></tr></thead>
+            <tbody>
+              <?php foreach ($selectedExecMeetings as $i => $m): ?>
+                <tr>
+                  <td><span class="ay-meet-no"><i><?= $selectedExecCount - $i ?></i> Meeting #<?= e($m['meeting_number']) ?></span></td>
+                  <td class="nowrap"><?= e($fmtDate($m['meeting_date'])) ?></td>
+                  <td class="nowrap"><?= e($m['admin_name'] ?? 'Administrator') ?></td>
+                  <td><?= $m['notes'] ? e($m['notes']) : '<span class="faint">—</span>' ?></td>
+                  <td class="num"><span class="ay-pill locked"><?= icon('lock', 11) ?> Finished &amp; locked</span></td>
                 </tr>
-              </thead>
-              <tbody>
-                <?php foreach ($selectedExecMeetings as $idx => $m): ?>
-                  <tr>
-                    <td>
-                      <div style="font-weight:700;color:var(--navy-900);display:flex;align-items:center;gap:6px">
-                        <span style="width:20px;height:20px;border-radius:50%;background:rgba(255,79,1,0.1);color:var(--orange-600);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800">
-                          <?= $idx + 1 ?>
-                        </span>
-                        Meeting #<?= e($m['meeting_number']) ?>
-                      </div>
-                    </td>
-                    <td><?= date('d M Y', strtotime($m['meeting_date'])) ?></td>
-                    <td><span style="font-weight:600;color:var(--navy-800)"><?= e($m['admin_name'] ?? 'Administrator') ?></span></td>
-                    <td><?= e($m['notes'] ?: 'Executive meeting concluded.') ?></td>
-                    <td style="text-align:right">
-                      <span style="display:inline-flex;align-items:center;gap:4px;color:#991B1B;background:#FEE2E2;border:1px solid #FECACA;font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px">
-                        <?= icon('lock', 10) ?> Finished &amp; Locked
-                      </span>
-                    </td>
-                  </tr>
-                <?php endforeach; ?>
-              </tbody>
-            </table>
-          </div>
-        <?php endif; ?>
-      </div>
-    </div>
-  </div>
-
-  <!-- ACADEMIC DATA & PERFORMANCE BREAKDOWN (NEAT 2-COLUMN STRUCTURE) -->
-  <div class="card" style="margin-bottom:24px;border:1px solid var(--navy-100,#e2e8f0);border-radius:12px;overflow:hidden">
-    <div style="padding:14px 18px;border-bottom:1px solid var(--navy-100,#e2e8f0);background:#fafbfc;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:30px;height:30px;border-radius:6px;background:rgba(255,79,1,0.1);color:var(--orange-600);display:flex;align-items:center;justify-content:center">
-          <?= icon('bar-chart', 15) ?>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
         </div>
-        <div>
-          <h2 style="font-size:14px;font-weight:700;color:var(--navy-900);margin:0">
-            Academic Data &amp; Targets Breakdown &middot; <?= e($selectedYear) ?>
-          </h2>
+      <?php endif; ?>
+    </div>
+  </section>
+
+  <!-- ---- Executive Meeting schedule (FEAT-07) ---- -->
+  <?php
+    $emPillClass = [
+        EM_STATE_NOT_CONFIGURED => 'term',
+        EM_STATE_BEFORE_EM1     => 'newer',
+        EM_STATE_EM1_ACTIVE     => 'active',
+        EM_STATE_BETWEEN        => 'locked',
+        EM_STATE_EM2_ACTIVE     => 'active',
+        EM_STATE_EM2_ENDED      => 'locked',
+    ][$selectedEmStatus['state']] ?? 'term';
+  ?>
+  <section id="emScheduleBox" class="card mt-5">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Executive Meeting schedule</h2>
+        <div class="card-sub">
+          When EM1 and EM2 run for <strong><?= e($selectedYear) ?></strong>. EM1 locks automatically once its end date
+          passes and EM2 opens on its start date — no button needed. This is separate from the academic-year lock above.
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <a href="<?= e(url('reports.php?year=' . urlencode($selectedYear))) ?>" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 10px">
-          <?= icon('download', 12) ?> Open Reports
-        </a>
-        <a href="<?= e(url('targets.php')) ?>" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 10px">
-          <?= icon('target', 12) ?> Open Targets
-        </a>
-      </div>
+      <span class="ay-pill <?= e($emPillClass) ?>">
+        <?= icon($selectedEmStatus['em1_locked'] ? 'lock' : 'calendar', 12) ?>
+        <?= $selectedEmStatus['configured'] ? e($selectedEmStatus['label']) : 'Not configured' ?>
+      </span>
     </div>
+    <div class="card-body">
 
-    <div style="padding:18px">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:18px">
-
-        <!-- FACULTY RECORDS BY CATEGORY -->
-        <div>
-          <div style="font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-            <span>Faculty Records by Category (<?= (int)$selectedStats['records'] ?> Total)</span>
-            <span style="font-size:11px;color:#059669;font-weight:600"><?= (int)$selectedStats['approved_records'] ?> Approved</span>
-          </div>
-
-          <?php if (empty($selectedCategoryData)): ?>
-            <div style="background:var(--navy-50,#f8fafc);border:1px dashed var(--navy-200,#cbd5e1);padding:20px;border-radius:8px;text-align:center;color:var(--navy-400);font-size:12px">
-              No record submissions found for Academic Year <strong><?= e($selectedYear) ?></strong>.
+      <?php if (!$selectedEmStatus['configured']): ?>
+        <div class="ay-empty-row">
+          <?= $isSelectedActive
+                ? e(EM_NOT_CONFIGURED_MESSAGE)
+                : 'Executive Meeting schedule is not configured for ' . e($selectedYear) . '.' ?>
+        </div>
+      <?php else: ?>
+        <div class="em-sched-now">
+          <div class="em-sched-now-t"><?= e($selectedEmStatus['detail']) ?></div>
+          <?php if (!empty($selectedEmSchedule['updated_at'])): ?>
+            <div class="em-sched-now-s">
+              Last saved <?= e($fmtDate($selectedEmSchedule['updated_at'])) ?>
+              <?php if (!empty($selectedEmSchedule['updated_by_name'])): ?>by <?= e($selectedEmSchedule['updated_by_name']) ?><?php endif; ?>
             </div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
+
+      <form method="post" class="em-sched-form" action="<?= e(url('academic-years.php')) ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_em_schedule">
+        <input type="hidden" name="academic_year" value="<?= e($selectedYear) ?>">
+
+        <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
+          <fieldset class="em-sched-group">
+            <legend>
+              <?= e($emName) ?>
+              <?php if ($selectedEmStatus['current'] === $emKey): ?>
+                <span class="ay-pill active"><span class="dot"></span> In session</span>
+              <?php elseif ($emKey === 'em1' && $selectedEmStatus['em1_locked']): ?>
+                <span class="ay-pill locked"><?= icon('lock', 11) ?> Locked</span>
+              <?php elseif ($emKey === 'em2' && $selectedEmStatus['em2_upcoming']): ?>
+                <span class="ay-pill newer">Upcoming</span>
+              <?php endif; ?>
+            </legend>
+            <div class="field">
+              <label for="<?= $emKey ?>_start">Start date <span class="req">*</span></label>
+              <input type="date" class="input" id="<?= $emKey ?>_start" name="<?= $emKey ?>_start" required
+                     value="<?= e($emValue($emKey . '_start')) ?>"
+                     <?php if ($selectedEmSpan): ?>min="<?= e($selectedEmSpan['from']) ?>" max="<?= e($selectedEmSpan['to']) ?>"<?php endif; ?>>
+            </div>
+            <div class="field">
+              <label for="<?= $emKey ?>_end">End date <span class="req">*</span></label>
+              <input type="date" class="input" id="<?= $emKey ?>_end" name="<?= $emKey ?>_end" required
+                     value="<?= e($emValue($emKey . '_end')) ?>"
+                     <?php if ($selectedEmSpan): ?>min="<?= e($selectedEmSpan['from']) ?>" max="<?= e($selectedEmSpan['to']) ?>"<?php endif; ?>>
+            </div>
+          </fieldset>
+        <?php endforeach; ?>
+
+        <div class="em-sched-go">
+          <button type="submit" class="btn btn-primary"><?= icon('save', 15) ?> Save Schedule</button>
+        </div>
+      </form>
+      <p class="ay-form-note">
+        Each meeting runs from the start of its start date to the end of its end date.
+        EM2 must start after EM1 ends, and every date must fall within <?= e($selectedYear) ?>
+        <?php if ($selectedEmSpan): ?>(<?= e($fmtDate($selectedEmSpan['from'])) ?> – <?= e($fmtDate($selectedEmSpan['to'])) ?>)<?php endif; ?>.
+        Records submitted during EM1 become read-only for every role except Admin once EM1 locks; they stay available for viewing and reports.
+      </p>
+    </div>
+  </section>
+
+  <style>
+    .em-sched-now { padding:12px 14px; border:1px solid var(--hairline); border-radius:var(--r-lg);
+        background:var(--navy-50); margin-bottom:16px; }
+    .em-sched-now-t { font-size:13px; font-weight:600; color:var(--ink); }
+    .em-sched-now-s { font-size:12px; color:var(--ink-faint); margin-top:2px; }
+    .em-sched-form { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; gap:14px; align-items:end; }
+    .em-sched-group { border:1px solid var(--hairline); border-radius:var(--r-lg); padding:10px 14px 14px; margin:0;
+        display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; min-width:0; }
+    .em-sched-group legend { padding:0 6px; font-size:13px; font-weight:700; color:var(--ink);
+        display:inline-flex; align-items:center; gap:8px; }
+    .em-sched-group .field { margin:0; min-width:0; }
+    .em-sched-go .btn { height:42px; white-space:nowrap; }
+    @media (max-width:900px) {
+      .em-sched-form { grid-template-columns:minmax(0,1fr); }
+    }
+    @media (max-width:520px) {
+      .em-sched-group { grid-template-columns:minmax(0,1fr); }
+    }
+  </style>
+
+  <!-- ---- The year's data ---- -->
+  <section class="card mt-5">
+    <div class="card-head">
+      <div>
+        <h2 class="card-title">Data for <?= e($selectedYear) ?></h2>
+        <div class="card-sub">Faculty records by category and targets by department, as entered in this year.</div>
+      </div>
+      <?php if ($isSelectedActive): ?>
+        <div class="flex gap-2">
+          <a href="<?= e(url('reports.php')) ?>" class="btn btn-outline btn-sm"><?= icon('reports', 14) ?> Reports</a>
+          <a href="<?= e(url('targets.php')) ?>" class="btn btn-outline btn-sm"><?= icon('target', 14) ?> Targets</a>
+        </div>
+      <?php else: ?>
+        <?php // Reports and Targets only ever show the operating year, so a link
+              // from a different year would open the wrong year's data. ?>
+        <span class="ay-note" title="Make <?= e($selectedYear) ?> the operating year to report on it"><?= icon('info', 13) ?> Reports and Targets show the operating year (<?= e($activeYear) ?>)</span>
+      <?php endif; ?>
+    </div>
+    <div class="card-body">
+      <div class="ay-breakdown">
+
+        <div>
+          <div class="ay-sub">Records by category <span><?= (int) $selectedStats['records'] ?> total · <?= (int) $selectedStats['approved_records'] ?> approved</span></div>
+          <?php if (empty($selectedCategoryData)): ?>
+            <div class="ay-empty-row">No records submitted in <?= e($selectedYear) ?>.</div>
           <?php else: ?>
-            <div class="table-wrap" style="margin:0;border:1px solid var(--navy-100,#e2e8f0);border-radius:8px">
-              <table class="table" style="width:100%;font-size:12px">
-                <thead>
-                  <tr style="background:#f8fafc">
-                    <th>Record Category</th>
-                    <th style="text-align:center;width:80px">Submitted</th>
-                    <th style="text-align:center;width:80px">Approved</th>
-                    <th style="text-align:right;width:90px">Approval %</th>
-                  </tr>
-                </thead>
+            <div class="ay-table-box table-wrap">
+              <table class="data ay-t">
+                <thead><tr><th>Category</th><th class="num">Submitted</th><th class="num">Approved</th><th class="num">Approval</th></tr></thead>
                 <tbody>
-                  <?php foreach ($selectedCategoryData as $catKey => $cat):
-                      $pct = $cat['total'] > 0 ? round(($cat['approved'] / $cat['total']) * 100) : 0;
+                  <?php foreach ($selectedCategoryData as $cat):
+                      $pct = (int) round($cat['approved'] / $cat['total'] * 100);
+                      $col = $pct >= 80 ? 'var(--ok)' : ($pct >= 50 ? 'var(--orange-500)' : 'var(--bad)');
                   ?>
                     <tr>
-                      <td><div style="font-weight:600;color:var(--navy-900)"><?= e($cat['label']) ?></div></td>
-                      <td style="text-align:center"><span class="badge badge-neutral" style="font-size:11px"><?= $cat['total'] ?></span></td>
-                      <td style="text-align:center"><span class="badge badge-success" style="font-size:11px"><?= $cat['approved'] ?></span></td>
-                      <td style="text-align:right">
-                        <span style="font-weight:700;color:<?= $pct >= 80 ? '#059669' : ($pct >= 50 ? '#D97706' : '#DC2626') ?>"><?= $pct ?>%</span>
-                      </td>
+                      <td class="fw-500"><?= e($cat['label']) ?></td>
+                      <td class="num"><?= $cat['total'] ?></td>
+                      <td class="num"><?= $cat['approved'] ?></td>
+                      <td class="num"><span class="ay-rate"><span class="track"><span style="width:<?= $pct ?>%;background:<?= $col ?>"></span></span><b style="color:<?= $col ?>"><?= $pct ?>%</b></span></td>
                     </tr>
                   <?php endforeach; ?>
                 </tbody>
@@ -801,37 +610,22 @@ require __DIR__ . '/inc/header.php';
           <?php endif; ?>
         </div>
 
-        <!-- DEPARTMENT TARGETS -->
         <div>
-          <div style="font-size:12px;font-weight:700;color:var(--navy-800);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-            <span>Department Targets Registered (<?= (int)$selectedStats['targets'] ?> Total)</span>
-            <span style="font-size:11px;color:var(--navy-500)">By Department</span>
-          </div>
-
+          <div class="ay-sub">Targets by department <span><?= (int) $selectedStats['targets'] ?> total</span></div>
           <?php if (empty($selectedDeptTargets)): ?>
-            <div style="background:var(--navy-50,#f8fafc);border:1px dashed var(--navy-200,#cbd5e1);padding:20px;border-radius:8px;text-align:center;color:var(--navy-400);font-size:12px">
-              No department targets registered for Academic Year <strong><?= e($selectedYear) ?></strong>.
-            </div>
+            <div class="ay-empty-row">No targets set in <?= e($selectedYear) ?>.</div>
           <?php else: ?>
-            <div class="table-wrap" style="margin:0;border:1px solid var(--navy-100,#e2e8f0);border-radius:8px">
-              <table class="table" style="width:100%;font-size:12px">
-                <thead>
-                  <tr style="background:#f8fafc">
-                    <th>Department</th>
-                    <th style="text-align:center;width:75px">Total</th>
-                    <th style="text-align:center;width:75px">Approved</th>
-                    <th style="text-align:center;width:75px">Pending</th>
-                    <th style="text-align:right;width:75px">Draft</th>
-                  </tr>
-                </thead>
+            <div class="ay-table-box table-wrap">
+              <table class="data ay-t">
+                <thead><tr><th>Department</th><th class="num">Total</th><th class="num">Approved</th><th class="num">Pending</th><th class="num" title="Changes requested">Returned</th><th class="num">Draft</th></tr></thead>
                 <tbody>
                   <?php foreach ($selectedDeptTargets as $dt): ?>
                     <tr>
-                      <td><div style="font-weight:700;color:var(--navy-900)"><?= e($dt['department']) ?></div></td>
-                      <td style="text-align:center"><strong><?= (int)$dt['total_targets'] ?></strong></td>
-                      <td style="text-align:center"><span class="badge badge-success" style="font-size:10px"><?= (int)$dt['approved_targets'] ?></span></td>
-                      <td style="text-align:center"><span class="badge badge-neutral" style="font-size:10px"><?= (int)$dt['pending_targets'] ?></span></td>
-                      <td style="text-align:right"><span style="font-size:11px;color:var(--navy-500)"><?= (int)$dt['draft_targets'] ?></span></td>
+                      <td class="fw-600"><?= e($dt['department']) ?></td>
+                      <td class="num fw-600"><?= (int) $dt['total_targets'] ?></td>
+                      <?php foreach (['approved_targets', 'pending_targets', 'returned_targets', 'draft_targets'] as $col): $v = (int) $dt[$col]; ?>
+                        <td class="num<?= $v ? '' : ' ay-zero' ?>"><?= $v ?></td>
+                      <?php endforeach; ?>
                     </tr>
                   <?php endforeach; ?>
                 </tbody>
@@ -842,164 +636,84 @@ require __DIR__ . '/inc/header.php';
 
       </div>
     </div>
-  </div>
-
-  <!-- DISCOVERY BANNER CARD: VIEW REGISTRY BY BUTTON -->
-  <div class="card" style="background:linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);border:1px solid var(--navy-200,#cbd5e1);border-radius:12px;padding:18px 24px;margin-bottom:24px">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div style="width:40px;height:40px;border-radius:10px;background:rgba(15,23,42,0.08);display:flex;align-items:center;justify-content:center;color:var(--navy-800)">
-          <?= icon('building', 20) ?>
-        </div>
-        <div>
-          <div style="font-size:14px;font-weight:700;color:var(--navy-900)">
-            Institutional Academic Years Registry &middot; <?= count($allYears) ?> Years Registered
-          </div>
-          <div style="font-size:12px;color:var(--navy-600);margin-top:2px">
-            Browse complete institutional timeline, inspect past data across decades, or switch active system years.
-          </div>
-        </div>
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" onclick="switchAyTab('registry')" style="font-weight:700;padding:8px 18px">
-        <?= icon('file-stack', 14) ?> View Full Academic Years Registry &rarr;
-      </button>
-    </div>
-  </div>
+  </section>
 
 </div>
 
-
 <!-- =========================================================================
-     TAB 2: ACADEMIC YEARS REGISTRY (VIEWABLE ON-DEMAND VIA BUTTON)
+     ALL YEARS (registry)
      ========================================================================= -->
-<div id="ay_tab_registry" style="display:none">
-
-  <div class="card" style="padding:0;overflow:hidden;border:1px solid var(--navy-100,#e2e8f0);border-radius:12px;box-shadow:0 3px 12px rgba(15,23,42,0.04);margin-bottom:24px">
-
-    <!-- REGISTRY TOOLBAR WITH SEARCH -->
-    <div class="ay-registry-toolbar">
+<div id="ay_tab_registry" hidden>
+  <section class="card">
+    <div class="card-head">
       <div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <h2 style="font-size:16px;font-weight:700;color:var(--navy-900);margin:0">Academic Years Registry &amp; Multi-Year Status</h2>
-          <span class="badge badge-neutral" style="font-size:11px">
-            <span id="ay_visible_count"><?= count($allYears) ?></span> of <?= count($allYears) ?> Years
-          </span>
-        </div>
-        <div style="font-size:12px;color:var(--navy-500);margin-top:2px">
-          Inspect any year's data, manage cycle locks, or change system-wide operating year.
-        </div>
+        <h2 class="card-title">All academic years <span class="tab-count"><span id="ay_visible_count"><?= count($allYears) ?></span></span></h2>
+        <div class="card-sub">From <?= e(end($allYears)) ?> to <?= e($allYears[0]) ?>. Open a year to see its figures, lock it, or make it the operating year.</div>
       </div>
-
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <!-- LIVE SEARCH INPUT -->
-        <label class="fb-field fb-search" style="min-width:300px">
-          <?= icon('search', 15) ?>
-          <input type="search" id="ay_registry_search" placeholder="Search year or status (e.g. 2025, locked)…"
-                 oninput="filterRegistryTable(this.value)" aria-label="Search the academic years registry">
-        </label>
-
-        <button type="button" class="btn btn-outline btn-sm" onclick="switchAyTab('overview')" style="font-weight:600">
-          &larr; Back to Year Overview
-        </button>
-      </div>
+      <label class="fb-field fb-search" style="max-width:320px">
+        <?= icon('search', 15) ?>
+        <input type="search" id="ay_registry_search" placeholder="Search year or status — e.g. 2024, locked"
+               oninput="filterRegistryTable(this.value)" aria-label="Search the academic years">
+      </label>
     </div>
 
-    <!-- REGISTRY TABLE -->
-    <div class="table-wrap" style="margin:0;border:0;max-height:680px;overflow-y:auto">
-      <table class="table" style="width:100%">
+    <div class="table-wrap ay-reg-wrap">
+      <table class="data ay-reg">
         <thead>
-          <tr style="position:sticky;top:0;background:#fafbfc;z-index:2">
-            <th style="width:150px">Academic Year</th>
-            <th style="width:160px">System Status</th>
-            <th style="width:170px">Cycle Lock</th>
-            <th style="width:130px;text-align:center">Exec Meetings</th>
-            <th style="width:140px;text-align:right">Faculty Records</th>
-            <th style="width:90px;text-align:right">Targets</th>
-            <th style="width:250px;text-align:right">Actions</th>
+          <tr>
+            <th>Year</th><th>Status</th><th>Cycle</th>
+            <th class="num">Meetings</th><th class="num">Records</th><th class="num">Targets</th>
+            <th class="num">Actions</th>
           </tr>
         </thead>
         <tbody id="ay_registry_tbody">
           <?php foreach ($allYears as $y):
-              $isActive   = ($y === $activeYear);
-              $isSelected = ($y === $selectedYear);
-              $isCurCal   = ($y === $currentCalYear);
-              $isLocked   = academic_year_is_locked($y);
-              $stats      = academic_year_summary_stats($y);
-              $mCount     = executive_meeting_count($y);
+              $o      = $overview[$y];
+              $kind   = $yearKind($y);
+              $isView = ($y === $selectedYear);
+              $quiet  = !$o['records'] && !$o['targets'] && !$o['meetings'];
+              $search = strtolower($y . ' ' . $kindLabel[$kind] . ' ' . ($o['locked'] ? 'locked' : 'open') . ($y === $currentCalYear ? ' current term' : ''));
           ?>
-            <tr style="<?= $isSelected ? 'background:rgba(255,79,1,0.04);' : '' ?>">
-              <td>
-                <div style="display:flex;align-items:center;gap:6px">
-                  <span style="font-family:monospace;font-size:14px;font-weight:700;color:var(--navy-900)"><?= e($y) ?></span>
-                  <?php if ($isSelected): ?>
-                    <span class="badge badge-brand" style="font-size:9px;padding:2px 6px">Viewing</span>
-                  <?php endif; ?>
-                  <?php if ($isCurCal): ?>
-                    <span class="badge badge-neutral" style="font-size:9px;padding:2px 6px" title="Current Real Calendar Year">Cal</span>
-                  <?php endif; ?>
-                </div>
+            <tr class="<?= $isView ? 'is-viewing' : '' ?><?= $quiet ? ' is-quiet' : '' ?>" data-search="<?= e($search) ?>">
+              <td class="nowrap">
+                <span class="ay-yr"><?= e($y) ?></span>
+                <?php if ($isView): ?><span class="ay-tag viewing">Viewing</span><?php endif; ?>
+                <?php if ($y === $currentCalYear): ?><span class="ay-tag" title="The academic year the calendar is in today">Current term</span><?php endif; ?>
               </td>
+              <td><span class="ay-pill <?= $kind ?>"><span class="dot"></span><?= e($kindLabel[$kind]) ?></span></td>
               <td>
-                <?php if ($isActive): ?>
-                  <span class="badge badge-success" style="font-size:11px;font-weight:700">
-                    <?= icon('check', 12) ?> Active Operating
-                  </span>
+                <?php if ($o['locked']): ?>
+                  <span class="ay-pill locked"><?= icon('lock', 11) ?> Locked</span>
                 <?php else: ?>
-                  <span class="badge badge-neutral" style="font-size:11px">Past Year</span>
+                  <span class="ay-pill open"><?= icon('unlock', 11) ?> Open</span>
                 <?php endif; ?>
               </td>
-              <td>
-                <?php if ($isLocked): ?>
-                  <span style="display:inline-flex;align-items:center;gap:4px;color:#991B1B;background:#FEE2E2;border:1px solid #FECACA;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px">
-                    <?= icon('lock', 11) ?> Locked / Frozen
-                  </span>
-                <?php else: ?>
-                  <span style="display:inline-flex;align-items:center;gap:4px;color:#065F46;background:#ECFDF5;border:1px solid #A7F3D0;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px">
-                    <?= icon('unlock', 11) ?> Open for Uploads
-                  </span>
-                <?php endif; ?>
-              </td>
-              <td style="text-align:center">
-                <span class="badge <?= $mCount > 0 ? 'badge-brand' : 'badge-neutral' ?>" style="font-size:11px;font-weight:600">
-                  <?= $mCount ?> Meeting<?= $mCount === 1 ? '' : 's' ?>
-                </span>
-              </td>
-              <td style="text-align:right">
-                <span style="font-weight:600;color:var(--navy-800)"><?= (int) $stats['records'] ?></span>
-                <span style="font-size:11px;color:var(--navy-400)"> (<?= (int) $stats['approved_records'] ?> app.)</span>
-              </td>
-              <td style="text-align:right">
-                <span style="font-weight:600;color:var(--navy-800)"><?= (int) $stats['targets'] ?></span>
-              </td>
-              <td style="text-align:right">
-                <div style="display:inline-flex;align-items:center;gap:6px">
-                  <!-- VIEW DATA BUTTON -->
-                  <a href="<?= e(url('academic-years.php?year=' . urlencode($y))) ?>"
-                     class="btn <?= $isSelected ? 'btn-primary' : 'btn-outline' ?> btn-sm"
-                     style="font-size:11px;padding:3px 8px" title="Inspect records, targets and meetings for <?= e($y) ?>">
-                    <?= $isSelected ? 'Viewing' : 'View Data' ?>
-                  </a>
-
-                  <!-- LOCK / UNLOCK TOGGLES -->
-                  <?php if ($isLocked): ?>
-                    <button type="button" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;color:#059669;border-color:#A7F3D0" onclick="openUnlockModal('<?= e($y) ?>')">
-                      <?= icon('unlock', 12) ?> Unlock
-                    </button>
+              <td class="num"><?= $o['meetings'] ?></td>
+              <td class="num"><?= $o['records'] ?><?php if ($o['records']): ?> <span class="faint">(<?= $o['approved_records'] ?> approved)</span><?php endif; ?></td>
+              <td class="num"><?= $o['targets'] ?></td>
+              <td class="num">
+                <div class="ay-acts">
+                  <?php if ($isView): ?>
+                    <a class="btn btn-primary btn-sm" href="<?= e(url('academic-years.php?year=' . urlencode($y))) ?>" onclick="switchAyTab('overview'); return false;">Viewing</a>
                   <?php else: ?>
-                    <button type="button" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px;color:#DC2626;border-color:#FECACA" onclick="openDirectLockModal('<?= e($y) ?>')">
-                      <?= icon('lock', 12) ?> Lock
-                    </button>
+                    <a class="btn btn-outline btn-sm" href="<?= e(url('academic-years.php?year=' . urlencode($y))) ?>" title="See <?= e($y) ?>'s figures and meetings">Open</a>
                   <?php endif; ?>
 
-                  <!-- SET ACTIVE YEAR (IF NOT ACTIVE) -->
-                  <?php if (!$isActive): ?>
-                    <form method="post" style="margin:0;display:inline" onsubmit="return confirm('Activate academic year <?= e($y) ?> for all users system-wide?');">
+                  <?php if ($o['locked']): ?>
+                    <button type="button" class="btn btn-sm btn-unlock" onclick="openUnlockModal(<?= e(json_encode($y)) ?>, 'registry')"><?= icon('unlock', 13) ?> Unlock</button>
+                  <?php else: ?>
+                    <button type="button" class="btn btn-sm btn-lock" onclick="openDirectLockModal(<?= e(json_encode($y)) ?>)"><?= icon('lock', 13) ?> Lock</button>
+                  <?php endif; ?>
+
+                  <?php if ($kind === 'active'): ?>
+                    <span class="ay-slot"><?= icon('check', 13) ?>&nbsp;Operating</span>
+                  <?php else: ?>
+                    <form method="post" onsubmit="return confirm(<?= e(json_encode('Make ' . $y . ' the operating year for every user?')) ?>);">
                       <?= csrf_field() ?>
                       <input type="hidden" name="action" value="activate">
                       <input type="hidden" name="academic_year" value="<?= e($y) ?>">
-                      <button type="submit" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px" title="Make this the active operating year for all users">
-                        Set Active
-                      </button>
+                      <input type="hidden" name="tab" value="registry">
+                      <button type="submit" class="btn btn-outline btn-sm" title="Make <?= e($y) ?> the operating year for every user">Make active</button>
                     </form>
                   <?php endif; ?>
                 </div>
@@ -1008,176 +722,113 @@ require __DIR__ . '/inc/header.php';
           <?php endforeach; ?>
         </tbody>
       </table>
-
-      <div id="ay_registry_no_match" style="display:none;padding:36px;text-align:center;color:var(--navy-400);font-size:13px">
-        No academic years match that search query.
-      </div>
+      <div id="ay_registry_no_match" class="empty" hidden><p>No year matches that search.</p></div>
     </div>
-  </div>
-
+  </section>
 </div>
 
 <!-- =========================================================================
-     MODAL 1: SWITCH SYSTEM-WIDE OPERATING ACADEMIC YEAR
+     DIALOGS
      ========================================================================= -->
-<dialog id="switchYearDlg" class="modal">
-  <div class="modal-box" style="max-width:440px">
-    <div class="modal-head">
-      <div style="display:flex;align-items:center;gap:8px">
-        <?= icon('calendar', 18) ?>
-        <span style="font-weight:700;font-size:16px">Switch Active Academic Year</span>
+<dialog id="switchYearDlg" class="modal" style="max-width:30rem">
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="activate">
+    <div class="modal-head"><div><h3>Switch operating year</h3><div class="msub">Every user moves to the year you choose, straight away.</div></div></div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="modal_ay_select">Academic year</label>
+        <select class="select" id="modal_ay_select" name="academic_year">
+          <?php foreach ($allYears as $ay): ?>
+            <option value="<?= e($ay) ?>" <?= $ay === $activeYear ? 'selected' : '' ?>><?= e($ay) ?><?= $ay === $activeYear ? ' — operating now' : '' ?><?= $ay === $currentCalYear ? ' — current term' : '' ?></option>
+          <?php endforeach; ?>
+        </select>
       </div>
-      <button type="button" class="modal-close" onclick="this.closest('dialog').close()">&times;</button>
+      <p class="modal-text" style="font-size:12.5px">Nothing is deleted: every year's records stay where they are. Switching only changes which year everyone works in.</p>
     </div>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="activate">
-      <div class="modal-body" style="padding:20px">
-        <p style="font-size:13px;color:var(--navy-600);margin-bottom:16px;line-height:1.5">
-          Select the academic year you want the entire ATTS portal to operate in. All user roles will immediately switch to this year.
-        </p>
-
-        <div class="field">
-          <label for="modal_ay_select" style="font-weight:600;font-size:13px;margin-bottom:6px;display:block">
-            Choose Academic Year
-          </label>
-          <select class="select" id="modal_ay_select" name="academic_year" style="width:100%;height:44px;font-size:14px;font-weight:600">
-            <?php foreach ($allYears as $ay): ?>
-              <option value="<?= e($ay) ?>" <?= $ay === $activeYear ? 'selected' : '' ?>>
-                <?= e($ay) ?><?= $ay === $currentCalYear ? ' (Current Calendar Year)' : '' ?><?= $ay === $activeYear ? ' ★ Active' : '' ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-
-        <div style="background:var(--navy-50,#f1f5f9);padding:10px 12px;border-radius:6px;font-size:11px;color:var(--navy-600);margin-top:14px">
-          💡 <strong>Tip:</strong> Past records are preserved permanently. Switching years only shifts the display and tracking scope.
-        </div>
-      </div>
-      <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary btn-sm">Activate for All Roles</button>
-      </div>
-    </form>
-  </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Switch for everyone</button>
+    </div>
+  </form>
 </dialog>
 
-<!-- =========================================================================
-     MODAL 2: UNLOCK CYCLE CONFIRMATION FOR CHOSEN YEAR
-     ========================================================================= -->
-<dialog id="unlockCycleDlg" class="modal">
-  <div class="modal-box" style="max-width:440px">
-    <div class="modal-head">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="color:#059669"><?= icon('unlock', 18) ?></span>
-        <span style="font-weight:700;font-size:16px">Unlock Academic Year Cycle</span>
+<dialog id="unlockCycleDlg" class="modal" style="max-width:30rem">
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="unlock_cycle">
+    <input type="hidden" name="academic_year" id="unlock-modal-year" value="<?= e($selectedYear) ?>">
+    <input type="hidden" name="tab" id="unlock-modal-tab" value="">
+    <div class="modal-head"><div><h3>Unlock <span id="unlock-modal-year-display"><?= e($selectedYear) ?></span>?</h3>
+      <div class="msub">Uploads and target changes reopen for every role until the year is locked again.</div></div></div>
+    <div class="modal-body">
+      <div class="field" style="margin:0">
+        <label for="unlock_reason">Reason <span class="faint">(optional)</span></label>
+        <input type="text" class="input" id="unlock_reason" name="reason" maxlength="255" placeholder="e.g. Extra submission window before the next meeting">
       </div>
-      <button type="button" class="modal-close" onclick="this.closest('dialog').close()">&times;</button>
     </div>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="unlock_cycle">
-      <input type="hidden" name="academic_year" id="unlock-modal-year" value="<?= e($selectedYear) ?>">
-
-      <div class="modal-body" style="padding:20px">
-        <p style="font-size:13px;color:var(--navy-600);margin-bottom:14px;line-height:1.5">
-          You are unlocking Academic Year <strong><span id="unlock-modal-year-display"><?= e($selectedYear) ?></span></strong>.
-          Submissions and target adjustments will be re-enabled for all authorized roles until the next Executive Meeting.
-        </p>
-
-        <div class="field">
-          <label for="unlock_reason" style="font-weight:600;font-size:13px;margin-bottom:6px;display:block">
-            Reason for Reopening (Optional)
-          </label>
-          <input type="text" class="input" id="unlock_reason" name="reason" placeholder="e.g. Additional submission window before next Executive Meeting" style="width:100%">
-        </div>
-      </div>
-      <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary btn-sm" style="background:#059669;border-color:#059669">Confirm Unlock</button>
-      </div>
-    </form>
-  </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-success btn-sm"><?= icon('unlock', 14) ?> Unlock</button>
+    </div>
+  </form>
 </dialog>
 
-<!-- =========================================================================
-     MODAL 3: DIRECT LOCK CONFIRMATION FOR CHOSEN YEAR
-     ========================================================================= -->
-<dialog id="directLockDlg" class="modal">
-  <div class="modal-box" style="max-width:440px">
-    <div class="modal-head">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="color:#DC2626"><?= icon('lock', 18) ?></span>
-        <span style="font-weight:700;font-size:16px">Lock Academic Year Cycle</span>
+<dialog id="directLockDlg" class="modal" style="max-width:30rem">
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="toggle_lock">
+    <input type="hidden" name="academic_year" id="direct-lock-year" value="">
+    <input type="hidden" name="lock_state" value="1">
+    <input type="hidden" name="tab" value="registry">
+    <div class="modal-head"><div><h3>Lock <span id="direct-lock-year-display"></span>?</h3>
+      <div class="msub">Uploads and target edits freeze for every role. This does not record an Executive Meeting.</div></div></div>
+    <div class="modal-body">
+      <div class="field" style="margin:0">
+        <label for="direct_lock_note">Note <span class="faint">(optional)</span></label>
+        <input type="text" class="input" id="direct_lock_note" name="note" maxlength="255" placeholder="e.g. Manual lock by the Administrator">
       </div>
-      <button type="button" class="modal-close" onclick="this.closest('dialog').close()">&times;</button>
     </div>
-    <form method="post">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="toggle_lock">
-      <input type="hidden" name="academic_year" id="direct-lock-year" value="">
-      <input type="hidden" name="lock_state" value="1">
-
-      <div class="modal-body" style="padding:20px">
-        <p style="font-size:13px;color:var(--navy-600);margin-bottom:14px;line-height:1.5">
-          Lock academic year <strong><span id="direct-lock-year-display"></span></strong>? When locked, all data submissions and target edits will be frozen across all roles.
-        </p>
-
-        <div class="field">
-          <label for="direct_lock_note" style="font-weight:600;font-size:13px;margin-bottom:6px;display:block">
-            Administrative Note (Optional)
-          </label>
-          <input type="text" class="input" id="direct_lock_note" name="note" placeholder="e.g. Manual cycle lock by Administrator" style="width:100%">
-        </div>
-      </div>
-      <div class="modal-foot" style="display:flex;justify-content:flex-end;gap:8px;padding:12px 20px">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary btn-sm" style="background:#DC2626;border-color:#DC2626">Lock for All Roles</button>
-      </div>
-    </form>
-  </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-danger btn-sm"><?= icon('lock', 14) ?> Lock for all roles</button>
+    </div>
+  </form>
 </dialog>
 
 <script>
-function switchAyTab(tabName) {
-  var overviewTab = document.getElementById('ay_tab_overview');
-  var registryTab = document.getElementById('ay_tab_registry');
-  var navOverview = document.getElementById('ay_nav_overview');
-  var navRegistry = document.getElementById('ay_nav_registry');
-  var topBtn = document.getElementById('btnToggleRegistry');
-
-  if (tabName === 'registry') {
-    if (overviewTab) overviewTab.style.display = 'none';
-    if (registryTab) registryTab.style.display = 'block';
-    if (navOverview) navOverview.classList.remove('active');
-    if (navRegistry) navRegistry.classList.add('active');
-    if (topBtn) {
-      topBtn.innerHTML = '<?= icon('dashboard', 14) ?> View Year Overview';
-      topBtn.setAttribute('onclick', "switchAyTab('overview')");
-      topBtn.className = 'btn btn-primary btn-sm';
-    }
-  } else {
-    if (overviewTab) overviewTab.style.display = 'block';
-    if (registryTab) registryTab.style.display = 'none';
-    if (navOverview) navOverview.classList.add('active');
-    if (navRegistry) navRegistry.classList.remove('active');
-    if (topBtn) {
-      topBtn.innerHTML = '<?= icon('file-stack', 14) ?> View Academic Years Registry (<?= count($allYears) ?>)';
-      topBtn.setAttribute('onclick', "switchAyTab('registry')");
-      topBtn.className = 'btn btn-outline btn-sm';
-    }
-  }
+/* Tabs. The choice is kept in the address (?tab=registry), so a reload or a
+   change made from the registry comes back to the registry. */
+function switchAyTab(tab) {
+  var reg = tab === 'registry';
+  document.getElementById('ay_tab_overview').hidden = reg;
+  document.getElementById('ay_tab_registry').hidden = !reg;
+  document.getElementById('ay_nav_overview').classList.toggle('active', !reg);
+  document.getElementById('ay_nav_registry').classList.toggle('active', reg);
+  document.getElementById('ay_nav_overview').setAttribute('aria-selected', String(!reg));
+  document.getElementById('ay_nav_registry').setAttribute('aria-selected', String(reg));
+  try {
+    var u = new URL(window.location.href);
+    if (reg) u.searchParams.set('tab', 'registry'); else u.searchParams.delete('tab');
+    history.replaceState(null, '', u);
+  } catch (e) {}
 }
 
+/* The header's Lock button: bring the meeting form into view, ready to type. */
 function openExecMeetingForm() {
   switchAyTab('overview');
-  var el = document.getElementById('execMeetingBox');
-  if (el) el.scrollIntoView({ behavior: 'smooth' });
+  var wrap = document.getElementById('meetFormWrap');
+  if (wrap) wrap.open = true;
+  var box = document.getElementById('execMeetingBox');
+  if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  var f = document.getElementById('meeting_number');
+  if (f) setTimeout(function () { f.focus(); f.select(); }, 350);
 }
 
-function openUnlockModal(year) {
+function openUnlockModal(year, tab) {
   document.getElementById('unlock-modal-year').value = year;
   document.getElementById('unlock-modal-year-display').textContent = year;
+  document.getElementById('unlock-modal-tab').value = tab || '';
   document.getElementById('unlockCycleDlg').showModal();
 }
 
@@ -1188,31 +839,19 @@ function openDirectLockModal(year) {
 }
 
 function filterRegistryTable(query) {
-  var q = (query || '').toLowerCase().trim();
-  var rows = document.querySelectorAll('#ay_registry_tbody tr');
-  var visible = 0;
-  rows.forEach(function(r) {
-    var txt = r.textContent.toLowerCase();
-    if (!q || txt.indexOf(q) !== -1) {
-      r.style.display = '';
-      visible++;
-    } else {
-      r.style.display = 'none';
-    }
+  var q = (query || '').toLowerCase().trim(), visible = 0;
+  document.querySelectorAll('#ay_registry_tbody tr').forEach(function (r) {
+    var hit = !q || (r.getAttribute('data-search') || '').indexOf(q) !== -1;
+    r.hidden = !hit;
+    if (hit) visible++;
   });
-  var noMatch = document.getElementById('ay_registry_no_match');
-  if (noMatch) noMatch.style.display = (visible === 0) ? 'block' : 'none';
-  var cnt = document.getElementById('ay_visible_count');
-  if (cnt) cnt.textContent = visible;
+  document.getElementById('ay_registry_no_match').hidden = visible !== 0;
+  document.getElementById('ay_visible_count').textContent = visible;
 }
 
-// Check on load if URL requests registry tab
-document.addEventListener('DOMContentLoaded', function() {
-  var params = new URLSearchParams(window.location.search);
-  if (params.get('tab') === 'registry' || window.location.hash === '#registry') {
-    switchAyTab('registry');
-  }
-});
+if (new URLSearchParams(window.location.search).get('tab') === 'registry' || window.location.hash === '#registry') {
+  switchAyTab('registry');
+}
 </script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

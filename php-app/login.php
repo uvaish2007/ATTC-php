@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $selectedRole = trim((string) input('role'));
     } else {
         $email        = trim((string) input('email'));
-        $password     = (string) input('password');
+        $password     = trim((string) input('password'));
         $selectedRole = trim((string) input('role'));
 
         if ($selectedRole === '') {
@@ -244,8 +244,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </div>
 
           <div class="field">
-            <label for="email">Email</label>
-            <input class="input" type="email" id="email" name="email" placeholder="you@college.edu"
+            <label for="email">Email or Username</label>
+            <input class="input" type="text" id="email" name="email" placeholder="you@college.edu or username (e.g. admin)"
                    autocomplete="username" value="<?= e($email) ?>" required>
           </div>
 
@@ -287,6 +287,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const togglePasswordBtn = document.getElementById('togglePasswordBtn');
   const eyeShow = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-show') : null;
   const eyeHide = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-hide') : null;
+
+  // Auto-trim input fields on blur (BUG-LOGIN-01 fix)
+  if (emailInput) {
+    emailInput.addEventListener('blur', () => {
+      emailInput.value = emailInput.value.trim();
+    });
+  }
+  if (passwordInput) {
+    passwordInput.addEventListener('blur', () => {
+      passwordInput.value = passwordInput.value.trim();
+    });
+  }
 
   roleCards.forEach(card => {
     card.addEventListener('click', () => {
@@ -347,8 +359,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     });
   }
 
-  // Handle form submissions
+  // Handle form submissions (Auto-trim before posting)
   loginForm.addEventListener('submit', (e) => {
+    if (emailInput) emailInput.value = emailInput.value.trim();
+    if (passwordInput) passwordInput.value = passwordInput.value.trim();
+
     if (step2SubmitBtn && step2SubmitBtn.disabled) {
       e.preventDefault();
       return;

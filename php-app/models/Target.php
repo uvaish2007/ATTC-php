@@ -743,7 +743,7 @@ function target_record_table_columns(string $table): array
  * Scoped to the target's department (where the record type has that column) and
  * to its academic year (likewise), so the count matches the target's scope.
  */
-function target_record_count(array $target): ?int
+function target_record_count(array $target, ?string $from = null, ?string $to = null): ?int
 {
     static $countCache = [];
 
@@ -754,7 +754,10 @@ function target_record_count(array $target): ?int
 
     $dept = (string) ($target['department'] ?? '');
     $year = (string) ($target['academic_year'] ?? '');
-    $cacheKey = "{$type}|{$dept}|{$year}";
+    // $from / $to (Y-m-d, inclusive) optionally narrow the count to records
+    // submitted in a period — FEAT-07 uses this for one Executive Meeting.
+    // Omitted, the count is exactly what it always was.
+    $cacheKey = "{$type}|{$dept}|{$year}|{$from}|{$to}";
     if (array_key_exists($cacheKey, $countCache)) {
         return $countCache[$cacheKey];
     }
@@ -781,6 +784,14 @@ function target_record_count(array $target): ?int
     if (in_array('academic_year', $cols, true) && !empty($target['academic_year'])) {
         $sql .= ' AND academic_year = ?';
         $args[] = $target['academic_year'];
+    }
+    if ($from !== null) {
+        $sql .= ' AND created_at >= ?';
+        $args[] = $from . ' 00:00:00';
+    }
+    if ($to !== null) {
+        $sql .= ' AND created_at <= ?';
+        $args[] = $to . ' 23:59:59';
     }
 
     try {
@@ -1116,16 +1127,143 @@ function academic_year_summary_stats(string $year): array
 }
 
 /**
- * All executive meetings recorded for an academic year.
+ * Records, approved records, targets, finished meetings and lock state for
+ * every year at once, keyed by year. Around twenty queries in total: asking
+ * academic_year_summary_stats() and friends row by row for the ~27-year
+ * registry ran over five hundred on every page load.
+ */
+function academic_years_overview(array $years): array
+{
+    $out = [];
+    foreach ($years as $y) {
+        $out[$y] = ['records' => 0, 'approved_records' => 0, 'targets' => 0, 'meetings' => 0, 'locked' => false];
+    }
+
+    require_once __DIR__ . '/Record.php';
+    foreach (record_types() as $t) {
+        $table = $t['table'];
+        if (!in_array('academic_year', target_record_table_columns($table), true)) {
+            continue;
+        }
+        try {
+            $rows = db()->query("SELECT academic_year AS y, COUNT(*) AS n, SUM(status = 'Approved') AS a FROM `{$table}` GROUP BY academic_year");
+            foreach ($rows as $r) {
+                if (isset($out[$r['y']])) {
+                    $out[$r['y']]['records']          += (int) $r['n'];
+                    $out[$r['y']]['approved_records'] += (int) $r['a'];
+                }
+            }
+        } catch (\PDOException $e) {
+            continue;
+        }
+    }
+
+    try {
+        foreach (db()->query('SELECT academic_year AS y, COUNT(*) AS n FROM targets GROUP BY academic_year') as $r) {
+            if (isset($out[$r['y']])) {
+                $out[$r['y']]['targets'] = (int) $r['n'];
+            }
+        }
+    } catch (\PDOException $e) {}
+
+    if (executive_meetings_ready()) {
+        try {
+            foreach (db()->query("SELECT academic_year AS y, COUNT(*) AS n FROM executive_meetings WHERE status = 'Finished' GROUP BY academic_year") as $r) {
+                if (isset($out[$r['y']])) {
+                    $out[$r['y']]['meetings'] = (int) $r['n'];
+                }
+            }
+        } catch (\PDOException $e) {}
+    }
+
+    try {
+        foreach (db()->query("SELECT name, value FROM app_settings WHERE name LIKE 'ay\\_locked\\_%'") as $r) {
+            $y = substr($r['name'], strlen('ay_locked_'));
+            if (isset($out[$y])) {
+                $out[$y]['locked'] = ($r['value'] === '1');
+            }
+        }
+    } catch (\PDOException $e) {}
+
+    return $out;
+}
+
+/* ==========================================================================
+   Executive meetings
+   Recording a finished Executive Meeting locks its academic year for every
+   role; the rows are that year's audit trail. The table ships in
+   sql/executive_meetings.sql and is also created here on first use: the page
+   was built against it before anything created it, so every query failed
+   quietly ("0 meetings") and recording a meeting could never lock a year.
+   ========================================================================= */
+const EXECUTIVE_MEETINGS_DDL = "CREATE TABLE IF NOT EXISTS executive_meetings (
+  id             INT AUTO_INCREMENT PRIMARY KEY,
+  academic_year  VARCHAR(9)   NOT NULL,
+  meeting_number VARCHAR(50)  NOT NULL,
+  meeting_date   DATE         NOT NULL,
+  notes          TEXT         NULL,
+  status         VARCHAR(20)  NOT NULL DEFAULT 'Finished',
+  locked_cycle   TINYINT(1)   NOT NULL DEFAULT 1,
+  created_by     INT          NULL,
+  created_at     TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_exec_meeting (academic_year, meeting_number),
+  KEY idx_exec_meeting_year (academic_year, meeting_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+/**
+ * Whether the executive_meetings table can be used, creating it if missing.
+ * Checked once per request. False only when it is missing and could not be
+ * created (e.g. the database user may not CREATE) — callers then degrade and
+ * the Academic Year page says so instead of pretending there are no meetings.
+ */
+function executive_meetings_ready(): bool
+{
+    static $ready = null;
+    if ($ready !== null) {
+        return $ready;
+    }
+    try {
+        db()->query('SELECT 1 FROM executive_meetings LIMIT 1');
+        return $ready = true;
+    } catch (\PDOException $e) {
+        // Missing: fall through and create it.
+    }
+    try {
+        db()->exec(EXECUTIVE_MEETINGS_DDL);
+        return $ready = true;
+    } catch (\PDOException $e) {
+        return $ready = false;
+    }
+}
+
+/**
+ * A meeting number as entered — "3", "#3", "Meeting #3", "No. 3" — reduced to
+ * its bare form "3". The page prints "Meeting #" in front, so storing the
+ * prefix produced "Meeting #Meeting #3" and let "#3" and "3" coexist.
+ */
+function executive_meeting_number_normalise(string $number): string
+{
+    $n = trim($number);
+    $n = preg_replace('/^(?:meeting|mtg)\b\.?\s*/i', '', $n);
+    $n = preg_replace('/^(?:no|number)\b\.?\s*/i', '', $n);
+    $n = ltrim($n, "# \t");
+    return trim($n);
+}
+
+/**
+ * All executive meetings recorded for an academic year, newest first.
  */
 function executive_meetings_for_year(string $year): array
 {
+    if (!executive_meetings_ready()) {
+        return [];
+    }
     try {
         $stmt = db()->prepare(
-            "SELECT m.*, u.name as admin_name 
-             FROM executive_meetings m 
-             LEFT JOIN users u ON u.id = m.created_by 
-             WHERE m.academic_year = ? 
+            "SELECT m.*, u.name as admin_name
+             FROM executive_meetings m
+             LEFT JOIN users u ON u.id = m.created_by
+             WHERE m.academic_year = ?
              ORDER BY m.meeting_date DESC, m.id DESC"
         );
         $stmt->execute([$year]);
@@ -1140,6 +1278,9 @@ function executive_meetings_for_year(string $year): array
  */
 function executive_meeting_count(string $year): int
 {
+    if (!executive_meetings_ready()) {
+        return 0;
+    }
     try {
         $stmt = db()->prepare("SELECT COUNT(*) FROM executive_meetings WHERE academic_year = ? AND status = 'Finished'");
         $stmt->execute([$year]);
@@ -1154,13 +1295,16 @@ function executive_meeting_count(string $year): int
  */
 function executive_meeting_latest(string $year): ?array
 {
+    if (!executive_meetings_ready()) {
+        return null;
+    }
     try {
         $stmt = db()->prepare(
-            "SELECT m.*, u.name as admin_name 
-             FROM executive_meetings m 
-             LEFT JOIN users u ON u.id = m.created_by 
-             WHERE m.academic_year = ? 
-             ORDER BY m.meeting_date DESC, m.id DESC 
+            "SELECT m.*, u.name as admin_name
+             FROM executive_meetings m
+             LEFT JOIN users u ON u.id = m.created_by
+             WHERE m.academic_year = ?
+             ORDER BY m.meeting_date DESC, m.id DESC
              LIMIT 1"
         );
         $stmt->execute([$year]);
@@ -1181,14 +1325,32 @@ function executive_meeting_finish_and_lock(string $year, string $meetingNumber, 
         return [false, 'Invalid academic year.'];
     }
 
-    $meetingNumber = trim($meetingNumber);
+    $meetingNumber = executive_meeting_number_normalise($meetingNumber);
     if ($meetingNumber === '') {
         return [false, 'Please enter the Executive Meeting number (e.g. 1, 2, or Meeting #1).'];
     }
+    if (mb_strlen($meetingNumber) > 50) {
+        return [false, 'That meeting number is too long — use something like 3 or 3A.'];
+    }
 
     $meetingDate = trim($meetingDate);
-    if ($meetingDate === '' || strtotime($meetingDate) === false) {
-        $meetingDate = date('Y-m-d');
+    $ts = $meetingDate === '' ? false : strtotime($meetingDate);
+    if ($ts === false) {
+        return [false, 'Please enter the date the meeting finished.'];
+    }
+    if (date('Y-m-d', $ts) > date('Y-m-d')) {
+        return [false, 'The meeting date is in the future. Record a meeting once it has finished.'];
+    }
+    $meetingDate = date('Y-m-d', $ts);
+
+    if (!executive_meetings_ready()) {
+        return [false, 'Executive meetings cannot be saved: the executive_meetings table is missing and could not be created. Run sql/executive_meetings.sql on the database.'];
+    }
+
+    $dup = db()->prepare('SELECT COUNT(*) FROM executive_meetings WHERE academic_year = ? AND meeting_number = ?');
+    $dup->execute([$year, $meetingNumber]);
+    if ((int) $dup->fetchColumn() > 0) {
+        return [false, "Meeting #{$meetingNumber} is already recorded for {$year}. Use the next number."];
     }
 
     $notes = trim((string) $notes);
@@ -1200,7 +1362,7 @@ function executive_meeting_finish_and_lock(string $year, string $meetingNumber, 
         );
         $stmt->execute([$year, $meetingNumber, $meetingDate, $notes ?: null, $adminUserId]);
     } catch (\PDOException $e) {
-        return [false, 'Database error recording executive meeting: ' . $e->getMessage()];
+        return [false, 'The meeting could not be saved, so the year was not locked. Please try again.'];
     }
 
     // Lock the cycle
