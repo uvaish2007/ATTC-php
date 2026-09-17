@@ -136,47 +136,12 @@ try {
     $stmt->execute([$selectedYear]);
     $selectedDeptTargets = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
 } catch (\PDOException $e) {}
-<<<<<<< HEAD
-
-// Calendar calculation for the current real-time month
-$now = new DateTime('now', new DateTimeZone(defined('APP_TIMEZONE') ? APP_TIMEZONE : (string) env('APP_TIMEZONE', 'Asia/Kolkata')));
-$currentMonthNum  = (int) $now->format('n');
-$currentYearNum   = (int) $now->format('Y');
-$currentDayNum    = (int) $now->format('j');
-$monthName        = $now->format('F');
-$firstDayOfMonth  = (new DateTime("{$currentYearNum}-{$currentMonthNum}-01"))->format('w');
-$daysInMonth      = (int) $now->format('t');
-
-// Calculate Selected Academic Year Cycle Progress (July 1 to June 30)
-$ayStartYear = (int) substr($selectedYear, 0, 4);
-$ayStartDate = new DateTime("{$ayStartYear}-07-01");
-$ayEndDate   = new DateTime(($ayStartYear + 1) . "-06-30");
-
-$totalAyDays = max(1, $ayEndDate->diff($ayStartDate)->days);
-if ($now < $ayStartDate) {
-    $cyclePct = 0;
-    $cyclePhase = 'Upcoming Academic Year';
-} elseif ($now > $ayEndDate) {
-    $cyclePct = 100;
-    $cyclePhase = 'Past Academic Cycle (Concluded)';
-} else {
-    $passedAyDays = max(0, min($totalAyDays, $now->diff($ayStartDate)->days));
-    $cyclePct = round(($passedAyDays / $totalAyDays) * 100);
-    if ($cyclePct < 35) {
-        $cyclePhase = 'Phase 1: Odd Semester Setup & Ingestion';
-    } elseif ($cyclePct < 75) {
-        $cyclePhase = 'Phase 2: Even Semester Progress & Verification';
-    } else {
-        $cyclePhase = 'Phase 3: IQAC Audit & Year-End Lock Cycle';
-    }
-=======
 $tgtTotals = ['approved' => 0, 'pending' => 0, 'returned' => 0, 'draft' => 0];
 foreach ($selectedDeptTargets as $dt) {
     $tgtTotals['approved'] += (int) $dt['approved_targets'];
     $tgtTotals['pending']  += (int) $dt['pending_targets'];
     $tgtTotals['returned'] += (int) $dt['returned_targets'];
     $tgtTotals['draft']    += (int) $dt['draft_targets'];
->>>>>>> 20b1106e91e8192bbc6d9af1710fa281ac7ef570
 }
 
 // ---- The term, June to May --------------------------------------------------
