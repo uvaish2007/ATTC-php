@@ -55,7 +55,7 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
-            ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],
@@ -129,13 +129,13 @@ function pending_approvals_count(array $user): int
     $year      = active_academic_year();   // the badge only counts the active year's pending records
 
     if ($role === 'Coordinator') {
-        $targetStatuses = ['Submitted'];
+        $targetStatuses = ['Submitted', 'Unlocked for Edit'];
     } elseif ($role === 'HoD') {
-        $targetStatuses = ['HOD Pending', 'Submitted'];
+        $targetStatuses = ['HOD Pending'];
     } elseif ($role === 'Dean') {
-        $targetStatuses = ['Dean Pending'];
+        $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {   // Admin — everything still awaiting a decision
-        $targetStatuses = ['Submitted', 'HOD Pending', 'Dean Pending'];
+        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
