@@ -132,12 +132,16 @@ function time_ago($datetime): string
 function status_class(string $status): string
 {
     $map = [
-        'Draft'        => 'neutral',
-        'Submitted'    => 'info',
-        'HOD Pending'  => 'info',
-        'Dean Pending' => 'warning',
-        'Approved'     => 'success',
-        'Rejected'     => 'danger',
+        'Draft'             => 'neutral',
+        'Submitted'         => 'info',
+        'HOD Pending'       => 'info',
+        'Dean Pending'      => 'warning',
+        'Approved'          => 'success',
+        'Rejected'          => 'danger',
+        'Pending'           => 'warning',
+        'Completed'         => 'info',
+        'Edit Requested'    => 'warning',
+        'Unlocked for Edit' => 'info',
     ];
 
     return $map[$status] ?? 'neutral';
@@ -319,5 +323,86 @@ if (!function_exists('mb_strlen')) {
     function mb_strlen(string $string, ?string $encoding = null): int {
         return strlen($string);
     }
+}
+
+/**
+ * Build a secure URL to view or download an authorized proof attachment.
+ */
+/**
+ * Build a secure URL for accessing a record proof attachment.
+ * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
+ */
+function record_proof_url(string $type, int $id, ?string $filename = null, bool $download = false, bool $absolute = true): string
+{
+    $params = [
+        'type' => $type,
+        'id'   => $id,
+    ];
+    if ($filename !== null && $filename !== '') {
+        $params['file'] = basename($filename);
+    }
+    if ($download) {
+        $params['download'] = '1';
+    }
+    $rel = url('proof.php?' . http_build_query($params));
+    if (!$absolute) {
+        return $rel;
+    }
+    if (strpos($rel, 'http://') === 0 || strpos($rel, 'https://') === 0) {
+        return $rel;
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost:8000';
+    return $scheme . '://' . $host . $rel;
+}
+
+/**
+ * Inspect a record's proof file on disk and return metadata.
+ */
+function record_proof_meta(string $type, int $id, ?string $filename): ?array
+{
+    $filename = basename(trim((string) $filename));
+    if ($filename === '') {
+        return null;
+    }
+    $baseDir = defined('UPLOAD_DIR') ? realpath(UPLOAD_DIR) : null;
+    if (!$baseDir) {
+        $baseDir = realpath(__DIR__ . '/../uploads');
+    }
+    if (!$baseDir) {
+        return null;
+    }
+    $paths = [
+        $baseDir . DIRECTORY_SEPARATOR . 'proofs' . DIRECTORY_SEPARATOR . $filename,
+        $baseDir . DIRECTORY_SEPARATOR . $filename,
+    ];
+    $filePath = null;
+    foreach ($paths as $p) {
+        if (file_exists($p) && is_file($p)) {
+            $filePath = realpath($p);
+            break;
+        }
+    }
+
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $isImage = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+    $viewUrl = record_proof_url($type, $id, $filename, false, true);
+    $downUrl = record_proof_url($type, $id, $filename, true, true);
+
+    $base64Data = null;
+    if ($isImage && $filePath && filesize($filePath) <= 2097152) { // up to 2MB for base64 thumbnail
+        $mime = ($ext === 'png') ? 'image/png' : (($ext === 'webp') ? 'image/webp' : (($ext === 'gif') ? 'image/gif' : 'image/jpeg'));
+        $base64Data = 'data:' . $mime . ';base64,' . base64_encode((string) @file_get_contents($filePath));
+    }
+
+    return [
+        'filename'     => $filename,
+        'ext'          => $ext,
+        'is_image'     => $isImage,
+        'view_url'     => $viewUrl,
+        'download_url' => $downUrl,
+        'exists'       => ($filePath !== null),
+        'base64_data'  => $base64Data,
+    ];
 }
 

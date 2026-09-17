@@ -419,6 +419,7 @@ function faculty_achievement_details(int $facultyId, ?string $yearFilter = null,
                         'status'      => $r['status'] ?? 'Approved',
                         'created_at'  => $r['created_at'] ?? date('Y-m-d H:i:s'),
                         'year'        => $r['academic_year'] ?? '—',
+                        'proof_file'  => $r['proof_file'] ?? null,
                         'raw'         => $r,
                     ];
                     $detailedRecords[] = $item;

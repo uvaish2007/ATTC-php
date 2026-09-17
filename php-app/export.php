@@ -68,7 +68,7 @@ $today    = date('d.m.Y');
 $fileStem = 'iqac-report-' . date('Y-m-d');
 
 // The columns, in order. Same for every format.
-$columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date'];
+$columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date', 'Proof'];
 
 /**
  * Write one line of the CSV file.
@@ -82,9 +82,49 @@ function csv_line($handle, array $fields): void
     fputcsv($handle, $fields, ',', '"', '');
 }
 
-/** Build one row of plain values for a record. */
-function export_row(array $record, int $serial): array
+/** Build one row of values for a record in the requested export format. */
+function export_row(array $record, int $serial, string $format = 'csv'): array
 {
+    $type  = $record['_type_key'] ?? '';
+    $id    = (int) ($record['id'] ?? 0);
+    $pfile = trim((string) ($record['proof_file'] ?? ''));
+
+    if ($format === 'excel') {
+        $proofVal = ($pfile !== '')
+            ? ['text' => 'View Proof', 'url' => record_proof_url($type, $id, $pfile, false, true)]
+            : '—';
+    } elseif ($format === 'csv') {
+        $proofVal = ($pfile !== '')
+            ? record_proof_url($type, $id, $pfile, false, true)
+            : '—';
+    } else { // html / word / pdf
+        if ($pfile !== '') {
+            $meta = record_proof_meta($type, $id, $pfile);
+            if ($meta) {
+                if ($meta['is_image'] && !empty($meta['base64_data'])) {
+                    $proofVal = '<div style="text-align:center;">'
+                              . '<a href="' . e($meta['view_url']) . '" target="_blank" style="text-decoration:none;">'
+                              . '<img src="' . $meta['base64_data'] . '" alt="Proof" style="max-width:90px;max-height:60px;object-fit:contain;border:1px solid #ccc;border-radius:3px;display:block;margin:0 auto 3px auto;">'
+                              . '<div style="font-size:8pt;color:#0044cc;text-decoration:underline;word-break:break-all;">' . e($meta['filename']) . '</div>'
+                              . '<span style="font-size:7.5pt;color:#555;">(Click to view)</span>'
+                              . '</a></div>';
+                } else {
+                    $ext = $meta['ext'] ? ' (' . strtoupper($meta['ext']) . ')' : '';
+                    $proofVal = '<div style="text-align:center;">'
+                              . '<a href="' . e($meta['view_url']) . '" target="_blank" style="color:#0044cc;font-weight:600;text-decoration:underline;font-size:9pt;word-break:break-all;">'
+                              . 'View Proof' . e($ext)
+                              . '</a>'
+                              . '<div style="font-size:7.5pt;color:#666;margin-top:2px;word-break:break-all;">' . e($meta['filename']) . '</div>'
+                              . '</div>';
+                }
+            } else {
+                $proofVal = '—';
+            }
+        } else {
+            $proofVal = '—';
+        }
+    }
+
     return [
         $serial,
         $record['_title'],
@@ -93,6 +133,7 @@ function export_row(array $record, int $serial): array
         !empty($record['department']) ? department_full_name($record['department']) : '-',
         $record['status'],
         date('d/m/Y', strtotime($record['created_at'])),
+        $proofVal,
     ];
 }
 
@@ -122,7 +163,7 @@ if ($format === 'csv') {
 
     $serial = 1;
     foreach ($records as $record) {
-        csv_line($out, export_row($record, $serial++));
+        csv_line($out, export_row($record, $serial++, 'csv'));
     }
 
     fclose($out);
@@ -140,7 +181,7 @@ if ($format === 'excel') {
     require_once __DIR__ . '/inc/xlsx_writer.php';
     $exportRows = [];
     foreach ($records as $i => $r) {
-        $exportRows[] = export_row($r, $i + 1);
+        $exportRows[] = export_row($r, $i + 1, 'excel');
     }
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
@@ -213,8 +254,9 @@ report_letterhead($reportTitle, $meta);
         <?php $serial = 1; ?>
         <?php foreach ($records as $record): ?>
           <tr>
-            <?php foreach (export_row($record, $serial++) as $i => $value): ?>
-              <td<?= $i === 0 ? ' class="num"' : '' ?>><?= e($value) ?></td>
+            <?php foreach (export_row($record, $serial++, $format) as $i => $value): ?>
+              <?php $isProof = ($i === 7); ?>
+              <td<?= $i === 0 ? ' class="num"' : ($isProof ? ' class="c"' : '') ?>><?= $isProof ? $value : e($value) ?></td>
             <?php endforeach; ?>
           </tr>
         <?php endforeach; ?>
