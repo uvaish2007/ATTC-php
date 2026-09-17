@@ -855,7 +855,7 @@ function target_approved_records(array $target): array
                 ?? $row['student_name']
                 ?? $row['creator_name']
                 ?? 'Faculty';
-            $row['_proof_url']  = !empty($row['proof_file']) ? url('uploads/proofs/' . $row['proof_file']) : null;
+            $row['_proof_url']  = !empty($row['proof_file']) ? url('uploads/' . rawurlencode($row['proof_file'])) : null;
             $row['_doc_url']    = !empty($row['document_link']) ? $row['document_link'] : (!empty($row['certificate_link']) ? $row['certificate_link'] : null);
             $results[] = $row;
         }

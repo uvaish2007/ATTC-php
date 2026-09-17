@@ -182,6 +182,7 @@ require __DIR__ . '/inc/header.php';
         <thead><tr>
           <th style="padding-left:24px">Record</th>
           <th>Type</th>
+          <th>Proof</th>
           <th>Submitted</th>
           <th class="num" style="padding-right:24px">Actions</th>
         </tr></thead>
@@ -194,7 +195,14 @@ require __DIR__ . '/inc/header.php';
               <?php if ($who !== ''): ?><div class="card-sub"><?= e($who) ?></div><?php endif; ?>
             </td>
             <td><span class="badge badge-info"><?= e($r['_type_label']) ?></span></td>
-            <td class="card-sub"><?= e(time_ago($r['created_at'])) ?></td>
+            <td>
+              <?php if (!empty($r['proof_file'])): ?>
+                <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
+              <?php else: ?>
+                <span class="card-sub">—</span>
+              <?php endif; ?>
+            </td>
+            <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
             <td class="num" style="padding-right:24px">
               <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
                 <div class="flex gap-2" style="justify-content:flex-end">

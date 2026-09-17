@@ -103,7 +103,7 @@ try {
 } catch (\PDOException $e) {}
 
 // Calendar calculation for the current real-time month
-$now = new DateTime('now', new DateTimeZone('Asia/Kolkata'));
+$now = new DateTime('now', new DateTimeZone(defined('APP_TIMEZONE') ? APP_TIMEZONE : (string) env('APP_TIMEZONE', 'Asia/Kolkata')));
 $currentMonthNum  = (int) $now->format('n');
 $currentYearNum   = (int) $now->format('Y');
 $currentDayNum    = (int) $now->format('j');
