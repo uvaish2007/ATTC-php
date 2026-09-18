@@ -46,7 +46,6 @@ function resolve_faculty_achievement_scope(array $currentUser, ?string $requeste
  */
 function faculty_achievements_summary(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?int $facultyIdFilter = null, ?array $window = null): array
 {
-    journal_process_approval_expiry();
     $effDept = resolve_faculty_achievement_scope($currentUser, $deptFilter);
     $categories = faculty_achievement_categories();
 
@@ -117,14 +116,6 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
         } catch (\PDOException $e) {
             // Ignore missing table
         }
-    }
-
-    $deptCount   = count($activeDepts);
-    $topCategory = null;
-    if (!empty($categoryCounts)) {
-        $sortedCats = $categoryCounts;
-        arsort($sortedCats);
-        $topCategory = array_key_first($sortedCats);
     }
 
     // Calculate approved vs pending record counts across all record tables
@@ -208,7 +199,6 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     $teamStmt->execute($teamParams);
     $registeredAccounts = (int) $teamStmt->fetchColumn();
 
-<<<<<<< HEAD
     // Compute active departments count
     if ($effDept) {
         $deptCount = 1;
@@ -235,23 +225,6 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     }
 
 
-=======
-    // Determine top category
-    $topCategory = '—';
-    if (!empty($categoryCounts)) {
-        arsort($categoryCounts);
-        $topCategory = array_key_first($categoryCounts) ?: '—';
-    }
-
-    // Total active departments
-    if ($effDept) {
-        $deptCount = 1;
-    } else {
-        $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
-        $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
-    }
-
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     return [
         'totalFaculty'       => $totalFaculty,
         'totalAchievements'  => $totalAchievements,
@@ -464,7 +437,6 @@ function faculty_achievement_details(int $facultyId, ?string $yearFilter = null,
                         'status'      => $r['status'] ?? 'Approved',
                         'created_at'  => $r['created_at'] ?? date('Y-m-d H:i:s'),
                         'year'        => $r['academic_year'] ?? '—',
-                        'proof_file'  => $r['proof_file'] ?? null,
                         'raw'         => $r,
                     ];
                     $detailedRecords[] = $item;

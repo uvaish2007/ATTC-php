@@ -347,7 +347,7 @@ require __DIR__ . '/inc/header.php';
   $totalScoped = count($scoped);
 
   // The target proforma + metrics summary scope to the effective department.
-  $effDept = $isOversight ? $department : (in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?: null) : null);
+  $effDept = $isOversight ? $department : ($isHod ? ($user['department'] ?: null) : null);
   $tStmt   = db()->prepare('SELECT COUNT(*) FROM targets' . ($effDept ? ' WHERE department = ?' : ''));
   $tStmt->execute($effDept ? [$effDept] : []);
   $targetCount = (int) $tStmt->fetchColumn();
@@ -812,9 +812,9 @@ require __DIR__ . '/inc/header.php';
                 data-on="0" title="Show every record in every category" style="border-radius:999px;">
           <?= icon('eye', 14) ?> <span>Show all <?= (int) $total ?> records</span>
         </button>
-        <button type="button" class="btn btn-outline btn-sm js-toggle-cats-all" id="toggleCatsAllBtn" data-open="0"
+        <button type="button" class="btn btn-outline btn-sm js-toggle-cats-all" id="toggleCatsAllBtn" data-open="1"
                 title="Expand or collapse all category sections" style="border-radius:999px;">
-          <?= icon('chevron-down', 14) ?> <span id="toggleCatsAllTxt">Expand categories</span>
+          <?= icon('chevron-up', 14) ?> <span id="toggleCatsAllTxt">Collapse categories</span>
         </button>
       <?php endif; ?>
     </div>
@@ -846,11 +846,11 @@ require __DIR__ . '/inc/header.php';
               </a>
             <?php endif; ?>
             <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
-              <?= icon('chevron-down', 13) ?> <span class="cat-btn-txt">Expand</span>
+              <?= icon('chevron-up', 13) ?> <span class="cat-btn-txt">Collapse</span>
             </button>
           </div>
         </div>
-        <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>" hidden>
+        <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>">
           <?php foreach ($catKeys as $key): ?>
             <?php
               $t      = $types[$key];
@@ -978,15 +978,6 @@ require __DIR__ . '/inc/header.php';
           if (txt) txt.textContent = isHidden ? 'Collapse' : 'Expand';
           btn.querySelector('svg').outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
         }
-        const anyOpen = Array.from(document.querySelectorAll('.rec-cat-body')).some(b => !b.hidden);
-        const allCatsBtn = document.getElementById('toggleCatsAllBtn');
-        if (allCatsBtn) {
-          allCatsBtn.dataset.open = anyOpen ? '1' : '0';
-          const txt = document.getElementById('toggleCatsAllTxt');
-          if (txt) txt.textContent = anyOpen ? 'Collapse categories' : 'Expand categories';
-          const svg = allCatsBtn.querySelector('svg');
-          if (svg) svg.outerHTML = anyOpen ? '<?= icon('chevron-up', 14) ?>' : '<?= icon('chevron-down', 14) ?>';
-        }
       }
       return;
     }
@@ -1022,20 +1013,6 @@ require __DIR__ . '/inc/header.php';
     const open = all.dataset.on !== '1';
     if (open) {
       document.querySelectorAll('.rec-cat-body').forEach(b => b.hidden = false);
-      const allCatsBtn = document.getElementById('toggleCatsAllBtn');
-      if (allCatsBtn) {
-        allCatsBtn.dataset.open = '1';
-        const txt = document.getElementById('toggleCatsAllTxt');
-        if (txt) txt.textContent = 'Collapse categories';
-        const svg = allCatsBtn.querySelector('svg');
-        if (svg) svg.outerHTML = '<?= icon('chevron-up', 14) ?>';
-      }
-      document.querySelectorAll('.js-cat-btn').forEach(btn => {
-        const txt = btn.querySelector('.cat-btn-txt');
-        if (txt) txt.textContent = 'Collapse';
-        const svg = btn.querySelector('svg');
-        if (svg) svg.outerHTML = '<?= icon('chevron-up', 13) ?>';
-      });
     }
     document.querySelectorAll('.rec-group').forEach(g => setGroup(g, open));
     all.dataset.on = open ? '1' : '0';

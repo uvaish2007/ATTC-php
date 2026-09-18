@@ -32,8 +32,6 @@ $unreadNotifCount    = count(array_filter($headerNotifications, fn($n) => !empty
 $navItems = navigation_for($user['role']);
 $groups   = group_navigation($navItems);
 
-require_once __DIR__ . '/../models/EditRequest.php';
-
 $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
     'announcements' => unread_announcements_count($user),
@@ -43,7 +41,6 @@ $badgeCounts = [
     // Targets page.
     'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
-    'edit_requests' => edit_requests_pending_count($user),
 ];
 
 $pageTitle    = $pageTitle    ?? 'Dashboard';
@@ -129,11 +126,7 @@ $flashes      = take_flashes();
           <div class="nav-section-label"><?= e($section) ?></div>
           <div class="nav-list">
             <?php foreach ($items as $item):
-              if ($active === 'approvals.php' || $active === 'edit-requests.php') {
-                $isActive = (strtok($item['path'], '?') === 'approvals.php');
-              } else {
-                $isActive = (strtok($item['path'], '?') === $active);
-              }
+              $isActive = ($item['path'] === $active);
               $badge = isset($item['badge']) ? ($badgeCounts[$item['badge']] ?? 0) : 0;
               $locked = !module_is_active(module_for_path($item['path']));
             ?>

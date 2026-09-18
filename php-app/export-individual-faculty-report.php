@@ -53,17 +53,11 @@ $title    = 'INDIVIDUAL FACULTY ACHIEVEMENT REPORT';
    1. EXCEL (.xlsx)
    ===================================================================== */
 if ($format === 'excel') {
-    $headers = ['S.No', 'Category', 'Title / Paper / Activity', 'Department', 'Status', 'Academic Year', 'Submission Date', 'Proof'];
+    $headers = ['S.No', 'Category', 'Title / Paper / Activity', 'Department', 'Status', 'Academic Year', 'Submission Date'];
     
     $rows = [];
     $sno = 1;
     foreach ($records as $r) {
-        $pfile = trim((string)($r['proof_file'] ?? ''));
-        $pType = $r['type_key'] ?? '';
-        $pId   = (int)($r['id'] ?? 0);
-        $proofVal = ($pfile !== '')
-            ? ['text' => 'View Proof', 'url' => record_proof_url($pType, $pId, $pfile, false, true)]
-            : '—';
         $rows[] = [
             $sno++,
             $r['category'],
@@ -72,7 +66,6 @@ if ($format === 'excel') {
             $r['status'],
             $r['year'],
             date('d/m/Y', strtotime($r['created_at'])),
-            $proofVal,
         ];
     }
 
@@ -113,14 +106,10 @@ if ($format === 'csv') {
     fputcsv($out, ['Report Date: ' . $today]);
     fputcsv($out, []);
 
-    fputcsv($out, ['S.No', 'Category', 'Title / Description', 'Department', 'Status', 'Academic Year', 'Date', 'Proof']);
+    fputcsv($out, ['S.No', 'Category', 'Title / Description', 'Department', 'Status', 'Academic Year', 'Date']);
 
     $sno = 1;
     foreach ($records as $r) {
-        $pfile = trim((string)($r['proof_file'] ?? ''));
-        $pType = $r['type_key'] ?? '';
-        $pId   = (int)($r['id'] ?? 0);
-        $proofVal = ($pfile !== '') ? record_proof_url($pType, $pId, $pfile, false, true) : '—';
         fputcsv($out, [
             $sno++,
             $r['category'],
@@ -129,7 +118,6 @@ if ($format === 'csv') {
             $r['status'],
             $r['year'],
             date('d/m/Y', strtotime($r['created_at'])),
-            $proofVal,
         ]);
     }
 
@@ -176,22 +164,26 @@ if ($format === 'word') {
 </head>
 <body>
 
-<?php if ($format === 'pdf'): ?>
-  <div class="no-print" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;margin:-20px -20px 20px -20px;display:flex;align-items:center;justify-content:space-between;">
-    <span style="font-size:13px">Use your browser's print dialog and select <strong>Save as PDF</strong>.</span>
-    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;">Print / Save as PDF</button>
-  </div>
-<?php endif; ?>
+  <?php if ($format === 'pdf'): ?>
+    <div class="no-print" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 10px;">
+      <button onclick="window.print()" style="background: #FF4F01; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+        Print / Save as PDF
+      </button>
+      <button onclick="window.close()" style="background: #E4E9F2; color: #131D3B; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+        Close Window
+      </button>
+    </div>
+  <?php endif; ?>
 
   <table class="hdr-table">
     <tr>
       <td>
         <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
-        <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Faculty Profile</div>
+        <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Academic Target Tracking System</div>
       </td>
-      <td style="text-align:right; font-size:11px; color:#5A6785;">
-        Date: <?= e($today) ?><br>
-        Academic Year: <strong><?= e($academicYear ?: 'All Years') ?></strong>
+      <td style="text-align: right; font-size: 12px; color: #5A6785;">
+        <div><strong>Report Date:</strong> <?= e($today) ?></div>
+        <div><strong>Academic Year:</strong> <?= e($academicYear ?: 'All Years') ?></div>
       </td>
     </tr>
   </table>
@@ -201,9 +193,9 @@ if ($format === 'word') {
     <table class="fac-info-table">
       <tr>
         <td class="fac-info-label">Faculty Name:</td>
-        <td class="fw-bold" style="font-size:14px; color:#FF4F01;"><?= e($faculty['name']) ?></td>
+        <td class="fw-bold"><?= e($faculty['name']) ?></td>
         <td class="fac-info-label">Employee ID:</td>
-        <td class="fw-bold"><?= e($faculty['employee_id']) ?></td>
+        <td><?= e($faculty['employee_id']) ?></td>
       </tr>
       <tr>
         <td class="fac-info-label">Designation:</td>
@@ -254,39 +246,16 @@ if ($format === 'word') {
             <th>Status</th>
             <th>Academic Year</th>
             <th>Submission Date</th>
-            <th>Proof</th>
           </tr>
         </thead>
         <tbody>
           <?php $idx = 1; foreach ($catItems as $item): ?>
-            <?php
-              $pfile = trim((string)($item['proof_file'] ?? ''));
-              $pType = $item['type_key'] ?? '';
-              $pId   = (int)($item['id'] ?? 0);
-              $meta  = ($pfile !== '') ? record_proof_meta($pType, $pId, $pfile) : null;
-            ?>
             <tr>
               <td><?= $idx++ ?></td>
               <td class="fw-bold"><?= e($item['title']) ?></td>
               <td><?= e($item['status']) ?></td>
               <td><?= e($item['year']) ?></td>
               <td><?= date('d/m/Y', strtotime($item['created_at'])) ?></td>
-              <td style="text-align:center;">
-                <?php if ($meta): ?>
-                  <?php if ($meta['is_image'] && !empty($meta['base64_data'])): ?>
-                    <a href="<?= e($meta['view_url']) ?>" target="_blank" style="text-decoration:none;">
-                      <img src="<?= $meta['base64_data'] ?>" alt="Proof" style="max-width:80px;max-height:50px;object-fit:contain;border:1px solid #ccc;border-radius:3px;display:block;margin:0 auto 2px auto;">
-                      <span style="font-size:8pt;color:#0044cc;text-decoration:underline;">View Proof</span>
-                    </a>
-                  <?php else: ?>
-                    <a href="<?= e($meta['view_url']) ?>" target="_blank" style="color:#0044cc;font-weight:600;font-size:9pt;text-decoration:underline;">
-                      View Proof<?= $meta['ext'] ? ' (' . strtoupper(e($meta['ext'])) . ')' : '' ?>
-                    </a>
-                  <?php endif; ?>
-                <?php else: ?>
-                  —
-                <?php endif; ?>
-              </td>
             </tr>
           <?php endforeach; ?>
         </tbody>

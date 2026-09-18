@@ -36,7 +36,7 @@ $cards = [
     <div class="sub">Your submissions and their status</div>
   </div>
   <div class="actions">
-    <a class="btn btn-primary" href="<?= e(nav_href('upload.php?reset=1')) ?>">
+    <a class="btn btn-primary" href="<?= e(nav_href('upload.php')) ?>">
       <?= icon('upload') ?> Submit a Record
     </a>
   </div>

@@ -118,10 +118,7 @@ function report_year_duration(?string $year): array
  */
 function report_document_head(string $docTitle, string $orientation = 'portrait'): void
 {
-    $GLOBALS['REPORT_ORIENTATION'] = $orientation;
     $size = $orientation === 'landscape' ? 'A4 landscape' : 'A4';
-    $msoSize = $orientation === 'landscape' ? '841.9pt 595.3pt' : '595.3pt 841.9pt';
-    $msoOrientation = $orientation === 'landscape' ? 'landscape' : 'portrait';
     ?>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
 <head>
@@ -131,8 +128,6 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
     <w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
   <style>
     @page { size: <?= $size ?>; margin: 1.4cm 1.2cm; }
-    @page WordSection1 { size: <?= $msoSize ?>; mso-page-orientation: <?= $msoOrientation ?>; margin: 1.4cm 1.2cm; }
-    div.WordSection1 { page: WordSection1; }
     /* Force background colours (e.g. the green "achieved" cells) to actually
        print — browsers drop them by default, which turned white-on-green data
        cells into invisible white-on-white. */
@@ -141,8 +136,7 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
 
     /* ---- Letterhead ---- */
     .rpt-head    { text-align:center; }
-    .rpt-banner-wrap { width:100%; max-width:100%; margin:0 auto 4px; text-align:center; }
-    .rpt-banner  { width:100%; max-width:<?= $orientation === 'landscape' ? '850px' : '680px' ?>; height:auto; display:inline-block; margin:0 auto; }
+    .rpt-banner  { width:100%; max-width:100%; height:auto; display:block; margin:0 auto 4px; }
     .rpt-head .inst  { font-size: 15pt; font-weight: bold; letter-spacing:.5px; }
     .rpt-head .title { font-size: 13pt; font-weight: bold; margin-top: 6px; text-transform: uppercase; }
     .rpt-head .subtitle { font-size: 12pt; font-weight: bold; margin-top: 3px; }
@@ -169,7 +163,6 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
   </style>
 </head>
 <body>
-<div class="WordSection1">
 <?php
 }
 
@@ -184,18 +177,10 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
 function report_letterhead(string $title, array $meta = [], array $headingLines = []): void
 {
     $banner = report_banner_datauri();
-    $isLandscape = (($GLOBALS['REPORT_ORIENTATION'] ?? 'portrait') === 'landscape');
-    $bannerWidth = $isLandscape ? 850 : 680;
     ?>
-  <div class="rpt-head" align="center">
+  <div class="rpt-head">
     <?php if ($banner !== ''): ?>
-      <table class="rpt-banner-wrap" align="center" border="0" cellpadding="0" cellspacing="0" style="width:100%; max-width:100%; margin:0 auto 4px auto; border-collapse:collapse; border:none; text-align:center;">
-        <tr>
-          <td align="center" style="border:none; padding:0; text-align:center;">
-            <img class="rpt-banner" src="<?= $banner ?>" alt="<?= e(REPORT_INSTITUTION) ?>" align="center" width="<?= $bannerWidth ?>" style="max-width:100%; height:auto;">
-          </td>
-        </tr>
-      </table>
+      <img class="rpt-banner" src="<?= $banner ?>" alt="<?= e(REPORT_INSTITUTION) ?>">
     <?php else: ?>
       <div class="inst"><?= e(REPORT_INSTITUTION) ?></div>
     <?php endif; ?>
@@ -238,5 +223,5 @@ function report_signoff(array $columns = ['HOD', 'IQAC COORDINATOR', 'PRINCIPAL'
 /** Close the document. */
 function report_document_foot(): void
 {
-    echo "\n</div>\n</body>\n</html>";
+    echo "\n</body>\n</html>";
 }

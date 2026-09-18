@@ -9,7 +9,6 @@
 
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/Target.php';   // academic_years()
-require_once __DIR__ . '/Record.php';
 
 /**
  * Every record type the dashboard counts, and how to count it. This is the one
@@ -71,7 +70,6 @@ function other_metrics(): array { return []; }
  */
 function dashboard_data(array $user): array
 {
-    journal_process_approval_expiry();
     $pdo = db();
 
     $isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
