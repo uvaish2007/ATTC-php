@@ -10,12 +10,9 @@ $user = require_role(['Admin', 'HoD', 'Dean', 'Coordinator']);
 // A Coordinator or HoD may only review their own department; Admin/Dean may review any.
 $scopeDept = in_array($user['role'], ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
 $activeYear = active_academic_year();
-<<<<<<< HEAD
 $isHod = $user['role'] === 'HoD';
 $canProcess = in_array($user['role'], ['Admin', 'Dean'], true);
-=======
 journal_process_approval_expiry();
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
 
 // Active Tab: 'records' (default) or 'edit_requests'
 $activeTab = trim((string) input('tab', 'records'));
@@ -514,7 +511,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 
-<<<<<<< HEAD
   <!-- Filter Bar for Edit Requests -->
   <form method="get" class="fbar" style="margin-bottom:20px">
     <input type="hidden" name="tab" value="edit_requests">
@@ -546,121 +542,6 @@ require __DIR__ . '/inc/header.php';
         <option value="">All Years</option>
         <?php foreach ($allYears as $y): ?>
           <option value="<?= e($y) ?>" <?= $filterEditYear === $y ? 'selected' : '' ?>><?= e($y) ?><?= $y === $activeYear ? ' (Active)' : '' ?></option>
-=======
-<?php if (empty($records)): ?>
-  <div class="card"><div class="card-body" style="padding:0">
-    <div class="empty" style="padding:80px 24px">
-      <?php if ($hasFilter): ?>
-        <div class="ic" style="width:56px; height:56px"><?= icon('filter', 24) ?></div>
-        <p style="font-size:16px; font-weight:600">No records match these filters</p>
-        <div class="note">Widen or <a href="<?= e(url('approvals.php')) ?>">clear</a> them to see every pending record.</div>
-      <?php else: ?>
-        <div class="ic" style="background:#ECFDF5; color:#047857; width:56px; height:56px"><?= icon('check', 24) ?></div>
-        <p style="font-size:16px; font-weight:600">All caught up!</p>
-        <div class="note">No records pending review right now.</div>
-      <?php endif; ?>
-    </div>
-  </div></div>
-<?php else: ?>
-  <?php
-    // Group pending records by department so a reviewer works one department at
-    // a time — and can clear a whole department in a single click.
-    $byDept = [];
-    foreach ($records as $r) {
-        $k = ($r['department'] ?? '') !== '' ? $r['department'] : 'Unassigned';
-        $byDept[$k][] = $r;
-    }
-    ksort($byDept, SORT_NATURAL | SORT_FLAG_CASE);
-    $single = count($byDept) === 1;   // a HoD sees only their own dept — open it
-  ?>
-  <?php foreach ($byDept as $deptName => $deptRecs): ?>
-    <details class="card tg-group ap-group"<?= $single ? ' open' : '' ?>>
-      <summary class="tg-group-head">
-        <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
-        <span class="badge badge-info"><?= count($deptRecs) ?> <?= $isHod ? 'under review' : 'pending' ?></span>
-        <span class="ap-head-actions">
-          <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
-            <?php if ($user['role'] === 'HoD'): ?>
-              <button type="button" class="btn btn-sm ap-approve-all" style="background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE"
-                onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)"><?= icon('edit', 14) ?> Edit Request all to Dean</button>
-            <?php elseif ($user['role'] === 'Coordinator'): ?>
-              <button type="button" class="btn btn-sm ap-approve-all"
-                onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)"><?= icon('check', 14) ?> Approve all & Save to DB</button>
-            <?php else: ?>
-              <button type="button" class="btn btn-sm ap-approve-all"
-                onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)"><?= icon('check', 14) ?> Approve all</button>
-            <?php endif; ?>
-          <?php endif; ?>
-          <span class="tg-chev"><?= icon('chevron', 16) ?></span>
-        </span>
-      </summary>
-      <div class="table-wrap"><table class="data" style="min-width:600px">
-        <thead><tr>
-          <th style="padding-left:24px">Record</th>
-          <th>Type</th>
-          <th>Status</th>
-          <th>Proof</th>
-          <th>Submitted / Note</th>
-          <th class="num" style="padding-right:24px">Actions</th>
-        </tr></thead>
-        <tbody>
-        <?php foreach ($deptRecs as $r): ?>
-          <tr>
-            <td style="padding-left:24px">
-              <div style="font-weight:500; max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis"><?= e($r['_title']) ?></div>
-              <?php $who = $r['faculty_name'] ?? $r['candidate_name'] ?? $r['student_name'] ?? ''; ?>
-              <?php if ($who !== ''): ?><div class="card-sub"><?= e($who) ?> &middot; Dept: <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
-            </td>
-            <td><span class="badge badge-info"><?= e($r['_type_label']) ?></span></td>
-            <td><span class="badge badge-<?= status_class($r['status']) ?>"><?= e($r['status']) ?></span></td>
-            <td>
-              <?= render_proof_cell($r['proof_file'] ?? null, $r['_type_key'] ?? null, (int)($r['id'] ?? 0)) ?>
-            </td>
-            <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>">
-              <?= e(time_ago($r['created_at'])) ?>
-              <?php if (!empty($r['review_remark'])): ?>
-                <div style="font-size:11px;color:#1D4ED8;margin-top:2px"><strong>Note:</strong> <?= e($r['review_remark']) ?></div>
-              <?php endif; ?>
-            </td>
-            <td class="num" style="padding-right:24px">
-              <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
-                <div class="flex gap-2" style="justify-content:flex-end">
-                  <?php if ($user['role'] === 'HoD'): ?>
-                    <button class="btn btn-sm" style="background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE;height:32px;padding:0 10px;font-size:12px"
-                      onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'request_edit', <?= json_encode($r['_title']) ?>, <?= json_encode($who) ?>, <?= json_encode($r['department'] ?? '') ?>)"><?= icon('edit',14) ?> Edit Request to Dean</button>
-                  <?php elseif ($user['role'] === 'Coordinator'): ?>
-                    <?php if ($r['status'] === 'Unlocked for Edit'): ?>
-                      <a class="btn btn-sm" style="background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE;height:32px;padding:0 10px;font-size:12px;text-decoration:none;display:inline-flex;align-items:center;gap:4px"
-                        href="<?= e(url('upload.php?type=' . urlencode($r['_type_key']) . '&edit_id=' . (int)$r['id'])) ?>"><?= icon('edit',14) ?> Edit & Resubmit</a>
-                    <?php else: ?>
-                      <button class="btn btn-sm" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0;height:32px;padding:0 10px;font-size:12px"
-                        onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'approve')"><?= icon('check',14) ?> Approve & Save to DB</button>
-                    <?php endif; ?>
-                  <?php elseif ($user['role'] === 'Dean'): ?>
-                    <?php if ($r['status'] === 'Edit Requested'): ?>
-                      <button class="btn btn-sm" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0;height:32px;padding:0 10px;font-size:12px"
-                        onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'approve_edit')"><?= icon('check',14) ?> Approve Edit Request</button>
-                    <?php else: ?>
-                      <button class="btn btn-sm" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0;height:32px;padding:0 10px;font-size:12px"
-                        onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'approve')"><?= icon('check',14) ?> Approve</button>
-                    <?php endif; ?>
-                  <?php else: ?>
-                    <button class="btn btn-sm" style="background:#ECFDF5;color:#047857;border-color:#A7F3D0;height:32px;padding:0 10px;font-size:12px"
-                      onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'approve')"><?= icon('check',14) ?> Approve</button>
-                  <?php endif; ?>
-                  <?php if ($user['role'] !== 'HoD'): ?>
-                    <button class="btn btn-sm" style="background:#FEF2F2;color:#B91C1C;border-color:#FECACA;height:32px;padding:0 10px;font-size:12px"
-                      onclick="reviewRecord('<?=e($r['_type_key'])?>',<?=(int)$r['id']?>,'reject')"><?= icon('x',14) ?> Reject</button>
-                  <?php endif; ?>
-                </div>
-              <?php else: ?>
-                <span style="display:inline-flex;align-items:center;gap:4px;color:#991B1B;background:#FEE2E2;border:1px solid #FECACA;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px">
-                  <?= icon('lock', 11) ?> Cycle Locked
-                </span>
-              <?php endif; ?>
-            </td>
-          </tr>
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
         <?php endforeach; ?>
       </select>
     </label>

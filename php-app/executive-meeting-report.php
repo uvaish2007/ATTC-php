@@ -78,10 +78,12 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
   <?php else: ?>
-    <label class="fb-field" title="Your role reports on a fixed scope">
+    <div class="fb-field" title="Department automatically determined from your login" style="display:flex; flex-direction:column; justify-content:flex-end;">
       <span class="fb-k">Department</span>
-      <select disabled><option selected><?= e($summary['Department']) ?></option></select>
-    </label>
+      <div style="font-weight:600; font-size:13px; color:var(--color-ink,#0f172a); padding:7px 12px; background:rgba(0,0,0,0.04); border:1px solid var(--border-color,#cbd5e1); border-radius:6px; white-space:nowrap;">
+        <?= e($summary['Department']) ?>
+      </div>
+    </div>
   <?php endif; ?>
 
   <!-- Academic Year (FEAT-02 active year is the default) -->
@@ -173,6 +175,12 @@ require __DIR__ . '/inc/header.php';
   <div class="alert alert-info mt-4">
     No Executive Meetings have been recorded for <?= e($filters['year']) ?> yet, so the meeting filter offers
     the whole year. The report still presents every other section.
+  </div>
+<?php endif; ?>
+
+<?php if (!empty($filters['department']) && $dataset['total'] === 0 && count($dataset['targets']) === 0): ?>
+  <div class="alert alert-warning mt-4">
+    <?= icon('info', 16) ?> No presentation data available for <?= e($summary['Department']) ?> for the selected Academic Year / Executive Meeting.
   </div>
 <?php endif; ?>
 

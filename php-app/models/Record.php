@@ -335,7 +335,7 @@ function records_list(string $type, ?string $department = null, ?string $status 
  * Returns one flat list, newest first, with a few helper keys added:
  *   _type_key, _type_label, _title, _person
  */
-function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null, ?string $year = null): array
+function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null, ?string $year = null, bool $departmentWide = false): array
 {
     $types = record_types();
 
@@ -347,11 +347,12 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
     } elseif ($user['role'] === 'Admin' || $user['role'] === 'Dean') {
         $scopeDept = $department;
     } else {
-        $scopeDept = $user['department'] ?: null;
+        $scopeDept = $user['department'] ?: '__UNASSIGNED_DEPT__';
     }
 
-    // Faculty only ever see their own submissions.
-    $onlyMine = ($user['role'] === 'Faculty') ? (int) $user['id'] : null;
+    // Faculty only ever see their own submissions in personal reports.
+    // In department presentation mode ($departmentWide = true), all department records are included.
+    $onlyMine = ($user['role'] === 'Faculty' && !$departmentWide) ? (int) $user['id'] : null;
 
     // One type, or all of them.
     $wanted = ($type && isset($types[$type])) ? [$type => $types[$type]] : $types;
@@ -916,9 +917,9 @@ function record_submit_for_review(string $type, int $id, array $user, ?array $fi
  */
 class Record
 {
-    public static function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null, ?string $year = null): array
+    public static function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null, ?string $year = null, bool $departmentWide = false): array
     {
-        return report_records($user, $department, $status, $type, $from, $to, $year);
+        return report_records($user, $department, $status, $type, $from, $to, $year, $departmentWide);
     }
 
     public static function academic_records(array $user, ?string $department = null, ?string $status = null, ?string $from = null, ?string $to = null, ?string $year = null): array

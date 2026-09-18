@@ -323,13 +323,7 @@ if (!function_exists('mb_strlen')) {
     function mb_strlen(string $string, ?string $encoding = null): int {
         return strlen($string);
     }
-}
-
-/**
-<<<<<<< HEAD
- * Build a secure URL to view or download an authorized proof attachment.
- */
-/**
+}/**
  * Build a secure URL for accessing a record proof attachment.
  * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
  */
@@ -405,7 +399,9 @@ function record_proof_meta(string $type, int $id, ?string $filename): ?array
         'exists'       => ($filePath !== null),
         'base64_data'  => $base64Data,
     ];
-=======
+}
+
+/**
  * Resolve the physical filesystem path of a stored proof file.
  * Returns null if the file does not exist.
  */
@@ -470,6 +466,5 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         . '<a class="btn btn-ghost btn-sm" href="' . e($downloadUrl) . '" download title="Download Proof">'
         . icon('download', 14) . '</a>'
         . '</div>';
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
 }
 

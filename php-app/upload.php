@@ -122,7 +122,8 @@ function save_upload_proof(?array $file, bool $required = false): array
 
     return [$stored, null];
 }
-<<<<<<< HEAD
+}
+
 
 // ---- Upload Data entry flow: Academic Year → Data Type → this form ---------
 // Faculty and Coordinator pick both before the form opens (models/UploadFlow.php).
@@ -222,8 +223,6 @@ if (upload_flow_applies($user)) {
             : 'Invalid record type.');
         redirect('/upload.php?type=' . urlencode($typeKeys[0]));
     }
-=======
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
 }
 
 // Handle form submissions for new records
@@ -540,6 +539,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($editId > 0) {
             [$ok, $msg] = record_submit_for_review($type, $editId, $user, $_POST, $proofStored);
             if ($ok) {
+                require_once __DIR__ . '/models/EditRequest.php';
+                edit_request_mark_completed_for_record($type, $editId);
+
                 flash('success', record_requires_approval($type) ? 'Record submitted for review successfully.' : 'Record submitted successfully.');
                 $_SESSION['submitted_draft_type'] = $type;
                 if ($user['role'] === 'Coordinator' && input('source') === 'approvals') {
@@ -556,36 +558,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
             }
         }
-<<<<<<< HEAD
-        if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
-            $setPairs[] = "`proof_file` = ?";
-            $updateValues[] = $proofStored;
-        }
-        $setPairs[] = "`status` = ?";
-        $updateValues[] = 'Approved';
-        $setPairs[] = "`updated_at` = NOW()";
-
-        try {
-            $sql = "UPDATE `$table` SET " . implode(', ', $setPairs) . " WHERE id = ?";
-            $updateValues[] = $editId;
-            $pdo->prepare($sql)->execute($updateValues);
-
-            require_once __DIR__ . '/models/Target.php';
-            sync_target_achieved_for_type($type);
-
-            require_once __DIR__ . '/models/EditRequest.php';
-            edit_request_mark_completed_for_record($type, $editId);
-
-            flash('success', $types[$type]['label'] . ' updated and saved to database.');
-            redirect('/approvals.php');
-        } catch (\PDOException $e) {
-            error_log('upload.php update failed: ' . $e->getMessage());
-            flash('error', 'Failed to update record.');
-            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
-        }
-    }
-=======
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
 
     // Review chain: Faculty -> Coordinator -> HoD. A Coordinator's own upload
     // skips the Coordinator step; a HoD's or Admin's upload is already final.
@@ -970,17 +942,16 @@ require __DIR__ . '/inc/header.php';
 <!-- Upload form -->
 <div class="card" style="margin-bottom:20px">
   <div class="card-head">
-<<<<<<< HEAD
     <div>
       <div class="card-title">
-        <?= $editId > 0 ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . $editId : 'New ' . e($types[$selectedType]['label']) ?>
+        <?= ($editRecord || $editId > 0) ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . ($editId > 0 ? $editId : (int)$editRecord['id']) : 'New ' . e($types[$selectedType]['label']) ?>
+        <?php if ($editRecord): ?>
+          <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span>
+        <?php endif; ?>
         <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span>
       </div>
-      <div class="card-sub"><?= $editId > 0 ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
+      <div class="card-sub"><?= ($editRecord || $editId > 0) ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
     </div>
-=======
-    <div><div class="card-title"><?= $editRecord ? 'Edit ' : 'New ' ?><?= e($types[$selectedType]['label']) ?> <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span> <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span></div><div class="card-sub">Fill in the details and submit for review</div></div>
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
     <?php if (record_report_spec($selectedType) !== null): ?>
       <a class="btn btn-secondary btn-sm" href="<?= e(url('record-report.php?type=' . $selectedType . '&format=word')) ?>"><?= icon('download') ?> Download this report</a>
     <?php endif; ?>
@@ -989,25 +960,20 @@ require __DIR__ . '/inc/header.php';
     <form method="post" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="hidden" name="record_type" value="<?= e($selectedType) ?>">
-<<<<<<< HEAD
-      <?php if ($editId > 0): ?>
-        <input type="hidden" name="edit_id" value="<?= $editId ?>">
+      <?php if ($editRecord || $editId > 0): ?>
+        <input type="hidden" name="edit_id" value="<?= $editId > 0 ? $editId : (int)$editRecord['id'] ?>">
+        <?php if (!empty($_GET['source'])): ?>
+          <input type="hidden" name="source" value="<?= e($_GET['source']) ?>">
+        <?php endif; ?>
       <?php endif; ?>
 
-      <?php if ($editRecord && $editRecord['status'] === 'Unlocked for Edit'): ?>
+      <?php if ($editRecord && ($editRecord['status'] ?? '') === 'Unlocked for Edit'): ?>
         <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #1D4ED8;color:#1E40AF;padding:12px 16px;border-radius:8px;margin-bottom:18px;font-size:13px">
           <strong>Editing Unlocked Record #<?= $editId ?>:</strong> An edit request was approved by Dean/Admin. Please make the required corrections and click "Save & Resubmit Record".
           <?php if (!empty($editRecord['review_remark'])): ?>
             <div style="margin-top:4px;font-size:12px;color:#1D4ED8"><strong>Instructions:</strong> <?= e($editRecord['review_remark']) ?></div>
           <?php endif; ?>
         </div>
-=======
-      <?php if ($editRecord): ?>
-        <input type="hidden" name="edit_id" value="<?= (int)$editRecord['id'] ?>">
-        <?php if (!empty($_GET['source'])): ?>
-          <input type="hidden" name="source" value="<?= e($_GET['source']) ?>">
-        <?php endif; ?>
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
       <?php endif; ?>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
@@ -1699,19 +1665,12 @@ require __DIR__ . '/inc/header.php';
           <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= e($r['_title']) ?></div></td>
           <td><span class="badge badge-neutral"><?= e($r['_type_label']) ?></span></td>
           <td>
-<<<<<<< HEAD
-            <?php if (!empty($r['proof_file'])): ?>
-              <a class="btn btn-ghost btn-sm" href="<?= e(record_proof_url($r['_type_key'] ?? $selectedType, (int)$r['id'], $r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
-            <?php else: ?>
-              <span class="card-sub">—</span>
-=======
             <?= render_proof_cell($r['proof_file'] ?? null, $r['_type_key'] ?? null, (int)($r['id'] ?? 0)) ?>
           </td>
           <td>
             <span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span>
             <?php if (($r['status'] ?? '') === 'Draft'): ?>
               <a href="<?= e(url('upload.php?type=' . urlencode($r['_type_key']) . '&edit_id=' . (int)$r['id'])) ?>" class="btn btn-ghost btn-sm" style="margin-left:6px; padding:2px 8px; font-size:11px;" title="<?= record_requires_approval($r['_type_key']) ? 'Submit and Review this draft' : 'Submit this draft' ?>"><?= icon('check', 12) ?> <?= record_requires_approval($r['_type_key']) ? 'Submit and Review' : 'Submit' ?></a>
->>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
             <?php endif; ?>
           </td>
           <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>

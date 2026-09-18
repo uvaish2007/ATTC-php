@@ -67,6 +67,39 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
         'faculty@atts.edu'     => ['faculty@atts.edu'],
         'dean'                 => ['dean@atts.edu'],
         'dean@atts.edu'        => ['dean@atts.edu'],
+        // Department-based login aliases
+        'hod_cse'              => ['cse_hod@atts.local'],
+        'cse_hod'              => ['cse_hod@atts.local'],
+        'coordinator_cse'      => ['cse_coord@atts.local'],
+        'cse_coordinator'      => ['cse_coord@atts.local'],
+        'cse_coord'            => ['cse_coord@atts.local'],
+        'faculty_cse'          => ['cse_fac@atts.local'],
+        'cse_faculty'          => ['cse_fac@atts.local'],
+        'cse_fac'              => ['cse_fac@atts.local'],
+        'hod_ece'              => ['ece_hod@atts.local'],
+        'ece_hod'              => ['ece_hod@atts.local'],
+        'coordinator_ece'      => ['ece_coord@atts.local'],
+        'ece_coordinator'      => ['ece_coord@atts.local'],
+        'ece_coord'            => ['ece_coord@atts.local'],
+        'faculty_ece'          => ['ece_fac@atts.local'],
+        'ece_faculty'          => ['ece_fac@atts.local'],
+        'ece_fac'              => ['ece_fac@atts.local'],
+        'hod_eee'              => ['eee_hod@atts.local'],
+        'eee_hod'              => ['eee_hod@atts.local'],
+        'coordinator_eee'      => ['eee_coord@atts.local'],
+        'eee_coordinator'      => ['eee_coord@atts.local'],
+        'eee_coord'            => ['eee_coord@atts.local'],
+        'faculty_eee'          => ['eee_fac@atts.local'],
+        'eee_faculty'          => ['eee_fac@atts.local'],
+        'eee_fac'              => ['eee_fac@atts.local'],
+        'hod_csbs'             => ['hod@atts.edu'],
+        'csbs_hod'             => ['hod@atts.edu'],
+        'coordinator_csbs'     => ['coordinator@atts.edu'],
+        'csbs_coordinator'     => ['coordinator@atts.edu'],
+        'csbs_coord'           => ['coordinator@atts.edu'],
+        'faculty_csbs'         => ['faculty@atts.edu'],
+        'csbs_faculty'         => ['faculty@atts.edu'],
+        'csbs_fac'             => ['faculty@atts.edu'],
     ];
 
     $lookupEmails = $aliasMap[$lowerEmail] ?? [$email];
@@ -75,6 +108,13 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) OR LOWER(email) = ? LIMIT 1");
     $stmt->execute(array_merge($lookupEmails, [$lowerEmail]));
     $user = $stmt->fetch();
+
+    if (!$user) {
+        // Search by email prefix: e.g. 'cse_hod' matching 'cse_hod@atts.local'
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(SUBSTRING_INDEX(email, '@', 1)) = ? LIMIT 1");
+        $stmt->execute([$lowerEmail]);
+        $user = $stmt->fetch();
+    }
 
     if (!$user) {
         // Fallback: search by role or name if username shortcut was used (e.g., 'admin', 'principal', 'dean')

@@ -243,11 +243,7 @@ function target_can_edit(array $target, array $user): bool
     if ($user['role'] === 'Admin') {
         return true;
     }
-    // If the academic year cycle is locked by Admin, non-admins cannot edit
-    $ay = $target['academic_year'] ?? null;
-    if ($ay && academic_year_is_locked($ay)) {
-        return false;
-    }
+    // Academic Year lock does NOT prevent target editing
     if (!in_array($user['role'], ['HoD', 'Dean'], true) || !target_owns($target, $user)) {
         return false;
     }
@@ -267,13 +263,6 @@ function target_can_edit(array $target, array $user): bool
 /** May this user send it up for review? Only the HoD who owns it. */
 function target_can_submit(array $target, array $user): bool
 {
-    if ($user['role'] !== 'Admin') {
-        $ay = $target['academic_year'] ?? null;
-        if ($ay && academic_year_is_locked($ay)) {
-            return false;
-        }
-    }
-
     return in_array($user['role'], ['HoD', 'Dean'], true)
         && target_owns($target, $user)
         && in_array($target['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true);
@@ -282,13 +271,6 @@ function target_can_submit(array $target, array $user): bool
 /** May this user approve it or send it back? Only while it is waiting. */
 function target_can_review(array $target, array $user): bool
 {
-    if ($user['role'] !== 'Admin') {
-        $ay = $target['academic_year'] ?? null;
-        if ($ay && academic_year_is_locked($ay)) {
-            return false;
-        }
-    }
-
     return in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true)
         && in_array($target['status'] ?? '', ['Dean Pending', 'Pending Review'], true);
 }
@@ -298,11 +280,6 @@ function target_can_delete(array $target, array $user): bool
 {
     if ($user['role'] === 'Admin') {
         return true;
-    }
-
-    $ay = $target['academic_year'] ?? null;
-    if ($ay && academic_year_is_locked($ay)) {
-        return false;
     }
 
     return in_array($user['role'], ['HoD', 'Dean'], true)
@@ -412,21 +389,22 @@ function targets_pending_count(?string $year = null): int
  */
 function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft', ?string $targetDeadline = null): array
 {
-    if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
-        return [false, 'Only a HoD or Dean enters targets.'];
+    if (!in_array($user['role'], ['HoD', 'Dean', 'Admin'], true)) {
+        return [false, 'Only a HoD, Dean, or Admin enters targets.'];
     }
 
     $targetYear = trim($academicYear) ?: active_academic_year();
-    $activeAy   = active_academic_year();
-
-    if ($user['role'] !== 'Admin' && (academic_year_is_locked($targetYear) || academic_year_is_locked($activeAy))) {
-        return [false, "Academic year {$targetYear} cycle is locked by Administrator. Target submissions are frozen."];
+    if (!is_valid_academic_year($targetYear) || !in_array($targetYear, academic_years(), true)) {
+        return [false, 'Invalid academic year specified for target.'];
     }
 
     $academicYear = $targetYear;
 
     if ($user['role'] === 'HoD') {
         $department = (string) ($user['department'] ?? '');
+        if ($department === '') {
+            return [false, 'Department is required for HoD target creation.'];
+        }
     } else {
         $department = trim($department) ?: ((string) ($user['department'] ?? '') ?: 'CSE');
     }
@@ -471,21 +449,44 @@ function target_create(array $user, string $department, string $academicYear, st
 /**
  * Update a target's numbers.
  *
+ * Enforces strict TARGET ID + ACADEMIC YEAR matching and role/department scoping.
  * A frozen target stays frozen when an Admin edits it, but the approval stamp
- * is rewritten so the record always shows who last set the figure. A HoD can
- * never move a target into another department.
+ * is rewritten so the record always shows who last set the figure.
  */
 function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null, ?string $fixedText = null): array
 {
+    if (!in_array($user['role'], ['Admin', 'HoD', 'Dean'], true)) {
+        return [false, 'Unauthorized to edit targets.'];
+    }
+
     $existing = target_find($id);
     if (!$existing) {
         return [false, 'Target not found.'];
     }
+
+    $existingYear = (string) ($existing['academic_year'] ?? '');
+    $requestedYear = trim($academicYear);
+
+    // Cross-year IDOR & mismatch protection:
+    // If an academic year is passed, verify target strictly belongs to that year.
+    if ($requestedYear !== '' && $requestedYear !== $existingYear) {
+        return [false, "Target #{$id} belongs to Academic Year {$existingYear}, not {$requestedYear}."];
+    }
+
+    // Department scope check: HoD/Coordinator can never edit outside their assigned department
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
+        $userDept = $user['department'] ?? '';
+        if ($userDept === '' || ($existing['department'] ?? '') !== $userDept) {
+            return [false, 'You do not have permission to edit targets outside your department.'];
+        }
+    }
+
     if (!target_can_edit($existing, $user)) {
         return [false, target_is_frozen($existing)
             ? 'That target is frozen. Only an Admin can change it now.'
             : 'That target is not yours to edit.'];
     }
+
     $metric = trim($metric);
     if ($metric === '') {
         return [false, 'The target title is required.'];
@@ -495,8 +496,11 @@ function target_update(int $id, array $user, string $department, string $academi
     }
 
     if ($user['role'] !== 'Admin') {
-        $department   = (string) $existing['department'];      // pinned to where it already is
-        $academicYear = (string) $existing['academic_year'];   // a HoD/Dean cannot move a target to another year
+        $department = (string) $existing['department'];   // pinned to where it already is
+        $targetYear = $existingYear;                      // non-admins cannot move a target to another year
+    } else {
+        $department = trim($department) ?: (string) $existing['department'];
+        $targetYear = ($requestedYear !== '' && is_valid_academic_year($requestedYear)) ? $requestedYear : $existingYear;
     }
 
     $frozen = target_is_frozen($existing);
@@ -510,24 +514,24 @@ function target_update(int $id, array $user, string $department, string $academi
     }
 
     $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, target_deadline = ?, achieved_value = ?, remarks = ?, coordinator = ?';
-    $args = [$department, $academicYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
+    $args = [$department, $targetYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
 
     if ($fixedText !== null) {
         $sql .= ', fixed_text = ?';
         $args[] = trim($fixedText);
     }
 
-    // Re-stamp the approval only when an Admin edits a frozen target — a HoD
-    // editing inside an unlock window is not re-approving it, so the original
-    // approver and date stand.
+    // Re-stamp the approval only when an Admin edits a frozen target
     if ($frozen && $user['role'] === 'Admin') {
         $sql .= ', approved_by = ?, approved_at = ?';
         $args[] = $user['id'];
         $args[] = date('Y-m-d H:i:s');
     }
 
-    $sql   .= ' WHERE id = ?';
+    // Atomic update binding: TARGET ID + ACADEMIC YEAR
+    $sql   .= ' WHERE id = ? AND academic_year = ?';
     $args[] = $id;
+    $args[] = $existingYear;
 
     db()->prepare($sql)->execute($args);
 
@@ -541,6 +545,15 @@ function target_submit(int $id, array $user): array
     if (!$existing) {
         return [false, 'Target not found.'];
     }
+
+    // Department scope check
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
+        $userDept = $user['department'] ?? '';
+        if ($userDept === '' || ($existing['department'] ?? '') !== $userDept) {
+            return [false, 'You do not have permission to submit targets outside your department.'];
+        }
+    }
+
     if (!target_can_submit($existing, $user)) {
         return [false, 'That target cannot be sent for review.'];
     }
@@ -597,8 +610,8 @@ function targets_bulk_approve(array $user, ?string $deptFilter = null, ?string $
     }
 
     $effectiveYear = $yearFilter ?: active_academic_year();
-    if ($user['role'] !== 'Admin' && academic_year_is_locked($effectiveYear)) {
-        return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Target approvals are frozen."];
+    if (!is_valid_academic_year($effectiveYear)) {
+        return [false, 'Invalid academic year.'];
     }
 
     $pdo = db();

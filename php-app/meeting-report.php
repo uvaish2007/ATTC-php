@@ -18,6 +18,7 @@ $user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordina
 
 $params = array_filter([
     'department' => trim((string) input('department')) ?: null,
+    'year'       => trim((string) input('year')) ?: null,
     'format'     => in_array((string) input('format'), ['word', 'excel', 'pdf'], true) ? (string) input('format') : null,
 ]);
 

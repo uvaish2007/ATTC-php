@@ -18,10 +18,14 @@ require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
-// The ONE system-wide active academic year. Every write below that takes a
-// year uses THIS, never a client-supplied academic_year field — a target is
-// always created in whatever year ATTS is currently operating on.
-$activeYear = active_academic_year();
+// Active academic year determines default operating year
+$activeYear  = active_academic_year();
+$years       = academic_years();
+$currentYear = $years[0] ?? '2026-27';
+
+// Selected Academic Year for target viewing and management (defaults to active year)
+$reqYear = trim((string) input('year'));
+$selectedYear = ($reqYear !== '' && is_valid_academic_year($reqYear) && in_array($reqYear, $years, true)) ? $reqYear : $activeYear;
 
 // AJAX endpoint to fetch approved faculty records for a target
 if ((isset($_GET['action']) && $_GET['action'] === 'get_target_records') || (isset($_POST['action']) && $_POST['action'] === 'get_target_records')) {
@@ -56,10 +60,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'create' || $action === 'create_and_submit') {
         $targetStatus = ($action === 'create_and_submit') ? 'Dean Pending' : 'Draft';
+        $postYear = trim((string) input('academic_year'));
+        if (!$postYear || !is_valid_academic_year($postYear) || !in_array($postYear, $years, true)) {
+            $postYear = $selectedYear;
+        }
         [$ok, $msg] = target_create(
             $user,
             (string) input('department'),
-            $activeYear,
+            $postYear,
             (string) input('metric'),
             (int) input('target_value'),
             (string) input('remarks'),
@@ -116,13 +124,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
     } elseif ($action === 'submit_all' && in_array($user['role'], ['HoD', 'Dean'], true)) {
-        if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
-            flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Targets cannot be submitted.");
-            redirect('/targets.php');
+        $postYear = trim((string) input('academic_year')) ?: $selectedYear;
+        if (!is_valid_academic_year($postYear) || !in_array($postYear, $years, true)) {
+            $postYear = $selectedYear;
         }
         $dept = $user['department'] ?? (trim((string) input('department')) ?: 'CSE');
         $stmt = db()->prepare("UPDATE targets SET status = 'Dean Pending', submitted_at = NOW() WHERE department = ? AND academic_year = ? AND status IN ('Draft', 'Changes Requested')");
-        $stmt->execute([$dept, $activeYear]);
+        $stmt->execute([$dept, $postYear]);
         $count = $stmt->rowCount();
         [$ok, $msg] = [true, "$count target" . ($count !== 1 ? 's' : '') . " submitted for Dean review."];
     } elseif ($action === 'submit') {
@@ -131,7 +139,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = target_review((int) input('id'), $user, (string) input('decision'), (string) input('review_remark'));
     } elseif ($action === 'bulk_approve' && in_array($user['role'], ['Dean', 'Admin', 'Director', 'Principal'], true)) {
         $dept = trim((string) input('department')) ?: null;
-        [$ok, $msg] = targets_bulk_approve($user, $dept, $activeYear);
+        $postYear = trim((string) input('academic_year')) ?: $selectedYear;
+        if (!is_valid_academic_year($postYear) || !in_array($postYear, $years, true)) {
+            $postYear = $selectedYear;
+        }
+        [$ok, $msg] = targets_bulk_approve($user, $dept, $postYear);
     } elseif ($action === 'delete') {
         [$ok, $msg] = target_delete((int) input('id'), $user);
     } elseif ($action === 'apply_count') {
@@ -151,8 +163,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = [false, 'Unknown or not-permitted action.'];
     }
 
+    $redirectParams = [];
+    $redirYear = trim((string) input('academic_year')) ?: (trim((string) input('year')) ?: $selectedYear);
+    if ($redirYear && is_valid_academic_year($redirYear) && in_array($redirYear, $years, true) && $redirYear !== $activeYear) {
+        $redirectParams['year'] = $redirYear;
+    }
+    if (!empty($_GET['department']) && !in_array($user['role'], ['HoD', 'Coordinator'], true)) {
+        $redirectParams['department'] = $_GET['department'];
+    }
+    $redirectUrl = '/targets.php' . ($redirectParams ? '?' . http_build_query($redirectParams) : '');
     flash($ok ? 'success' : 'error', $msg);
-    redirect('/targets.php');
+    redirect($redirectUrl);
 }
 
 // Re-freeze any window that has run out before we read state for this page.
@@ -164,13 +185,11 @@ $isDean      = $user['role'] === 'Dean';
 $isCoord     = $user['role'] === 'Coordinator';
 $isHodOrDean = $isHod || $isDean;
 
-$canCreate   = $isHod && (!academic_year_is_locked($activeYear) || $user['role'] === 'Admin');
+// Target creation and management permissions: Academic Year lock does NOT prevent target editing
+$canCreate   = in_array($user['role'], ['HoD', 'Admin'], true);
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
 $deptFilter   = ($isHod || $isCoord) ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
-// The academic year is never a page filter a visitor picks — every role
-// sees ONLY the system-wide active year's targets (section 8). $_GET['year']
-// is intentionally never read here.
-$yearFilter   = $activeYear;
+$yearFilter   = $selectedYear;
 $statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
 $metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
 
@@ -181,14 +200,10 @@ if ($isDean) {
     }
 }
 
-$years       = academic_years();
-$currentYear = $years[0] ?? '2026-27';
-
 // Safe automatic seeding: ONLY for HoD for their own department; never seed on Dean browsing
-$seedYear = $activeYear ?? ($yearFilter ?: $currentYear);
 if ($isHod && !empty($user['department'])) {
     ensure_default_targets($user['department'], '2025-26', (int) $user['id']);
-    ensure_default_targets($user['department'], $seedYear, (int) $user['id']);
+    ensure_default_targets($user['department'], $selectedYear, (int) $user['id']);
 }
 
 $targets     = targets_all($deptFilter, $yearFilter, $statFilter, $metricFilter, $isDean);
@@ -213,7 +228,12 @@ require __DIR__ . '/inc/header.php';
   <div>
     <h1>Review Targets</h1>
     <div class="sub">
-      <?= count($targets) ?> target<?= count($targets) !== 1 ? 's' : '' ?>
+      <?= count($targets) ?> target<?= count($targets) !== 1 ? 's' : '' ?> for Academic Year <strong><?= e($selectedYear) ?></strong>
+      <?php if ($selectedYear !== $activeYear): ?>
+        <span class="badge badge-neutral" style="font-size:11px;margin-left:4px">Historical Year</span>
+      <?php else: ?>
+        <span class="badge badge-success" style="font-size:11px;margin-left:4px">Active Year</span>
+      <?php endif; ?>
       <?php if ($awaiting): ?>
         &middot; <strong><?= $awaiting ?></strong> waiting for your review
       <?php endif; ?>
@@ -222,9 +242,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <div class="actions">
-    <?php // Academic year isn't counted here any more — it's always the active
-      // system year, not a filter a visitor chose. ?>
-    <?php $tgActive = ((!$isHod && !$isCoord && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
+    <?php $tgActive = (($selectedYear !== $activeYear) ? 1 : 0) + ((!$isHod && !$isCoord && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
 
     <?php
       // The meeting report always reflects what is on screen: same department
@@ -232,7 +250,7 @@ require __DIR__ . '/inc/header.php';
       // three formats — Word, Excel and a print-to-PDF view.
       $reportBase = array_filter([
           'department' => ($isHod || $isCoord) ? null : $deptFilter,
-          'year'       => $yearFilter,
+          'year'       => $selectedYear,
       ]);
       $reportUrl = fn(string $fmt) => e(url('meeting-report.php') . '?' . http_build_query($reportBase + ['format' => $fmt]));
     ?>
@@ -259,6 +277,16 @@ require __DIR__ . '/inc/header.php';
       $tgShown = $tgActive - (($isDean && $statFilter === 'Dean Pending') ? 1 : 0); ?>
 <form method="get" class="fbar">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
+
+  <label class="fb-field"><span class="fb-k">Academic Year</span>
+    <select name="year" onchange="this.form.submit()">
+      <?php foreach ($years as $y): ?>
+        <option value="<?= e($y) ?>" <?= $selectedYear === $y ? 'selected' : '' ?>>
+          <?= e($y) ?><?= $y === $activeYear ? ' (Active)' : '' ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </label>
 
   <?php if (!$isHod && !$isCoord): ?>
     <label class="fb-field"><span class="fb-k">Department</span>
@@ -305,14 +333,24 @@ require __DIR__ . '/inc/header.php';
     </span>
 </form>
 
-<?php if (academic_year_is_locked($activeYear)): ?>
-  <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
-    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
-      <?= icon('lock', 20) ?>
+<?php if ($selectedYear !== $activeYear): ?>
+  <div style="background:#F0FDF4;border:1px solid #BBF7D0;border-left:4px solid #16A34A;color:#166534;padding:12px 16px;border-radius:8px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:32px;height:32px;border-radius:6px;background:#DCFCE7;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#16A34A">
+      <?= icon('calendar', 18) ?>
     </div>
     <div style="flex:1">
-      <div style="font-weight:700;font-size:13px">Academic Year <?= e($activeYear) ?> Cycle is Locked</div>
-      <div style="font-size:12px;color:#B91C1C;margin-top:2px">The Administrator has locked this academic year cycle following an Executive Meeting. Target submissions and edits are frozen across all roles. <?= $user['role'] === 'Admin' ? 'As an Administrator, you retain target management authority.' : 'Targets cannot be modified until the cycle is unlocked by an Administrator.' ?></div>
+      <div style="font-weight:700;font-size:13px">Academic Year <?= e($selectedYear) ?> (Historical Academic Year)</div>
+      <div style="font-size:12px;color:#15803D;margin-top:2px">Historical Academic Year &mdash; Target management and editing remain accessible according to your role permissions.</div>
+    </div>
+  </div>
+<?php elseif (academic_year_is_locked($activeYear)): ?>
+  <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #3B82F6;color:#1E40AF;padding:12px 16px;border-radius:8px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:32px;height:32px;border-radius:6px;background:#DBEAFE;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#2563EB">
+      <?= icon('info', 18) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px">Academic Year <?= e($activeYear) ?> Cycle Status</div>
+      <div style="font-size:12px;color:#1E40AF;margin-top:2px">The academic year cycle lock applies to institutional cycle administration. Target editing remains available to authorized department coordinators, HoDs, Deans, and Admins.</div>
     </div>
   </div>
 <?php endif; ?>
@@ -448,7 +486,7 @@ require __DIR__ . '/inc/header.php';
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="submit_all">
             <input type="hidden" name="department" value="<?= e($deptName) ?>">
-            <input type="hidden" name="academic_year" value="<?= e($activeYear) ?>">
+            <input type="hidden" name="academic_year" value="<?= e($selectedYear) ?>">
             <button type="submit" class="btn btn-primary btn-sm" onclick="return confirm('Submit all <?= $draftCount ?> targets to the Dean for review?')">
               <?= icon('send', 14) ?> Submit All for Review (<?= $draftCount ?>)
             </button>
@@ -497,9 +535,12 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td>
                 <div style="font-weight:600;color:var(--navy-900);line-height:1.45"><?= e($t['metric']) ?></div>
-                <?php if (!empty($t['academic_year']) && !$yearFilter): ?>
-                  <div class="card-sub" style="font-size:12px;margin-top:2px"><?= icon('calendar', 12) ?> <?= e($t['academic_year']) ?></div>
-                <?php endif; ?>
+                <div class="card-sub" style="font-size:12px;margin-top:2px;display:flex;align-items:center;gap:5px">
+                  <?= icon('calendar', 12) ?> <span>Academic Year: <strong><?= e($t['academic_year'] ?? $selectedYear) ?></strong></span>
+                  <?php if (($t['academic_year'] ?? '') !== $activeYear): ?>
+                    <span class="badge badge-neutral" style="font-size:10px;padding:1px 5px">Historical</span>
+                  <?php endif; ?>
+                </div>
                 <?php if (!empty($t['coordinator'])): ?>
                   <div class="card-sub"><?= icon('user', 12) ?> Coordinator: <?= e($t['coordinator']) ?></div>
                 <?php endif; ?>
@@ -628,7 +669,12 @@ require __DIR__ . '/inc/header.php';
                   </div>
                 <?php endif; ?>
               </td>
-              <td><span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span></td>
+              <td>
+                <span class="badge badge-neutral"><?= e($t['academic_year'] ?? '—') ?></span>
+                <?php if (($t['academic_year'] ?? '') !== $activeYear): ?>
+                  <div class="card-sub" style="font-size:10px;margin-top:2px">Historical</div>
+                <?php endif; ?>
+              </td>
               <td>
                 <span class="badge badge-<?= target_status_class($status) ?>">
                   <?php if ($frozen): ?><?= icon('shield', 12) ?> <?php endif; ?><?= e($status) ?>
@@ -763,8 +809,12 @@ require __DIR__ . '/inc/header.php';
           <?php foreach ($departments as $d): ?><option value="<?= e($d['name']) ?>"><?= e($d['name']) ?></option><?php endforeach; ?>
         </select>
       <?php endif; ?></div>
-    <div class="field"><label>Academic Year</label>
-      <input class="input" value="<?= e($activeYear) ?>" disabled title="New targets are always created in the active academic year.">
+    <div class="field"><label>Academic Year <span class="req">*</span></label>
+      <select class="select" name="academic_year" required>
+        <?php foreach ($years as $y): ?>
+          <option value="<?= e($y) ?>" <?= $selectedYear === $y ? 'selected' : '' ?>><?= e($y) ?><?= $y === $activeYear ? ' (Active)' : '' ?></option>
+        <?php endforeach; ?>
+      </select>
     </div>
     <div class="field"><label>Fixed (target value) <span class="req">*</span></label>
       <input class="input" type="number" name="target_value" min="0" required></div>

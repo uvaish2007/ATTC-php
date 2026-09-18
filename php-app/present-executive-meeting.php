@@ -22,7 +22,9 @@ if (!defined('REPORT_INSTITUTION')) {
 }
 
 /** Auto mode dwell time per slide. The requirement is 10 seconds, not 5. */
-const EM_AUTO_ADVANCE_MS = 10000;
+if (!defined('EM_AUTO_ADVANCE_MS')) {
+    define('EM_AUTO_ADVANCE_MS', 10000);
+}
 
 $user = require_login();
 
@@ -480,7 +482,12 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
         return slideHeader(s, scope) + `
           <div class="kpi-row">
             <div class="kpi-box brand"><div class="kpi-box-lbl">Total Records</div><div class="kpi-box-val">${esc(s.totals.records)}</div></div>
-            <div class="kpi-box"><div class="kpi-box-lbl">Departments</div><div class="kpi-box-val">${esc(s.departments.length)}</div></div>
+            <div class="kpi-box">
+              <div class="kpi-box-lbl">${s.summary['Department'] && s.summary['Department'] !== 'All Departments' ? 'Department' : 'Departments'}</div>
+              <div class="kpi-box-val" style="${s.summary['Department'] && s.summary['Department'] !== 'All Departments' ? 'font-size:15px; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;' : ''}" title="${esc(s.summary['Department'] && s.summary['Department'] !== 'All Departments' ? s.summary['Department'] : s.departments.length)}">
+                ${esc(s.summary['Department'] && s.summary['Department'] !== 'All Departments' ? s.summary['Department'] : s.departments.length)}
+              </div>
+            </div>
             <div class="kpi-box"><div class="kpi-box-lbl">Activities</div><div class="kpi-box-val">${esc(s.totals.activity)}</div></div>
             <div class="kpi-box"><div class="kpi-box-lbl">Meetings</div><div class="kpi-box-val">${esc(s.totals.meetings)}</div></div>
           </div>

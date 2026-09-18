@@ -59,7 +59,10 @@ function em_department_scope(array $user, ?string $requested): ?string
         return null;
     }
 
-    return ($user['department'] ?? '') ?: null;       // HoD / Coordinator / Faculty
+    // Strictly enforce department from authenticated user for HoD, Coordinator, Faculty.
+    // Any manually requested parameter is completely ignored to prevent tampering and IDOR.
+    $userDept = trim((string) ($user['department'] ?? ''));
+    return $userDept !== '' ? $userDept : '__UNASSIGNED_DEPT__';
 }
 
 /** Whether this user may choose a department at all (drives the UI state). */
@@ -69,15 +72,10 @@ function em_can_pick_department(array $user): bool
 }
 
 /**
- * Faculty selectable in this scope. A Faculty user only ever gets themselves,
- * which matches report_records() pinning them to their own submissions.
+ * Faculty selectable in this scope.
  */
 function em_faculty_options(array $user, ?string $dept): array
 {
-    if (($user['role'] ?? '') === 'Faculty') {
-        return [['id' => (int) $user['id'], 'name' => $user['name'], 'department' => $user['department'] ?: '']];
-    }
-
     $sql    = "SELECT id, name, department FROM users WHERE role IN ('Faculty', 'Coordinator', 'HoD')";
     $params = [];
     if ($dept) {
@@ -109,7 +107,6 @@ function em_student_options(array $user, ?string $dept, ?string $year): array
     $types    = record_types();
     $parts    = [];
     $params   = [];
-    $onlyMine = (($user['role'] ?? '') === 'Faculty') ? (int) $user['id'] : null;
 
     foreach (record_category_types('student') as $typeKey) {
         if (!isset($types[$typeKey])) {
@@ -135,10 +132,6 @@ function em_student_options(array $user, ?string $dept, ?string $year): array
         if ($year && in_array('academic_year', $cols, true)) {
             $sql     .= ' AND academic_year = ?';
             $params[] = $year;
-        }
-        if ($onlyMine !== null && in_array('created_by', $cols, true)) {
-            $sql     .= ' AND created_by = ?';
-            $params[] = $onlyMine;
         }
         $parts[] = $sql;
     }
@@ -343,9 +336,8 @@ function em_dataset(array $user, array $f): array
 {
     // One pass over every record type, already scoped to this user's role and
     // narrowed by department, academic year and the meeting's cut-off date.
-    // record_from/record_to carry the FEAT-07 EM period and any recorded
-    // meeting's cut-off, already combined by em_resolve_filters().
-    $records = report_records($user, $f['department'], null, null, $f['record_from'], $f['record_to'], $f['year']);
+    // In presentation mode, we enable department-wide collection so faculty see their department's data.
+    $records = report_records($user, $f['department'], null, null, $f['record_from'], $f['record_to'], $f['year'], true);
 
     // Which category each type belongs to, from the existing grouping.
     $catOfType = [];
@@ -499,6 +491,19 @@ function em_slides(array $ds): array
     $summary = $ds['summary'];
     $slides  = [];
 
+    // If scoped to a department and there is no presentation data:
+    if (!empty($f['department']) && $ds['total'] === 0 && count($ds['targets']) === 0) {
+        $deptName = department_full_name($f['department']);
+        return [
+            [
+                'type'    => 'empty',
+                'title'   => 'Executive Meeting Presentation',
+                'summary' => $summary,
+                'message' => "No presentation data available for {$deptName} for the selected Academic Year / Executive Meeting.",
+            ],
+        ];
+    }
+
     // 1 — Cover, with the applied filters.
     $slides[] = [
         'type'    => 'title',
@@ -513,10 +518,12 @@ function em_slides(array $ds): array
         ],
     ];
 
-    // 2 — Overall college development, from the record counts actually found.
+    // 2 — College or Department development, from the record counts actually found.
+    $isDept    = !empty($f['department']);
+    $deptLabel = $isDept ? department_full_name($f['department']) : '';
     $slides[] = [
         'type'        => 'college',
-        'title'       => 'Overall College Development',
+        'title'       => $isDept ? "{$deptLabel} Development" : 'Overall College Development',
         'summary'     => $summary,
         'by_type'     => $ds['by_type'],
         'departments' => $ds['departments'],

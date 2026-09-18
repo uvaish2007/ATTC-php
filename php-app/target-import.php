@@ -83,10 +83,6 @@ function import_validate_row(array $raw, string $activeYear): array
    ---------------------------------------------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
-        flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Target importing is disabled.");
-        redirect('/target-import.php');
-    }
     $action = (string) input('action');
 
     if ($action === 'cancel') {
