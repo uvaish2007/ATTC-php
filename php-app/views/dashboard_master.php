@@ -80,7 +80,7 @@ if ($user['role'] === 'HoD') {
     $unlockedCount = 0;
     foreach (record_types() as $k => $t) {
         try {
-            $unlockedCount += (int) db()->query("SELECT COUNT(*) FROM `{$t['table']}` WHERE status = 'Unlocked for Edit' AND department = " . db()->quote($coordDept))->fetchColumn();
+            $unlockedCount += (int) db()->query("SELECT COUNT(*) FROM `{$t['table']}` WHERE status = 'Unlocked for Edit' AND (department = " . db()->quote($coordDept) . " OR REPLACE(department, ' ', '') = REPLACE(" . db()->quote($coordDept) . ", ' ', ''))")->fetchColumn();
         } catch (\PDOException $e) {}
     }
 
@@ -89,8 +89,8 @@ if ($user['role'] === 'HoD') {
     $cards[] = ['label' => 'Pending Verification', 'value' => (string) $pendingRec,
                 'sub' => $pendingRec ? 'Awaiting verification' : 'All caught up', 'icon' => 'check-circle', 'tone' => $pendingRec ? 'brand' : 'navy',
                 'href' => url('approvals.php?tab=pending')];
-    $cards[] = ['label' => 'Authorized Corrections', 'value' => (string) $unlockedCount,
-                'sub' => $unlockedCount ? 'Unlocked by Dean for editing' : 'No corrections pending', 'icon' => 'edit', 'tone' => $unlockedCount ? 'brand' : 'navy',
+    $cards[] = ['label' => 'Approved by Dean', 'value' => (string) $unlockedCount,
+                'sub' => $unlockedCount ? 'Unlocked for you to edit & resubmit' : 'No pending corrections', 'icon' => 'check-circle', 'tone' => $unlockedCount ? 'brand' : 'navy',
                 'href' => url('approvals.php?tab=corrections')];
     $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'],
                 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
@@ -352,6 +352,25 @@ if (!function_exists('dash_column_chart')) {
 
 <?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
 
+
+<?php if ($user['role'] === 'Coordinator' && !empty($unlockedCount)): ?>
+  <div style="background:#ECFDF5; border:1px solid #A7F3D0; border-left:4px solid #059669; border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+    <div style="display:flex; align-items:center; gap:12px">
+      <span style="color:#047857; display:flex; align-items:center"><?= icon('check-circle', 22) ?></span>
+      <div>
+        <div style="font-weight:700; color:#065F46; font-size:14px">
+          Dean has approved <?= (int)$unlockedCount ?> edit request(s) for <?= e($user['department'] ?? 'your department') ?>
+        </div>
+        <div style="font-size:12.5px; color:#047857; margin-top:2px">
+          These records are unlocked for you to correct and resubmit for HoD review.
+        </div>
+      </div>
+    </div>
+    <a href="<?= e(url('approvals.php?tab=corrections')) ?>" class="btn btn-sm" style="background:#059669; color:#fff; font-weight:600; text-decoration:none; padding:6px 14px; border-radius:6px; font-size:12.5px">
+      View &amp; Edit Now &rarr;
+    </a>
+  </div>
+<?php endif; ?>
 
 <?php /* ---- HoD: the unlock window, shown with total + remaining time ---- */ ?>
 <?php if ($user['role'] === 'HoD'): ?>

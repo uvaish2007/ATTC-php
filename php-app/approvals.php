@@ -144,7 +144,7 @@ if ($user['role'] === 'HoD') {
 $pendingRequests = array_values(array_filter($editRequests, fn($er) => $er['status'] === 'Pending'));
 $historyRequests = array_values(array_filter($editRequests, fn($er) => in_array($er['status'], ['Approved', 'Rejected', 'Completed'], true)));
 
-// Coordinator Authorized Corrections list
+// Coordinator & Admin Authorized Corrections list (Records approved by Dean)
 $authorizedCorrections = [];
 if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
     foreach ($types as $key => $t) {
@@ -153,9 +153,20 @@ if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
             $cr['_type_key']   = $key;
             $cr['_type_label'] = $t['label'];
             $cr['_title']      = $cr[$t['title_col']] ?? '(untitled)';
+            
+            // Fetch linked edit request for complete Dean authorization details
+            try {
+                $erStmt = db()->prepare("SELECT * FROM edit_requests WHERE record_id = ? AND record_type = ? ORDER BY id DESC LIMIT 1");
+                $erStmt->execute([(int)$cr['id'], $key]);
+                $cr['_edit_request'] = $erStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+            } catch (\PDOException $e) {
+                $cr['_edit_request'] = null;
+            }
+            
             $authorizedCorrections[] = $cr;
         }
     }
+    usort($authorizedCorrections, fn($a, $b) => strtotime($b['updated_at'] ?? $b['created_at']) <=> strtotime($a['updated_at'] ?? $a['created_at']));
 }
 
 // Filter records
@@ -214,12 +225,15 @@ require __DIR__ . '/inc/header.php';
       <a href="?tab=pending" class="btn btn-sm <?= $currentTab === 'pending' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('check-circle', 14) ?> Pending Verification (<?= count($records) ?>)
       </a>
-      <a href="?tab=corrections" class="btn btn-sm <?= $currentTab === 'corrections' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
-        <?= icon('edit', 14) ?> Authorized Corrections (<?= count($authorizedCorrections) ?>)
+      <a href="?tab=corrections" class="btn btn-sm <?= $currentTab === 'corrections' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px; <?= count($authorizedCorrections) > 0 ? 'border:1px solid #A7F3D0; font-weight:700;' : '' ?>">
+        <?= icon('edit', 14) ?> Approved by Dean · Corrections (<?= count($authorizedCorrections) ?>)
+      </a>
+      <a href="?tab=requests" class="btn btn-sm <?= $currentTab === 'requests' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
+        <?= icon('file-text', 14) ?> Dean-Approved Requests (<?= count($editRequests) ?>)
       </a>
     <?php elseif ($user['role'] === 'Dean'): ?>
       <a href="?tab=requests" class="btn btn-sm <?= $currentTab === 'requests' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
-        <?= icon('edit', 14) ?> Edit Requests (<?= count($pendingRequests) ?>)
+        <?= icon('edit', 14) ?> Edit Requests (<?= count($pendingRequests) > 0 ? count($pendingRequests) . ' pending' : count($editRequests) ?>)
       </a>
       <a href="?tab=records" class="btn btn-sm <?= $currentTab === 'records' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('file-text', 14) ?> Department Records (<?= count($records) ?>)
@@ -231,8 +245,11 @@ require __DIR__ . '/inc/header.php';
       <a href="?tab=pending" class="btn btn-sm <?= $currentTab === 'pending' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('check-circle', 14) ?> Pending Records
       </a>
+      <a href="?tab=records" class="btn btn-sm <?= $currentTab === 'records' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
+        <?= icon('file-text', 14) ?> Department Records (<?= count($records) ?>)
+      </a>
       <a href="?tab=requests" class="btn btn-sm <?= $currentTab === 'requests' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
-        <?= icon('edit', 14) ?> Edit Requests (<?= count($pendingRequests) ?>)
+        <?= icon('edit', 14) ?> Edit Requests (<?= count($pendingRequests) > 0 ? count($pendingRequests) . ' pending' : count($editRequests) ?>)
       </a>
       <a href="?tab=history" class="btn btn-sm <?= $currentTab === 'history' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('clock', 14) ?> History
@@ -260,32 +277,71 @@ require __DIR__ . '/inc/header.php';
      TAB CONTENT 1: EDIT REQUESTS (For Dean / Admin / HoD Requests Tab)
      ========================================================================= -->
 <?php if ($currentTab === 'requests'): ?>
+  <?php
+    $reqStatusFilter = trim((string) input('req_status'));
+    if ($user['role'] === 'HoD') {
+        $reqList = $editRequests;
+        $tabTitle = 'My Edit Requests to Dean';
+        $tabSub   = 'Track status of modification requests submitted for department records';
+    } elseif ($user['role'] === 'Coordinator') {
+        $reqList = $editRequests;
+        $tabTitle = 'Dean-Approved Edit Requests';
+        $tabSub   = 'Modification requests approved by Dean. You are authorized to correct and resubmit these records.';
+    } else { // Dean or Admin
+        $tabTitle = ($user['role'] === 'Dean') ? 'Edit Requests & Decisions' : 'Edit Requests Oversight';
+        $tabSub   = 'Review requests submitted by HoDs to unlock approved records for Coordinator correction.';
+        if ($reqStatusFilter === 'Pending') {
+            $reqList = $pendingRequests;
+        } elseif ($reqStatusFilter === 'Approved') {
+            $reqList = array_values(array_filter($editRequests, fn($er) => $er['status'] === 'Approved'));
+        } elseif ($reqStatusFilter === 'Rejected') {
+            $reqList = array_values(array_filter($editRequests, fn($er) => $er['status'] === 'Rejected'));
+        } elseif ($reqStatusFilter === 'Completed') {
+            $reqList = array_values(array_filter($editRequests, fn($er) => $er['status'] === 'Completed'));
+        } else {
+            $reqList = $editRequests;
+        }
+    }
+  ?>
   <div class="card" style="margin-bottom:24px">
-    <div class="card-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between">
+    <div class="card-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
       <div>
         <div class="card-title" style="font-size:16px; font-weight:700; color:#0F172A">
-          <?= $user['role'] === 'HoD' ? 'My Edit Requests to Dean' : 'Edit Requests Pending Dean Decision' ?>
+          <?= e($tabTitle) ?>
         </div>
-        <div class="card-sub" style="font-size:12px; color:#64748B">
-          <?= $user['role'] === 'HoD'
-            ? 'Track status of modification requests submitted for department records'
-            : 'Review requests submitted by HoDs to unlock approved records for Coordinator correction' ?>
+        <div class="card-sub" style="font-size:12px; color:#64748B; margin-top:2px">
+          <?= e($tabSub) ?>
         </div>
       </div>
+      <?php if (in_array($user['role'], ['Dean', 'Admin'], true)): ?>
+        <div style="display:flex; gap:6px; flex-wrap:wrap">
+          <a href="?tab=requests&req_status=all" class="btn btn-sm <?= ($reqStatusFilter === 'all' || $reqStatusFilter === '') ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:11.5px; height:28px; border-radius:6px; padding:0 10px">
+            All (<?= count($editRequests) ?>)
+          </a>
+          <a href="?tab=requests&req_status=Pending" class="btn btn-sm <?= $reqStatusFilter === 'Pending' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:11.5px; height:28px; border-radius:6px; padding:0 10px; <?= count($pendingRequests) > 0 ? 'border:1px solid #F59E0B; color:#B45309; font-weight:700;' : '' ?>">
+            Pending Decision (<?= count($pendingRequests) ?>)
+          </a>
+          <a href="?tab=requests&req_status=Approved" class="btn btn-sm <?= $reqStatusFilter === 'Approved' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:11.5px; height:28px; border-radius:6px; padding:0 10px">
+            Approved by Dean (<?= count(array_filter($editRequests, fn($e) => $e['status'] === 'Approved')) ?>)
+          </a>
+          <a href="?tab=requests&req_status=Rejected" class="btn btn-sm <?= $reqStatusFilter === 'Rejected' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:11.5px; height:28px; border-radius:6px; padding:0 10px">
+            Rejected (<?= count(array_filter($editRequests, fn($e) => $e['status'] === 'Rejected')) ?>)
+          </a>
+        </div>
+      <?php endif; ?>
     </div>
     <div class="card-body" style="padding:0">
-      <?php $reqList = ($user['role'] === 'HoD') ? $editRequests : $pendingRequests; ?>
       <?php if (empty($reqList)): ?>
         <div class="empty" style="padding:60px 24px; text-align:center">
           <div class="ic" style="background:#ECFDF5; color:#047857; width:50px; height:50px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; border-radius:50%">
             <?= icon('check', 24) ?>
           </div>
-          <p style="font-size:15px; font-weight:600; color:#0F172A; margin:0 0 4px">No pending edit requests</p>
-          <div class="card-sub"><?= $user['role'] === 'HoD' ? 'You have not submitted any edit requests for this academic year.' : 'All edit requests have been reviewed.' ?></div>
+          <p style="font-size:15px; font-weight:600; color:#0F172A; margin:0 0 4px">No edit requests found</p>
+          <div class="card-sub"><?= $user['role'] === 'HoD' ? 'You have not submitted any edit requests for this academic year.' : 'No edit requests match the selected view.' ?></div>
         </div>
       <?php else: ?>
         <div class="table-wrap">
-          <table class="data" style="width:100%; min-width:800px">
+          <table class="data" style="width:100%; min-width:850px">
             <thead>
               <tr style="background:#F8FAFC; border-bottom:1px solid #E2E8F0">
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Request ID</th>
@@ -360,7 +416,13 @@ require __DIR__ . '/inc/header.php';
                     <?php endif; ?>
                   </td>
                   <td style="padding:14px 16px; vertical-align:top">
-                    <span class="badge badge-<?= status_class($er['status']) ?>"><?= e($er['status']) ?></span>
+                    <?php if ($er['status'] === 'Approved'): ?>
+                      <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px">
+                        <?= icon('check-circle', 13) ?> Approved by Dean
+                      </span>
+                    <?php else: ?>
+                      <span class="badge badge-<?= status_class($er['status']) ?>"><?= e($er['status']) ?></span>
+                    <?php endif; ?>
                   </td>
                   <td class="num" style="padding:14px 20px; vertical-align:top; text-align:right">
                     <?php if (in_array($user['role'], ['Dean', 'Admin'], true) && $er['status'] === 'Pending'): ?>
@@ -373,6 +435,35 @@ require __DIR__ . '/inc/header.php';
                           onclick="openDecisionModal('reject', <?= (int)$er['id'] ?>, <?= e(json_encode('ER-' . str_pad((string)$er['id'], 4, '0', STR_PAD_LEFT))) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['record_title'])) ?>)">
                           <?= icon('x', 13) ?> Reject
                         </button>
+                      </div>
+                    <?php elseif ($er['status'] === 'Approved'): ?>
+                      <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:4px">
+                        <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
+                          <?= icon('check-circle', 14) ?> Approved by Dean
+                        </span>
+                        <span style="font-size:11px; color:#4338CA; font-weight:600">
+                          Unlocked for Coordinator
+                        </span>
+                        <?php if ($user['role'] === 'Coordinator'): ?>
+                          <a class="btn btn-sm" style="background:#1D4ED8; color:#fff; font-weight:600; height:28px; padding:0 10px; font-size:11.5px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; border-radius:6px; margin-top:3px"
+                            href="<?= e(url('upload.php?type=' . urlencode($er['record_type']) . '&edit_id=' . (int)$er['record_id'])) ?>">
+                            <?= icon('edit', 13) ?> Edit &amp; Resubmit
+                          </a>
+                        <?php endif; ?>
+                      </div>
+                    <?php elseif ($er['status'] === 'Rejected'): ?>
+                      <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:3px">
+                        <span class="badge" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
+                          <?= icon('x-circle', 14) ?> Rejected
+                        </span>
+                        <span style="font-size:11px; color:#64748B"><?= e(time_ago($er['decided_at'])) ?></span>
+                      </div>
+                    <?php elseif ($er['status'] === 'Completed'): ?>
+                      <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:3px">
+                        <span class="badge" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
+                          <?= icon('check', 14) ?> Corrected &amp; Resubmitted
+                        </span>
+                        <span style="font-size:11px; color:#64748B"><?= e(time_ago($er['completed_at'] ?? $er['decided_at'])) ?></span>
                       </div>
                     <?php else: ?>
                       <span style="font-size:12px; color:#64748B"><?= e($er['decided_at'] ? date('d M Y', strtotime($er['decided_at'])) : '—') ?></span>
@@ -393,11 +484,18 @@ require __DIR__ . '/inc/header.php';
      ========================================================================= -->
 <?php if ($currentTab === 'corrections'): ?>
   <div class="card" style="margin-bottom:24px">
-    <div class="card-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0">
-      <div class="card-title" style="font-size:16px; font-weight:700; color:#0F172A">Dean-Authorized Corrections</div>
-      <div class="card-sub" style="font-size:12px; color:#64748B">
-        These records were unlocked by Dean following an HoD Edit Request. You are authorized to correct and resubmit them directly.
+    <div class="card-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px">
+      <div>
+        <div class="card-title" style="font-size:16px; font-weight:700; color:#0F172A">
+          <?= icon('check-circle', 18) ?> Records Approved by Dean for Correction
+        </div>
+        <div class="card-sub" style="font-size:12.5px; color:#64748B; margin-top:2px">
+          Dean has approved the modification requests below. These records are unlocked for you to correct and resubmit.
+        </div>
       </div>
+      <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:700; font-size:12px; padding:6px 12px; border-radius:6px">
+        <?= count($authorizedCorrections) ?> Record<?= count($authorizedCorrections) !== 1 ? 's' : '' ?> Unlocked
+      </span>
     </div>
     <div class="card-body" style="padding:0">
       <?php if (empty($authorizedCorrections)): ?>
@@ -406,38 +504,58 @@ require __DIR__ . '/inc/header.php';
             <?= icon('check', 24) ?>
           </div>
           <p style="font-size:15px; font-weight:600; color:#0F172A; margin:0 0 4px">No records awaiting correction</p>
-          <div class="card-sub">There are currently no unlocked records requiring Coordinator modification.</div>
+          <div class="card-sub">There are currently no unlocked records requiring modification.</div>
         </div>
       <?php else: ?>
         <div class="table-wrap">
-          <table class="data" style="width:100%; min-width:700px">
+          <table class="data" style="width:100%; min-width:850px">
             <thead>
               <tr style="background:#F8FAFC; border-bottom:1px solid #E2E8F0">
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Record Title</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Type</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Faculty</th>
-                <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Correction Note / Reason</th>
+                <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Dean Approval &amp; Correction Note</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Status</th>
                 <th class="num" style="padding:12px 20px; font-size:12px; font-weight:700; color:#475569; text-align:right">Action</th>
               </tr>
             </thead>
             <tbody>
               <?php foreach ($authorizedCorrections as $ac): ?>
+                <?php $er = $ac['_edit_request'] ?? null; ?>
                 <tr style="border-bottom:1px solid #F1F5F9">
-                  <td style="padding:14px 16px; font-weight:600; color:#0F172A; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">
+                  <td style="padding:14px 16px; font-weight:600; color:#0F172A; max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="<?= e($ac['_title']) ?>">
                     <?= e($ac['_title']) ?>
+                    <?php if ($er): ?>
+                      <div style="font-size:11px; font-family:monospace; color:#1E40AF; font-weight:700; margin-top:2px">ER-<?= str_pad((string)$er['id'], 4, '0', STR_PAD_LEFT) ?></div>
+                    <?php endif; ?>
                   </td>
                   <td style="padding:14px 16px"><span class="badge badge-info"><?= e($ac['_type_label']) ?></span></td>
                   <td style="padding:14px 16px">
                     <div style="font-weight:600; color:#0F172A"><?= e($ac['faculty_name'] ?? 'Faculty') ?></div>
                     <div style="font-size:11px; color:#64748B"><?= e($ac['department'] ?? '') ?></div>
                   </td>
-                  <td style="padding:14px 16px; font-size:12px; color:#1E40AF; max-width:300px">
-                    <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:6px 10px; border-radius:6px">
-                      <?= e($ac['review_remark'] ?: 'Dean authorized correction.') ?>
+                  <td style="padding:14px 16px; max-width:320px">
+                    <div style="font-size:12px; background:#EFF6FF; border:1px solid #BFDBFE; padding:8px 12px; border-radius:6px; color:#1E3A8A">
+                      <div style="font-weight:700; color:#1D4ED8; margin-bottom:2px">
+                        <?= icon('check-circle', 12) ?> Dean Approved Note:
+                      </div>
+                      <div><?= e($ac['review_remark'] ?: ($er['decision_comment'] ?? 'Dean authorized modification.')) ?></div>
+                      <?php if ($er && !empty($er['specific_field'])): ?>
+                        <div style="margin-top:6px; font-size:11.5px; border-top:1px dashed #BFDBFE; padding-top:4px">
+                          <strong>Target Field:</strong> <code style="background:#DBEAFE; color:#1E40AF; padding:1px 4px; border-radius:3px"><?= e($er['specific_field']) ?></code>
+                          <?php if (!empty($er['requested_value'])): ?>
+                            &rarr; <span style="color:#047857; font-weight:600"><?= e($er['requested_value']) ?></span>
+                          <?php endif; ?>
+                        </div>
+                      <?php endif; ?>
                     </div>
                   </td>
-                  <td style="padding:14px 16px"><span class="badge badge-primary"><?= e($ac['status']) ?></span></td>
+                  <td style="padding:14px 16px">
+                    <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:5px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:4px">
+                      <?= icon('check-circle', 13) ?> Approved by Dean
+                    </span>
+                    <div style="font-size:11px; color:#4338CA; font-weight:600; margin-top:3px">Unlocked for Edit</div>
+                  </td>
                   <td class="num" style="padding:14px 20px; text-align:right">
                     <a class="btn btn-sm" style="background:#1D4ED8; color:#fff; font-weight:600; height:32px; padding:0 12px; text-decoration:none; display:inline-flex; align-items:center; gap:6px; border-radius:6px"
                       href="<?= e(url('upload.php?type=' . urlencode($ac['_type_key']) . '&edit_id=' . (int)$ac['id'])) ?>">
@@ -516,6 +634,25 @@ require __DIR__ . '/inc/header.php';
      TAB CONTENT 4: DEPARTMENT RECORDS / PENDING APPROVALS
      ========================================================================= -->
 <?php if ($currentTab === 'records' || $currentTab === 'pending'): ?>
+  <?php if ($user['role'] === 'Coordinator' && count($authorizedCorrections) > 0): ?>
+    <div style="background:#ECFDF5; border:1px solid #A7F3D0; border-left:4px solid #059669; border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
+      <div style="display:flex; align-items:center; gap:12px">
+        <span style="color:#047857; display:flex; align-items:center"><?= icon('check-circle', 22) ?></span>
+        <div>
+          <div style="font-weight:700; color:#065F46; font-size:14px">
+            Dean has approved <?= count($authorizedCorrections) ?> edit request(s) for your department
+          </div>
+          <div style="font-size:12px; color:#047857; margin-top:2px">
+            These records are unlocked for you to correct and resubmit for HoD review.
+          </div>
+        </div>
+      </div>
+      <a href="?tab=corrections" class="btn btn-sm" style="background:#059669; color:#fff; font-weight:600; text-decoration:none; padding:6px 14px; border-radius:6px; font-size:12px">
+        View Approved Corrections (<?= count($authorizedCorrections) ?>) &rarr;
+      </a>
+    </div>
+  <?php endif; ?>
+
   <!-- Filters Bar -->
   <form method="get" class="fbar" style="margin-bottom:20px">
     <input type="hidden" name="tab" value="<?= e($currentTab) ?>">
@@ -535,78 +672,63 @@ require __DIR__ . '/inc/header.php';
     <label class="fb-field"><span class="fb-k">Record type</span>
       <select name="type" onchange="this.form.submit()">
         <option value="">All</option>
-        <?php foreach ($types as $key => $t): ?>
-          <option value="<?= e($key) ?>" <?= $filterType === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
+        <?php foreach ($types as $k => $t): ?>
+          <option value="<?= e($k) ?>" <?= $filterType === $k ? 'selected' : '' ?>><?= e($t['label']) ?></option>
         <?php endforeach; ?>
       </select>
     </label>
 
-    <label class="fb-field fb-search">
-      <?= icon('search', 15) ?>
-      <input type="search" name="q" value="<?= e($search) ?>" placeholder="Search title, faculty or department…" aria-label="Search records">
-      <button type="submit" class="fb-go" title="Search" aria-label="Search"><?= icon('arrow-right', 14) ?></button>
+    <label class="fb-field fb-grow"><span class="fb-k">Search</span>
+      <input type="text" name="q" value="<?= e($search) ?>" placeholder="Search title, faculty or department...">
     </label>
 
-    <span class="fbar-end">
-      <?php if ($activeCount): ?>
-        <span class="fbar-count"><?= (int) ($activeCount) ?> active</span>
-        <a class="fbar-clear" href="?tab=<?= e($currentTab) ?>"><?= icon('x', 13) ?> Clear all</a>
-      <?php else: ?>
-        <span class="fbar-note">Showing everything in scope</span>
-      <?php endif; ?>
-    </span>
+    <button type="submit" class="btn btn-primary btn-sm"><?= icon('search', 13) ?></button>
+    <?php if ($activeCount > 0): ?>
+      <a href="?tab=<?= e($currentTab) ?>" class="btn btn-ghost btn-sm">Clear</a>
+    <?php endif; ?>
   </form>
 
   <?php if (empty($records)): ?>
-    <div class="card"><div class="card-body" style="padding:0">
-      <div class="empty" style="padding:80px 24px; text-align:center">
-        <?php if ($hasFilter): ?>
-          <div class="ic" style="width:56px; height:56px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; border-radius:50%; background:#F1F5F9; color:#64748B"><?= icon('filter', 24) ?></div>
-          <p style="font-size:16px; font-weight:600; color:#0F172A; margin:0 0 4px">No records match these filters</p>
-          <div class="note">Widen or <a href="?tab=<?= e($currentTab) ?>">clear</a> them to see all records.</div>
-        <?php else: ?>
-          <div class="ic" style="background:#ECFDF5; color:#047857; width:56px; height:56px; margin:0 auto 12px; display:flex; align-items:center; justify-content:center; border-radius:50%"><?= icon('check', 24) ?></div>
-          <p style="font-size:16px; font-weight:600; color:#0F172A; margin:0 0 4px">All caught up!</p>
-          <div class="note"><?= $isHod ? 'No records to review in your department.' : 'No records pending review right now.' ?></div>
-        <?php endif; ?>
+    <div class="card"><div class="empty">
+      <div class="ic"><?= icon('check', 28) ?></div>
+      <p style="font-size:16px; font-weight:600; color:#0F172A; margin:0 0 4px">No records found</p>
+      <div class="card-sub">
+        <?= $search !== '' || $filterType !== '' || $filterDept
+          ? 'Try adjusting your search or filters.'
+          : ($user['role'] === 'HoD'
+            ? 'No records currently in review for ' . e($scopeDept ?? 'your department') . '.'
+            : 'No department records currently pending verification in academic year ' . e($activeYear) . '.') ?>
       </div>
     </div></div>
   <?php else: ?>
     <?php
       $byDept = [];
       foreach ($records as $r) {
-          $k = ($r['department'] ?? '') !== '' ? $r['department'] : 'Unassigned';
-          $byDept[$k][] = $r;
+          $d = $r['department'] ?? 'Other';
+          $byDept[$d][] = $r;
       }
-      ksort($byDept, SORT_NATURAL | SORT_FLAG_CASE);
-      $single = count($byDept) === 1;
+      ksort($byDept);
     ?>
+
     <?php foreach ($byDept as $deptName => $deptRecs): ?>
-      <details class="card tg-group ap-group" open style="margin-bottom:16px">
-        <summary class="tg-group-head" style="padding:14px 20px; display:flex; align-items:center; cursor:pointer">
-          <span class="tg-dept" style="font-weight:700; font-size:14px; color:#0F172A; display:flex; align-items:center; gap:8px">
-            <?= icon('building', 15) ?> <?= e($deptName) ?>
-          </span>
-          <span class="badge badge-info" style="margin-left:12px"><?= count($deptRecs) ?> <?= $isHod ? 'under review' : 'pending' ?></span>
-          <span class="ap-head-actions" style="margin-left:auto; display:inline-flex; align-items:center; gap:12px">
-            <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
-              <?php if ($user['role'] === 'Coordinator'): ?>
-                <button type="button" class="btn btn-sm ap-approve-all"
-                  onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)">
-                  <?= icon('check', 14) ?> Approve all &amp; Save to DB
-                </button>
-              <?php elseif ($user['role'] === 'Admin'): ?>
-                <button type="button" class="btn btn-sm ap-approve-all"
-                  onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)">
-                  <?= icon('check', 14) ?> Approve all
-                </button>
-              <?php endif; ?>
-            <?php endif; ?>
-            <span class="tg-chev"><?= icon('chevron', 16) ?></span>
-          </span>
+      <details class="acc-group" open style="margin-bottom:14px">
+        <summary class="acc-summary" style="display:flex; justify-content:space-between; align-items:center">
+          <div style="display:flex; align-items:center; gap:8px">
+            <?= icon('building', 16) ?>
+            <strong><?= e($deptName) ?></strong>
+            <span class="badge badge-info" style="font-size:11px"><?= count($deptRecs) ?> under review</span>
+          </div>
+          <?php if (in_array($user['role'], ['Coordinator', 'Admin'], true) && !$isYearLocked): ?>
+            <div style="display:inline-flex; gap:6px" onclick="event.stopPropagation()">
+              <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:600; height:28px; padding:0 8px; font-size:11.5px"
+                onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)">
+                <?= icon('check-circle', 12) ?> Approve Department Submissions
+              </button>
+            </div>
+          <?php endif; ?>
         </summary>
-        <div class="table-wrap"><table class="data" style="min-width:650px; width:100%">
-          <thead><tr style="background:#F8FAFC; border-bottom:1px solid #E2E8F0">
+        <div class="table-wrap"><table class="data">
+          <thead><tr>
             <th style="padding-left:24px; font-size:12px; font-weight:700; color:#475569">Record Title</th>
             <th style="font-size:12px; font-weight:700; color:#475569">Type</th>
             <th style="font-size:12px; font-weight:700; color:#475569">Status</th>
@@ -623,7 +745,16 @@ require __DIR__ . '/inc/header.php';
                 <?php if ($who !== ''): ?><div class="card-sub" style="font-size:11.5px; color:#64748B"><?= e($who) ?> &middot; Dept: <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
               </td>
               <td style="vertical-align:middle"><span class="badge badge-info"><?= e($r['_type_label']) ?></span></td>
-              <td style="vertical-align:middle"><span class="badge badge-<?= status_class($r['status']) ?>"><?= e($r['status']) ?></span></td>
+              <td style="vertical-align:middle">
+                <?php if ($r['status'] === 'Unlocked for Edit'): ?>
+                  <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:4px 8px; border-radius:6px; display:inline-flex; align-items:center; gap:4px">
+                    <?= icon('check-circle', 12) ?> Approved by Dean
+                  </span>
+                  <div style="font-size:11px; color:#4338CA; font-weight:600; margin-top:2px">Unlocked for Edit</div>
+                <?php else: ?>
+                  <span class="badge badge-<?= status_class($r['status']) ?>"><?= e($r['status']) ?></span>
+                <?php endif; ?>
+              </td>
               <td style="vertical-align:middle">
                 <?php
                   $pProof = !empty($r['proof_file']) ? $r['proof_file'] : ($r['document_link'] ?? $r['certificate_link'] ?? $r['report_link'] ?? $r['proceedings_link'] ?? $r['appointment_order_link'] ?? null);
@@ -646,7 +777,13 @@ require __DIR__ . '/inc/header.php';
               <td class="card-sub" style="vertical-align:middle" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>">
                 <?= e(time_ago($r['created_at'])) ?>
                 <?php if (!empty($r['review_remark'])): ?>
-                  <div style="font-size:11px; color:#1D4ED8; margin-top:2px"><strong>Note:</strong> <?= e($r['review_remark']) ?></div>
+                  <?php if ($r['status'] === 'Unlocked for Edit'): ?>
+                    <div style="font-size:11px; color:#1E40AF; background:#EFF6FF; border:1px solid #BFDBFE; padding:3px 6px; border-radius:4px; margin-top:3px">
+                      <strong>Dean Note:</strong> <?= e($r['review_remark']) ?>
+                    </div>
+                  <?php else: ?>
+                    <div style="font-size:11px; color:#1D4ED8; margin-top:2px"><strong>Note:</strong> <?= e($r['review_remark']) ?></div>
+                  <?php endif; ?>
                 <?php endif; ?>
               </td>
               <td class="num" style="padding-right:24px; vertical-align:middle; text-align:right">
@@ -682,7 +819,7 @@ require __DIR__ . '/inc/header.php';
                       <?php endif; ?>
                     <?php elseif ($user['role'] === 'Coordinator'): ?>
                       <?php if ($r['status'] === 'Unlocked for Edit'): ?>
-                        <a class="btn btn-sm" style="background:#1D4ED8; color:#fff; height:32px; padding:0 10px; font-size:12px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600"
+                        <a class="btn btn-sm" style="background:#1D4ED8; color:#fff; height:32px; padding:0 12px; font-size:12px; text-decoration:none; display:inline-flex; align-items:center; gap:5px; font-weight:600; border-radius:6px"
                           href="<?= e(url('upload.php?type=' . urlencode($r['_type_key']) . '&edit_id=' . (int)$r['id'])) ?>">
                           <?= icon('edit', 14) ?> Edit &amp; Resubmit
                         </a>
@@ -701,20 +838,52 @@ require __DIR__ . '/inc/header.php';
                         <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:30px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
                           <?= icon('clock', 13) ?> Review Edit Request &rarr;
                         </a>
+                      <?php elseif ($r['status'] === 'Unlocked for Edit'): ?>
+                        <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
+                          <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:4px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:4px" title="Dean approved edit; record is unlocked for Coordinator">
+                            <?= icon('check-circle', 13) ?> Approved by Dean
+                          </span>
+                          <span style="font-size:11px; color:#4338CA; font-weight:600">Coord Editing</span>
+                        </div>
+                      <?php elseif ($r['status'] === 'Resubmitted'): ?>
+                        <span class="badge" style="background:#EFF6FF; color:#1E40AF; border:1px solid #BFDBFE; font-size:12px; font-weight:700; padding:4px 10px; border-radius:6px; display:inline-flex; align-items:center; gap:4px">
+                          <?= icon('check', 13) ?> Resubmitted
+                        </span>
                       <?php else: ?>
                         <span style="font-size:12px; color:#64748B; display:inline-flex; align-items:center; gap:4px">
                           <?= icon('check-circle', 13) ?> Review Only
                         </span>
                       <?php endif; ?>
                     <?php else: // Admin ?>
-                      <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; height:32px; padding:0 10px; font-size:12px; font-weight:600"
-                        onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve')">
-                        <?= icon('check', 14) ?> Approve
-                      </button>
-                      <button class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:32px; padding:0 10px; font-size:12px"
-                        onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'reject')">
-                        <?= icon('x', 14) ?> Reject
-                      </button>
+                      <?php if ($r['status'] === 'Unlocked for Edit'): ?>
+                        <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
+                          <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px" title="Approved by Dean; unlocked for Coordinator correction">
+                            <?= icon('check-circle', 14) ?> Approved by Dean
+                          </span>
+                          <span style="font-size:11px; color:#4338CA; font-weight:600">Coord Editing</span>
+                        </div>
+                      <?php elseif ($r['status'] === 'Edit Requested'): ?>
+                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:30px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
+                          <?= icon('clock', 13) ?> Edit Requested &rarr;
+                        </a>
+                      <?php elseif ($r['status'] === 'Approved'): ?>
+                        <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
+                          <?= icon('check', 13) ?> Approved
+                        </span>
+                      <?php elseif ($r['status'] === 'Resubmitted'): ?>
+                        <span class="badge" style="background:#EFF6FF; color:#1E40AF; border:1px solid #C7D2FE; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
+                          <?= icon('check', 13) ?> Resubmitted (HoD Reviewing)
+                        </span>
+                      <?php else: ?>
+                        <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; height:32px; padding:0 10px; font-size:12px; font-weight:600"
+                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve')">
+                          <?= icon('check', 14) ?> Approve
+                        </button>
+                        <button class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:32px; padding:0 10px; font-size:12px"
+                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'reject')">
+                          <?= icon('x', 14) ?> Reject
+                        </button>
+                      <?php endif; ?>
                     <?php endif; ?>
                   </div>
                 <?php else: ?>

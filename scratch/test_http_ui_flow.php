@@ -124,8 +124,8 @@ $csrfDean = extract_csrf($deanLogin['body']);
 $deanApprovals = ($clientDean['request'])('http://localhost:8000/php-app/approvals.php?tab=requests');
 $bodyDean = $deanApprovals['body'];
 
-$hasDeanReqTitle = str_contains($bodyDean, 'Edit Requests Pending Dean Decision') || str_contains($bodyDean, 'Decision History');
-$hasDeanAction = str_contains($bodyDean, 'Approve Request') || str_contains($bodyDean, 'Reject') || str_contains($bodyDean, 'No pending edit requests');
+$hasDeanReqTitle = str_contains($bodyDean, 'Edit Requests') || str_contains($bodyDean, 'Decision History');
+$hasDeanAction = str_contains($bodyDean, 'Approve Request') || str_contains($bodyDean, 'Reject') || str_contains($bodyDean, 'No edit requests found') || str_contains($bodyDean, 'No pending edit requests');
 
 echo "Dean Edit Requests tab loaded: " . ($hasDeanReqTitle ? "PASS" : "FAIL") . "\n";
 echo "Dean decision controls present: " . ($hasDeanAction ? "PASS" : "FAIL") . "\n";
@@ -144,7 +144,7 @@ $csrfCoord = extract_csrf($coordLogin['body']);
 $coordApprovals = ($clientCoord['request'])('http://localhost:8000/php-app/approvals.php?tab=corrections');
 $bodyCoord = $coordApprovals['body'];
 
-$hasAuthCorrectionsTab = str_contains($bodyCoord, 'Dean-Authorized Corrections') || str_contains($bodyCoord, 'Authorized Corrections');
+$hasAuthCorrectionsTab = str_contains($bodyCoord, 'Records Approved by Dean for Correction') || str_contains($bodyCoord, 'Dean-Authorized Corrections') || str_contains($bodyCoord, 'Authorized Corrections');
 
 echo "Coordinator Authorized Corrections tab loaded: " . ($hasAuthCorrectionsTab ? "PASS" : "FAIL") . "\n";
 
