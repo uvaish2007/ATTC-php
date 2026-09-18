@@ -145,6 +145,7 @@ function time_ago($datetime): string
 function status_class(string $status): string
 {
     $map = [
+<<<<<<< HEAD
         'Draft'                 => 'neutral',
         'Submitted'             => 'info',
         'HOD Pending'           => 'info',
@@ -156,6 +157,18 @@ function status_class(string $status): string
         'Resubmitted'           => 'info',
         'Correction Authorized' => 'primary',
         'Completed'             => 'success',
+=======
+        'Draft'             => 'neutral',
+        'Submitted'         => 'info',
+        'HOD Pending'       => 'info',
+        'Dean Pending'      => 'warning',
+        'Approved'          => 'success',
+        'Rejected'          => 'danger',
+        'Pending'           => 'warning',
+        'Completed'         => 'info',
+        'Edit Requested'    => 'warning',
+        'Unlocked for Edit' => 'info',
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     ];
 
     return $map[$status] ?? 'neutral';
@@ -340,6 +353,7 @@ if (!function_exists('mb_strlen')) {
 }
 
 /**
+<<<<<<< HEAD
  * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
  * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
  */
@@ -413,4 +427,149 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
+=======
+ * Build a secure URL for accessing a record proof attachment.
+ * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
+ */
+function record_proof_url(string $type, int $id, ?string $filename = null, bool $download = false, bool $absolute = true): string
+{
+    $params = [
+        'type' => $type,
+        'id'   => $id,
+    ];
+    if ($filename !== null && $filename !== '') {
+        $params['file'] = basename($filename);
+    }
+    if ($download) {
+        $params['download'] = '1';
+    }
+    $rel = url('proof.php?' . http_build_query($params));
+    if (!$absolute) {
+        return $rel;
+    }
+    if (strpos($rel, 'http://') === 0 || strpos($rel, 'https://') === 0) {
+        return $rel;
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost:8000';
+    return $scheme . '://' . $host . $rel;
+}
+
+/**
+ * Inspect a record's proof file on disk and return metadata.
+ */
+function record_proof_meta(string $type, int $id, ?string $filename): ?array
+{
+    $filename = basename(trim((string) $filename));
+    if ($filename === '') {
+        return null;
+    }
+    $baseDir = defined('UPLOAD_DIR') ? realpath(UPLOAD_DIR) : null;
+    if (!$baseDir) {
+        $baseDir = realpath(__DIR__ . '/../uploads');
+    }
+    if (!$baseDir) {
+        return null;
+    }
+    $paths = [
+        $baseDir . DIRECTORY_SEPARATOR . 'proofs' . DIRECTORY_SEPARATOR . $filename,
+        $baseDir . DIRECTORY_SEPARATOR . $filename,
+    ];
+    $filePath = null;
+    foreach ($paths as $p) {
+        if (file_exists($p) && is_file($p)) {
+            $filePath = realpath($p);
+            break;
+        }
+    }
+
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $isImage = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+    $viewUrl = record_proof_url($type, $id, $filename, false, true);
+    $downUrl = record_proof_url($type, $id, $filename, true, true);
+
+    $base64Data = null;
+    if ($isImage && $filePath && filesize($filePath) <= 2097152) { // up to 2MB for base64 thumbnail
+        $mime = ($ext === 'png') ? 'image/png' : (($ext === 'webp') ? 'image/webp' : (($ext === 'gif') ? 'image/gif' : 'image/jpeg'));
+        $base64Data = 'data:' . $mime . ';base64,' . base64_encode((string) @file_get_contents($filePath));
+    }
+
+    return [
+        'filename'     => $filename,
+        'ext'          => $ext,
+        'is_image'     => $isImage,
+        'view_url'     => $viewUrl,
+        'download_url' => $downUrl,
+        'exists'       => ($filePath !== null),
+        'base64_data'  => $base64Data,
+    ];
+}
+
+/**
+ * Resolve the physical filesystem path of a stored proof file.
+ * Returns null if the file does not exist.
+ */
+function proof_file_path(?string $filename): ?string
+{
+    if (!$filename) {
+        return null;
+    }
+    $safe = basename($filename);
+    if ($safe === '') {
+        return null;
+    }
+    $base = rtrim(UPLOAD_DIR, '/\\');
+    if (is_file($base . '/' . $safe)) {
+        return $base . '/' . $safe;
+    }
+    if (is_file($base . '/proofs/' . $safe)) {
+        return $base . '/proofs/' . $safe;
+    }
+    return null;
+}
+
+/** Check if a proof file exists physically on the server. */
+function proof_file_exists(?string $filename): bool
+{
+    return proof_file_path($filename) !== null;
+}
+
+/**
+ * Render the Proof table cell:
+ * - If no proof: "No proof attached"
+ * - If physical file is missing: "Proof unavailable"
+ * - If file exists: [ View Proof ] and [ Download ] actions
+ */
+function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $recordId = null): string
+{
+    require_once __DIR__ . '/icons.php';
+
+    if (empty($proofFile)) {
+        return '<span class="card-sub">No proof attached</span>';
+    }
+
+    if (!proof_file_exists($proofFile)) {
+        return '<span class="card-sub" style="color:var(--ink-muted,#64748b);">Proof unavailable</span>';
+    }
+
+    $params = ['file' => $proofFile];
+    if (!empty($typeKey)) {
+        $params['type'] = $typeKey;
+    }
+    if (!empty($recordId)) {
+        $params['id'] = $recordId;
+    }
+
+    $viewUrl = url('view-proof.php?' . http_build_query($params));
+    $params['download'] = '1';
+    $downloadUrl = url('view-proof.php?' . http_build_query($params));
+
+    return '<div style="display:inline-flex;align-items:center;gap:6px;">'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($viewUrl) . '" target="_blank" rel="noopener" title="View Proof">'
+        . icon('paperclip', 14) . ' View Proof</a>'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($downloadUrl) . '" download title="Download Proof">'
+        . icon('download', 14) . '</a>'
+        . '</div>';
+}
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
 

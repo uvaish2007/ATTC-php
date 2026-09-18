@@ -756,10 +756,10 @@ if (!function_exists('dash_column_chart')) {
   .stat-grid.stat-kpi .stat-top   { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
   .stat-grid.stat-kpi .stat-ic    { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
   .stat-grid.stat-kpi .stat-label { font-size: 12px; font-weight: 600; color: var(--ink-muted); line-height: 1.3;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .stat-grid.stat-kpi .stat-value { font-size: 24px; line-height: 1.2; font-weight: 700; margin-top: 6px; }
   .stat-grid.stat-kpi .stat-desc  { font-size: 11px; color: var(--ink-faint); line-height: 1.4; margin-top: auto; padding-top: 4px;
-      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .stat-grid.stat-kpi .stat-bar   { margin: 6px 0 2px; }
   @media (max-width: 1300px) { .stat-grid.stat-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 768px)  { .stat-grid.stat-kpi { grid-template-columns: repeat(2, 1fr); } }

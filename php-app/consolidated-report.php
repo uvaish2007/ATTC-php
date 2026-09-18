@@ -170,11 +170,17 @@ if ($format === 'excel') {
         $rows[] = ['DEPARTMENT: ' . strtoupper($dGroup['full_name']) . ' (' . $dGroup['info']['code'] . ')', '', '', '', '', '', ''];
         
         if (empty($dGroup['records'])) {
-            $rows[] = ['—', 'No records available for the selected Academic Year (' . $academicYear . ').', '', '', $dGroup['info']['code'], '—', '—'];
+            $rows[] = ['—', 'No records available for the selected Academic Year (' . $academicYear . ').', '', '', $dGroup['info']['code'], '—', '—', '—'];
         } else {
-            $rows[] = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date'];
+            $rows[] = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date', 'Proof'];
             $rNo = 1;
             foreach ($dGroup['records'] as $r) {
+                $pfile = trim((string)($r['proof_file'] ?? ''));
+                $pType = $r['_type_key'] ?? '';
+                $pId   = (int)($r['id'] ?? 0);
+                $proofVal = ($pfile !== '')
+                    ? ['text' => 'View Proof', 'url' => record_proof_url($pType, $pId, $pfile, false, true)]
+                    : '—';
                 $rows[] = [
                     $rNo++,
                     $r['_title'],
@@ -183,11 +189,12 @@ if ($format === 'excel') {
                     $dGroup['info']['code'],
                     $r['status'],
                     date('d/m/Y', strtotime($r['created_at'])),
+                    $proofVal,
                 ];
             }
-            $rows[] = ['Subtotal', count($dGroup['records']) . ' records', '', '', $dGroup['info']['code'], $dGroup['approved'] . ' Approved', ''];
+            $rows[] = ['Subtotal', count($dGroup['records']) . ' records', '', '', $dGroup['info']['code'], $dGroup['approved'] . ' Approved', '', ''];
         }
-        $rows[] = ['', '', '', '', '', '', ''];
+        $rows[] = ['', '', '', '', '', '', '', ''];
     }
 
     $metaLines = [
@@ -304,15 +311,22 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
         <thead>
           <tr>
             <th style="width:5%;">S.No</th>
-            <th style="width:36%; text-align:left;">Record Details / Title</th>
-            <th style="width:16%;">Type</th>
-            <th style="width:18%;">Faculty / Student</th>
-            <th style="width:12%;">Status</th>
-            <th style="width:13%;">Date</th>
+            <th style="width:30%; text-align:left;">Record Details / Title</th>
+            <th style="width:14%;">Type</th>
+            <th style="width:16%;">Faculty / Student</th>
+            <th style="width:10%;">Status</th>
+            <th style="width:11%;">Date</th>
+            <th style="width:14%;">Proof</th>
           </tr>
         </thead>
         <tbody>
           <?php $rIdx = 1; foreach ($dGroup['records'] as $r): ?>
+            <?php
+              $pfile = trim((string)($r['proof_file'] ?? ''));
+              $pType = $r['_type_key'] ?? '';
+              $pId   = (int)($r['id'] ?? 0);
+              $meta  = ($pfile !== '') ? record_proof_meta($pType, $pId, $pfile) : null;
+            ?>
             <tr>
               <td class="c"><?= $rIdx++ ?></td>
               <td><?= e($r['_title']) ?></td>
@@ -324,6 +338,24 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
                 </span>
               </td>
               <td class="c"><?= date('d/m/Y', strtotime($r['created_at'])) ?></td>
+              <td class="c">
+                <?php if ($meta): ?>
+                  <?php if ($meta['is_image'] && !empty($meta['base64_data'])): ?>
+                    <div style="text-align:center;">
+                      <a href="<?= e($meta['view_url']) ?>" target="_blank" style="text-decoration:none;">
+                        <img src="<?= $meta['base64_data'] ?>" alt="Proof" style="max-width:80px;max-height:50px;object-fit:contain;border:1px solid #ccc;border-radius:3px;display:block;margin:0 auto 2px auto;">
+                        <span style="font-size:8pt;color:#0044cc;text-decoration:underline;">View Proof</span>
+                      </a>
+                    </div>
+                  <?php else: ?>
+                    <a href="<?= e($meta['view_url']) ?>" target="_blank" style="color:#0044cc;font-weight:600;font-size:9pt;text-decoration:underline;">
+                      View Proof<?= $meta['ext'] ? ' (' . strtoupper(e($meta['ext'])) . ')' : '' ?>
+                    </a>
+                  <?php endif; ?>
+                <?php else: ?>
+                  —
+                <?php endif; ?>
+              </td>
             </tr>
           <?php endforeach; ?>
         </tbody>

@@ -74,10 +74,17 @@ $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
 // ---- Fetch Data ---------------------------------------------------------
+<<<<<<< HEAD
 $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
 $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
+=======
+$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
+$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
+$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
+$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
 
 // Query string for exports
 $exportQ = array_filter([
@@ -529,6 +536,7 @@ require __DIR__ . '/inc/header.php';
         <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
         <input type="hidden" name="department" value="<?= e($department) ?>">
         <input type="hidden" name="category" value="<?= e($category) ?>">
+        <input type="hidden" name="em" value="<?= e($em) ?>">
         <label class="fb-field fb-search" style="min-width:240px;">
           <?= icon('search', 14) ?>
           <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">

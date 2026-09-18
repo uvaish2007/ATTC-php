@@ -16,7 +16,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
 // The ONE system-wide active academic year. Every write below that takes a
 // year uses THIS, never a client-supplied academic_year field — a target is
@@ -32,7 +32,7 @@ if ((isset($_GET['action']) && $_GET['action'] === 'get_target_records') || (iss
         echo json_encode(['ok' => false, 'msg' => 'Target not found']);
         exit;
     }
-    if ($user['role'] === 'HoD' && !empty($user['department']) && $target['department'] !== $user['department']) {
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true) && !empty($user['department']) && $target['department'] !== $user['department']) {
         echo json_encode(['ok' => false, 'msg' => 'Access restricted to your department.']);
         exit;
     }
@@ -161,11 +161,12 @@ unlock_expire_due();
 // A HoD or Dean enters and manages targets for their scope; the other roles choose.
 $isHod       = $user['role'] === 'HoD';
 $isDean      = $user['role'] === 'Dean';
+$isCoord     = $user['role'] === 'Coordinator';
 $isHodOrDean = $isHod || $isDean;
 
 $canCreate   = $isHod && (!academic_year_is_locked($activeYear) || $user['role'] === 'Admin');
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
-$deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
+$deptFilter   = ($isHod || $isCoord) ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
 // The academic year is never a page filter a visitor picks — every role
 // sees ONLY the system-wide active year's targets (section 8). $_GET['year']
 // is intentionally never read here.
@@ -203,34 +204,34 @@ $myUnlock       = $isHodOrDean ? unlock_state($unlockDept) : null;
 $pendingUnlocks = ($user['role'] === 'Admin') ? unlock_pending_all() : [];
 $unlockHours    = unlock_default_hours();
 
-$pageTitle = 'Targets';
-$breadcrumb = 'Targets';
+$pageTitle = 'Review Targets';
+$breadcrumb = 'Review Targets';
 require __DIR__ . '/inc/header.php';
 ?>
 
 <div class="page-head">
   <div>
-    <h1>Targets</h1>
+    <h1>Review Targets</h1>
     <div class="sub">
       <?= count($targets) ?> target<?= count($targets) !== 1 ? 's' : '' ?>
       <?php if ($awaiting): ?>
         &middot; <strong><?= $awaiting ?></strong> waiting for your review
       <?php endif; ?>
-      <?php if ($isHod): ?>&middot; <?= e($user['department'] ?? '') ?><?php endif; ?>
+      <?php if ($isHod || $isCoord): ?>&middot; <?= e($user['department'] ?? '') ?><?php endif; ?>
     </div>
   </div>
 
   <div class="actions">
     <?php // Academic year isn't counted here any more — it's always the active
       // system year, not a filter a visitor chose. ?>
-    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
+    <?php $tgActive = ((!$isHod && !$isCoord && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
 
     <?php
       // The meeting report always reflects what is on screen: same department
       // (forced to their own for a HoD) and the same year filter. Same report,
       // three formats — Word, Excel and a print-to-PDF view.
       $reportBase = array_filter([
-          'department' => $isHod ? null : $deptFilter,
+          'department' => ($isHod || $isCoord) ? null : $deptFilter,
           'year'       => $yearFilter,
       ]);
       $reportUrl = fn(string $fmt) => e(url('meeting-report.php') . '?' . http_build_query($reportBase + ['format' => $fmt]));
@@ -259,7 +260,7 @@ require __DIR__ . '/inc/header.php';
 <form method="get" class="fbar">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
 
-  <?php if (!$isHod): ?>
+  <?php if (!$isHod && !$isCoord): ?>
     <label class="fb-field"><span class="fb-k">Department</span>
       <select name="department" onchange="this.form.submit()">
         <option value="">All</option>
@@ -434,7 +435,7 @@ require __DIR__ . '/inc/header.php';
       $dCol  = $dPct >= 100 ? '#10B981' : ($dPct >= 50 ? 'var(--orange-500)' : '#EF4444');
       $draftCount = count(array_filter($deptTargets, fn($x) => in_array($x['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true)));
     ?>
-    <details class="card tg-group" <?= $isHod ? 'open' : '' ?>>
+    <details class="card tg-group" <?= ($isHod || $isCoord) ? 'open' : '' ?>>
       <summary class="tg-group-head">
         <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
         <span class="badge badge-neutral"><?= count($deptTargets) ?> target<?= count($deptTargets) !== 1 ? 's' : '' ?></span>

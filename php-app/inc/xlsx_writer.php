@@ -37,7 +37,7 @@ class SimpleXlsxWriter
             }
             foreach ($rows as $r) {
                 if (isset($r[$i])) {
-                    $valStr = (string)$r[$i];
+                    $valStr = is_array($r[$i]) ? (string)($r[$i]['text'] ?? '') : (string)$r[$i];
                     $lines = explode("\n", $valStr);
                     foreach ($lines as $line) {
                         $maxLen = max($maxLen, mb_strlen($line));
@@ -86,11 +86,12 @@ class SimpleXlsxWriter
         // 5. xl/styles.xml
         $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="4">
+  <fonts count="5">
     <font><sz val="11"/><name val="Calibri"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF000000"/></font>
     <font><b/><sz val="13"/><name val="Calibri"/><color rgb="FF1A2547"/></font>
     <font><b/><sz val="11"/><name val="Calibri"/><color rgb="FF1A2547"/></font>
+    <font><u/><sz val="11"/><name val="Calibri"/><color rgb="FF0044CC"/></font>
   </fonts>
   <fills count="4">
     <fill><patternFill patternType="none"/></fill>
@@ -110,12 +111,13 @@ class SimpleXlsxWriter
   <cellStyleXfs count="1">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
   </cellStyleXfs>
-  <cellXfs count="5">
+  <cellXfs count="6">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
     <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>
     <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
     <xf numFmtId="0" fontId="3" fillId="0" borderId="0" xfId="0" applyFont="1"/>
     <xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>
   </cellXfs>
   <cellStyles count="1">
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
@@ -130,7 +132,8 @@ class SimpleXlsxWriter
         }
         $colsXml .= '</cols>';
 
-        $sheetData = '';
+        $sheetData  = '';
+        $hyperlinks = [];
         $rIdx = 1;
 
         if (!empty($meta)) {
@@ -171,11 +174,25 @@ class SimpleXlsxWriter
 
             foreach ($row as $val) {
                 $colLetter = self::getColLetter($cIdx);
-                $valStr = (string)$val;
-                if (is_numeric($val) && !preg_match('/^0\d+/', $valStr)) {
-                    $sheetData .= '<c r="' . $colLetter . $rIdx . '" s="' . $cellStyle . '"><v>' . $valStr . '</v></c>';
+                if (is_array($val) && (!empty($val['url']) || !empty($val['href']))) {
+                    $hUrl   = (string) ($val['url'] ?? $val['href']);
+                    $hText  = (string) ($val['text'] ?? $val['label'] ?? $hUrl);
+                    $hRelId = 'rIdH' . (count($hyperlinks) + 1);
+                    $cellRef = $colLetter . $rIdx;
+                    $hyperlinks[] = [
+                        'ref'     => $cellRef,
+                        'url'     => $hUrl,
+                        'rId'     => $hRelId,
+                        'display' => $hText,
+                    ];
+                    $sheetData .= '<c r="' . $cellRef . '" s="5" t="inlineStr"><is><t>' . self::sanitizeXml($hText) . '</t></is></c>';
                 } else {
-                    $sheetData .= '<c r="' . $colLetter . $rIdx . '" s="' . $cellStyle . '" t="inlineStr"><is><t>' . self::sanitizeXml($valStr) . '</t></is></c>';
+                    $valStr = (string)$val;
+                    if (is_numeric($val) && !preg_match('/^0\d+/', $valStr)) {
+                        $sheetData .= '<c r="' . $colLetter . $rIdx . '" s="' . $cellStyle . '"><v>' . $valStr . '</v></c>';
+                    } else {
+                        $sheetData .= '<c r="' . $colLetter . $rIdx . '" s="' . $cellStyle . '" t="inlineStr"><is><t>' . self::sanitizeXml($valStr) . '</t></is></c>';
+                    }
                 }
                 $cIdx++;
             }
@@ -183,10 +200,29 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
+        $hyperlinksXml = '';
+        if (!empty($hyperlinks)) {
+            $hyperlinksXml = '<hyperlinks>';
+            foreach ($hyperlinks as $h) {
+                $hyperlinksXml .= '<hyperlink ref="' . $h['ref'] . '" r:id="' . $h['rId'] . '" display="' . self::sanitizeXml($h['display']) . '"/>';
+            }
+            $hyperlinksXml .= '</hyperlinks>';
+
+            // Build xl/worksheets/_rels/sheet1.xml.rels
+            $sheet1Rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . "\n";
+            foreach ($hyperlinks as $h) {
+                $sheet1Rels .= '  <Relationship Id="' . $h['rId'] . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' . self::sanitizeXml($h['url']) . '" TargetMode="External"/>' . "\n";
+            }
+            $sheet1Rels .= '</Relationships>';
+            $zip->addFromString('xl/worksheets/_rels/sheet1.xml.rels', $sheet1Rels);
+        }
+
         $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   ' . $colsXml . '
   <sheetData>' . $sheetData . '</sheetData>
+  ' . $hyperlinksXml . '
 </worksheet>';
         $zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
         $zip->close();
@@ -210,5 +246,30 @@ class SimpleXlsxWriter
             $colIndex = intdiv($colIndex, 26) - 1;
         }
         return $letter;
+    }
+
+    public static function writeXlsx(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function export(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function download(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function write(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
+    }
+
+    public static function generate(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
+    {
+        return self::createXlsx($headers, $rows, $sheetTitle, $meta);
     }
 }
