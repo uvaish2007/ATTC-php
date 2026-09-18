@@ -68,6 +68,7 @@ function edit_request_has_active(string $recordType, int $recordId): bool
 /**
  * Create a new structured edit request ticket.
  */
+if (!function_exists('edit_request_create')) {
 function edit_request_create(array $data): array
 {
     edit_requests_table_init();
@@ -145,6 +146,7 @@ function edit_request_create(array $data): array
         error_log('edit_request_create failed: ' . $e->getMessage());
         return [false, 'Failed to create edit request. ' . $e->getMessage()];
     }
+}
 }
 
 /**

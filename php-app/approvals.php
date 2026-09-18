@@ -60,6 +60,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = record_acknowledge_review($type, $id, $user);
         flash($ok ? 'success' : 'error', $msg);
         redirect('/approvals.php?tab=records');
+    } elseif ($action === 'dean_request_edit') {
+        if (!in_array($user['role'], ['Dean', 'Admin'], true)) {
+            flash('error', 'Only Dean or Admin can request edits on records.');
+            redirect('/approvals.php');
+        }
+        $type = (string) input('record_type');
+        $id   = (int)    input('record_id');
+        $reason = trim((string) input('reason'));
+        $field = trim((string) input('specific_field'));
+        $currVal = trim((string) input('current_value'));
+        $reqVal = trim((string) input('requested_value'));
+        [$ok, $msg] = record_request_edit_by_dean($type, $id, $user, $reason, $field, $currVal, $reqVal);
+        flash($ok ? 'success' : 'error', $msg);
+        $fromTab = (string) input('from_tab');
+        redirect('/approvals.php?tab=' . ($fromTab ?: 'records'));
     } elseif ($action === 'approve_all') {
         if ($user['role'] === 'HoD') {
             flash('error', 'HoD is a reviewer only and cannot approve records directly.');
@@ -367,9 +382,9 @@ require __DIR__ . '/inc/header.php';
                     <div style="font-size:12px; color:#64748B"><?= e($er['requested_by_role']) ?> · <span style="font-weight:600; color:#1E3A8A"><?= e($er['department']) ?></span></div>
                   </td>
                   <td style="padding:14px 16px; vertical-align:top">
-                    <div style="font-weight:600; color:#0F172A; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="<?= e($er['record_title']) ?>">
+                    <a href="<?= e(url('entry-details.php?type=' . urlencode($er['record_type']) . '&id=' . (int)$er['record_id'])) ?>" style="font-weight:600; color:#0F172A; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:none; display:inline-block;" title="Open Dual View for this record">
                       <?= e($er['record_title'] ?: '(untitled record)') ?>
-                    </div>
+                    </a>
                     <div style="font-size:12px; color:#64748B; margin-top:2px">
                       Faculty: <strong><?= e($er['faculty_name'] ?: 'Unknown') ?></strong> · <span class="badge badge-info" style="font-size:10px"><?= e($types[$er['record_type']]['label'] ?? $er['record_type']) ?></span>
                     </div>
@@ -740,7 +755,9 @@ require __DIR__ . '/inc/header.php';
           <?php foreach ($deptRecs as $r): ?>
             <tr style="border-bottom:1px solid #F1F5F9">
               <td style="padding-left:24px; vertical-align:middle">
-                <div style="font-weight:600; max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#0F172A"><?= e($r['_title']) ?></div>
+                <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" style="font-weight:600; max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#0F172A; text-decoration:none; display:inline-block;" title="Open Dual View for this entry">
+                  <?= e($r['_title']) ?>
+                </a>
                 <?php $who = $r['faculty_name'] ?? $r['candidate_name'] ?? $r['student_name'] ?? ''; ?>
                 <?php if ($who !== ''): ?><div class="card-sub" style="font-size:11.5px; color:#64748B"><?= e($who) ?> &middot; Dept: <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
               </td>
@@ -834,9 +851,12 @@ require __DIR__ . '/inc/header.php';
                         </button>
                       <?php endif; ?>
                     <?php elseif ($user['role'] === 'Dean'): ?>
+                      <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 10px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="Open Dual View (Details + Proof)">
+                        <?= icon('columns', 13) ?> Dual View
+                      </a>
                       <?php if ($r['status'] === 'Edit Requested'): ?>
-                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:30px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
-                          <?= icon('clock', 13) ?> Review Edit Request &rarr;
+                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:32px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
+                          <?= icon('clock', 13) ?> Review Request &rarr;
                         </a>
                       <?php elseif ($r['status'] === 'Unlocked for Edit'): ?>
                         <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
@@ -850,11 +870,15 @@ require __DIR__ . '/inc/header.php';
                           <?= icon('check', 13) ?> Resubmitted
                         </span>
                       <?php else: ?>
-                        <span style="font-size:12px; color:#64748B; display:inline-flex; align-items:center; gap:4px">
-                          <?= icon('check-circle', 13) ?> Review Only
-                        </span>
+                        <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; padding:0 10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                          onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>)">
+                          <?= icon('edit', 13) ?> Request Edit
+                        </button>
                       <?php endif; ?>
                     <?php else: // Admin ?>
+                      <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 10px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="Open Dual View (Details + Proof)">
+                        <?= icon('columns', 13) ?> Dual View
+                      </a>
                       <?php if ($r['status'] === 'Unlocked for Edit'): ?>
                         <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
                           <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px" title="Approved by Dean; unlocked for Coordinator correction">
@@ -863,18 +887,23 @@ require __DIR__ . '/inc/header.php';
                           <span style="font-size:11px; color:#4338CA; font-weight:600">Coord Editing</span>
                         </div>
                       <?php elseif ($r['status'] === 'Edit Requested'): ?>
-                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:30px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
+                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:32px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
                           <?= icon('clock', 13) ?> Edit Requested &rarr;
                         </a>
                       <?php elseif ($r['status'] === 'Approved'): ?>
-                        <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
-                          <?= icon('check', 13) ?> Approved
-                        </span>
+                        <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; padding:0 10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                          onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>)">
+                          <?= icon('edit', 13) ?> Request Edit
+                        </button>
                       <?php elseif ($r['status'] === 'Resubmitted'): ?>
                         <span class="badge" style="background:#EFF6FF; color:#1E40AF; border:1px solid #C7D2FE; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
                           <?= icon('check', 13) ?> Resubmitted (HoD Reviewing)
                         </span>
                       <?php else: ?>
+                        <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; padding:0 10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                          onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>)">
+                          <?= icon('edit', 13) ?> Request Edit
+                        </button>
                         <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; height:32px; padding:0 10px; font-size:12px; font-weight:600"
                           onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve')">
                           <?= icon('check', 14) ?> Approve
@@ -1042,6 +1071,72 @@ require __DIR__ . '/inc/header.php';
 </dialog>
 
 <!-- =========================================================================
+     MODAL 3B: DEAN / ADMIN REQUEST EDIT MODAL (No silent override)
+     ========================================================================= -->
+<dialog class="modal" id="deanEditDlg" style="max-width:34rem; width:92vw; border-radius:12px">
+  <form method="post">
+    <?= csrf_field() ?>
+    <input type="hidden" name="from_tab" value="<?= e($currentTab) ?>">
+    <input type="hidden" name="review_action" value="dean_request_edit">
+    <input type="hidden" name="record_type" id="der-type">
+    <input type="hidden" name="record_id" id="der-id">
+
+    <div class="modal-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0">
+      <h3 style="margin:0; font-size:16px; font-weight:700; color:#B45309; display:flex; align-items:center; gap:6px">
+        <?= icon('edit', 16) ?> Request Edit &middot; Return to Coordinator
+      </h3>
+      <div style="font-size:12px; color:#64748B; margin-top:2px">
+        Unlock this record for Department Coordinator correction without silent database overwrite.
+      </div>
+    </div>
+
+    <div class="modal-body" style="padding:18px 20px">
+      <!-- Record Metadata Box -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px; margin-bottom:16px; font-size:12.5px; line-height:1.6">
+        <div><strong style="color:#475569">Record:</strong> <span id="der-rec-title" style="font-weight:700; color:#0F172A"></span></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; margin-top:4px">
+          <div><strong style="color:#475569">Faculty:</strong> <span id="der-faculty"></span></div>
+          <div><strong style="color:#475569">Department:</strong> <span id="der-dept" style="color:#1E3A8A; font-weight:700"></span></div>
+        </div>
+      </div>
+
+      <!-- Specific Field & Values -->
+      <div style="background:#F1F5F9; border-radius:8px; padding:12px; border:1px solid #E2E8F0; margin-bottom:14px">
+        <div style="font-size:12px; font-weight:700; color:#475569; margin-bottom:6px">Target Field to Correct (Optional)</div>
+        <div class="field" style="margin-bottom:8px">
+          <input class="input" type="text" name="specific_field" placeholder="Field name (e.g. DOI, Journal Name, Publication Date)">
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+          <div class="field">
+            <label style="font-size:11px; font-weight:600; color:#64748B">Current Value</label>
+            <input class="input" type="text" name="current_value" placeholder="e.g. 10.1234/old">
+          </div>
+          <div class="field">
+            <label style="font-size:11px; font-weight:600; color:#64748B">Requested Value</label>
+            <input class="input" type="text" name="requested_value" placeholder="e.g. 10.1234/new">
+          </div>
+        </div>
+      </div>
+
+      <!-- Mandatory Reason / Instruction -->
+      <div class="field">
+        <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px">
+          Instructions for Coordinator <span class="req" style="color:#DC2626">*</span>
+        </label>
+        <textarea class="input" name="reason" rows="3" required placeholder="Explain clearly what needs correction so the Coordinator can update the record accurately…"></textarea>
+      </div>
+    </div>
+
+    <div class="modal-foot" style="padding:14px 20px; border-top:1px solid #E2E8F0; display:flex; justify-content:flex-end; gap:8px">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-sm" style="background:#F59E0B; color:#fff; font-weight:700">
+        <?= icon('send', 13) ?> Submit Request for Edit
+      </button>
+    </div>
+  </form>
+</dialog>
+
+<!-- =========================================================================
      MODAL 4: PROOF VIEWER DIALOG
      ========================================================================= -->
 <dialog class="modal" id="proofDlg" style="max-width:56rem; width:94vw; padding:0; border-radius:12px; overflow:hidden; border:none; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)">
@@ -1077,6 +1172,16 @@ require __DIR__ . '/inc/header.php';
 
 <script>
 const currentRole = <?= json_encode($user['role']) ?>;
+
+// Open Dean / Admin Request Edit dialog
+function openDeanEditRequest(type, id, title, who, dept) {
+  document.getElementById('der-type').value = type;
+  document.getElementById('der-id').value = id;
+  document.getElementById('der-rec-title').textContent = title || 'Record #' + id;
+  document.getElementById('der-faculty').textContent = who || 'Faculty Member';
+  document.getElementById('der-dept').textContent = dept || 'General';
+  document.getElementById('deanEditDlg').showModal();
+}
 
 // Open HoD Edit Request dialog with auto-populated metadata
 function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
