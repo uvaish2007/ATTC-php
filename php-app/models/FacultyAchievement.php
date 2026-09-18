@@ -51,7 +51,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     $categories = faculty_achievement_categories();
 
     // 1. Total Faculty in scope
-    $facSql = "SELECT COUNT(*) FROM users WHERE role IN ('Faculty', 'Coordinator', 'HoD')";
+    $facSql = "SELECT COUNT(*) FROM users WHERE role = 'Faculty'";
     $facParams = [];
     if ($effDept) {
         $facSql .= " AND department = ?";
@@ -277,7 +277,7 @@ function faculty_achievements_grid(array $currentUser, ?string $deptFilter = nul
     $categories = faculty_achievement_categories();
 
     // Fetch faculty members in scope
-    $sql = "SELECT id, name, email, department, role, phone FROM users WHERE role IN ('Faculty', 'Coordinator', 'HoD')";
+    $sql = "SELECT id, name, email, department, role, phone FROM users WHERE role = 'Faculty'";
     $params = [];
 
     if ($effDept) {

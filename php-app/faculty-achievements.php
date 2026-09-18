@@ -7,6 +7,7 @@
 
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
+require_once __DIR__ . '/models/StudentAchievement.php';
 require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM filter
@@ -22,7 +23,7 @@ if (input('ajax') === 'faculty_detail') {
 
     // Verify HoD authorization
     if ($user['role'] === 'HoD') {
-        $targetUser = user_find_by_id($facId);
+        $targetUser = user_find($facId);
         if (!$targetUser || $targetUser['department'] !== $user['department']) {
             echo json_encode(['error' => 'Unauthorized access to faculty outside your department']);
             exit;
@@ -44,12 +45,13 @@ $isDean      = $role === 'Dean';
 $isOversight = $isAdmin || $isDirector || $isDean;
 
 // Resolve effective department filter (HoD is locked to their own department)
-$rawDept      = trim((string) input('department', ''));
-$department   = resolve_faculty_achievement_scope($user, $rawDept);
-$academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
-$category     = trim((string) input('category', '')) ?: null;
-$facultyId    = (int) input('faculty_id', 0) ?: null;
-$searchQuery  = trim((string) input('q', ''));
+$rawDept       = trim((string) input('department', ''));
+$department    = resolve_faculty_achievement_scope($user, $rawDept);
+$academicYear  = trim((string) input('academic_year', '')) ?: active_academic_year();
+$category      = trim((string) input('category', '')) ?: null;
+$facultyId     = (int) input('faculty_id', 0) ?: null;
+$searchQuery   = trim((string) input('q', ''));
+$studentSearch = trim((string) input('student_search', '')) ?: trim((string) input('q_student', ''));
 
 // FEAT-07: Executive Meeting filter. The EM engine turns it into a date window
 // that every query below applies in SQL; "all" leaves them unchanged.
@@ -63,7 +65,7 @@ $allCategories = faculty_achievement_categories();
 
 // Fetch faculty list for filter dropdown (scoped to chosen department if any)
 $facParams = [];
-$facSql = "SELECT id, name, department FROM users WHERE role IN ('Faculty', 'Coordinator', 'HoD')";
+$facSql = "SELECT id, name, department FROM users WHERE role = 'Faculty'";
 if ($department) {
     $facSql .= " AND department = ?";
     $facParams[] = $department;
@@ -85,6 +87,79 @@ $deptComp        = department_achievements_comparison($user, $academicYear, $cat
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
 >>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
+
+// Student Achievements Data
+$studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
+$studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
+
+// Compute student analytics aggregations (100% consistent with Data View)
+$studDeptCounts = [];
+foreach ($studGrid as $s) {
+    $d = $s['department'] ?: 'Other Department';
+    $studDeptCounts[$d] = ($studDeptCounts[$d] ?? 0) + (int) $s['total'];
+}
+arsort($studDeptCounts);
+
+$studCatBreakdown = [
+    'NPTEL' => [
+        'label' => 'SWAYAM-NPTEL Online Courses',
+        'count' => (int) ($studSummary['categoryCounts']['SWAYAM-NPTEL'] ?? 0),
+        'table' => 'nptels',
+        'color' => '#0066CC',
+    ],
+    'Internships' => [
+        'label' => 'Industrial Internships',
+        'count' => (int) ($studSummary['categoryCounts']['Internships'] ?? 0),
+        'table' => 'internships',
+        'color' => '#059669',
+    ],
+    'Placements' => [
+        'label' => 'Campus & Off-Campus Placements',
+        'count' => (int) ($studSummary['categoryCounts']['Placements'] ?? 0),
+        'table' => 'placements',
+        'color' => '#FF4F01',
+    ],
+    'Online Courses' => [
+        'label' => 'Online Courses & Certifications',
+        'count' => (int) ($studSummary['categoryCounts']['Online Courses'] ?? 0),
+        'table' => 'online_courses',
+        'color' => '#7E22CE',
+    ],
+    'Student Achievements' => [
+        'label' => 'Student Achievements (Awards/Prizes)',
+        'count' => (int) ($studSummary['categoryCounts']['Student Achievements'] ?? 0),
+        'table' => 'student_achievements',
+        'color' => '#0D9488',
+    ],
+    'Student Participation' => [
+        'label' => 'Symposiums & Event Participations',
+        'count' => (int) ($studSummary['categoryCounts']['Student Participations'] ?? 0),
+        'table' => 'student_participations',
+        'color' => '#DC2626',
+    ],
+    'Training' => [
+        'label' => 'Summer & Winter Training Programmes',
+        'count' => (int) ($studSummary['categoryCounts']['Summer / Winter Training'] ?? 0),
+        'table' => 'training_programmes',
+        'color' => '#D97706',
+    ],
+    'Other' => [
+        'label' => 'Other Student Achievements',
+        'count' => (int) ($studSummary['categoryCounts']['Other'] ?? 0),
+        'table' => 'various',
+        'color' => '#64748B',
+    ],
+];
+
+$topCatName = 'None';
+$topCatVal = 0;
+foreach ($studCatBreakdown as $k => $c) {
+    if ($c['count'] > $topCatVal) {
+        $topCatVal = $c['count'];
+        $topCatName = $k;
+    }
+}
+$activeDeptsCount = count($studDeptCounts);
 
 // Query string for exports
 $exportQ = array_filter([
@@ -172,6 +247,71 @@ require __DIR__ . '/inc/header.php';
 
   .cat-card-title { font-size: 12.5px; font-weight: 700; color: var(--muted, #5A6785); }
   .cat-card-val { font-size: 24px; font-weight: 800; color: var(--ink, #131D3B); margin-top: 2px; }
+
+  /* Student Summary Cards Responsive Grid */
+  .stud-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+  }
+  @media (max-width: 1200px) {
+    .stud-summary-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 900px) {
+    .stud-summary-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 580px) {
+    .stud-summary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 380px) {
+    .stud-summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  .stud-stat-card {
+    background: #ffffff;
+    padding: 12px 14px;
+    border-radius: 10px;
+    border: 1px solid var(--hairline, #E4E9F2);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 72px;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .stud-stat-card:hover {
+    border-color: var(--brand, #FF4F01);
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(19, 29, 59, 0.05);
+  }
+  .stud-stat-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--muted, #5A6785);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .stud-stat-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--ink, #131D3B);
+    margin-top: 3px;
+    line-height: 1.1;
+  }
+  .stud-stat-value.brand {
+    color: var(--brand, #FF4F01);
+  }
 </style>
 
 <!-- Page Header -->
@@ -181,6 +321,7 @@ require __DIR__ . '/inc/header.php';
     <div class="sub">
       Institution-wide overview &middot; <?= $department ? e($department) : ($isHod ? e($user['department']) : 'All departments') ?>
       &middot; Academic Year: <?= e($academicYear ?: 'All Years') ?>
+      <span class="badge badge-neutral" style="margin-left:8px; font-size:11px;"><?= icon('lock', 11) ?> Locked by Admin</span>
     </div>
   </div>
 
@@ -537,6 +678,7 @@ require __DIR__ . '/inc/header.php';
         <input type="hidden" name="department" value="<?= e($department) ?>">
         <input type="hidden" name="category" value="<?= e($category) ?>">
         <input type="hidden" name="em" value="<?= e($em) ?>">
+        <input type="hidden" name="student_search" value="<?= e($studentSearch) ?>">
         <label class="fb-field fb-search" style="min-width:240px;">
           <?= icon('search', 14) ?>
           <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">
@@ -552,8 +694,8 @@ require __DIR__ . '/inc/header.php';
           <div class="note">Try changing the selected department, academic year, faculty, or category filters.</div>
         </div>
       <?php else: ?>
-        <div class="table-wrap" style="max-height: 520px; overflow-y: auto;">
-          <table class="data wide sortable" id="facTable">
+        <div class="table-wrap" style="max-height: 520px; overflow-y: auto; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+          <table class="data wide sortable" id="facTable" style="min-width: 1050px; width: 100%;">
             <thead style="position:sticky; top:0; z-index:10; background:var(--surface,#fff);">
               <tr>
                 <th>#</th>
@@ -623,6 +765,279 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
+<!-- Section 4: Student Achievement Performance Matrix -->
+<div class="mt-5 card">
+  <div class="card-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+    <div>
+      <div class="card-title"><?= icon('graduation', 16) ?> Student Achievement Performance Matrix</div>
+      <div class="card-sub"><?= count($studGrid) ?> student profiles &middot; Consolidated student achievements across active categories</div>
+    </div>
+
+    <!-- Controls: View Mode Toggle & Student Search -->
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <!-- Toggle Buttons: Data View | Analytics View -->
+      <div class="pill-toggle-group">
+        <button type="button" class="btn-pill active" id="btnStudData" onclick="switchStudView('data')">Data View</button>
+        <button type="button" class="btn-pill" id="btnStudAnalytics" onclick="switchStudView('analytics')">Analytics View</button>
+      </div>
+
+      <!-- Student Quick Search Input -->
+      <form method="get" class="fbar fbar-bare" style="margin:0;">
+        <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
+        <input type="hidden" name="department" value="<?= e($department) ?>">
+        <input type="hidden" name="category" value="<?= e($category) ?>">
+        <input type="hidden" name="em" value="<?= e($em) ?>">
+        <input type="hidden" name="q" value="<?= e($searchQuery) ?>">
+        <label class="fb-field fb-search" style="min-width:230px;">
+          <?= icon('search', 14) ?>
+          <input type="search" name="student_search" value="<?= e($studentSearch) ?>" placeholder="Search student name..." onchange="this.form.submit()">
+        </label>
+      </form>
+    </div>
+  </div>
+
+  <!-- 4A. DATA VIEW: Summary Cards + Matrix Table -->
+  <div id="studDataView">
+    <!-- Student Category Summary Cards inside Section -->
+    <div class="card-body" style="padding:14px 20px; border-bottom:1px solid var(--hairline,#E4E9F2); background:var(--navy-50,#F4F6FA);">
+      <div class="stud-summary-grid">
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Total Students</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) $studSummary['totalStudents']) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label" style="color:var(--brand,#FF4F01);">Total Records</div>
+          <div class="stud-stat-value tabular brand"><?= number_format((int) $studSummary['totalAchievements']) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">NPTEL</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['SWAYAM-NPTEL'] ?? 0)) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Internships</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Internships'] ?? 0)) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Placements</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Placements'] ?? 0)) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Online Courses</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Online Courses'] ?? 0)) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Achievements</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Student Achievements'] ?? 0)) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Participation</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Student Participations'] ?? 0)) ?></div>
+        </div>
+        <div class="stud-stat-card">
+          <div class="stud-stat-label">Training</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Summer / Winter Training'] ?? 0)) ?></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Student Performance Matrix Table -->
+    <div class="card-body pt-0">
+      <?php if (empty($studGrid)): ?>
+        <div class="empty" style="padding:40px 20px;">
+          <div class="ic"><?= icon('graduation', 20) ?></div>
+          <p>No student achievements found</p>
+          <div class="note">Try adjusting the department, academic year, or search filters.</div>
+        </div>
+      <?php else: ?>
+        <div class="table-wrap" style="max-height: 540px; overflow-y: auto; overflow-x: auto; margin-top:14px; -webkit-overflow-scrolling: touch;">
+          <table class="data wide sortable" id="studTable" style="min-width: 1150px; width: 100%;">
+            <thead style="position:sticky; top:0; z-index:10; background:var(--surface,#fff);">
+              <tr>
+                <th style="width: 40px;">#</th>
+                <th style="min-width: 150px;">STUDENT</th>
+                <th style="min-width: 120px;">REGISTER NO</th>
+                <th style="min-width: 100px;">DEPARTMENT</th>
+                <th class="num">NPTEL</th>
+                <th class="num">INTERNSHIPS</th>
+                <th class="num">PLACEMENTS</th>
+                <th class="num">ONLINE COURSES</th>
+                <th class="num">ACHIEVEMENTS</th>
+                <th class="num">PARTICIPATION</th>
+                <th class="num">TRAINING</th>
+                <th class="num">OTHER</th>
+                <th class="num" style="min-width: 70px;">TOTAL</th>
+                <th style="text-align:center; min-width: 195px; width: 195px;">ACTIONS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php
+                $groupedStudGrid = [];
+                foreach ($studGrid as $s) {
+                    $deptName = $s['department'] ?: 'Other Department';
+                    $groupedStudGrid[$deptName][] = $s;
+                }
+                $studSno = 1;
+              ?>
+              <?php foreach ($groupedStudGrid as $deptName => $deptStudents): ?>
+                <tr style="background:var(--navy-50,#F4F6FA); border-top:2px solid var(--hairline,#E4E9F2); border-bottom:1px solid var(--hairline,#E4E9F2);">
+                  <td colspan="14" style="padding:10px 14px; font-weight:700; color:var(--ink,#131D3B); font-size:13.5px;">
+                    <?= icon('building', 14) ?> Department: <?= e($deptName) ?>
+                    <span class="badge badge-neutral" style="margin-left:6px; font-size:11px;"><?= count($deptStudents) ?> <?= count($deptStudents) === 1 ? 'student' : 'students' ?></span>
+                  </td>
+                </tr>
+                <?php foreach ($deptStudents as $s): ?>
+                  <?php
+                    $studReportUrl = url('individual-student-report.php') . '?' . http_build_query([
+                        'key'           => $s['key'],
+                        'reg_no'        => $s['reg_no'],
+                        'name'          => $s['student_name'],
+                        'dept'          => $s['department'],
+                        'academic_year' => $academicYear,
+                    ]);
+                    $studPresentUrl = url('present-student-report.php') . '?' . http_build_query([
+                        'key'           => $s['key'],
+                        'reg_no'        => $s['reg_no'],
+                        'name'          => $s['student_name'],
+                        'dept'          => $s['department'],
+                        'academic_year' => $academicYear,
+                    ]);
+                  ?>
+                  <tr class="drill-row" style="cursor:pointer;" title="Click to view <?= e($s['student_name']) ?>'s Individual Student Achievement Report" onclick="location.href='<?= e($studReportUrl) ?>'">
+                    <td class="faint tabular"><?= $studSno++ ?></td>
+                    <td>
+                      <div class="fw-500 truncate" style="max-width:180px; font-weight:600; color:var(--ink,#131D3B);" title="<?= e($s['student_name']) ?>"><?= e($s['student_name']) ?></div>
+                    </td>
+                    <td class="faint tabular" style="font-family:monospace; font-size:12px;"><?= e($s['reg_no']) ?></td>
+                    <td class="faint"><?= e($s['department']) ?></td>
+                    <td class="num tabular"><?= (int) $s['nptel'] ?></td>
+                    <td class="num tabular"><?= (int) $s['internships'] ?></td>
+                    <td class="num tabular"><?= (int) $s['placements'] ?></td>
+                    <td class="num tabular"><?= (int) $s['online_courses'] ?></td>
+                    <td class="num tabular"><?= (int) $s['achievements'] ?></td>
+                    <td class="num tabular"><?= (int) $s['participation'] ?></td>
+                    <td class="num tabular"><?= (int) $s['training'] ?></td>
+                    <td class="num tabular"><?= (int) $s['other'] ?></td>
+                    <td class="num tabular fw-600" style="font-size:14px; color:var(--brand,#FF4F01);"><?= (int) $s['total'] ?></td>
+                    <td style="text-align:center; white-space:nowrap; min-width: 195px; width: 195px;" onclick="event.stopPropagation();">
+                      <div style="display:inline-flex; align-items:center; gap:6px; flex-wrap:nowrap;">
+                        <a href="<?= e($studReportUrl) ?>" class="btn btn-primary btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px; white-space:nowrap;">
+                          <?= icon('file-text', 13) ?> View Report
+                        </a>
+                        <a href="<?= e($studPresentUrl) ?>" class="btn btn-secondary btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px; background:#131D3B; color:#ffffff; border:1px solid #131D3B; white-space:nowrap;">
+                          <?= icon('play-circle', 13) ?> Present
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                <?php endforeach; ?>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- 4B. ANALYTICS VIEW: KPI Summary Cards + Charts + Category Breakdown Table -->
+  <div id="studAnalyticsView" style="display:none; padding:20px;">
+    <?php if (empty($studGrid) || (int)$studSummary['totalAchievements'] === 0): ?>
+      <div class="empty" style="padding:40px 20px;">
+        <div class="ic"><?= icon('bar-chart', 20) ?></div>
+        <p>No student achievements available for analytics with current filters</p>
+        <div class="note">Try adjusting the department, academic year, or search filters.</div>
+      </div>
+    <?php else: ?>
+      <!-- Top Analytics KPI Stat Cards -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:24px;">
+        <div class="stat" style="background:#fff; padding:14px 18px; border-radius:12px; border:1px solid var(--hairline,#E4E9F2);">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted,#5A6785); text-transform:uppercase;">Total Students</div>
+          <div style="font-size:24px; font-weight:800; color:var(--ink,#131D3B); margin-top:4px;" class="tabular"><?= number_format((int) $studSummary['totalStudents']) ?></div>
+          <div class="card-sub" style="font-size:11px; margin-top:2px;">Distinct student profiles</div>
+        </div>
+        <div class="stat" style="background:#fff; padding:14px 18px; border-radius:12px; border:1px solid var(--hairline,#E4E9F2);">
+          <div style="font-size:11.5px; font-weight:700; color:var(--brand,#FF4F01); text-transform:uppercase;">Total Records</div>
+          <div style="font-size:24px; font-weight:800; color:var(--brand,#FF4F01); margin-top:4px;" class="tabular"><?= number_format((int) $studSummary['totalAchievements']) ?></div>
+          <div class="card-sub" style="font-size:11px; margin-top:2px;">Consolidated verified entries</div>
+        </div>
+        <div class="stat" style="background:#fff; padding:14px 18px; border-radius:12px; border:1px solid var(--hairline,#E4E9F2);">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted,#5A6785); text-transform:uppercase;">Top Category</div>
+          <div style="font-size:20px; font-weight:800; color:var(--ink,#131D3B); margin-top:4px;" class="truncate" title="<?= e($topCatName) ?>"><?= e($topCatName) ?></div>
+          <div class="card-sub" style="font-size:11px; margin-top:2px;"><?= number_format($topCatVal) ?> records recorded</div>
+        </div>
+        <div class="stat" style="background:#fff; padding:14px 18px; border-radius:12px; border:1px solid var(--hairline,#E4E9F2);">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted,#5A6785); text-transform:uppercase;">Active Departments</div>
+          <div style="font-size:24px; font-weight:800; color:var(--navy,#131D3B); margin-top:4px;" class="tabular"><?= (int) $activeDeptsCount ?></div>
+          <div class="card-sub" style="font-size:11px; margin-top:2px;">Departments with achievements</div>
+        </div>
+      </div>
+
+      <!-- Charts Grid -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap:20px; margin-bottom:24px;">
+        <!-- Chart 1: Student Achievements by Category -->
+        <div style="background:#fff; border:1px solid var(--hairline,#E4E9F2); border-radius:12px; padding:18px;">
+          <div style="font-size:13.5px; font-weight:700; color:var(--ink,#131D3B); margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+            <?= icon('pie-chart', 15) ?> Student Achievements by Category
+          </div>
+          <div class="card-sub" style="font-size:11px; margin-bottom:14px;">Distribution across all active student categories</div>
+          <div style="height:260px; position:relative;">
+            <canvas id="studCatChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Department-wise Student Achievements -->
+        <div style="background:#fff; border:1px solid var(--hairline,#E4E9F2); border-radius:12px; padding:18px;">
+          <div style="font-size:13.5px; font-weight:700; color:var(--ink,#131D3B); margin-bottom:4px; display:flex; align-items:center; gap:6px;">
+            <?= icon('bar-chart', 15) ?> Department-wise Student Achievements
+          </div>
+          <div class="card-sub" style="font-size:11px; margin-bottom:14px;">Comparison of verified student achievements by department</div>
+          <div style="height:260px; position:relative;">
+            <canvas id="studDeptChart"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <!-- Detailed Category Breakdown Table -->
+      <div style="background:#fff; border:1px solid var(--hairline,#E4E9F2); border-radius:12px; overflow:hidden;">
+        <div style="padding:14px 18px; border-bottom:1px solid var(--hairline,#E4E9F2); font-weight:700; font-size:13.5px; color:var(--ink,#131D3B); display:flex; align-items:center; justify-content:space-between;">
+          <span><?= icon('layers', 14) ?> Category Performance Details</span>
+          <span class="badge badge-neutral" style="font-size:11px;"><?= count($studCatBreakdown) ?> Active Categories</span>
+        </div>
+        <div class="table-wrap" style="overflow-x:auto;">
+          <table class="data wide">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Official Classification</th>
+                <th>Underlying Table</th>
+                <th class="num">Record Count</th>
+                <th class="num">% of Student Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <?php foreach ($studCatBreakdown as $cKey => $meta): ?>
+                <?php
+                  $cnt = $meta['count'];
+                  $pct = $studSummary['totalAchievements'] > 0 ? round(($cnt / $studSummary['totalAchievements']) * 100, 1) : 0;
+                ?>
+                <tr>
+                  <td class="fw-600" style="color:var(--ink,#131D3B); display:flex; align-items:center; gap:8px;">
+                    <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:<?= $meta['color'] ?>;"></span>
+                    <?= e($cKey) ?>
+                  </td>
+                  <td><span class="card-sub" style="font-size:12px;"><?= e($meta['label']) ?></span></td>
+                  <td><code style="font-size:11.5px; color:var(--muted);"><?= e($meta['table']) ?></code></td>
+                  <td class="num tabular fw-700" style="font-size:13.5px; color:var(--brand,#FF4F01);"><?= number_format($cnt) ?></td>
+                  <td class="num tabular fw-600"><?= $pct ?>%</td>
+                </tr>
+              <?php endforeach; ?>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    <?php endif; ?>
+  </div>
+</div>
+
 <!-- Faculty Detail Drill-Down Modal -->
 <div id="facultyModal" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(19,29,59,0.5); z-index:99999; backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:20px;">
   <div class="modal-card" style="background:#fff; border-radius:16px; max-width:850px; width:100%; max-height:85vh; display:flex; flex-direction:column; box-shadow:var(--shadow-pop); border:1px solid var(--hairline,#E6EAF2); animation:pop-in .2s var(--ease-out);">
@@ -689,6 +1104,122 @@ function switchCatView(mode) {
     btnData.classList.remove('active');
     viewAnalytics.style.display = 'block';
     viewData.style.display = 'none';
+  }
+}
+
+// Student Matrix View Switcher (Data View vs Analytics View)
+function switchStudView(mode) {
+  const btnData = document.getElementById('btnStudData');
+  const btnAnalytics = document.getElementById('btnStudAnalytics');
+  const viewData = document.getElementById('studDataView');
+  const viewAnalytics = document.getElementById('studAnalyticsView');
+
+  if (!btnData || !btnAnalytics || !viewData || !viewAnalytics) return;
+
+  if (mode === 'data') {
+    btnData.classList.add('active');
+    btnAnalytics.classList.remove('active');
+    viewData.style.display = 'block';
+    viewAnalytics.style.display = 'none';
+  } else {
+    btnAnalytics.classList.add('active');
+    btnData.classList.remove('active');
+    viewAnalytics.style.display = 'block';
+    viewData.style.display = 'none';
+    initStudentCharts();
+  }
+}
+
+let studChartsInitialized = false;
+function initStudentCharts() {
+  if (studChartsInitialized) return;
+  studChartsInitialized = true;
+
+  // Chart 1: Category Distribution Bar Chart
+  const catCanvas = document.getElementById('studCatChart');
+  if (catCanvas) {
+    const catLabels = <?= json_encode(array_keys($studCatBreakdown)) ?>;
+    const catData = <?= json_encode(array_values(array_map(fn($c) => $c['count'], $studCatBreakdown))) ?>;
+    const catColors = <?= json_encode(array_values(array_map(fn($c) => $c['color'], $studCatBreakdown))) ?>;
+
+    new Chart(catCanvas, {
+      type: 'bar',
+      data: {
+        labels: catLabels,
+        datasets: [{
+          data: catData,
+          backgroundColor: catColors,
+          borderRadius: 6,
+          maxBarThickness: 36,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` Records: ${ctx.raw}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 11 } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#E7EBF3' },
+            ticks: { stepSize: 1 }
+          }
+        }
+      }
+    });
+  }
+
+  // Chart 2: Department-wise Achievements Bar Chart
+  const deptCanvas = document.getElementById('studDeptChart');
+  if (deptCanvas) {
+    const deptLabels = <?= json_encode(array_keys($studDeptCounts)) ?>;
+    const deptData = <?= json_encode(array_values($studDeptCounts)) ?>;
+
+    new Chart(deptCanvas, {
+      type: 'bar',
+      data: {
+        labels: deptLabels.length > 0 ? deptLabels : ['No Departments'],
+        datasets: [{
+          data: deptData.length > 0 ? deptData : [0],
+          backgroundColor: '#131D3B',
+          borderRadius: 6,
+          maxBarThickness: 36,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` Total Achievements: ${ctx.raw}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { font: { size: 11 } }
+          },
+          y: {
+            beginAtZero: true,
+            grid: { color: '#E7EBF3' },
+            ticks: { stepSize: 1 }
+          }
+        }
+      }
+    });
   }
 }
 

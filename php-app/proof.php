@@ -323,14 +323,21 @@ $knownMimes = [
 
 $mime = $knownMimes[$ext] ?? 'application/octet-stream';
 if (function_exists('finfo_open')) {
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $finfo = @finfo_open(FILEINFO_MIME_TYPE);
     if ($finfo) {
-        $detected = finfo_file($finfo, $filePath);
-        finfo_close($finfo);
+        $detected = @finfo_file($finfo, $filePath);
+        if (PHP_VERSION_ID < 80500) {
+            @finfo_close($finfo);
+        }
         if ($detected && $detected !== 'application/octet-stream') {
             $mime = $detected;
         }
     }
+}
+
+// Clean any active output buffers to prevent notices or stray bytes from corrupting binary stream
+while (ob_get_level()) {
+    ob_end_clean();
 }
 
 // Safe download name

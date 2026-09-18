@@ -64,10 +64,10 @@ function save_upload_proof(?array $file, bool $required = false): array
     }
 
     // Validate MIME type and binary header magic bytes
-    $finfo = finfo_open(FILEINFO_MIME_TYPE);
-    $mime = $finfo ? (string) finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
-    if ($finfo) {
-        finfo_close($finfo);
+    $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+    $mime = $finfo ? (string) @finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
+    if ($finfo && PHP_VERSION_ID < 80500) {
+        @finfo_close($finfo);
     }
 
     $handle = @fopen($file['tmp_name'], 'rb');
