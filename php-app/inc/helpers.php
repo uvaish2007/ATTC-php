@@ -17,6 +17,19 @@ function url(string $path = ''): string
     return BASE_URL . '/' . ltrim($path, '/');
 }
 
+/** Build a URL for a proof file, served through the resilient proof viewer endpoint. */
+function proof_url(?string $filename): string
+{
+    $filename = trim((string) $filename);
+    if ($filename === '') {
+        return '';
+    }
+    if (str_starts_with($filename, 'http://') || str_starts_with($filename, 'https://')) {
+        return $filename;
+    }
+    return url('proof.php?file=' . rawurlencode(basename($filename)));
+}
+
 /** Redirect to an app path and stop. */
 function redirect(string $path): void
 {
@@ -132,6 +145,19 @@ function time_ago($datetime): string
 function status_class(string $status): string
 {
     $map = [
+<<<<<<< HEAD
+        'Draft'                 => 'neutral',
+        'Submitted'             => 'info',
+        'HOD Pending'           => 'info',
+        'Dean Pending'          => 'warning',
+        'Approved'              => 'success',
+        'Rejected'              => 'danger',
+        'Edit Requested'        => 'warning',
+        'Unlocked for Edit'     => 'primary',
+        'Resubmitted'           => 'info',
+        'Correction Authorized' => 'primary',
+        'Completed'             => 'success',
+=======
         'Draft'             => 'neutral',
         'Submitted'         => 'info',
         'HOD Pending'       => 'info',
@@ -142,6 +168,7 @@ function status_class(string $status): string
         'Completed'         => 'info',
         'Edit Requested'    => 'warning',
         'Unlocked for Edit' => 'info',
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     ];
 
     return $map[$status] ?? 'neutral';
@@ -323,7 +350,88 @@ if (!function_exists('mb_strlen')) {
     function mb_strlen(string $string, ?string $encoding = null): int {
         return strlen($string);
     }
+<<<<<<< HEAD
 }/**
+=======
+}
+
+/**
+<<<<<<< HEAD
+ * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
+ * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
+ */
+function academic_year_variants(?string $year): array
+{
+    $year = trim((string) $year);
+    if ($year === '') return [];
+    $variants = [$year];
+    // If format like 2025-26 -> add 2025-2026
+    if (preg_match('/^(\d{4})-(\d{2})$/', $year, $m)) {
+        $century = substr($m[1], 0, 2);
+        $variants[] = $m[1] . '-' . $century . $m[2];
+    }
+    // If format like 2025-2026 -> add 2025-26
+    elseif (preg_match('/^(\d{4})-(\d{4})$/', $year, $m)) {
+        $variants[] = $m[1] . '-' . substr($m[2], 2, 2);
+    }
+    return array_values(array_unique($variants));
+}
+
+/**
+ * Compare two department names robustly, ignoring spacing, case, and standard abbreviations.
+ * E.g. 'AI & DS' matches 'AI&DS', 'AIDS', and 'CSE' matches 'Computer Science and Engineering'.
+ */
+function department_names_match(?string $deptA, ?string $deptB): bool
+{
+    if ($deptA === null || $deptB === null) return false;
+    $trimA = trim($deptA);
+    $trimB = trim($deptB);
+    if ($trimA === '' || $trimB === '') return false;
+    if (strcasecmp($trimA, $trimB) === 0) return true;
+
+    $knownAliases = [
+        'cse'   => ['cse', 'computer science and engineering', 'computer science & engineering'],
+        'csbs'  => ['csbs', 'computer science and business systems', 'computer science & business systems'],
+        'aids'  => ['aids', 'ai & ds', 'ai&ds', 'artificial intelligence and data science', 'artificial intelligence & data science'],
+        'aiml'  => ['aiml', 'ai & ml', 'ai&ml', 'artificial intelligence and machine learning', 'artificial intelligence & machine learning'],
+        'ece'   => ['ece', 'electronics and communication engineering', 'electronics & communication engineering'],
+        'eee'   => ['eee', 'electrical and electronics engineering', 'electrical & electronics engineering'],
+        'it'    => ['it', 'information technology'],
+        'mech'  => ['mech', 'mechanical engineering'],
+        'civil' => ['civil', 'civil engineering'],
+        'aero'  => ['aero', 'aeronautical engineering'],
+        'chem'  => ['chem', 'chemical engineering'],
+        'cyber' => ['cyber', 'cyber security', 'cybersecurity'],
+        'arch'  => ['arch', 'architecture'],
+        'mca'   => ['mca', 'master of computer applications'],
+        'mba'   => ['mba', 'master of business administration'],
+    ];
+
+    $clean = function(string $s): string {
+        $s = strtolower($s);
+        $s = str_replace(['&', 'and'], '+', $s);
+        $s = preg_replace('/[^a-z0-9+]/', '', $s);
+        return $s;
+    };
+
+    $cA = $clean($trimA);
+    $cB = $clean($trimB);
+    if ($cA === $cB) return true;
+
+    // Check known alias groups
+    $lowerA = strtolower($trimA);
+    $lowerB = strtolower($trimB);
+    foreach ($knownAliases as $code => $group) {
+        $inA = in_array($lowerA, $group, true) || $cA === $code;
+        $inB = in_array($lowerB, $group, true) || $cB === $code;
+        if ($inA && $inB) return true;
+    }
+
+    return false;
+}
+
+=======
+>>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
  * Build a secure URL for accessing a record proof attachment.
  * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
  */
@@ -467,4 +575,5 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         . icon('download', 14) . '</a>'
         . '</div>';
 }
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
 

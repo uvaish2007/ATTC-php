@@ -122,8 +122,12 @@ function save_upload_proof(?array $file, bool $required = false): array
 
     return [$stored, null];
 }
+<<<<<<< HEAD
 }
 
+=======
+} // end if !function_exists('save_upload_proof')
+>>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
 
 // ---- Upload Data entry flow: Academic Year → Data Type → this form ---------
 // Faculty and Coordinator pick both before the form opens (models/UploadFlow.php).
@@ -152,8 +156,8 @@ if (upload_flow_applies($user)) {
         upload_flow_store($user, ['data_type' => null]);
     }
 
-    $isPost = $_SERVER['REQUEST_METHOD'] === 'POST';
-    if ($isPost) {
+    $isPost = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+    if ($isPost && isset($_POST['upload_flow_step'])) {
         csrf_check();
     }
     $flowState = upload_flow_state($user);
@@ -180,7 +184,7 @@ if (upload_flow_applies($user)) {
         redirect('/upload.php');
     }
 
-    // Show selection screen if visiting entry point, requested step, or no type asked
+    // Show selection screen if visiting entry point, requested step, or reset requested
     if (!$isPost && (!isset($_GET['type']) || isset($_GET['reset']) || isset($_GET['step']))) {
         if (($_GET['step'] ?? '') === 'data-type' && $flowState['year'] !== null) {
             $uploadFlowStep = 'data_type';
@@ -194,6 +198,20 @@ if (upload_flow_applies($user)) {
         require __DIR__ . '/views/upload_flow.php';
         require __DIR__ . '/inc/footer.php';
         exit;
+    }
+
+    // Direct access with explicit ?type= or POST record_type when flow not yet set in session
+    $directType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
+    if ($directType !== '' && isset($types[$directType])) {
+        if ($flowState['year'] === null) {
+            $flowState['year'] = $activeYear;
+            upload_flow_store($user, ['year' => $activeYear]);
+        }
+        if ($flowState['data_type'] === null) {
+            $dType = upload_flow_data_type_of($directType) ?: 'faculty';
+            $flowState['data_type'] = $dType;
+            upload_flow_store($user, ['data_type' => $dType]);
+        }
     }
 
     // The form, or a record submitted from it: both choices must be in place.
@@ -535,6 +553,77 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $values = [];
         $placeholders = [];
 
+<<<<<<< HEAD
+    $editId = (int) input('edit_id');
+    if ($editId > 0) {
+        [$canEdit, $errMsg, $existingRec] = can_edit_record($type, $editId, $user);
+        if (!$canEdit) {
+            flash('error', $errMsg);
+            redirect('/approvals.php');
+        }
+
+        $setPairs = [];
+        $updateValues = [];
+        $oldValues = [];
+        $newValues = [];
+
+        foreach ($_POST as $k => $v) {
+            if (!in_array($k, $allowed, true) || $v === '') continue;
+            if (($existingRec[$k] ?? null) != $v) {
+                $oldValues[$k] = $existingRec[$k] ?? null;
+                $newValues[$k] = $v;
+            }
+            $setPairs[] = "`$k` = ?";
+            $updateValues[] = $v;
+        }
+        if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
+            $setPairs[] = "`proof_file` = ?";
+            $updateValues[] = $proofStored;
+            $newValues['proof_file'] = $proofStored;
+        }
+        $setPairs[] = "`status` = ?";
+        $updateValues[] = 'Resubmitted';
+        $setPairs[] = "`review_remark` = ?";
+        $updateValues[] = 'Corrected and resubmitted by Coordinator ' . ($user['name'] ?? '');
+        $setPairs[] = "`updated_at` = NOW()";
+
+        try {
+            $sql = "UPDATE `$table` SET " . implode(', ', $setPairs) . " WHERE id = ?";
+            $updateValues[] = $editId;
+            $pdo->prepare($sql)->execute($updateValues);
+
+            edit_request_complete($editId, $type, (int)$user['id'], $oldValues, $newValues);
+
+            record_workflow_audit(
+                $type,
+                $editId,
+                'COORDINATOR_RESUBMITTED',
+                $user,
+                $existingRec['status'] ?? 'Unlocked for Edit',
+                'Resubmitted',
+                'Coordinator resubmitted corrected record',
+                ['old_values' => $oldValues, 'new_values' => $newValues],
+                $existingRec['department'] ?? ($user['department'] ?? null),
+                $existingRec['academic_year'] ?? $activeYear
+            );
+
+            require_once __DIR__ . '/models/Target.php';
+            sync_target_achieved_for_type($type);
+
+            flash('success', $types[$type]['label'] . ' corrected and resubmitted for HoD review.');
+            redirect('/approvals.php');
+        } catch (\PDOException $e) {
+            error_log('upload.php update failed: ' . $e->getMessage());
+            flash('error', 'Failed to update record.');
+            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
+        }
+    }
+
+    // Review chain: Faculty -> Coordinator verifies & approves -> HoD reviews only.
+    // Faculty submissions land in 'Submitted' (pending Coordinator verification).
+    // Coordinator, HoD, and Admin uploads are already verified and land 'Approved'.
+    if (in_array($user['role'], ['Coordinator', 'HoD', 'Admin'], true)) {
+=======
         $editId = (int) input('edit_id', input('record_id', 0));
         if ($editId > 0) {
             [$ok, $msg] = record_submit_for_review($type, $editId, $user, $_POST, $proofStored);
@@ -565,9 +654,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     if (!record_requires_approval($type)) {
         $initialStatus = 'Submitted';
     } elseif (in_array($user['role'], ['HoD', 'Admin'], true)) {
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
         $initialStatus = 'Approved';
-    } elseif ($user['role'] === 'Coordinator') {
-        $initialStatus = 'HOD Pending';
     } else {
         $initialStatus = 'Submitted';
     }
@@ -617,6 +705,31 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $fields[] = 'proofs'; $values[] = json_encode([$proofStored]); $placeholders[] = '?';
         }
 
+<<<<<<< HEAD
+    try {
+        $sql = "INSERT INTO `$table` (" . implode(',', $fields) . ") VALUES (" . implode(',', $placeholders) . ")";
+        $pdo->prepare($sql)->execute($values);
+        $newRecordId = (int)$pdo->lastInsertId();
+
+        // Audit log for faculty submission
+        if ($initialStatus === 'Submitted') {
+            record_workflow_audit(
+                $type,
+                $newRecordId,
+                'FACULTY_SUBMITTED',
+                $user,
+                null,
+                'Submitted',
+                'Faculty submitted record for Coordinator verification',
+                null,
+                $user['department'] ?? null,
+                $activeYear
+            );
+        }
+
+        // An upload that lands Approved refreshes any target it feeds.
+        if ($initialStatus === 'Approved') {
+=======
         // Final strict safeguard against partial database inserts:
         // Verify that every canonical mandatory field is present and non-empty in $fields.
         $missingFields = [];
@@ -652,6 +765,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         // A HoD/Admin upload lands Approved, so refresh any target it feeds.
         // For types where approval is not required, a Submitted record also feeds targets.
         if ($initialStatus === 'Approved' || !record_requires_approval($type)) {
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
         }
@@ -712,16 +826,49 @@ if (!isset($types[$selectedType]) || !in_array($selectedType, $typeKeys, true)) 
     $selectedType = $defaultType;
 }
 
+$editId = (int)($_GET['edit_id'] ?? 0);
+$editRecord = null;
+$activeEditRequest = null;
+if ($editId > 0) {
+    [$canEdit, $errMsg, $editRecord] = can_edit_record($selectedType, $editId, $user);
+    if (!$canEdit) {
+        flash('error', $errMsg);
+        redirect('/approvals.php');
+    }
+    $stmt = db()->prepare("SELECT * FROM edit_requests WHERE record_id = ? AND record_type = ? ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$editId, $selectedType]);
+    $activeEditRequest = $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
 $selIdx    = array_search($selectedType, $typeKeys, true);
 $isLast    = $selIdx === count($typeKeys) - 1;
 $nextType  = $typeKeys[$selIdx + 1] ?? null;
 $prevType  = $selIdx > 0 ? $typeKeys[$selIdx - 1] : null;
 
-$editId = (int) input('edit_id');
+$editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? 0));
 $editRecord = null;
 if ($editId > 0 && isset($types[$selectedType])) {
-    require_once __DIR__ . '/models/EditRequest.php';
-    $editRecord = edit_request_original_record($selectedType, $editId);
+    $table = $types[$selectedType]['table'];
+    $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE id = ?");
+    $stmt->execute([$editId]);
+    $rec = $stmt->fetch(PDO::FETCH_ASSOC);
+    if ($rec) {
+        $canEdit = false;
+        if (in_array($user['role'], ['Admin', 'Dean'], true)) {
+            $canEdit = true;
+        } elseif ($user['role'] === 'Faculty') {
+            $canEdit = ((int)($rec['created_by'] ?? 0) === (int)$user['id']);
+        } elseif (in_array($user['role'], ['Coordinator', 'HoD'], true)) {
+            $canEdit = ((int)($rec['created_by'] ?? 0) === (int)$user['id']) 
+                || (!empty($user['department']) && ($rec['department'] ?? '') === $user['department']);
+        }
+        if ($canEdit) {
+            $editRecord = $rec;
+            if (!empty($editRecord['academic_year'])) {
+                $effectiveYear = $editRecord['academic_year'];
+            }
+        }
+    }
 }
 
 /**
@@ -944,6 +1091,7 @@ require __DIR__ . '/inc/header.php';
   <div class="card-head">
     <div>
       <div class="card-title">
+<<<<<<< HEAD
         <?= ($editRecord || $editId > 0) ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . ($editId > 0 ? $editId : (int)$editRecord['id']) : 'New ' . e($types[$selectedType]['label']) ?>
         <?php if ($editRecord): ?>
           <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span>
@@ -951,6 +1099,13 @@ require __DIR__ . '/inc/header.php';
         <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span>
       </div>
       <div class="card-sub"><?= ($editRecord || $editId > 0) ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
+=======
+        <?= $editRecord ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($types[$selectedType]['label']) ?>
+        <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span>
+        <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span>
+      </div>
+      <div class="card-sub"><?= $editRecord ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
+>>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
     </div>
     <?php if (record_report_spec($selectedType) !== null): ?>
       <a class="btn btn-secondary btn-sm" href="<?= e(url('record-report.php?type=' . $selectedType . '&format=word')) ?>"><?= icon('download') ?> Download this report</a>
@@ -960,6 +1115,7 @@ require __DIR__ . '/inc/header.php';
     <form method="post" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="hidden" name="record_type" value="<?= e($selectedType) ?>">
+<<<<<<< HEAD
       <?php if ($editRecord || $editId > 0): ?>
         <input type="hidden" name="edit_id" value="<?= $editId > 0 ? $editId : (int)$editRecord['id'] ?>">
         <?php if (!empty($_GET['source'])): ?>
@@ -974,9 +1130,55 @@ require __DIR__ . '/inc/header.php';
             <div style="margin-top:4px;font-size:12px;color:#1D4ED8"><strong>Instructions:</strong> <?= e($editRecord['review_remark']) ?></div>
           <?php endif; ?>
         </div>
+=======
+<<<<<<< HEAD
+      <?php if (!empty($editRecord)): ?>
+        <input type="hidden" name="edit_id" value="<?= (int)$editId ?>">
+=======
+      <?php if ($editRecord): ?>
+        <input type="hidden" name="edit_id" value="<?= (int)$editRecord['id'] ?>">
+        <?php if (!empty($_GET['source'])): ?>
+          <input type="hidden" name="source" value="<?= e($_GET['source']) ?>">
+        <?php endif; ?>
+
+        <?php if (($editRecord['status'] ?? '') === 'Unlocked for Edit'): ?>
+          <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #1D4ED8;color:#1E40AF;padding:12px 16px;border-radius:8px;margin-bottom:18px;font-size:13px">
+            <strong>Editing Unlocked Record #<?= (int)$editRecord['id'] ?>:</strong> An edit request was approved by Dean/Admin. Please make the required corrections and click "Save & Resubmit Record".
+            <?php if (!empty($editRecord['review_remark'])): ?>
+              <div style="margin-top:4px;font-size:12px;color:#1D4ED8"><strong>Instructions:</strong> <?= e($editRecord['review_remark']) ?></div>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
+>>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
       <?php endif; ?>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <?php if (!empty($editRecord)): ?>
+        <div style="grid-column:span 2; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
+            <span class="badge badge-primary" style="font-size:12px; font-weight:700">Authorized Correction</span>
+            <span style="font-weight:700; color:#1E3A8A; font-size:14px">Record #<?= (int)$editId ?>: <?= e($editRecord['_title'] ?? '') ?></span>
+          </div>
+          <div style="font-size:12.5px; color:#1E293B; line-height:1.6">
+            <?php if (!empty($activeEditRequest)): ?>
+              <div><strong>HoD Reason:</strong> <?= e($activeEditRequest['reason']) ?></div>
+              <?php if (!empty($activeEditRequest['specific_field'])): ?>
+                <div style="margin-top:4px">
+                  <strong>Authorized Field to Correct:</strong> <span style="font-family:monospace; background:#DBEAFE; color:#1E40AF; padding:2px 8px; border-radius:4px; font-weight:700"><?= e($activeEditRequest['specific_field']) ?></span>
+                  <?php if (!empty($activeEditRequest['current_value'])): ?> (Current: <span style="color:#64748B"><?= e($activeEditRequest['current_value']) ?></span>)<?php endif; ?>
+                  <?php if (!empty($activeEditRequest['requested_value'])): ?> &rarr; Requested: <span style="color:#047857; font-weight:700"><?= e($activeEditRequest['requested_value']) ?></span><?php endif; ?>
+                </div>
+              <?php endif; ?>
+              <?php if (!empty($activeEditRequest['decision_comment'])): ?>
+                <div style="margin-top:4px; color:#1E40AF"><strong>Dean Authorization Note:</strong> <?= e($activeEditRequest['decision_comment']) ?></div>
+              <?php endif; ?>
+            <?php else: ?>
+              <div><?= e($editRecord['review_remark'] ?: 'Dean has authorized editing for this record.') ?></div>
+            <?php endif; ?>
+          </div>
+        </div>
+      <?php endif; ?>
       <?php if (in_array($selectedType, ['journal','book','conference','patent','fdp'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
@@ -1173,12 +1375,21 @@ require __DIR__ . '/inc/header.php';
       <!-- Save this entry and add another of the same type, move on to the next
            metric, or finish on the last one. -->
       <div class="upload-actions">
+<<<<<<< HEAD
+        <?php if (!empty($editRecord)): ?>
+          <a class="btn btn-outline" href="<?= e(url('approvals.php?tab=corrections')) ?>">Cancel</a>
+          <div class="spacer"></div>
+          <button type="submit" class="btn btn-primary" style="background:#1D4ED8; color:#fff; font-weight:700">
+            <?= icon('check') ?> Resubmit Correction
+          </button>
+=======
         <?php if ($editId > 0): ?>
           <button type="submit" name="nav" value="add" class="btn btn-primary" style="background:#1D4ED8;border-color:#1D4ED8;font-weight:600;display:inline-flex;align-items:center;gap:6px">
             <?= icon('check') ?> Save &amp; Resubmit Record
           </button>
           <div class="spacer"></div>
           <a class="btn btn-ghost" href="<?= e(url('approvals.php')) ?>"><?= icon('arrow-left') ?> Cancel &amp; Back to Approvals</a>
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
         <?php elseif (!$isUploadLocked || $user['role'] === 'Admin'): ?>
           <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
           <div class="spacer"></div>
@@ -1206,6 +1417,39 @@ require __DIR__ . '/inc/header.php';
           <?php endif; ?>
         <?php endif; ?>
       </div>
+
+      <?php if (!empty($editRecord)): ?>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          const editData = <?= json_encode($editRecord) ?>;
+          if (!editData) return;
+          for (const [key, val] of Object.entries(editData)) {
+            if (val === null || val === undefined || key === 'id' || key === 'proof_file') continue;
+            const el = document.querySelector(`[name="${key}"]`);
+            if (el) {
+              if (el.tagName === 'SELECT') {
+                el.value = val;
+                if (el.classList.contains('js-other')) {
+                  el.dispatchEvent(new Event('change'));
+                }
+              } else if (el.type !== 'file' && el.type !== 'hidden') {
+                el.value = val;
+              }
+            }
+          }
+          <?php if (!empty($activeEditRequest['specific_field'])): ?>
+            const targetField = <?= json_encode($activeEditRequest['specific_field']) ?>;
+            const targetEl = document.querySelector(`[name="${targetField}"]`) || document.querySelector(`[name*="${targetField.toLowerCase()}"]`);
+            if (targetEl) {
+              targetEl.style.border = '2px solid #2563EB';
+              targetEl.style.boxShadow = '0 0 0 4px rgba(37, 99, 235, 0.15)';
+              targetEl.style.background = '#F0FDF4';
+              targetEl.focus();
+            }
+          <?php endif; ?>
+        });
+        </script>
+      <?php endif; ?>
     </form>
 
     <?php if ($editRecord): ?>
@@ -1306,6 +1550,9 @@ require __DIR__ . '/inc/header.php';
       (function () {
         var form = document.querySelector('.card-body form');
         if (!form) return;
+
+        var isEditing = <?= !empty($editRecord) ? 'true' : 'false' ?>;
+        if (isEditing) return; // Do not overwrite active record edit with unrelated draft!
 
         var activeYear = <?= json_encode($activeYear) ?>;
         var recordType = <?= json_encode($selectedType) ?>;
@@ -1664,6 +1911,19 @@ require __DIR__ . '/inc/header.php';
         <tr>
           <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= e($r['_title']) ?></div></td>
           <td><span class="badge badge-neutral"><?= e($r['_type_label']) ?></span></td>
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+            <td>
+              <?php if (!empty($r['proof_file'])): ?>
+                <a class="btn btn-ghost btn-sm" href="<?= e(proof_url($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
+              <?php else: ?>
+                <span class="card-sub">—</span>
+              <?php endif; ?>
+            </td>
+          <td><span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span></td>
+=======
+>>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
           <td>
             <?= render_proof_cell($r['proof_file'] ?? null, $r['_type_key'] ?? null, (int)($r['id'] ?? 0)) ?>
           </td>
@@ -1673,6 +1933,7 @@ require __DIR__ . '/inc/header.php';
               <a href="<?= e(url('upload.php?type=' . urlencode($r['_type_key']) . '&edit_id=' . (int)$r['id'])) ?>" class="btn btn-ghost btn-sm" style="margin-left:6px; padding:2px 8px; font-size:11px;" title="<?= record_requires_approval($r['_type_key']) ? 'Submit and Review this draft' : 'Submit this draft' ?>"><?= icon('check', 12) ?> <?= record_requires_approval($r['_type_key']) ? 'Submit and Review' : 'Submit' ?></a>
             <?php endif; ?>
           </td>
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
           <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
         </tr>
       <?php endforeach; ?>

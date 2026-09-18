@@ -48,6 +48,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect($back);
     }
 
+    // --- Faculty & Coordinator contact their own Department HoD ---
+    if ($action === 'contact_hod') {
+        if (!in_array($user['role'], ['Faculty', 'Coordinator'], true)) {
+            flash('error', 'Only Faculty or Coordinator can send a departmental message to HoD.');
+            redirect($back);
+        }
+        $dept = trim((string)($user['department'] ?? ''));
+        if ($dept === '') {
+            flash('error', 'You must have an assigned department to contact your HoD.');
+            redirect($back);
+        }
+        $postData = $_POST;
+        // Strictly lock audience and department to their own department HoD
+        $postData['audience']   = 'HoD';
+        $postData['department'] = $dept;
+        $postData['category']   = 'Academic';
+        $postData['status']     = 'Published';
+        $postData['pinned']     = 0;
+
+        [$ok, $msg, $newId] = announcement_create($postData, (int) $user['id']);
+        if ($ok && !empty($_FILES['attachments']['name'][0])) {
+            foreach (announcement_save_files($newId, $_FILES['attachments']) as $problem) {
+                flash('warning', $problem);
+            }
+        }
+        flash($ok ? 'success' : 'error', $ok ? "Message sent to {$dept} HoD successfully." : $msg);
+        redirect($back);
+    }
+
     // --- Director / Admin only ---
     if (!$canManage) {
         http_response_code(403);
@@ -442,6 +471,12 @@ a.cal-day:hover {
     <div class="actions">
       <button class="btn btn-primary btn-sm" onclick="newAnnouncement()">
         <?= icon('plus') ?> New Announcement
+      </button>
+    </div>
+  <?php elseif ($ready && in_array($user['role'], ['Faculty', 'Coordinator'], true) && !empty($user['department'])): ?>
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" style="background:#FF4F01; color:#fff; border:none; display:inline-flex; align-items:center; gap:6px; font-weight:600" onclick="openContactHodModal()">
+        <?= icon('send', 14) ?> Contact Department HoD
       </button>
     </div>
   <?php endif; ?>
@@ -1499,5 +1534,65 @@ a.cal-day:hover {
   </script>
 
 <?php endif; ?>
+
+<!-- Modal for Faculty / Coordinator to Contact their Department HoD -->
+<dialog class="modal" id="contactHodDlg" style="max-width:32rem; width:92vw; border-radius:12px">
+  <form method="post" enctype="multipart/form-data">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="contact_hod">
+    <div class="modal-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0">
+      <h3 style="margin:0; font-size:16px; font-weight:700; color:#0F172A">Contact Department HoD</h3>
+      <div style="font-size:12px; color:#64748B; margin-top:2px">
+        Send a private message or report a record issue to your Department HoD.
+      </div>
+    </div>
+    <div class="modal-body" style="padding:18px 20px">
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 12px; margin-bottom:14px; font-size:12.5px">
+        <div><strong>Sender:</strong> <?= e($user['name']) ?> (<?= e($user['role']) ?>)</div>
+        <div><strong>Target Recipient:</strong> <span style="color:#1E3A8A; font-weight:700"><?= e($user['department'] ?? 'Your') ?> HoD</span></div>
+        <div style="font-size:11.5px; color:#64748B; margin-top:3px">This message is strictly confined to your department HoD.</div>
+      </div>
+
+      <div class="field" style="margin-bottom:12px">
+        <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:4px">
+          Subject / Title <span class="req" style="color:#DC2626">*</span>
+        </label>
+        <input class="input" type="text" name="title" required placeholder="e.g. Record Correction: Journal DOI mismatch">
+      </div>
+
+      <div class="field" style="margin-bottom:12px">
+        <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:4px">Priority</label>
+        <select class="input" name="priority">
+          <option value="Normal">Normal</option>
+          <option value="Important" selected>Important</option>
+          <option value="Urgent">Urgent</option>
+        </select>
+      </div>
+
+      <div class="field" style="margin-bottom:12px">
+        <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:4px">
+          Message / Issue Description <span class="req" style="color:#DC2626">*</span>
+        </label>
+        <textarea class="input" name="body" rows="4" required placeholder="Describe the error spotted, record title, and requested correction for HoD review…"></textarea>
+      </div>
+
+      <div class="field">
+        <label style="display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:4px">Attachment / Proof (Optional)</label>
+        <input type="file" name="attachments[]" class="input" style="padding:6px">
+      </div>
+    </div>
+    <div class="modal-foot" style="padding:14px 20px; border-top:1px solid #E2E8F0; display:flex; justify-content:flex-end; gap:8px">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-sm" style="background:#FF4F01; color:#fff; font-weight:600">Send to HoD</button>
+    </div>
+  </form>
+</dialog>
+
+<script>
+function openContactHodModal() {
+  var dlg = document.getElementById('contactHodDlg');
+  if (dlg) dlg.showModal();
+}
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

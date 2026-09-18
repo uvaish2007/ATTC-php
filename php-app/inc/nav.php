@@ -55,8 +55,16 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
+<<<<<<< HEAD
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
+=======
+<<<<<<< HEAD
+            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals'],
+=======
+            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
+>>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target'],
+>>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],
@@ -130,14 +138,17 @@ function pending_approvals_count(array $user): int
     $scopeDept = in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
     $year      = active_academic_year();   // the badge only counts the active year's pending records
 
+    if ($role === 'HoD') {
+        // BUG-WF-11: HoD is a reviewer only. Do not display approval counts that imply HoD approval authority.
+        return $memo[$memoKey] = 0;
+    }
+
     if ($role === 'Coordinator') {
         $targetStatuses = ['Submitted', 'Unlocked for Edit'];
-    } elseif ($role === 'HoD') {
-        $targetStatuses = ['HOD Pending'];
     } elseif ($role === 'Dean') {
         $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {   // Admin — everything still awaiting a decision
-        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending'];
+        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Unlocked for Edit'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
@@ -165,6 +176,13 @@ function pending_approvals_count(array $user): int
         } catch (\PDOException $e) {
             continue;
         }
+    }
+
+    // Dean and Admin also count pending edit requests awaiting decision
+    if (in_array($role, ['Dean', 'Admin'], true)) {
+        try {
+            $total += (int) db()->query("SELECT COUNT(*) FROM edit_requests WHERE status = 'Pending'")->fetchColumn();
+        } catch (\PDOException $e) {}
     }
 
     return $memo[$memoKey] = $total;
