@@ -57,18 +57,52 @@ $rateColor = fn(int $p) => $p >= 75 ? '#059669' : ($p >= 40 ? '#FF4F01' : '#DC26
 
 // Each card: label, value, sub, icon, tone; optional bar (%) + barColor.
 $cards = [];
-$cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
-            'sub' => $approved . ' approved · ' . $pendingRec . ' pending', 'icon' => 'layers', 'tone' => 'brand'];
 
-$cards[] = ['label' => 'Approval Rate', 'value' => $approvalRate . '%',
-            'sub' => $approved . ' of ' . $recTotal . ' approved', 'icon' => 'check', 'tone' => 'navy',
-            'bar' => $approvalRate, 'barColor' => $rateColor($approvalRate)];
+if ($user['role'] === 'HoD') {
+    require_once __DIR__ . '/../models/Record.php';
+    $hodDept = $user['department'] ?? '';
+    $hodRequests = edit_requests_list($hodDept, null, $data['scope']['year'] ?? null, (int)$user['id']);
+    $pendingReqCount = count(array_filter($hodRequests, fn($r) => $r['status'] === 'Pending'));
 
-$cards[] = ['label' => 'Pending Review', 'value' => (string) $pendingRec,
-            'sub' => $pendingRec ? ($isReviewer ? 'Awaiting your review' : 'Awaiting review') : 'All caught up',
-            'icon' => 'clock', 'tone' => $pendingRec ? 'brand' : 'navy'];
+    $cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
+                'sub' => 'Department records in scope', 'icon' => 'layers', 'tone' => 'brand'];
+    $cards[] = ['label' => 'Review Records', 'value' => (string) $stats['totalRecords'],
+                'sub' => 'Department records under review', 'icon' => 'file-text', 'tone' => 'navy',
+                'href' => url('approvals.php?tab=records')];
+    $cards[] = ['label' => 'Edit Requests', 'value' => (string) count($hodRequests),
+                'sub' => $pendingReqCount . ' pending Dean review', 'icon' => 'edit', 'tone' => $pendingReqCount ? 'brand' : 'navy',
+                'href' => url('approvals.php?tab=requests')];
+    $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'],
+                'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
+} elseif ($user['role'] === 'Coordinator') {
+    require_once __DIR__ . '/../models/Record.php';
+    $coordDept = $user['department'] ?? '';
+    $unlockedCount = 0;
+    foreach (record_types() as $k => $t) {
+        try {
+            $unlockedCount += (int) db()->query("SELECT COUNT(*) FROM `{$t['table']}` WHERE status = 'Unlocked for Edit' AND department = " . db()->quote($coordDept))->fetchColumn();
+        } catch (\PDOException $e) {}
+    }
 
-if ($isOversight) {
+    $cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
+                'sub' => $approved . ' approved · ' . $pendingRec . ' pending', 'icon' => 'layers', 'tone' => 'brand'];
+    $cards[] = ['label' => 'Pending Verification', 'value' => (string) $pendingRec,
+                'sub' => $pendingRec ? 'Awaiting verification' : 'All caught up', 'icon' => 'check-circle', 'tone' => $pendingRec ? 'brand' : 'navy',
+                'href' => url('approvals.php?tab=pending')];
+    $cards[] = ['label' => 'Authorized Corrections', 'value' => (string) $unlockedCount,
+                'sub' => $unlockedCount ? 'Unlocked by Dean for editing' : 'No corrections pending', 'icon' => 'edit', 'tone' => $unlockedCount ? 'brand' : 'navy',
+                'href' => url('approvals.php?tab=corrections')];
+    $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'],
+                'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
+} elseif ($user['role'] === 'Dean') {
+    require_once __DIR__ . '/../models/Record.php';
+    $pendingDeanRequests = count(edit_requests_list(null, 'Pending', $data['scope']['year'] ?? null));
+
+    $cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
+                'sub' => $approved . ' approved across departments', 'icon' => 'layers', 'tone' => 'brand'];
+    $cards[] = ['label' => 'Edit Requests', 'value' => (string) $pendingDeanRequests,
+                'sub' => $pendingDeanRequests ? 'Awaiting your review & decision' : 'All requests decided', 'icon' => 'edit', 'tone' => $pendingDeanRequests ? 'brand' : 'navy',
+                'href' => url('approvals.php?tab=requests')];
     if ($attPct !== null) {
         $cards[] = ['label' => 'Target Attainment', 'value' => $attPct . '%',
                     'sub' => (int) $attain['met'] . ' of ' . (int) $attain['targets'] . ' targets met',
@@ -77,9 +111,28 @@ if ($isOversight) {
         $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'], 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
     }
     $cards[] = ['label' => 'Departments', 'value' => (string) $stats['departments'], 'sub' => 'Active departments', 'icon' => 'building', 'tone' => 'navy'];
-    $cards[] = ['label' => 'Team', 'value' => (string) $stats['users'], 'sub' => 'Registered accounts', 'icon' => 'users', 'tone' => 'navy'];
 } else {
-    $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'], 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
+    $cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
+                'sub' => $approved . ' approved · ' . $pendingRec . ' pending', 'icon' => 'layers', 'tone' => 'brand'];
+    $cards[] = ['label' => 'Approval Rate', 'value' => $approvalRate . '%',
+                'sub' => $approved . ' of ' . $recTotal . ' approved', 'icon' => 'check', 'tone' => 'navy',
+                'bar' => $approvalRate, 'barColor' => $rateColor($approvalRate)];
+    $cards[] = ['label' => 'Pending Review', 'value' => (string) $pendingRec,
+                'sub' => $pendingRec ? ($isReviewer ? 'Awaiting your review' : 'Awaiting review') : 'All caught up',
+                'icon' => 'clock', 'tone' => $pendingRec ? 'brand' : 'navy'];
+    if ($isOversight) {
+        if ($attPct !== null) {
+            $cards[] = ['label' => 'Target Attainment', 'value' => $attPct . '%',
+                        'sub' => (int) $attain['met'] . ' of ' . (int) $attain['targets'] . ' targets met',
+                        'icon' => 'target', 'tone' => 'navy', 'bar' => min(100, $attPct), 'barColor' => $rateColor($attPct)];
+        } else {
+            $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'], 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
+        }
+        $cards[] = ['label' => 'Departments', 'value' => (string) $stats['departments'], 'sub' => 'Active departments', 'icon' => 'building', 'tone' => 'navy'];
+        $cards[] = ['label' => 'Team', 'value' => (string) $stats['users'], 'sub' => 'Registered accounts', 'icon' => 'users', 'tone' => 'navy'];
+    } else {
+        $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'], 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
+    }
 }
 
 // The department table only earns its place when there are several to compare.
@@ -347,7 +400,8 @@ if (!function_exists('dash_column_chart')) {
 <div class="stat-grid <?= $isOversight ? 'stat-kpi' : 'grid-4' ?>">
 
   <?php foreach ($cards as $c): ?>
-    <div class="stat">
+    <?php $tag = !empty($c['href']) ? 'a' : 'div'; ?>
+    <<?= $tag ?> <?= !empty($c['href']) ? 'href="' . e($c['href']) . '" style="text-decoration:none; color:inherit"' : '' ?> class="stat">
       <div class="stat-top">
         <div class="stat-label"><?= e($c['label']) ?></div>
         <div class="stat-ic <?= $c['tone'] ?>"><?= icon($c['icon']) ?></div>
@@ -357,7 +411,7 @@ if (!function_exists('dash_column_chart')) {
         <div class="stat-bar"><span style="width:<?= (int) $c['bar'] ?>%;background:<?= e($c['barColor'] ?? 'var(--orange-500)') ?>"></span></div>
       <?php endif; ?>
       <div class="stat-desc"><?= e($c['sub']) ?></div>
-    </div>
+    </<?= $tag ?>>
   <?php endforeach; ?>
 
 </div>
@@ -1216,7 +1270,7 @@ if (!function_exists('dash_column_chart')) {
         <div class="card-sub">Latest submissions</div>
       </div>
       <?php if ($isReviewer): ?>
-        <a class="btn btn-ghost btn-sm" href="<?= e(url('approvals.php')) ?>">Review</a>
+        <a class="btn btn-ghost btn-sm" href="<?= e(url('approvals.php')) ?>"><?= $user['role'] === 'HoD' ? 'Review Records' : 'Review' ?></a>
       <?php endif; ?>
     </div>
 

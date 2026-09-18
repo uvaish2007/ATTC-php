@@ -96,13 +96,14 @@ function announcement_visibility(array $user): array
         return ['1=1', []];
     }
 
+    $dept = (string) ($user['department'] ?? '');
     $sql = "a.status = 'Published'
             AND (a.publish_at IS NULL OR a.publish_at <= NOW())
             AND (a.expires_at IS NULL OR a.expires_at >= NOW())
-            AND (a.audience = 'Everyone' OR a.audience = ?)
-            AND (a.department IS NULL OR a.department = '' OR a.department = ?)";
+            AND (a.audience = 'Everyone' OR a.audience = ? OR a.created_by = ?)
+            AND (a.department IS NULL OR a.department = '' OR a.department = ? OR REPLACE(a.department, ' ', '') = REPLACE(?, ' ', ''))";
 
-    return [$sql, [$user['role'], (string) ($user['department'] ?? '')]];
+    return [$sql, [$user['role'], (int)$user['id'], $dept, $dept]];
 }
 
 /**

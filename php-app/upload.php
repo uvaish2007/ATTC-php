@@ -399,19 +399,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $editId = (int) input('edit_id');
     if ($editId > 0) {
+        [$canEdit, $errMsg, $existingRec] = can_edit_record($type, $editId, $user);
+        if (!$canEdit) {
+            flash('error', $errMsg);
+            redirect('/approvals.php');
+        }
+
         $setPairs = [];
         $updateValues = [];
+        $oldValues = [];
+        $newValues = [];
+
         foreach ($_POST as $k => $v) {
             if (!in_array($k, $allowed, true) || $v === '') continue;
+            if (($existingRec[$k] ?? null) != $v) {
+                $oldValues[$k] = $existingRec[$k] ?? null;
+                $newValues[$k] = $v;
+            }
             $setPairs[] = "`$k` = ?";
             $updateValues[] = $v;
         }
         if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
             $setPairs[] = "`proof_file` = ?";
             $updateValues[] = $proofStored;
+            $newValues['proof_file'] = $proofStored;
         }
         $setPairs[] = "`status` = ?";
-        $updateValues[] = 'Approved';
+        $updateValues[] = 'Resubmitted';
+        $setPairs[] = "`review_remark` = ?";
+        $updateValues[] = 'Corrected and resubmitted by Coordinator ' . ($user['name'] ?? '');
         $setPairs[] = "`updated_at` = NOW()";
 
         try {
@@ -419,10 +435,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $updateValues[] = $editId;
             $pdo->prepare($sql)->execute($updateValues);
 
+            edit_request_complete($editId, $type, (int)$user['id'], $oldValues, $newValues);
+
+            record_workflow_audit(
+                $type,
+                $editId,
+                'COORDINATOR_RESUBMITTED',
+                $user,
+                $existingRec['status'] ?? 'Unlocked for Edit',
+                'Resubmitted',
+                'Coordinator resubmitted corrected record',
+                ['old_values' => $oldValues, 'new_values' => $newValues],
+                $existingRec['department'] ?? ($user['department'] ?? null),
+                $existingRec['academic_year'] ?? $activeYear
+            );
+
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
 
-            flash('success', $types[$type]['label'] . ' updated and saved to database.');
+            flash('success', $types[$type]['label'] . ' corrected and resubmitted for HoD review.');
             redirect('/approvals.php');
         } catch (\PDOException $e) {
             error_log('upload.php update failed: ' . $e->getMessage());
@@ -431,12 +462,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Review chain: Faculty -> Coordinator -> HoD. A Coordinator's own upload
-    // skips the Coordinator step; a HoD's or Admin's upload is already final.
-    if (in_array($user['role'], ['HoD', 'Admin'], true)) {
+    // Review chain: Faculty -> Coordinator verifies & approves -> HoD reviews only.
+    // Faculty submissions land in 'Submitted' (pending Coordinator verification).
+    // Coordinator, HoD, and Admin uploads are already verified and land 'Approved'.
+    if (in_array($user['role'], ['Coordinator', 'HoD', 'Admin'], true)) {
         $initialStatus = 'Approved';
-    } elseif ($user['role'] === 'Coordinator') {
-        $initialStatus = 'HOD Pending';
     } else {
         $initialStatus = 'Submitted';
     }
@@ -481,8 +511,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     try {
         $sql = "INSERT INTO `$table` (" . implode(',', $fields) . ") VALUES (" . implode(',', $placeholders) . ")";
         $pdo->prepare($sql)->execute($values);
+        $newRecordId = (int)$pdo->lastInsertId();
 
-        // A HoD/Admin upload lands Approved, so refresh any target it feeds.
+        // Audit log for faculty submission
+        if ($initialStatus === 'Submitted') {
+            record_workflow_audit(
+                $type,
+                $newRecordId,
+                'FACULTY_SUBMITTED',
+                $user,
+                null,
+                'Submitted',
+                'Faculty submitted record for Coordinator verification',
+                null,
+                $user['department'] ?? null,
+                $activeYear
+            );
+        }
+
+        // An upload that lands Approved refreshes any target it feeds.
         if ($initialStatus === 'Approved') {
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
@@ -521,6 +568,20 @@ $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
 unset($_SESSION['submitted_draft_type']);
 $selectedType = trim((string)($_GET['type'] ?? 'journal'));
 if (!isset($types[$selectedType])) $selectedType = 'journal';
+
+$editId = (int)($_GET['edit_id'] ?? 0);
+$editRecord = null;
+$activeEditRequest = null;
+if ($editId > 0) {
+    [$canEdit, $errMsg, $editRecord] = can_edit_record($selectedType, $editId, $user);
+    if (!$canEdit) {
+        flash('error', $errMsg);
+        redirect('/approvals.php');
+    }
+    $stmt = db()->prepare("SELECT * FROM edit_requests WHERE record_id = ? AND record_type = ? ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$editId, $selectedType]);
+    $activeEditRequest = $stmt->fetch(PDO::FETCH_ASSOC);
+}
 
 $selIdx    = array_search($selectedType, $typeKeys, true);
 $isLast    = $selIdx === count($typeKeys) - 1;
@@ -729,8 +790,36 @@ require __DIR__ . '/inc/header.php';
     <form method="post" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="hidden" name="record_type" value="<?= e($selectedType) ?>">
+      <?php if (!empty($editRecord)): ?>
+        <input type="hidden" name="edit_id" value="<?= (int)$editId ?>">
+      <?php endif; ?>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <?php if (!empty($editRecord)): ?>
+        <div style="grid-column:span 2; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
+            <span class="badge badge-primary" style="font-size:12px; font-weight:700">Authorized Correction</span>
+            <span style="font-weight:700; color:#1E3A8A; font-size:14px">Record #<?= (int)$editId ?>: <?= e($editRecord['_title'] ?? '') ?></span>
+          </div>
+          <div style="font-size:12.5px; color:#1E293B; line-height:1.6">
+            <?php if (!empty($activeEditRequest)): ?>
+              <div><strong>HoD Reason:</strong> <?= e($activeEditRequest['reason']) ?></div>
+              <?php if (!empty($activeEditRequest['specific_field'])): ?>
+                <div style="margin-top:4px">
+                  <strong>Authorized Field to Correct:</strong> <span style="font-family:monospace; background:#DBEAFE; color:#1E40AF; padding:2px 8px; border-radius:4px; font-weight:700"><?= e($activeEditRequest['specific_field']) ?></span>
+                  <?php if (!empty($activeEditRequest['current_value'])): ?> (Current: <span style="color:#64748B"><?= e($activeEditRequest['current_value']) ?></span>)<?php endif; ?>
+                  <?php if (!empty($activeEditRequest['requested_value'])): ?> &rarr; Requested: <span style="color:#047857; font-weight:700"><?= e($activeEditRequest['requested_value']) ?></span><?php endif; ?>
+                </div>
+              <?php endif; ?>
+              <?php if (!empty($activeEditRequest['decision_comment'])): ?>
+                <div style="margin-top:4px; color:#1E40AF"><strong>Dean Authorization Note:</strong> <?= e($activeEditRequest['decision_comment']) ?></div>
+              <?php endif; ?>
+            <?php else: ?>
+              <div><?= e($editRecord['review_remark'] ?: 'Dean has authorized editing for this record.') ?></div>
+            <?php endif; ?>
+          </div>
+        </div>
+      <?php endif; ?>
       <?php if (in_array($selectedType, ['journal','book','conference','patent','fdp'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
@@ -927,7 +1016,13 @@ require __DIR__ . '/inc/header.php';
       <!-- Save this entry and add another of the same type, move on to the next
            metric, or finish on the last one. -->
       <div class="upload-actions">
-        <?php if (!$isUploadLocked || $user['role'] === 'Admin'): ?>
+        <?php if (!empty($editRecord)): ?>
+          <a class="btn btn-outline" href="<?= e(url('approvals.php?tab=corrections')) ?>">Cancel</a>
+          <div class="spacer"></div>
+          <button type="submit" class="btn btn-primary" style="background:#1D4ED8; color:#fff; font-weight:700">
+            <?= icon('check') ?> Resubmit Correction
+          </button>
+        <?php elseif (!$isUploadLocked || $user['role'] === 'Admin'): ?>
           <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
           <div class="spacer"></div>
           <?php if ($prevType): ?>
@@ -955,6 +1050,39 @@ require __DIR__ . '/inc/header.php';
           <?php endif; ?>
         <?php endif; ?>
       </div>
+
+      <?php if (!empty($editRecord)): ?>
+        <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          const editData = <?= json_encode($editRecord) ?>;
+          if (!editData) return;
+          for (const [key, val] of Object.entries(editData)) {
+            if (val === null || val === undefined || key === 'id' || key === 'proof_file') continue;
+            const el = document.querySelector(`[name="${key}"]`);
+            if (el) {
+              if (el.tagName === 'SELECT') {
+                el.value = val;
+                if (el.classList.contains('js-other')) {
+                  el.dispatchEvent(new Event('change'));
+                }
+              } else if (el.type !== 'file' && el.type !== 'hidden') {
+                el.value = val;
+              }
+            }
+          }
+          <?php if (!empty($activeEditRequest['specific_field'])): ?>
+            const targetField = <?= json_encode($activeEditRequest['specific_field']) ?>;
+            const targetEl = document.querySelector(`[name="${targetField}"]`) || document.querySelector(`[name*="${targetField.toLowerCase()}"]`);
+            if (targetEl) {
+              targetEl.style.border = '2px solid #2563EB';
+              targetEl.style.boxShadow = '0 0 0 4px rgba(37, 99, 235, 0.15)';
+              targetEl.style.background = '#F0FDF4';
+              targetEl.focus();
+            }
+          <?php endif; ?>
+        });
+        </script>
+      <?php endif; ?>
     </form>
 
     <script>
@@ -1016,6 +1144,9 @@ require __DIR__ . '/inc/header.php';
       (function () {
         var form = document.querySelector('.card-body form');
         if (!form) return;
+
+        var isEditing = <?= !empty($editRecord) ? 'true' : 'false' ?>;
+        if (isEditing) return; // Do not overwrite active record edit with unrelated draft!
 
         var activeYear = <?= json_encode($activeYear) ?>;
         var recordType = <?= json_encode($selectedType) ?>;
@@ -1275,13 +1406,13 @@ require __DIR__ . '/inc/header.php';
         <tr>
           <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= e($r['_title']) ?></div></td>
           <td><span class="badge badge-neutral"><?= e($r['_type_label']) ?></span></td>
-          <td>
-            <?php if (!empty($r['proof_file'])): ?>
-              <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
-            <?php else: ?>
-              <span class="card-sub">—</span>
-            <?php endif; ?>
-          </td>
+            <td>
+              <?php if (!empty($r['proof_file'])): ?>
+                <a class="btn btn-ghost btn-sm" href="<?= e(proof_url($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
+              <?php else: ?>
+                <span class="card-sub">—</span>
+              <?php endif; ?>
+            </td>
           <td><span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span></td>
           <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
         </tr>
