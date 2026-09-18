@@ -17,25 +17,25 @@ function record_types(): array
     }
 
     $all = [
-        'journal'    => ['table' => 'journal_publications',    'label' => 'Journal Publication',    'title_col' => 'paper_title'],
-        'book'       => ['table' => 'book_publications',       'label' => 'Book / Chapter',         'title_col' => 'title'],
-        'conference' => ['table' => 'conference_publications', 'label' => 'Conference Publication', 'title_col' => 'paper_title'],
-        'patent'     => ['table' => 'patents',                 'label' => 'Patent / Copyright',     'title_col' => 'title'],
-        'fdp'        => ['table' => 'fdp',                     'label' => 'FDP / Workshop',         'title_col' => 'title'],
-        'mou'        => ['table' => 'mou',                     'label' => 'MoU',                    'title_col' => 'organization'],
-        'event'      => ['table' => 'events',                  'label' => 'Event',                  'title_col' => 'event_title'],
-        'nptel'      => ['table' => 'nptel',                   'label' => 'NPTEL',                  'title_col' => 'course_title'],
-        'internship' => ['table' => 'internships',             'label' => 'Internship',             'title_col' => 'title'],
-        'placement'  => ['table' => 'placements',              'label' => 'Placement',              'title_col' => 'student_name'],
+        'journal'    => ['table' => 'journal_publications',    'label' => 'Journal Publication',    'title_col' => 'paper_title', 'approval_required' => true],
+        'book'       => ['table' => 'book_publications',       'label' => 'Book / Chapter',         'title_col' => 'title',       'approval_required' => false],
+        'conference' => ['table' => 'conference_publications', 'label' => 'Conference Publication', 'title_col' => 'paper_title', 'approval_required' => true],
+        'patent'     => ['table' => 'patents',                 'label' => 'Patent / Copyright',     'title_col' => 'title',       'approval_required' => true],
+        'fdp'        => ['table' => 'fdp',                     'label' => 'FDP / Workshop',         'title_col' => 'title',       'approval_required' => true],
+        'mou'        => ['table' => 'mou',                     'label' => 'MoU',                    'title_col' => 'organization','approval_required' => true],
+        'event'      => ['table' => 'events',                  'label' => 'Event',                  'title_col' => 'event_title', 'approval_required' => true],
+        'nptel'      => ['table' => 'nptel',                   'label' => 'NPTEL',                  'title_col' => 'course_title','approval_required' => true],
+        'internship' => ['table' => 'internships',             'label' => 'Internship',             'title_col' => 'title',       'approval_required' => true],
+        'placement'  => ['table' => 'placements',              'label' => 'Placement',              'title_col' => 'student_name','approval_required' => true],
 
         // Types added straight from the IQAC templates.
-        'nss'                   => ['table' => 'nss',                    'label' => 'NSS / YRC / RRC',           'title_col' => 'activity_name'],
-        'online_course'         => ['table' => 'online_courses',         'label' => 'Online Course',             'title_col' => 'course_title'],
-        'student_achievement'   => ['table' => 'student_achievements',   'label' => 'Student Achievement',       'title_col' => 'student_name'],
-        'student_participation' => ['table' => 'student_participations', 'label' => 'Student Participation',      'title_col' => 'student_name'],
-        'summer_training'       => ['table' => 'summer_training',        'label' => 'Summer / Winter Training',  'title_col' => 'title'],
-        'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title'],
-        'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title'],
+        'nss'                   => ['table' => 'nss',                    'label' => 'NSS / YRC / RRC',           'title_col' => 'activity_name', 'approval_required' => true],
+        'online_course'         => ['table' => 'online_courses',         'label' => 'Online Course',             'title_col' => 'course_title',  'approval_required' => true],
+        'student_achievement'   => ['table' => 'student_achievements',   'label' => 'Student Achievement',       'title_col' => 'student_name',  'approval_required' => true],
+        'student_participation' => ['table' => 'student_participations', 'label' => 'Student Participation',      'title_col' => 'student_name',  'approval_required' => true],
+        'summer_training'       => ['table' => 'summer_training',        'label' => 'Summer / Winter Training',  'title_col' => 'title',         'approval_required' => true],
+        'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title',  'approval_required' => true],
+        'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title',   'approval_required' => true],
     ];
 
     try {
@@ -46,6 +46,19 @@ function record_types(): array
     }
 
     return $filtered;
+}
+
+/**
+ * Check whether a given record type requires approval.
+ * Book / Chapter ('book') does NOT require approval (COORD-14).
+ */
+function record_requires_approval(string $type): bool
+{
+    $types = record_types();
+    if (isset($types[$type]['approval_required'])) {
+        return (bool) $types[$type]['approval_required'];
+    }
+    return $type !== 'book';
 }
 
 /**
@@ -83,6 +96,168 @@ function record_category_types(?string $category): array
 }
 
 /**
+ * Process 7-day approval expiration for Journal Publications (COORD-13).
+ *
+ * Lifecycle:
+ * Submitted -> Approved -> (7 days valid) -> Expired -> Submitted.
+ *
+ * When an approved Journal Publication exceeds 7 days from approved_at:
+ * - Archives previous approval metadata (approved_by, approved_at, previous status,
+ *   reviewer details, remarks, expired_at) into `approval_history` JSON.
+ * - Reverts current status to 'Submitted'.
+ * - Clears active approved_at, approved_by, review_remark.
+ * - Preserves academic_year and all other row fields intact without duplication.
+ * - Non-destructive: does not delete records or past history.
+ * - Syncs journal target metrics if any records expired.
+ *
+ * @param int|null $specificId If provided, processes expiry for this specific journal ID.
+ * @param bool $forceCheck If true, bypasses in-memory per-request cache.
+ * @return int Number of journal publication records transitioned to 'Submitted'.
+ */
+function journal_process_approval_expiry(?int $specificId = null, bool $forceCheck = false): int
+{
+    static $checkedThisRequest = false;
+    if ($specificId === null && $checkedThisRequest && !$forceCheck) {
+        return 0;
+    }
+
+    $pdo = db();
+    $sql = "SELECT id, status, approved_by, approved_at, review_remark, approval_history, academic_year, department
+            FROM journal_publications
+            WHERE status = 'Approved'
+              AND approved_at IS NOT NULL
+              AND approved_at <= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+    $params = [];
+
+    if ($specificId !== null) {
+        $sql .= " AND id = ?";
+        $params[] = $specificId;
+    } else {
+        $checkedThisRequest = true;
+    }
+
+    try {
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $expiredRows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($expiredRows)) {
+            return 0;
+        }
+
+        $now = date('Y-m-d H:i:s');
+        $expiredCount = 0;
+
+        // User details cache for reviewer information archival
+        static $userCache = [];
+        $getUserInfo = function(?int $uid) use ($pdo, &$userCache): array {
+            if (!$uid) return ['name' => null, 'role' => null];
+            if (!isset($userCache[$uid])) {
+                $uStmt = $pdo->prepare("SELECT name, role FROM users WHERE id = ?");
+                $uStmt->execute([$uid]);
+                $userCache[$uid] = $uStmt->fetch(PDO::FETCH_ASSOC) ?: ['name' => null, 'role' => null];
+            }
+            return $userCache[$uid];
+        };
+
+        $pdo->beginTransaction();
+
+        $updateStmt = $pdo->prepare(
+            "UPDATE journal_publications
+             SET status = 'Submitted',
+                 approved_by = NULL,
+                 approved_at = NULL,
+                 review_remark = NULL,
+                 approval_history = ?,
+                 updated_at = NOW()
+             WHERE id = ? AND status = 'Approved'"
+        );
+
+        foreach ($expiredRows as $row) {
+            $recId = (int)$row['id'];
+            $history = [];
+            if (!empty($row['approval_history'])) {
+                $decoded = json_decode((string)$row['approval_history'], true);
+                if (is_array($decoded)) {
+                    $history = $decoded;
+                }
+            }
+
+            $revInfo = $getUserInfo(!empty($row['approved_by']) ? (int)$row['approved_by'] : null);
+
+            $archiveEntry = [
+                'status'         => 'Approved',
+                'approved_by'    => !empty($row['approved_by']) ? (int)$row['approved_by'] : null,
+                'approved_at'    => $row['approved_at'],
+                'reviewer_name'  => $revInfo['name'] ?? null,
+                'reviewer_role'  => $revInfo['role'] ?? null,
+                'review_remark'  => $row['review_remark'] ?? null,
+                'expired_at'     => $now,
+            ];
+
+            $history[] = $archiveEntry;
+            $encodedHistory = json_encode($history, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+            $updateStmt->execute([$encodedHistory, $recId]);
+            if ($updateStmt->rowCount() > 0) {
+                $expiredCount++;
+            }
+        }
+
+        $pdo->commit();
+
+        if ($expiredCount > 0) {
+            try {
+                require_once __DIR__ . '/Target.php';
+                if (function_exists('sync_target_achieved_for_type')) {
+                    sync_target_achieved_for_type('journal');
+                }
+            } catch (\Throwable $e) {
+                error_log('sync_target_achieved_for_type error during journal expiry: ' . $e->getMessage());
+            }
+        }
+
+        return $expiredCount;
+    } catch (\PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('journal_process_approval_expiry PDOException: ' . $e->getMessage());
+        return 0;
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('journal_process_approval_expiry error: ' . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Retrieve the archived approval history for a record.
+ */
+function record_approval_history(string $type, int $id): array
+{
+    $types = record_types();
+    if (!isset($types[$type])) {
+        return [];
+    }
+    $table = $types[$type]['table'];
+    try {
+        $stmt = db()->prepare("SELECT approval_history FROM `{$table}` WHERE id = ?");
+        $stmt->execute([$id]);
+        $raw = $stmt->fetchColumn();
+        if (!$raw) {
+            return [];
+        }
+        $decoded = json_decode((string)$raw, true);
+        return is_array($decoded) ? $decoded : [];
+    } catch (\Throwable $e) {
+        return [];
+    }
+}
+
+/**
  * Fetch records for a given type, with optional filters.
  *
  * $year scopes to one academic year — the active one, from every caller —
@@ -92,6 +267,9 @@ function record_category_types(?string $category): array
  */
 function records_list(string $type, ?string $department = null, ?string $status = null, ?int $createdBy = null, ?string $from = null, ?string $to = null, ?string $year = null): array
 {
+    if ($type === 'journal' || $type === '') {
+        journal_process_approval_expiry();
+    }
     $types = record_types();
     if (!isset($types[$type])) {
         return [];
@@ -214,6 +392,8 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
  */
 function record_counts_for_users(array $userIds): array
 {
+    journal_process_approval_expiry();
+
     $userIds = array_values(array_unique(array_map('intval', $userIds)));
 
     if (empty($userIds)) {
@@ -273,6 +453,8 @@ function user_record_counts(int $userId): array
  */
 function pending_records(?string $department = null, ?string $stage = null, ?string $role = null, ?string $year = null): array
 {
+    journal_process_approval_expiry();
+
     $types = record_types();
     $all = [];
 
@@ -289,6 +471,9 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
 
     foreach ($types as $key => $t) {
+        if (!record_requires_approval($key)) {
+            continue; // Book / Chapter does not enter approval queues (COORD-14)
+        }
         $sql = "SELECT *, '{$key}' AS record_type FROM `{$t['table']}` WHERE status IN ($inClause)";
         $params = $targetStatuses;
 
@@ -329,6 +514,10 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     $types = record_types();
     if (!isset($types[$type])) {
         return [false, 'Invalid record type.'];
+    }
+
+    if (!record_requires_approval($type)) {
+        return [false, "{$types[$type]['label']} does not require approval."];
     }
 
     if (!in_array($action, ['approve', 'reject', 'request_edit', 'approve_edit'], true)) {
@@ -388,8 +577,19 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         }
     }
 
+    if ($type === 'journal') {
+        journal_process_approval_expiry($id, true);
+    }
+
+    $tableCols     = target_record_table_columns($table);
+    $hasApprovedAt = in_array('approved_at', $tableCols, true);
+    $approvedAtSql = '';
+    if ($hasApprovedAt) {
+        $approvedAtSql = ($newStatus === 'Approved') ? ', approved_at = NOW()' : ', approved_at = NULL';
+    }
+
     $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
-    $sql      = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ?, updated_at = NOW() WHERE id = ? AND status IN ($inClause)";
+    $sql      = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ?{$approvedAtSql}, updated_at = NOW() WHERE id = ? AND status IN ($inClause)";
     $params   = array_merge([$newStatus, $remark ?: null, $approvedBy, $id], $validCurrent);
 
     if ($scopeDept !== null) {
@@ -465,9 +665,16 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     $lockedWindows = ($userRole !== 'Admin') ? em_locked_windows($effectiveYear) : [];
     $heldBack      = 0;
 
-    foreach (record_types() as $t) {
+    foreach (record_types() as $key => $t) {
+        if (!record_requires_approval($key)) {
+            continue;
+        }
         try {
-            $sql    = "UPDATE `{$t['table']}` SET status = ?, approved_by = ?, updated_at = NOW()
+            $tCols = target_record_table_columns($t['table']);
+            $hasApprovedAt = in_array('approved_at', $tCols, true);
+            $approvedAtSql = ($hasApprovedAt && $newStatus === 'Approved') ? ', approved_at = NOW()' : '';
+
+            $sql    = "UPDATE `{$t['table']}` SET status = ?, approved_by = ?{$approvedAtSql}, updated_at = NOW()
                         WHERE status IN ($inClause) AND department = ?";
             $params = array_merge([$newStatus, $approvedBy], $validCurrent, [$department]);
             if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
@@ -526,6 +733,8 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
 /** Get all records by the current user across all types. */
 function my_records(int $userId): array
 {
+    journal_process_approval_expiry();
+
     $types = record_types();
     $all = [];
 
@@ -547,4 +756,203 @@ function my_records(int $userId): array
 
     usort($all, fn($a, $b) => strtotime($b['created_at']) <=> strtotime($a['created_at']));
     return $all;
+}
+
+/**
+ * Transition a record from Draft (or Unlocked for Edit) to its canonical review status.
+ * Canonical transition:
+ * - Faculty: 'Draft' -> 'Submitted' (lands in Coordinator queue)
+ * - Coordinator: 'Draft' -> 'HOD Pending' (lands in HoD queue)
+ * - HoD / Admin: 'Draft' -> 'Approved'
+ *
+ * Checks authentication, role authorization, department, active academic year,
+ * uses a database transaction, and validates that rowCount() > 0.
+ */
+function record_submit_for_review(string $type, int $id, array $user, ?array $fieldsData = null, ?string $proofFile = null): array
+{
+    $types = record_types();
+    if (!isset($types[$type])) {
+        return [false, 'Invalid record type.'];
+    }
+
+    $activeYear = active_academic_year();
+    if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
+        return [false, "Academic year {$activeYear} cycle is locked by Administrator. Record submissions are frozen."];
+    }
+
+    $table = $types[$type]['table'];
+    $pdo = db();
+
+    // Determine canonical target status (Book / Chapter does not require approval: COORD-14)
+    if (!record_requires_approval($type)) {
+        $targetStatus = 'Submitted';
+    } elseif (in_array($user['role'], ['HoD', 'Admin'], true)) {
+        $targetStatus = 'Approved';
+    } elseif ($user['role'] === 'Coordinator') {
+        $targetStatus = 'HOD Pending';
+    } else {
+        $targetStatus = 'Submitted';
+    }
+
+    try {
+        $pdo->beginTransaction();
+
+        // 1. Fetch current record
+        $stmt = $pdo->prepare("SELECT * FROM `{$table}` WHERE id = ? FOR UPDATE");
+        $stmt->execute([$id]);
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$record) {
+            $pdo->rollBack();
+            return [false, 'Record not found.'];
+        }
+
+        // 2. Authorization and ownership check
+        if ($user['role'] === 'Faculty') {
+            if ((int)($record['created_by'] ?? 0) !== (int)$user['id']) {
+                $pdo->rollBack();
+                return [false, 'You do not have permission to submit this record for review.'];
+            }
+        } elseif ($user['role'] === 'Coordinator') {
+            if (!empty($user['department']) && !empty($record['department']) && $record['department'] !== $user['department'] && (int)($record['created_by'] ?? 0) !== (int)$user['id']) {
+                $pdo->rollBack();
+                return [false, 'Record is outside your department scope.'];
+            }
+        }
+
+        // 3. Academic year check
+        if (isset($record['academic_year']) && $record['academic_year'] !== $activeYear && $user['role'] !== 'Admin') {
+            $pdo->rollBack();
+            return [false, "Record belongs to academic year {$record['academic_year']}, but the active academic year is {$activeYear}."];
+        }
+
+        // 4. Status eligibility check: Draft or Unlocked for Edit
+        $validFromStatuses = ['Draft', 'Unlocked for Edit'];
+        if (!in_array($record['status'], $validFromStatuses, true) && $record['status'] !== $targetStatus) {
+            $pdo->rollBack();
+            return [false, "Record is currently in status '{$record['status']}' and cannot be submitted for review."];
+        }
+
+        // 5. Build UPDATE parameters
+        $setPairs = ["`status` = ?", "`updated_at` = NOW()"];
+        $params = [$targetStatus];
+
+        $tableColumns = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
+
+        if ($targetStatus === 'Approved') {
+            if (in_array('approved_at', $tableColumns, true)) {
+                $setPairs[] = "`approved_at` = NOW()";
+            }
+            if (in_array('approved_by', $tableColumns, true)) {
+                $setPairs[] = "`approved_by` = ?";
+                $params[] = (int)$user['id'];
+            }
+        }
+
+        if ($fieldsData !== null && is_array($fieldsData)) {
+            $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at', 'academic_year'];
+            $allowed = array_diff($tableColumns, $protected);
+
+            foreach ($fieldsData as $k => $v) {
+                if (!in_array($k, $allowed, true) || $v === '') continue;
+                $safeKey = str_replace('`', '``', $k);
+                $setPairs[] = "`{$safeKey}` = ?";
+                $params[] = $v;
+            }
+        }
+
+        if ($proofFile !== null && in_array('proof_file', $tableColumns, true)) {
+            $setPairs[] = "`proof_file` = ?";
+            $params[] = $proofFile;
+        }
+
+        // Build WHERE clause
+        $sql = "UPDATE `{$table}` SET " . implode(', ', $setPairs) . " WHERE id = ?";
+        $params[] = $id;
+
+        if ($user['role'] === 'Faculty') {
+            $sql .= " AND created_by = ?";
+            $params[] = (int)$user['id'];
+        } elseif ($user['role'] === 'Coordinator' && !empty($user['department'])) {
+            $sql .= " AND (department = ? OR created_by = ?)";
+            $params[] = $user['department'];
+            $params[] = (int)$user['id'];
+        }
+
+        $updateStmt = $pdo->prepare($sql);
+        $updateStmt->execute($params);
+
+        if ($updateStmt->rowCount() === 0 && $record['status'] !== $targetStatus) {
+            $pdo->rollBack();
+            return [false, 'Failed to update record status. The record was not modified.'];
+        }
+
+        // If target is Approved, sync target metrics
+        if ($targetStatus === 'Approved') {
+            require_once __DIR__ . '/Target.php';
+            sync_target_achieved_for_type($type);
+        }
+
+        $pdo->commit();
+        $msg = !record_requires_approval($type) ? 'Record submitted successfully.' : 'Record submitted for review successfully.';
+        return [true, $msg];
+    } catch (\PDOException $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('record_submit_for_review PDOException: ' . $e->getMessage());
+        return [false, 'Failed to submit record for review due to a database error. Please check the fields and try again.'];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('record_submit_for_review failed: ' . $e->getMessage());
+        return [false, 'An error occurred while submitting the record for review. Please try again.'];
+    }
+}
+
+/**
+ * Canonical Record class wrapper for object-oriented callers and test suites.
+ */
+class Record
+{
+    public static function report_records(array $user, ?string $department, ?string $status, ?string $type, ?string $from = null, ?string $to = null, ?string $year = null): array
+    {
+        return report_records($user, $department, $status, $type, $from, $to, $year);
+    }
+
+    public static function academic_records(array $user, ?string $department = null, ?string $status = null, ?string $from = null, ?string $to = null, ?string $year = null): array
+    {
+        return report_records($user, $department, $status, null, $from, $to, $year);
+    }
+
+    public static function list(string $type, ?string $department = null, ?string $status = null, ?int $createdBy = null, ?string $from = null, ?string $to = null, ?string $year = null): array
+    {
+        return records_list($type, $department, $status, $createdBy, $from, $to, $year);
+    }
+
+    public static function types(): array
+    {
+        return record_types();
+    }
+
+    public static function categories(): array
+    {
+        return record_categories();
+    }
+
+    public static function process_journal_expiry(?int $specificId = null, bool $forceCheck = false): int
+    {
+        return journal_process_approval_expiry($specificId, $forceCheck);
+    }
+
+    public static function approval_history(string $type, int $id): array
+    {
+        return record_approval_history($type, $id);
+    }
+
+    public static function requires_approval(string $type): bool
+    {
+        return record_requires_approval($type);
+    }
 }

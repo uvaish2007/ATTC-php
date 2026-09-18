@@ -326,6 +326,7 @@ if (!function_exists('mb_strlen')) {
 }
 
 /**
+<<<<<<< HEAD
  * Build a secure URL to view or download an authorized proof attachment.
  */
 /**
@@ -404,5 +405,71 @@ function record_proof_meta(string $type, int $id, ?string $filename): ?array
         'exists'       => ($filePath !== null),
         'base64_data'  => $base64Data,
     ];
+=======
+ * Resolve the physical filesystem path of a stored proof file.
+ * Returns null if the file does not exist.
+ */
+function proof_file_path(?string $filename): ?string
+{
+    if (!$filename) {
+        return null;
+    }
+    $safe = basename($filename);
+    if ($safe === '') {
+        return null;
+    }
+    $base = rtrim(UPLOAD_DIR, '/\\');
+    if (is_file($base . '/' . $safe)) {
+        return $base . '/' . $safe;
+    }
+    if (is_file($base . '/proofs/' . $safe)) {
+        return $base . '/proofs/' . $safe;
+    }
+    return null;
+}
+
+/** Check if a proof file exists physically on the server. */
+function proof_file_exists(?string $filename): bool
+{
+    return proof_file_path($filename) !== null;
+}
+
+/**
+ * Render the Proof table cell:
+ * - If no proof: "No proof attached"
+ * - If physical file is missing: "Proof unavailable"
+ * - If file exists: [ View Proof ] and [ Download ] actions
+ */
+function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $recordId = null): string
+{
+    require_once __DIR__ . '/icons.php';
+
+    if (empty($proofFile)) {
+        return '<span class="card-sub">No proof attached</span>';
+    }
+
+    if (!proof_file_exists($proofFile)) {
+        return '<span class="card-sub" style="color:var(--ink-muted,#64748b);">Proof unavailable</span>';
+    }
+
+    $params = ['file' => $proofFile];
+    if (!empty($typeKey)) {
+        $params['type'] = $typeKey;
+    }
+    if (!empty($recordId)) {
+        $params['id'] = $recordId;
+    }
+
+    $viewUrl = url('view-proof.php?' . http_build_query($params));
+    $params['download'] = '1';
+    $downloadUrl = url('view-proof.php?' . http_build_query($params));
+
+    return '<div style="display:inline-flex;align-items:center;gap:6px;">'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($viewUrl) . '" target="_blank" rel="noopener" title="View Proof">'
+        . icon('paperclip', 14) . ' View Proof</a>'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($downloadUrl) . '" download title="Download Proof">'
+        . icon('download', 14) . '</a>'
+        . '</div>';
+>>>>>>> e54d139685a6a021eee864a5b65697b107b56e46
 }
 

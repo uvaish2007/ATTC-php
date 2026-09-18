@@ -37,6 +37,10 @@ $department  = $isOversight
     ? (trim((string) input('department')) ?: null)
     : ($user['department'] ?? null);
 
+// Respect centralized active academic year system
+$yearInput = trim((string) input('year', ''));
+$year = (is_valid_academic_year($yearInput) ? $yearInput : null) ?: active_academic_year();
+
 $columns = template_columns();
 $rows    = template_rows();
 $today   = date('d.m.Y');
@@ -71,11 +75,11 @@ $norm = function ($s): string {
     return trim($s);
 };
 
-// Index one department's uploaded targets by their normalised metric text.
-$buildByMetric = function (?string $dept) use ($norm): array {
+// Index one department's uploaded targets by their normalised metric text for the scoped academic year.
+$buildByMetric = function (?string $dept) use ($norm, $year): array {
     $index = [];
     if ($dept !== null) {
-        foreach (target_report_items($dept) as $t) {
+        foreach (target_report_items($dept, $year) as $t) {
             $key = $norm($t['metric']);
             if ($key !== '' && !isset($index[$key])) {
                 $index[$key] = $t;
@@ -109,7 +113,7 @@ if ($format === 'word') {
     $exportRows = [];
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
-        'EXECUTIVE MEETING REPORT - TARGETS FIXED & ACHIEVED',
+        'EXECUTIVE MEETING REPORT - TARGETS FIXED & ACHIEVED (' . $year . ')',
         'Department: ' . ($department ? department_full_name($department) : 'ALL DEPARTMENTS'),
         'Report Date: ' . $today
     ];
@@ -144,9 +148,8 @@ if ($format === 'word') {
         exit;
     }
 
-    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
-    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
+    http_response_code(500);
+    exit('Failed to generate Excel spreadsheet.');
 } else {
     header('Content-Type: text/html; charset=UTF-8');
 }
@@ -167,7 +170,7 @@ report_document_head($reportDocTitle, 'landscape');
 
 <?php
 require_once __DIR__ . '/models/Target.php';   // academic_years()
-[$durFrom, $durTo] = report_year_duration(academic_years()[0] ?? null);
+[$durFrom, $durTo] = report_year_duration($year);
 
 // One proforma per department to render (all of them when none was chosen).
 foreach ($deptsToRender as $dIndex => $dept):
