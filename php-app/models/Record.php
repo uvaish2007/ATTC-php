@@ -279,7 +279,7 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     if ($role === 'Coordinator' || $stage === 'Submitted') {
         $targetStatuses = ['Submitted', 'Unlocked for Edit'];
     } elseif ($role === 'HoD' || $stage === 'HOD Pending') {
-        $targetStatuses = ['Approved', 'Submitted', 'HOD Pending'];
+        $targetStatuses = ['Approved', 'Submitted', 'HOD Pending', 'Edit Requested'];
     } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
         $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {
@@ -335,6 +335,10 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         return [false, 'Invalid review action.'];
     }
 
+    if ($userRole === 'HoD' && in_array($action, ['approve', 'reject', 'approve_edit'], true)) {
+        return [false, 'HOD is not authorized to directly approve or reject records. Please use the Request Edit to Dean/Admin workflow.'];
+    }
+
     $effectiveYear = $year ?: active_academic_year();
     if ($userRole !== 'Admin' && academic_year_is_locked($effectiveYear)) {
         return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Record reviews are frozen for all roles."];
@@ -342,14 +346,13 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     $table = $types[$type]['table'];
 
-<<<<<<< HEAD
     // Review & Edit Request Chain:
     // 1. Faculty uploads -> status 'Submitted'
     // 2. Coordinator approves -> status 'Approved' (direct to DB, syncs targets)
     // 3. HoD requests edit to Dean -> status 'Edit Requested'
     // 4. Dean approves edit request -> status 'Unlocked for Edit'
     // 5. Coordinator edits and resubmits -> status 'Approved'
-=======
+
     // FEAT-07: a record submitted during EM1 is read-only once EM1 has closed.
     // Checked here for a clear message, and again in the UPDATE's own WHERE
     // below so the rule holds even if this read and that write were to race.
@@ -360,15 +363,15 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
             return [false, EM1_LOCKED_MESSAGE];
         }
     }
-
-    // Review chain: Coordinator / HoD approves record directly to Approved.
->>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
     if ($userRole === 'Coordinator') {
         $validCurrent = ['Submitted', 'Unlocked for Edit'];
         $newStatus    = ($action === 'reject') ? 'Rejected' : 'Approved';
     } elseif ($userRole === 'HoD') {
+        if ($action !== 'request_edit') {
+            return [false, 'HOD can only submit Edit Requests to Dean/Admin.'];
+        }
         $validCurrent = ['Approved', 'Submitted', 'HOD Pending', 'Dean Pending'];
-        $newStatus    = ($action === 'request_edit') ? 'Edit Requested' : (($action === 'reject') ? 'Rejected' : 'Edit Requested');
+        $newStatus    = 'Edit Requested';
     } elseif ($userRole === 'Dean') {
         $validCurrent = ['Edit Requested', 'Dean Pending'];
         $newStatus    = ($action === 'reject') ? 'Rejected' : 'Unlocked for Edit';
@@ -439,6 +442,10 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
         return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Approvals are frozen for all roles."];
     }
 
+    if ($userRole === 'HoD') {
+        return [false, 'HOD is not authorized to directly approve or bulk-approve records.'];
+    }
+
     if ($userRole === 'Coordinator') {
         $validCurrent = ['Submitted'];
         $newStatus    = 'Approved';
@@ -497,13 +504,9 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
 
     if ($total === 0) {
-<<<<<<< HEAD
-        return [false, 'Nothing pending in ' . $department . '.'];
-=======
         return [false, $heldBack
             ? EM1_LOCKED_MESSAGE . " {$heldBack} pending EM1 record" . ($heldBack === 1 ? ' was' : 's were') . ' left unchanged.'
             : 'Nothing pending to approve in ' . $department . '.'];
->>>>>>> 7de9436ab3e7a8b6dec50837c649b34b5ad285b3
     }
 
     if ($newStatus === 'Approved') {

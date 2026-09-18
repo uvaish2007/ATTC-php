@@ -49,33 +49,51 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof could not be uploaded (invalid temporary file).'];
     }
 
-    // PDF only, by extension and by actual content.
+    // Supported proof formats: PDF documents and images (JPG, JPEG, PNG)
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-    if ($ext !== 'pdf') {
-        return [null, 'The proof must be a PDF file (.pdf).'];
+    $allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
+    if (!in_array($ext, $allowedExts, true)) {
+        return [null, 'The proof must be a PDF document (.pdf) or an image (.jpg, .jpeg, .png).'];
     }
 
     if ($file['size'] > PROOF_MAX_BYTES) {
-        return [null, 'The PDF is larger than 2 MB. Please upload a smaller one.'];
+        return [null, 'The proof attachment is larger than 2 MB. Please upload a smaller one.'];
     }
 
-    // Validate MIME type and binary header magic bytes (%PDF-)
+    // Validate MIME type and binary header magic bytes
     $finfo = finfo_open(FILEINFO_MIME_TYPE);
     $mime = $finfo ? (string) finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
     if ($finfo) {
         finfo_close($finfo);
     }
-    if ($mime !== '' && stripos($mime, 'pdf') === false && stripos($mime, 'octet-stream') === false) {
-        return [null, 'That file is not a valid PDF document.'];
-    }
 
     $handle = @fopen($file['tmp_name'], 'rb');
-    $header = $handle ? fread($handle, 4) : '';
+    $header4 = $handle ? fread($handle, 4) : '';
     if ($handle) {
         fclose($handle);
     }
-    if ($header !== '%PDF') {
-        return [null, 'That file is not a valid PDF document.'];
+
+    if ($ext === 'pdf') {
+        if ($mime !== '' && stripos($mime, 'pdf') === false && stripos($mime, 'octet-stream') === false) {
+            return [null, 'That file is not a valid PDF document.'];
+        }
+        if ($header4 !== '%PDF') {
+            return [null, 'That file is not a valid PDF document.'];
+        }
+    } elseif (in_array($ext, ['jpg', 'jpeg'], true)) {
+        if ($mime !== '' && stripos($mime, 'jpeg') === false && stripos($mime, 'jpg') === false && stripos($mime, 'octet-stream') === false) {
+            return [null, 'That file is not a valid JPEG image.'];
+        }
+        if (substr($header4, 0, 3) !== "\xFF\xD8\xFF") {
+            return [null, 'That file is not a valid JPEG image.'];
+        }
+    } elseif ($ext === 'png') {
+        if ($mime !== '' && stripos($mime, 'png') === false && stripos($mime, 'octet-stream') === false) {
+            return [null, 'That file is not a valid PNG image.'];
+        }
+        if ($header4 !== "\x89PNG") {
+            return [null, 'That file is not a valid PNG image.'];
+        }
     }
 
     $baseFolder = rtrim(UPLOAD_DIR, '/\\');
@@ -89,7 +107,7 @@ function save_upload_proof(?array $file, bool $required = false): array
 
     $uniqueId = bin2hex(random_bytes(8));
     $timestamp = time();
-    $stored = "record_{$uniqueId}_{$timestamp}.pdf";
+    $stored = "record_{$uniqueId}_{$timestamp}.{$ext}";
 
     $destPath = $baseFolder . '/' . $stored;
     if (!move_uploaded_file($file['tmp_name'], $destPath) || !file_exists($destPath)) {
@@ -109,6 +127,20 @@ function save_upload_proof(?array $file, bool $required = false): array
 // and Admin skip this block and use the page exactly as before.
 $uploadFlow = null;   // the validated choice once the form may open
 if (upload_flow_applies($user)) {
+    // If opening or submitting an existing record for revision (edit_id), automatically
+    // initialize flow state from the record's existing academic year and category.
+    $flowEditId   = (int) ($_GET['edit_id'] ?? $_POST['edit_id'] ?? 0);
+    $flowEditType = (string) ($_GET['type'] ?? $_POST['record_type'] ?? '');
+    if ($flowEditId > 0 && $flowEditType !== '') {
+        require_once __DIR__ . '/models/EditRequest.php';
+        $flowEditRec = edit_request_original_record($flowEditType, $flowEditId);
+        if ($flowEditRec) {
+            $recYear = $flowEditRec['academic_year'] ?? active_academic_year();
+            $recDt   = upload_flow_data_type_of($flowEditType) ?? 'faculty';
+            upload_flow_store($user, ['year' => $recYear, 'data_type' => $recDt]);
+        }
+    }
+
     if (isset($_GET['reset']) || isset($_GET['new'])) {
         upload_flow_store($user, ['year' => null, 'data_type' => null]);
     } elseif (($_GET['step'] ?? '') === 'year') {
@@ -511,6 +543,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
 
+            require_once __DIR__ . '/models/EditRequest.php';
+            edit_request_mark_completed_for_record($type, $editId);
+
             flash('success', $types[$type]['label'] . ' updated and saved to database.');
             redirect('/approvals.php');
         } catch (\PDOException $e) {
@@ -607,24 +642,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // Current user's records
 $effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
 $myRecords = my_records($user['id']);
-<<<<<<< HEAD
+$submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
+unset($_SESSION['submitted_draft_type']);
+
 $tabsToShow = $uploadFlow ? array_intersect_key($types, array_flip($typeKeys)) : $types;
 $defaultType = $typeKeys[0] ?? 'journal';
 $selectedType = trim((string)($_GET['type'] ?? $defaultType));
 if (!isset($types[$selectedType]) || !in_array($selectedType, $typeKeys, true)) {
     $selectedType = $defaultType;
 }
-=======
-$submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
-unset($_SESSION['submitted_draft_type']);
-$selectedType = trim((string)($_GET['type'] ?? 'journal'));
-if (!isset($types[$selectedType])) $selectedType = 'journal';
->>>>>>> b4b4e74ccd8fdc44a84aac5fb5e8d46811b8de3c
 
 $selIdx    = array_search($selectedType, $typeKeys, true);
 $isLast    = $selIdx === count($typeKeys) - 1;
 $nextType  = $typeKeys[$selIdx + 1] ?? null;
 $prevType  = $selIdx > 0 ? $typeKeys[$selIdx - 1] : null;
+
+$editId = (int) input('edit_id');
+$editRecord = null;
+if ($editId > 0 && isset($types[$selectedType])) {
+    require_once __DIR__ . '/models/EditRequest.php';
+    $editRecord = edit_request_original_record($selectedType, $editId);
+}
 
 /**
  * Render department input: locked readonly for Faculty (preserving their department),
@@ -681,13 +719,8 @@ require __DIR__ . '/inc/header.php';
 
 <!-- Type selector tabs -->
 <div class="card" style="margin-bottom:16px">
-<<<<<<< HEAD
-  <div class="card-body js-category-nav-container" style="padding:8px 16px; overflow-x:auto; white-space:nowrap">
-    <?php foreach ($tabsToShow as $key => $t): ?>
-=======
   <div class="card-body js-category-nav-container" style="padding:8px 16px 14px; overflow-x:auto; white-space:nowrap; position:relative; scrollbar-width:thin;">
-    <?php foreach ($types as $key => $t): ?>
->>>>>>> b4b4e74ccd8fdc44a84aac5fb5e8d46811b8de3c
+    <?php foreach ($tabsToShow as $key => $t): ?>
       <a href="<?= e(url('upload.php?type=' . $key)) ?>"
          class="btn btn-sm js-category-tab <?= $selectedType === $key ? 'btn-primary active' : 'btn-ghost' ?>"
          data-type="<?= e($key) ?>"
@@ -847,7 +880,13 @@ require __DIR__ . '/inc/header.php';
 <!-- Upload form -->
 <div class="card" style="margin-bottom:20px">
   <div class="card-head">
-    <div><div class="card-title">New <?= e($types[$selectedType]['label']) ?> <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span></div><div class="card-sub">Fill in the details and submit for review</div></div>
+    <div>
+      <div class="card-title">
+        <?= $editId > 0 ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . $editId : 'New ' . e($types[$selectedType]['label']) ?>
+        <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span>
+      </div>
+      <div class="card-sub"><?= $editId > 0 ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
+    </div>
     <?php if (record_report_spec($selectedType) !== null): ?>
       <a class="btn btn-secondary btn-sm" href="<?= e(url('record-report.php?type=' . $selectedType . '&format=word')) ?>"><?= icon('download') ?> Download this report</a>
     <?php endif; ?>
@@ -856,6 +895,18 @@ require __DIR__ . '/inc/header.php';
     <form method="post" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="hidden" name="record_type" value="<?= e($selectedType) ?>">
+      <?php if ($editId > 0): ?>
+        <input type="hidden" name="edit_id" value="<?= $editId ?>">
+      <?php endif; ?>
+
+      <?php if ($editRecord && $editRecord['status'] === 'Unlocked for Edit'): ?>
+        <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #1D4ED8;color:#1E40AF;padding:12px 16px;border-radius:8px;margin-bottom:18px;font-size:13px">
+          <strong>Editing Unlocked Record #<?= $editId ?>:</strong> An edit request was approved by Dean/Admin. Please make the required corrections and click "Save & Resubmit Record".
+          <?php if (!empty($editRecord['review_remark'])): ?>
+            <div style="margin-top:4px;font-size:12px;color:#1D4ED8"><strong>Instructions:</strong> <?= e($editRecord['review_remark']) ?></div>
+          <?php endif; ?>
+        </div>
+      <?php endif; ?>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
       <?php if (in_array($selectedType, ['journal','book','conference','patent','fdp'])): ?>
@@ -1054,7 +1105,13 @@ require __DIR__ . '/inc/header.php';
       <!-- Save this entry and add another of the same type, move on to the next
            metric, or finish on the last one. -->
       <div class="upload-actions">
-        <?php if (!$isUploadLocked || $user['role'] === 'Admin'): ?>
+        <?php if ($editId > 0): ?>
+          <button type="submit" name="nav" value="add" class="btn btn-primary" style="background:#1D4ED8;border-color:#1D4ED8;font-weight:600;display:inline-flex;align-items:center;gap:6px">
+            <?= icon('check') ?> Save &amp; Resubmit Record
+          </button>
+          <div class="spacer"></div>
+          <a class="btn btn-ghost" href="<?= e(url('approvals.php')) ?>"><?= icon('arrow-left') ?> Cancel &amp; Back to Approvals</a>
+        <?php elseif (!$isUploadLocked || $user['role'] === 'Admin'): ?>
           <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
           <div class="spacer"></div>
           <?php if ($prevType): ?>
@@ -1083,6 +1140,45 @@ require __DIR__ . '/inc/header.php';
         <?php endif; ?>
       </div>
     </form>
+
+    <?php if ($editRecord): ?>
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var record = <?= json_encode($editRecord) ?>;
+      var form = document.querySelector('form[enctype="multipart/form-data"]');
+      if (!form || !record) return;
+      for (var key in record) {
+        if (!record.hasOwnProperty(key)) continue;
+        if (key.indexOf('_') === 0 || key === 'id' || key === 'status' || key === 'proof_file' || key === 'created_at' || key === 'updated_at') continue;
+        var val = record[key];
+        if (val === null || val === undefined) continue;
+        var el = form.elements[key];
+        if (el) {
+          if (el.type === 'select-one' || el.tagName === 'SELECT') {
+            var matched = false;
+            for (var i = 0; i < el.options.length; i++) {
+              if (el.options[i].value == val || el.options[i].text == val) {
+                el.selectedIndex = i;
+                matched = true;
+                break;
+              }
+            }
+            if (!matched && el.classList.contains('js-other')) {
+              el.value = 'Others';
+              var otherBox = form.elements[key + '_other'];
+              if (otherBox) {
+                otherBox.value = val;
+                otherBox.style.display = '';
+              }
+            }
+          } else if (el.type !== 'file' && el.type !== 'hidden') {
+            el.value = val;
+          }
+        }
+      }
+    });
+    </script>
+    <?php endif; ?>
 
     <script>
       /* A dropdown with an "Others" option reveals a text box to type the real
@@ -1404,7 +1500,7 @@ require __DIR__ . '/inc/header.php';
           <td><span class="badge badge-neutral"><?= e($r['_type_label']) ?></span></td>
           <td>
             <?php if (!empty($r['proof_file'])): ?>
-              <a class="btn btn-ghost btn-sm" href="<?= e(UPLOAD_URL . '/' . rawurlencode($r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
+              <a class="btn btn-ghost btn-sm" href="<?= e(record_proof_url($r['_type_key'] ?? $selectedType, (int)$r['id'], $r['proof_file'])) ?>" target="_blank" rel="noopener"><?= icon('paperclip', 14) ?> View</a>
             <?php else: ?>
               <span class="card-sub">—</span>
             <?php endif; ?>
