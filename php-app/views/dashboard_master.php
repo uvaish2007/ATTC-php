@@ -27,7 +27,7 @@ $statusColours = [
     'Approved'     => '#059669',
     'Dean Pending' => '#F59E0B',
     'HOD Pending'  => '#2563EB',
-    'Submitted'    => '#2563EB',
+    'Submitted'    => '#7C3AED',
     'Rejected'     => '#DC2626',
     'Draft'        => '#6B7FA8',
 ];
@@ -154,6 +154,18 @@ if ($user['role'] === 'HoD') {
                         : 'No pending requests',
                     'icon' => 'key', 'tone' => $pwPending ? 'brand' : 'navy',
                     'href' => url('password-requests.php?status=Pending')];
+
+        // FEAT-12 — the historical archive of expired announcements. Managing
+        // it is an Admin job, so only the Admin gets the card; Principal and
+        // Director fall through this branch too and must not see it.
+        require_once __DIR__ . '/../models/Announcement.php';
+        $archiveCounts = announcement_archive_counts();
+        $cards[] = ['label' => 'Announcement Archive', 'value' => (string) $archiveCounts['total'],
+                    'sub' => $archiveCounts['total']
+                        ? $archiveCounts['archived'] . ' archived · ' . $archiveCounts['restored'] . ' restored'
+                        : 'No expired announcements archived yet',
+                    'icon' => 'archive', 'tone' => 'navy',
+                    'href' => url('announcements-archive.php')];
     }
 }
 
@@ -275,6 +287,11 @@ if (!function_exists('dash_column_chart')) {
      * showing the total. Zero-value slices are dropped from the ring; the caller
      * still lists them in the legend.
      *
+     * Neighbouring arcs are parted by a hairline of the card background so two
+     * slices never fuse into one block. The gap is trimmed off both ends of
+     * every arc and capped against the smallest slice, so a 1-in-22 sliver
+     * still draws as a sliver rather than vanishing into the seams.
+     *
      * @param array<int,array{label:string,value:int|string,color:string}> $slices
      */
     function dash_donut_chart(array $slices, string $centreCap = ''): string
@@ -288,17 +305,28 @@ if (!function_exists('dash_column_chart')) {
         $c = 80; $r = 56; $sw = 26;
         $circ = 2 * M_PI * $r;
 
+        // A single slice fills the ring, and a seam there would only look like
+        // a nick, so it gets none. Otherwise the gap is a third of the smallest
+        // arc at most, which keeps the thinnest slice clearly wider than it.
+        $smallest = (int) min(array_map(static fn($s) => (int) $s['value'], $slices));
+        $gap = count($slices) > 1
+            ? min(2.5, ($smallest / $total) * $circ / 3)
+            : 0.0;
+
+        // The track is only ever seen through those gaps — the slices always
+        // add up to the whole ring — so it carries the card's own colour.
         $svg  = '<svg class="donut" viewBox="0 0 160 160" role="img">';
         $svg .= '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none"'
-              . ' stroke="var(--navy-100,#E7EBF3)" stroke-width="' . $sw . '"/>';
+              . ' stroke="var(--surface,#FFFFFF)" stroke-width="' . $sw . '"/>';
 
         $offset = 0.0;
         foreach ($slices as $s) {
-            $len = ((int) $s['value'] / $total) * $circ;
+            $len  = ((int) $s['value'] / $total) * $circ;
+            $draw = max(0.5, $len - $gap);      // half the gap comes off each end
             $svg .= '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none"'
                   . ' stroke="' . $s['color'] . '" stroke-width="' . $sw . '"'
-                  . ' stroke-dasharray="' . round($len, 2) . ' ' . round($circ - $len, 2) . '"'
-                  . ' stroke-dashoffset="' . round(-$offset, 2) . '"'
+                  . ' stroke-dasharray="' . round($draw, 2) . ' ' . round($circ - $draw, 2) . '"'
+                  . ' stroke-dashoffset="' . round(-($offset + $gap / 2), 2) . '"'
                   . ' transform="rotate(-90 ' . $c . ' ' . $c . ')">'
                   . '<title>' . e($s['label'] . ': ' . (int) $s['value']) . '</title></circle>';
             $offset += $len;
@@ -1345,18 +1373,36 @@ if (!function_exists('dash_column_chart')) {
   <?php if ($isOversight): ?>
     <?php
       // A steady colour per role, with a fallback palette for any extra roles.
+      // Every hue here is distinct: Principal and Director used to share
+      // #33456B, and that slate sat so close to the Admin navy that the two
+      // arcs read as one shapeless block at the top of the ring.
       $roleColors = [
-          'Admin'     => '#131D3B', 'Principal' => '#33456B', 'Director' => '#33456B', 'Dean' => '#2563EB',
+          'Admin'     => '#131D3B', 'Principal' => '#7C3AED', 'Director' => '#0891B2', 'Dean' => '#2563EB',
           'HoD'       => '#FF4F01', 'Coordinator' => '#059669', 'Faculty' => '#9FADCB',
       ];
-      $rolePalette = ['#2563EB', '#FF4F01', '#059669', '#7C3AED', '#0891B2', '#DC2626', '#131D3B', '#9FADCB'];
+      // Spare hues for a role not named above, none of them already spoken for.
+      $rolePalette = ['#DC2626', '#F59E0B', '#0F766E', '#BE185D', '#4338CA', '#65A30D'];
       $roleSlices = [];
+      $roleUsed   = [];
       $rpi = 0;
       foreach ($data['usersByRole'] as $role => $count) {
+          $colour = $roleColors[$role] ?? null;
+          // Walk the spares until one is free, so the fallback can never hand
+          // two roles the same colour. If they all run out, take the next one
+          // anyway rather than leaving the slice unpainted.
+          if ($colour === null || in_array($colour, $roleUsed, true)) {
+              for ($tries = 0; $tries < count($rolePalette); $tries++) {
+                  $colour = $rolePalette[$rpi++ % count($rolePalette)];
+                  if (!in_array($colour, $roleUsed, true)) {
+                      break;
+                  }
+              }
+          }
+          $roleUsed[] = $colour;
           $roleSlices[] = [
               'label' => (string) $role,
               'value' => (int) $count,
-              'color' => $roleColors[$role] ?? $rolePalette[$rpi++ % count($rolePalette)],
+              'color' => $colour,
           ];
       }
       $roleTotal = array_sum(array_column($roleSlices, 'value'));
