@@ -23,7 +23,11 @@ if (input('ajax') === 'faculty_detail') {
 
     // Verify department authorization for HoD and Coordinator
     if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
+<<<<<<< HEAD
         $targetUser = user_find_by_id($facId);
+=======
+        $targetUser = user_find($facId);
+>>>>>>> 4675e58a03a1b44648749265ba65203902c42789
         if (!$targetUser || !department_names_match($targetUser['department'] ?? '', $user['department'] ?? '')) {
             echo json_encode(['error' => 'Unauthorized access to faculty outside your department']);
             exit;

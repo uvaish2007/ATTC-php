@@ -658,4 +658,3 @@ if (!function_exists('user_department_scope')) {
     }
 }
 
-

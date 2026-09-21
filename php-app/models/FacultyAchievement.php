@@ -238,19 +238,20 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     $teamStmt->execute($teamParams);
     $registeredAccounts = (int) $teamStmt->fetchColumn();
 
+    // Determine top category
+    $topCategory = '—';
+    if (!empty($categoryCounts)) {
+        $tempCounts = $categoryCounts;
+        arsort($tempCounts);
+        $topCategory = array_key_first($tempCounts) ?: '—';
+    }
+
     // Total active departments
     if ($effDept) {
         $deptCount = 1;
     } else {
         $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
         $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
-    }
-
-    // Determine top category
-    $topCategory = '—';
-    if (!empty($categoryCounts)) {
-        arsort($categoryCounts);
-        $topCategory = array_key_first($categoryCounts) ?: '—';
     }
     return [
         'totalFaculty'       => $totalFaculty,

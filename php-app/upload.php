@@ -122,7 +122,7 @@ function save_upload_proof(?array $file, bool $required = false): array
 
     return [$stored, null];
 }
-} // end if !function_exists('save_upload_proof')
+}
 
 // ---- Upload Data entry flow: Academic Year → Data Type → this form ---------
 // Faculty and Coordinator pick both before the form opens (models/UploadFlow.php).
@@ -548,36 +548,78 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $values = [];
         $placeholders = [];
 
-        $editId = (int) input('edit_id', input('record_id', 0));
-        if ($editId > 0) {
-            [$ok, $msg] = record_submit_for_review($type, $editId, $user, $_POST, $proofStored);
-            if ($ok) {
-                require_once __DIR__ . '/models/EditRequest.php';
-                edit_request_mark_completed_for_record($type, $editId);
-
-                flash('success', record_requires_approval($type) ? 'Record submitted for review successfully.' : 'Record submitted successfully.');
-                $_SESSION['submitted_draft_type'] = $type;
-                if ($user['role'] === 'Coordinator' && input('source') === 'approvals') {
-                    redirect('/approvals.php');
-                } else {
-                    redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
-                }
-            } else {
-                if ($proofStored !== null) {
-                    @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
-                    @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
-                }
-                flash('error', $msg);
-                redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
-            }
+    $editId = (int) input('edit_id');
+    if ($editId > 0) {
+        [$canEdit, $errMsg, $existingRec] = can_edit_record($type, $editId, $user);
+        if (!$canEdit) {
+            flash('error', $errMsg);
+            redirect('/approvals.php');
         }
 
-    // Review chain: Faculty -> Coordinator -> HoD. A Coordinator's own upload
-    // skips the Coordinator step; a HoD's or Admin's upload is already final.
+        $setPairs = [];
+        $updateValues = [];
+        $oldValues = [];
+        $newValues = [];
+
+        foreach ($_POST as $k => $v) {
+            if (!in_array($k, $allowed, true) || $v === '') continue;
+            if (($existingRec[$k] ?? null) != $v) {
+                $oldValues[$k] = $existingRec[$k] ?? null;
+                $newValues[$k] = $v;
+            }
+            $setPairs[] = "`$k` = ?";
+            $updateValues[] = $v;
+        }
+        if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
+            $setPairs[] = "`proof_file` = ?";
+            $updateValues[] = $proofStored;
+            $newValues['proof_file'] = $proofStored;
+        }
+        $setPairs[] = "`status` = ?";
+        $updateValues[] = 'Resubmitted';
+        $setPairs[] = "`review_remark` = ?";
+        $updateValues[] = 'Corrected and resubmitted by Coordinator ' . ($user['name'] ?? '');
+        $setPairs[] = "`updated_at` = NOW()";
+
+        try {
+            $sql = "UPDATE `$table` SET " . implode(', ', $setPairs) . " WHERE id = ?";
+            $updateValues[] = $editId;
+            $pdo->prepare($sql)->execute($updateValues);
+
+            edit_request_complete($editId, $type, (int)$user['id'], $oldValues, $newValues);
+
+            record_workflow_audit(
+                $type,
+                $editId,
+                'COORDINATOR_RESUBMITTED',
+                $user,
+                $existingRec['status'] ?? 'Unlocked for Edit',
+                'Resubmitted',
+                'Coordinator resubmitted corrected record',
+                ['old_values' => $oldValues, 'new_values' => $newValues],
+                $existingRec['department'] ?? ($user['department'] ?? null),
+                $existingRec['academic_year'] ?? $activeYear
+            );
+
+            require_once __DIR__ . '/models/Target.php';
+            sync_target_achieved_for_type($type);
+
+            flash('success', $types[$type]['label'] . ' corrected and resubmitted for HoD review.');
+            redirect('/approvals.php');
+        } catch (\PDOException $e) {
+            error_log('upload.php update failed: ' . $e->getMessage());
+            flash('error', 'Failed to update record.');
+            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
+        }
+    }
+
+    // Review chain: Faculty -> Coordinator verifies & approves -> HoD reviews only.
+    // Faculty submissions land in 'Submitted' (pending Coordinator verification).
+    // Coordinator, HoD, and Admin uploads are already verified and land 'Approved'.
     // If the record type does NOT require approval (e.g. Book / Chapter), status is always Submitted.
     if (!record_requires_approval($type)) {
         $initialStatus = 'Submitted';
-    } elseif (in_array($user['role'], ['HoD', 'Admin'], true)) {
+    } elseif (in_array($user['role'], ['Coordinator', 'HoD', 'Admin'], true)) {
         $initialStatus = 'Approved';
     } else {
         $initialStatus = 'Submitted';
@@ -627,39 +669,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if ($proofStored !== null && in_array('proofs', $tableColumns, true) && !in_array('proofs', $fields, true)) {
             $fields[] = 'proofs'; $values[] = json_encode([$proofStored]); $placeholders[] = '?';
         }
-
-        // Final strict safeguard against partial database inserts:
-        // Verify that every canonical mandatory field is present and non-empty in $fields.
-        $missingFields = [];
-        foreach ($expectedFields as $fKey => $fLabel) {
-            if ($fKey === 'academic_year') continue;
-            $valIdx = array_search($fKey, $fields, true);
-            if ($valIdx === false || trim((string)($values[$valIdx] ?? '')) === '') {
-                $missingFields[] = "{$fLabel} is required.";
-            }
-        }
-
-        if (!empty($missingFields)) {
-            if ($proofStored !== null) {
-                @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
-                @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
-            }
-            flash('error', implode('<br>', $missingFields));
-            redirect('/upload.php?type=' . $type);
-        }
-
-        $pdo->beginTransaction();
         $quotedFields = array_map(fn($f) => '`' . str_replace('`', '``', $f) . '`', $fields);
         $sql = "INSERT INTO `$table` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($values);
-
-        if ($stmt->rowCount() === 0) {
-            $pdo->rollBack();
-            throw new \Exception("Database insertion failed: 0 rows affected.");
-        }
+        $pdo->prepare($sql)->execute($values);
         $newRecordId = (int)$pdo->lastInsertId();
-        $pdo->commit();
 
         // Audit log for faculty submission
         if ($initialStatus === 'Submitted') {
@@ -677,8 +690,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             );
         }
 
-        // A HoD/Admin upload lands Approved, so refresh any target it feeds.
-        // For types where approval is not required, a Submitted record also feeds targets.
+        // An upload that lands Approved refreshes any target it feeds.
         if ($initialStatus === 'Approved' || !record_requires_approval($type)) {
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
@@ -1006,7 +1018,9 @@ require __DIR__ . '/inc/header.php';
     <div>
       <div class="card-title">
         <?= $editRecord ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($types[$selectedType]['label']) ?>
-        <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span>
+        <?php if ($editRecord): ?>
+          <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span>
+        <?php endif; ?>
         <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span>
       </div>
       <div class="card-sub"><?= $editRecord ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
@@ -1019,15 +1033,15 @@ require __DIR__ . '/inc/header.php';
     <form method="post" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="hidden" name="record_type" value="<?= e($selectedType) ?>">
-      <?php if ($editRecord): ?>
-        <input type="hidden" name="edit_id" value="<?= (int)$editRecord['id'] ?>">
+      <?php if ($editRecord || $editId > 0): ?>
+        <input type="hidden" name="edit_id" value="<?= $editId > 0 ? $editId : (int)$editRecord['id'] ?>">
         <?php if (!empty($_GET['source'])): ?>
           <input type="hidden" name="source" value="<?= e($_GET['source']) ?>">
         <?php endif; ?>
 
-        <?php if (($editRecord['status'] ?? '') === 'Unlocked for Edit'): ?>
+        <?php if ($editRecord && ($editRecord['status'] ?? '') === 'Unlocked for Edit'): ?>
           <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #1D4ED8;color:#1E40AF;padding:12px 16px;border-radius:8px;margin-bottom:18px;font-size:13px">
-            <strong>Editing Unlocked Record #<?= (int)$editRecord['id'] ?>:</strong> An edit request was approved by Dean/Admin. Please make the required corrections and click "Save & Resubmit Record".
+            <strong>Editing Unlocked Record #<?= $editId > 0 ? $editId : (int)$editRecord['id'] ?>:</strong> An edit request was approved by Dean/Admin. Please make the required corrections and click "Save & Resubmit Record".
             <?php if (!empty($editRecord['review_remark'])): ?>
               <div style="margin-top:4px;font-size:12px;color:#1D4ED8"><strong>Instructions:</strong> <?= e($editRecord['review_remark']) ?></div>
             <?php endif; ?>
@@ -1257,8 +1271,8 @@ require __DIR__ . '/inc/header.php';
       <!-- Save this entry and add another of the same type, move on to the next
            metric, or finish on the last one. -->
       <div class="upload-actions">
-        <?php if (!empty($editRecord) || $editId > 0): ?>
-          <button type="submit" name="nav" value="add" class="btn btn-primary" style="background:#1D4ED8;border-color:#1D4ED8;font-weight:600;display:inline-flex;align-items:center;gap:6px">
+        <?php if ($editId > 0 || !empty($editRecord)): ?>
+          <button type="submit" name="nav" value="submit" class="btn btn-primary" style="background:#1D4ED8;border-color:#1D4ED8;font-weight:600;display:inline-flex;align-items:center;gap:6px">
             <?= icon('check') ?> Save &amp; Resubmit Record
           </button>
           <div class="spacer"></div>

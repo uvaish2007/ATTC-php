@@ -65,6 +65,7 @@ function edit_request_has_active(string $recordType, int $recordId): bool
     }
 }
 
+if (!function_exists('edit_request_create')) {
 /**
  * Create a new structured edit request ticket.
  */
@@ -146,6 +147,7 @@ function edit_request_create(array $data): array
         return [false, 'Failed to create edit request. ' . $e->getMessage()];
     }
 }
+}
 
 /**
  * Fetch a single edit request ticket with user names.
@@ -171,6 +173,7 @@ function edit_request_get(int $id): ?array
     }
 }
 
+if (!function_exists('edit_requests_list')) {
 /**
  * List edit request tickets with optional filters.
  *
@@ -243,6 +246,7 @@ function edit_requests_list($filters = [], ?string $status = null, ?string $acad
         error_log('edit_requests_list failed: ' . $e->getMessage());
         return [];
     }
+}
 }
 
 /**
@@ -398,28 +402,34 @@ function edit_request_original_record(string $recordType, int $recordId): ?array
     }
 }
 
-/**
- * Fetch a single edit request by ID (alias for edit_request_get).
- */
-function edit_request_find(int $id): ?array
-{
-    return edit_request_get($id);
+if (!function_exists('edit_request_find')) {
+    /**
+     * Fetch a single edit request by ID (alias for edit_request_get).
+     */
+    function edit_request_find(int $id): ?array
+    {
+        return edit_request_get($id);
+    }
 }
 
-/**
- * Review an edit request (Dean or Admin approves or rejects).
- */
-function edit_request_review(int $requestId, string $decision, ?string $comment, array $user): array
-{
-    $action = ($decision === 'approve') ? 'approve' : 'reject';
-    return edit_request_process($requestId, $action, $comment, (int) ($user['id'] ?? 0), (string) ($user['role'] ?? 'Dean'));
+if (!function_exists('edit_request_review')) {
+    /**
+     * Review an edit request (Dean or Admin approves or rejects).
+     */
+    function edit_request_review(int $requestId, string $decision, ?string $comment, array $user): array
+    {
+        $action = ($decision === 'approve') ? 'approve' : 'reject';
+        return edit_request_process($requestId, $action, $comment, (int) ($user['id'] ?? 0), (string) ($user['role'] ?? 'Dean'));
+    }
 }
 
-/**
- * Mark edit request as completed upon Coordinator resubmission.
- */
-function edit_request_complete(int $recordId, string $recordType, int $coordinatorId = 0, ?array $oldValues = null, ?array $newValues = null): void
-{
-    edit_request_mark_completed_for_record($recordType, $recordId);
+if (!function_exists('edit_request_complete')) {
+    /**
+     * Mark edit request as completed upon Coordinator resubmission.
+     */
+    function edit_request_complete(int $recordId, string $recordType, int $coordinatorId = 0, ?array $oldValues = null, ?array $newValues = null): void
+    {
+        edit_request_mark_completed_for_record($recordType, $recordId);
+    }
 }
 
