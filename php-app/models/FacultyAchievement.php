@@ -208,39 +208,12 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     $teamStmt->execute($teamParams);
     $registeredAccounts = (int) $teamStmt->fetchColumn();
 
-<<<<<<< HEAD
-    // Compute active departments count
-    if ($effDept) {
-        $deptCount = 1;
-    } else {
-        $deptCount = count($activeDepts);
-        if ($deptCount === 0) {
-            try {
-                $dStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
-                $deptCount = (int) $dStmt->fetchColumn();
-            } catch (\Exception $e) {
-                $deptCount = 0;
-            }
-        }
-    }
-
-    // Determine top category with highest submissions
-    $topCategory = '';
-    $maxCatCount = 0;
-    foreach ($categoryCounts as $catLabel => $cnt) {
-        if ($cnt > $maxCatCount) {
-            $maxCatCount = $cnt;
-            $topCategory = $catLabel;
-        }
-    }
-
-
-=======
     // Determine top category
     $topCategory = '—';
     if (!empty($categoryCounts)) {
-        arsort($categoryCounts);
-        $topCategory = array_key_first($categoryCounts) ?: '—';
+        $tempCounts = $categoryCounts;
+        arsort($tempCounts);
+        $topCategory = array_key_first($tempCounts) ?: '—';
     }
 
     // Total active departments
@@ -250,8 +223,6 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
         $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
         $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
     }
-
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     return [
         'totalFaculty'       => $totalFaculty,
         'totalAchievements'  => $totalAchievements,

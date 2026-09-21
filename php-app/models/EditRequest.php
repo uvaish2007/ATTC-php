@@ -65,6 +65,7 @@ function edit_request_has_active(string $recordType, int $recordId): bool
     }
 }
 
+if (!function_exists('edit_request_create')) {
 /**
  * Create a new structured edit request ticket.
  */
@@ -146,6 +147,7 @@ function edit_request_create(array $data): array
         return [false, 'Failed to create edit request. ' . $e->getMessage()];
     }
 }
+}
 
 /**
  * Fetch a single edit request ticket with user names.
@@ -171,6 +173,7 @@ function edit_request_get(int $id): ?array
     }
 }
 
+if (!function_exists('edit_requests_list')) {
 /**
  * List edit request tickets with optional filters.
  */
@@ -218,6 +221,7 @@ function edit_requests_list(array $filters = []): array
         error_log('edit_requests_list failed: ' . $e->getMessage());
         return [];
     }
+}
 }
 
 /**

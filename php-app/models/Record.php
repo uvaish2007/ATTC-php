@@ -467,11 +467,7 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     if ($role === 'Coordinator' || $stage === 'Submitted') {
         $targetStatuses = ['Submitted', 'Unlocked for Edit'];
     } elseif ($role === 'HoD' || $stage === 'HOD Pending') {
-<<<<<<< HEAD
         $targetStatuses = ['Approved', 'Submitted', 'Edit Requested', 'HOD Pending', 'Resubmitted', 'Unlocked for Edit'];
-=======
-        $targetStatuses = ['Approved', 'Submitted', 'HOD Pending', 'Edit Requested'];
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
         $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {
@@ -540,19 +536,14 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         return [false, 'Invalid review action.'];
     }
 
-<<<<<<< HEAD
     // BUG-WF-11: Strict RBAC for record reviews
     if (!in_array($userRole, ['Coordinator', 'Admin', 'Dean', 'HoD'], true) || $userRole === 'Faculty') {
         return [false, 'Access Denied: Your role is not authorized to approve or review records.'];
     }
 
     // HoD can NEVER approve or reject records directly
-    if ($userRole === 'HoD' && in_array($action, ['approve', 'reject'], true)) {
-        return [false, 'HoD is a reviewer only and cannot approve or reject submitted records. To request changes, use Request Edit to Dean.'];
-=======
     if ($userRole === 'HoD' && in_array($action, ['approve', 'reject', 'approve_edit'], true)) {
-        return [false, 'HOD is not authorized to directly approve or reject records. Please use the Request Edit to Dean/Admin workflow.'];
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
+        return [false, 'HOD is a reviewer only and cannot approve or reject submitted records. To request changes, use Request Edit to Dean.'];
     }
 
     $effectiveYear = $year ?: active_academic_year();
@@ -562,8 +553,6 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     $table = $types[$type]['table'];
 
-<<<<<<< HEAD
-=======
     // Review & Edit Request Chain:
     // 1. Faculty uploads -> status 'Submitted'
     // 2. Coordinator approves -> status 'Approved' (direct to DB, syncs targets)
@@ -571,7 +560,6 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     // 4. Dean approves edit request -> status 'Unlocked for Edit'
     // 5. Coordinator edits and resubmits -> status 'Approved'
 
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     // FEAT-07: a record submitted during EM1 is read-only once EM1 has closed.
     if (function_exists('em_locked_windows') && em_locked_windows($effectiveYear)) {
         $lookup = db()->prepare("SELECT created_at FROM `$table` WHERE id = ?");
@@ -580,21 +568,14 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
             return [false, EM1_LOCKED_MESSAGE];
         }
     }
-<<<<<<< HEAD
 
-=======
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     if ($userRole === 'Coordinator') {
         $validCurrent = ['Submitted', 'Unlocked for Edit'];
         $newStatus    = ($action === 'reject') ? 'Rejected' : 'Approved';
     } elseif ($userRole === 'HoD') {
-<<<<<<< HEAD
-        // HoD can only request edit
-=======
         if ($action !== 'request_edit') {
             return [false, 'HOD can only submit Edit Requests to Dean/Admin.'];
         }
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
         $validCurrent = ['Approved', 'Submitted', 'HOD Pending', 'Dean Pending'];
         $newStatus    = 'Edit Requested';
     } elseif ($userRole === 'Dean') {
@@ -613,10 +594,9 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
         }
     }
 
-<<<<<<< HEAD
     $recBefore = record_find($type, $id);
     $oldStatus = $recBefore['status'] ?? 'Unknown';
-=======
+
     if ($type === 'journal') {
         journal_process_approval_expiry($id, true);
     }
@@ -627,7 +607,6 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     if ($hasApprovedAt) {
         $approvedAtSql = ($newStatus === 'Approved') ? ', approved_at = NOW()' : ', approved_at = NULL';
     }
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
 
     $inClause = implode(',', array_fill(0, count($validCurrent), '?'));
     $sql      = "UPDATE `$table` SET status = ?, review_remark = ?, approved_by = ?{$approvedAtSql}, updated_at = NOW() WHERE id = ? AND status IN ($inClause)";
@@ -772,15 +751,9 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
 
     if ($total === 0) {
-<<<<<<< HEAD
         return [false, !empty($heldBack)
             ? EM1_LOCKED_MESSAGE . " {$heldBack} pending EM1 record" . ($heldBack === 1 ? ' was' : 's were') . ' left unchanged.'
-            : 'Nothing pending in ' . $department . '.'];
-=======
-        return [false, $heldBack
-            ? EM1_LOCKED_MESSAGE . " {$heldBack} pending EM1 record" . ($heldBack === 1 ? ' was' : 's were') . ' left unchanged.'
             : 'Nothing pending to approve in ' . $department . '.'];
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     }
 
     if ($newStatus === 'Approved') {
@@ -874,8 +847,24 @@ function can_edit_record(string $type, int $id, array $user): array
  * Create an edit request from HoD to Dean.
  * HoD department is auto-determined from authenticated user session.
  */
-function edit_request_create(array $data, array $user): array
+function edit_request_create(array $data, ?array $user = null): array
 {
+    if ($user === null) {
+        if (!empty($data['requested_by'])) {
+            $uStmt = db()->prepare("SELECT id, name, email, role, department FROM users WHERE id = ?");
+            $uStmt->execute([(int)$data['requested_by']]);
+            $user = $uStmt->fetch(PDO::FETCH_ASSOC) ?: null;
+        }
+        if (!$user) {
+            $user = auth_user() ?? [
+                'id'         => (int)($data['requested_by'] ?? 0),
+                'role'       => $data['requested_by_role'] ?? 'HoD',
+                'name'       => $data['requested_by_name'] ?? 'HoD',
+                'department' => $data['department'] ?? '',
+            ];
+        }
+    }
+
     if (!in_array($user['role'], ['HoD', 'Admin'], true)) {
         return [false, 'Only HoD or Admin can submit an Edit Request to Dean.'];
     }
@@ -883,6 +872,9 @@ function edit_request_create(array $data, array $user): array
     $type   = trim((string)($data['record_type'] ?? ''));
     $id     = (int)($data['record_id'] ?? 0);
     $reason = trim((string)($data['reason'] ?? ''));
+    if ($reason === '' && !empty($data['correction'])) {
+        $reason = trim((string)$data['correction']);
+    }
 
     if ($reason === '') {
         return [false, 'A clear reason / explanation is required for the Edit Request.'];
@@ -941,6 +933,8 @@ function edit_request_create(array $data, array $user): array
     $specificField = !empty($data['specific_field']) ? trim((string)$data['specific_field']) : null;
     $currentVal    = !empty($data['current_value']) ? trim((string)$data['current_value']) : null;
     $requestedVal  = !empty($data['requested_value']) ? trim((string)$data['requested_value']) : null;
+    $correctionVal = !empty($data['correction']) ? trim((string)$data['correction']) : null;
+    $hodCommentsVal = !empty($data['hod_comments']) ? trim((string)$data['hod_comments']) : null;
 
     try {
         db()->beginTransaction();
@@ -948,9 +942,9 @@ function edit_request_create(array $data, array $user): array
         $stmt = db()->prepare(
             "INSERT INTO edit_requests (
                 record_id, record_type, record_title, proof_file, academic_year, department, faculty_id, faculty_name,
-                requested_by, requested_by_name, requested_by_role, reason, specific_field, current_value,
+                requested_by, requested_by_name, requested_by_role, reason, correction, hod_comments, specific_field, current_value,
                 requested_value, status, created_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending', NOW())"
         );
         $stmt->execute([
             $id,
@@ -965,6 +959,8 @@ function edit_request_create(array $data, array $user): array
             $user['name'] ?? 'HoD',
             $user['role'],
             $reason,
+            $correctionVal,
+            $hodCommentsVal,
             $specificField,
             $currentVal,
             $requestedVal,
@@ -991,7 +987,7 @@ function edit_request_create(array $data, array $user): array
         );
 
         db()->commit();
-        return [true, "Edit Request ER-{$requestId} submitted to Dean for review."];
+        return [true, "Edit Request ER-{$requestId} submitted to Dean for review.", $requestId];
     } catch (\PDOException $e) {
         if (db()->inTransaction()) db()->rollBack();
         error_log('edit_request_create error: ' . $e->getMessage());
@@ -1000,10 +996,21 @@ function edit_request_create(array $data, array $user): array
 }
 
 /**
- * List edit requests with optional filters.
+ * List edit requests with optional filters. Supports both positional arguments and filter array.
  */
-function edit_requests_list(?string $dept = null, ?string $status = null, ?string $year = null, ?int $requestedBy = null): array
+function edit_requests_list($deptOrFilters = null, ?string $status = null, ?string $year = null, ?int $requestedBy = null): array
 {
+    $q = null;
+    if (is_array($deptOrFilters)) {
+        $dept        = $deptOrFilters['department'] ?? null;
+        $status      = $deptOrFilters['status'] ?? null;
+        $year        = $deptOrFilters['academic_year'] ?? null;
+        $requestedBy = $deptOrFilters['requested_by'] ?? null;
+        $q           = $deptOrFilters['q'] ?? null;
+    } else {
+        $dept = $deptOrFilters;
+    }
+
     $sql = "SELECT er.*, u.email AS requested_by_email FROM edit_requests er
             LEFT JOIN users u ON er.requested_by = u.id
             WHERE 1=1";
@@ -1013,7 +1020,7 @@ function edit_requests_list(?string $dept = null, ?string $status = null, ?strin
         $sql .= " AND er.department = ?";
         $params[] = $dept;
     }
-    if ($status !== null && $status !== '') {
+    if ($status !== null && $status !== '' && $status !== 'all') {
         $sql .= " AND er.status = ?";
         $params[] = $status;
     }
@@ -1024,6 +1031,13 @@ function edit_requests_list(?string $dept = null, ?string $status = null, ?strin
     if ($requestedBy !== null && $requestedBy > 0) {
         $sql .= " AND er.requested_by = ?";
         $params[] = $requestedBy;
+    }
+    if ($q !== null && $q !== '') {
+        $sql .= " AND (er.faculty_name LIKE ? OR er.record_title LIKE ? OR er.reason LIKE ? OR er.department LIKE ?)";
+        $params[] = "%{$q}%";
+        $params[] = "%{$q}%";
+        $params[] = "%{$q}%";
+        $params[] = "%{$q}%";
     }
 
     $sql .= " ORDER BY er.created_at DESC";

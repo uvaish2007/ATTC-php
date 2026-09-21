@@ -145,30 +145,18 @@ function time_ago($datetime): string
 function status_class(string $status): string
 {
     $map = [
-<<<<<<< HEAD
         'Draft'                 => 'neutral',
         'Submitted'             => 'info',
         'HOD Pending'           => 'info',
         'Dean Pending'          => 'warning',
         'Approved'              => 'success',
         'Rejected'              => 'danger',
+        'Pending'               => 'warning',
+        'Completed'             => 'success',
         'Edit Requested'        => 'warning',
         'Unlocked for Edit'     => 'primary',
         'Resubmitted'           => 'info',
         'Correction Authorized' => 'primary',
-        'Completed'             => 'success',
-=======
-        'Draft'             => 'neutral',
-        'Submitted'         => 'info',
-        'HOD Pending'       => 'info',
-        'Dean Pending'      => 'warning',
-        'Approved'          => 'success',
-        'Rejected'          => 'danger',
-        'Pending'           => 'warning',
-        'Completed'         => 'info',
-        'Edit Requested'    => 'warning',
-        'Unlocked for Edit' => 'info',
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     ];
 
     return $map[$status] ?? 'neutral';
@@ -350,13 +338,9 @@ if (!function_exists('mb_strlen')) {
     function mb_strlen(string $string, ?string $encoding = null): int {
         return strlen($string);
     }
-<<<<<<< HEAD
-}/**
-=======
 }
 
 /**
-<<<<<<< HEAD
  * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
  * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
  */
@@ -430,9 +414,7 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
-=======
->>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
- * Build a secure URL for accessing a record proof attachment.
+/**
  * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
  */
 function record_proof_url(string $type, int $id, ?string $filename = null, bool $download = false, bool $absolute = true): string
@@ -575,5 +557,4 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         . icon('download', 14) . '</a>'
         . '</div>';
 }
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
 
