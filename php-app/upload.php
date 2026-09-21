@@ -6,10 +6,10 @@ require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';   // academic_years()
 require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM1 lock
 require_once __DIR__ . '/models/UploadFlow.php';         // Academic Year → Data Type entry flow
+require_once __DIR__ . '/inc/compression.php';        // FEAT-13: Automatic File Storage Compression
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
-
 $types       = record_types();
 $departments = departments_all();
 $years       = academic_years();
@@ -22,8 +22,9 @@ if (!defined('PROOF_MAX_BYTES')) {
 }
 
 /**
- * Save one uploaded proof file. Only a PDF (up to 2 MB) is accepted.
- * Files are stored safely in UPLOAD_DIR with pattern record_<unique-id>_<timestamp>.pdf.
+ * Save one uploaded proof file. Only a PDF or image (up to 2 MB) is accepted.
+ * Files are compressed server-side (FEAT-13) and stored safely in UPLOAD_DIR
+ * with pattern record_<unique-id>_<timestamp>.<ext>.
  * Returns [storedName|null, error|null].
  */
 if (!function_exists('save_upload_proof')) {
@@ -31,7 +32,7 @@ function save_upload_proof(?array $file, bool $required = false): array
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
-            return [null, 'Proof / Attachment is required. Please upload a PDF file (up to 2 MB).'];
+            return [null, 'Proof / Attachment is required. Please upload a PDF or image file (up to 2 MB).'];
         }
         return [null, null];
     }
@@ -39,7 +40,7 @@ function save_upload_proof(?array $file, bool $required = false): array
     $errorCode = $file['error'] ?? UPLOAD_ERR_OK;
     if ($errorCode !== UPLOAD_ERR_OK) {
         return match ($errorCode) {
-            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => [null, 'The uploaded PDF exceeds the 2 MB size limit. Please upload a smaller file.'],
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => [null, 'The uploaded proof exceeds the 2 MB size limit. Please upload a smaller file.'],
             UPLOAD_ERR_PARTIAL   => [null, 'The file was only partially uploaded. Please try again.'],
             UPLOAD_ERR_NO_TMP_DIR => [null, 'Server configuration error: missing temporary folder.'],
             UPLOAD_ERR_CANT_WRITE => [null, 'Server error: failed to write file to disk.'],
@@ -113,7 +114,20 @@ function save_upload_proof(?array $file, bool $required = false): array
     $stored = "record_{$uniqueId}_{$timestamp}.{$ext}";
 
     $destPath = $baseFolder . '/' . $stored;
-    if (!move_uploaded_file($file['tmp_name'], $destPath) || !file_exists($destPath)) {
+
+    // FEAT-13: Server-side Automatic File Storage Compression
+    $compressResult = compress_uploaded_proof($file['tmp_name'], $ext);
+    $finalSource    = $compressResult['path'];
+
+    $saved = false;
+    if (!empty($compressResult['is_temp']) && is_file($finalSource)) {
+        $saved = @copy($finalSource, $destPath);
+        compression_cleanup($compressResult);
+    } else {
+        $saved = move_uploaded_file($file['tmp_name'], $destPath);
+    }
+
+    if (!$saved || !file_exists($destPath)) {
         return [null, 'The proof could not be saved to the upload directory.'];
     }
 
