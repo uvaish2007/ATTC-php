@@ -300,8 +300,15 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
     $params = [];
 
     if ($department) {
-        $sql .= ' AND t.department = ?';
-        $params[] = $department;
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $sql .= " AND t.department IN ($inPh)";
+            $params = array_merge($params, $deptVars);
+        } else {
+            $sql .= ' AND t.department = ?';
+            $params[] = $department;
+        }
     }
     if ($year) {
         $sql .= ' AND t.academic_year = ?';
@@ -342,8 +349,15 @@ function target_report_items(?string $department = null, ?string $year = null): 
     $params = [];
 
     if ($department) {
-        $sql .= ' AND department = ?';
-        $params[] = $department;
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $sql .= " AND department IN ($inPh)";
+            $params = array_merge($params, $deptVars);
+        } else {
+            $sql .= ' AND department = ?';
+            $params[] = $department;
+        }
     }
     if ($year) {
         $sql .= ' AND academic_year = ?';

@@ -1,25 +1,68 @@
 <?php
 /**
- * Faculty — the staff of one department.
+ * Faculty — the staff directory.
  *
- * An HoD uses this to see who is in their department and how much each
- * person has submitted. It is read-only: adding or removing an account is
- * the Admin's job, on users.php.
+ * Who sees whom is decided here, on the server, and matches the rule used by
+ * the Faculty Details document (can_user_view_faculty_report):
+ *
+ *   - Admin, Principal, Director and Dean see every department;
+ *   - an HoD or Coordinator sees their own department only.
+ *
+ * The department shown is taken from the signed-in account, never from the
+ * URL, so a Coordinator cannot list another department by editing ?dept=.
+ * It is read-only: adding or removing an account is the Admin's job, on
+ * users.php.
  */
 
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/Record.php';
 
-$user = require_role(['HoD']);
+$user = require_role(['HoD', 'Coordinator', 'Admin', 'Principal', 'Director', 'Dean']);
 require_module('faculty');
+
+// Oversight roles are not tied to one department.
+$seesEveryone = in_array($user['role'], ['Admin', 'Principal', 'Director', 'Dean'], true);
 
 $department = (string) ($user['department'] ?? '');
 $search     = trim((string) input('q', ''));
 
-// An HoD with no department set can't be scoped to anything, so show nothing
-// rather than the whole institution.
-$people = $department !== '' ? users_in_department($department, $search ?: null) : [];
+// Only an oversight role may narrow the list to a department of its choice.
+// Everybody else is pinned to their own, whatever the query string says.
+$deptFilter = $seesEveryone ? trim((string) input('dept', '')) : $department;
+
+// Teaching staff only — Admin and Principal accounts are not faculty.
+$teachingRoles = ['HoD', 'Coordinator', 'Faculty'];
+
+if ($seesEveryone) {
+    $people = users_all(null, $deptFilter !== '' ? $deptFilter : null, $search ?: null);
+    $people = array_values(array_filter(
+        $people,
+        static fn(array $p): bool => in_array($p['role'], $teachingRoles, true)
+    ));
+
+    // Department, then HoD → Coordinator → Faculty, then name.
+    usort($people, static function (array $a, array $b) use ($teachingRoles): int {
+        return [$a['department'] ?? '', array_search($a['role'], $teachingRoles, true), $a['name']]
+           <=> [$b['department'] ?? '', array_search($b['role'], $teachingRoles, true), $b['name']];
+    });
+} else {
+    // An HoD with no department set can't be scoped to anything, so show
+    // nothing rather than the whole institution.
+    $people = $department !== '' ? users_in_department($department, $search ?: null) : [];
+}
+
+// The departments an oversight role can pick from, taken from the accounts
+// that actually exist rather than a second list to keep in step.
+$deptChoices = [];
+if ($seesEveryone) {
+    $deptChoices = db()
+        ->query("SELECT DISTINCT department FROM users
+                  WHERE department IS NOT NULL AND department <> ''
+                    AND role IN ('HoD','Coordinator','Faculty')
+                  ORDER BY department")
+        ->fetchAll(PDO::FETCH_COLUMN);
+}
 
 // One trip to the database for everybody's submission counts.
 $counts = record_counts_for_users(array_column($people, 'id'));
@@ -40,6 +83,8 @@ $cards = [
     ['Awaiting review', $totals['Submitted'],   'clock',     $totals['Submitted'] ? 'brand' : 'navy'],
 ];
 
+$activeFilters = ($search !== '' ? 1 : 0) + ($seesEveryone && $deptFilter !== '' ? 1 : 0);
+
 $pageTitle  = 'Faculty';
 $breadcrumb = 'Faculty';
 require __DIR__ . '/inc/header.php';
@@ -50,7 +95,11 @@ require __DIR__ . '/inc/header.php';
     <h1>Faculty</h1>
     <div class="sub">
       <?= count($people) ?> <?= count($people) === 1 ? 'person' : 'people' ?> ·
-      <?= $department !== '' ? e($department) : 'no department assigned' ?>
+      <?php if ($seesEveryone): ?>
+        <?= $deptFilter !== '' ? e($deptFilter) : 'all departments' ?>
+      <?php else: ?>
+        <?= $department !== '' ? e($department) : 'no department assigned' ?>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -62,18 +111,30 @@ require __DIR__ . '/inc/header.php';
     <input type="search" name="q" value="<?= e($search) ?>" placeholder="Search name or email…" aria-label="Search faculty">
     <button type="submit" class="fb-go" title="Search" aria-label="Search"><?= icon('arrow-right', 14) ?></button>
   </label>
+
+  <?php if ($seesEveryone && !empty($deptChoices)): ?>
+    <label class="fb-field"><span class="fb-k">Department</span>
+      <select name="dept" onchange="this.form.submit()" aria-label="Filter by department">
+        <option value="">All departments</option>
+        <?php foreach ($deptChoices as $choice): ?>
+          <option value="<?= e($choice) ?>" <?= $deptFilter === $choice ? 'selected' : '' ?>><?= e($choice) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+  <?php endif; ?>
+
     <span class="fbar-end">
-      <?php if (($search !== '' ? 1 : 0)): ?>
-        <span class="fbar-count"><?= (int) (($search !== '' ? 1 : 0)) ?> active</span>
+      <?php if ($activeFilters): ?>
+        <span class="fbar-count"><?= (int) $activeFilters ?> active</span>
         <a class="fbar-clear" href="<?= e(url('faculty.php')) ?>"><?= icon('x', 13) ?> Clear all</a>
       <?php else: ?>
-        <span class="fbar-note">Everyone in your department</span>
+        <span class="fbar-note"><?= $seesEveryone ? 'Every department' : 'Everyone in your department' ?></span>
       <?php endif; ?>
     </span>
 </form>
 
 
-<?php if ($department === ''): ?>
+<?php if (!$seesEveryone && $department === ''): ?>
 
   <div class="alert alert-warning">
     Your account has no department assigned, so there is nothing to show here.
@@ -100,7 +161,7 @@ require __DIR__ . '/inc/header.php';
   <div class="mt-5 card">
     <div class="card-head">
       <div>
-        <div class="card-title">Department staff</div>
+        <div class="card-title"><?= $seesEveryone ? 'Faculty across the institution' : 'Department staff' ?></div>
         <div class="card-sub">Counts include every record type, in any status</div>
       </div>
     </div>
@@ -110,10 +171,10 @@ require __DIR__ . '/inc/header.php';
 
         <div class="empty">
           <div class="ic"><?= icon('users', 20) ?></div>
-          <p><?= $search !== '' ? 'Nobody matches that search' : 'No accounts in this department yet' ?></p>
+          <p><?= $activeFilters ? 'Nobody matches those filters' : 'No faculty accounts yet' ?></p>
           <div class="note">
-            <?= $search !== ''
-                  ? 'Try a shorter search, or clear it.'
+            <?= $activeFilters
+                  ? 'Try a shorter search, or clear the filters.'
                   : 'The Admin adds accounts and assigns them a department.' ?>
           </div>
         </div>
@@ -125,32 +186,49 @@ require __DIR__ . '/inc/header.php';
             <thead>
               <tr>
                 <th>Person</th>
+                <?php if ($seesEveryone): ?><th>Department</th><?php endif; ?>
                 <th>Role</th>
                 <th>Contact</th>
                 <th class="num">Records</th>
                 <th class="num">Approved</th>
                 <th class="num">Pending</th>
                 <th>Account</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody>
               <?php foreach ($people as $person): ?>
                 <?php
-                  $mine    = $counts[(int) $person['id']] ?? null;
-                  $records = $mine['total']     ?? 0;
-                  $ok      = $mine['Approved']  ?? 0;
-                  $waiting = $mine['Submitted'] ?? 0;
+                  $personId = (int) $person['id'];
+                  $mine     = $counts[$personId] ?? null;
+                  $records  = $mine['total']     ?? 0;
+                  $ok       = $mine['Approved']  ?? 0;
+                  $waiting  = $mine['Submitted'] ?? 0;
+
+                  // Passport photo, when this person has uploaded one.
+                  $photoFile = user_photo_filename($personId);
+                  $photoUrl  = $photoFile !== null
+                      ? url('photo.php?user=' . $personId . '&v=' . substr(md5($photoFile), 0, 8))
+                      : null;
                 ?>
                 <tr>
                   <td>
                     <div class="flex items-center gap-3">
-                      <div class="avatar-dark avatar-sm"><?= e(initials($person['name'])) ?></div>
+                      <?php if ($photoUrl !== null): ?>
+                        <img class="avatar-dark avatar-sm avatar-photo" src="<?= e($photoUrl) ?>"
+                             alt="Photo of <?= e($person['name']) ?>">
+                      <?php else: ?>
+                        <div class="avatar-dark avatar-sm"><?= e(initials($person['name'])) ?></div>
+                      <?php endif; ?>
                       <div class="min-w-0">
                         <div class="fw-500 truncate"><?= e($person['name']) ?></div>
                         <div class="card-sub truncate"><?= e($person['email']) ?></div>
                       </div>
                     </div>
                   </td>
+                  <?php if ($seesEveryone): ?>
+                    <td class="faint truncate"><?= $person['department'] ? e($person['department']) : '—' ?></td>
+                  <?php endif; ?>
                   <td><span class="badge badge-neutral"><?= e($person['role']) ?></span></td>
                   <td class="faint"><?= $person['phone'] ? e($person['phone']) : '—' ?></td>
                   <td class="num tabular fw-600"><?= (int) $records ?></td>
@@ -169,6 +247,13 @@ require __DIR__ . '/inc/header.php';
                       <span class="badge badge-danger">Inactive</span>
                     <?php endif; ?>
                   </td>
+                  <td>
+                    <a class="btn btn-outline btn-sm" target="_blank" rel="noopener"
+                       href="<?= e(url('faculty-details-report.php?id=' . $personId)) ?>"
+                       title="Open <?= e($person['name']) ?>'s Faculty Details as an A4 document">
+                      <?= icon('user', 14) ?> Details PDF
+                    </a>
+                  </td>
                 </tr>
               <?php endforeach; ?>
             </tbody>
@@ -181,25 +266,27 @@ require __DIR__ . '/inc/header.php';
 
 
   <!-- Where to go next -->
-  <div class="mt-5 grid-1-1">
-    <a class="card link-card" href="<?= e(url('approvals.php')) ?>">
-      <div class="stat-ic brand"><?= icon('approvals') ?></div>
-      <div>
-        <div class="card-title">Review submissions</div>
-        <div class="card-sub"><?= (int) $totals['Submitted'] ?> waiting for your approval</div>
-      </div>
-      <span class="link-card-go"><?= icon('chevron', 16) ?></span>
-    </a>
+  <?php if (!$seesEveryone): ?>
+    <div class="mt-5 grid-1-1">
+      <a class="card link-card" href="<?= e(url('approvals.php')) ?>">
+        <div class="stat-ic brand"><?= icon('approvals') ?></div>
+        <div>
+          <div class="card-title">Review submissions</div>
+          <div class="card-sub"><?= (int) $totals['Submitted'] ?> waiting for your approval</div>
+        </div>
+        <span class="link-card-go"><?= icon('chevron', 16) ?></span>
+      </a>
 
-    <a class="card link-card" href="<?= e(url('reports.php')) ?>">
-      <div class="stat-ic navy"><?= icon('reports') ?></div>
-      <div>
-        <div class="card-title">Department report</div>
-        <div class="card-sub">Download <?= e($department) ?> records as Excel, Word or PDF</div>
-      </div>
-      <span class="link-card-go"><?= icon('chevron', 16) ?></span>
-    </a>
-  </div>
+      <a class="card link-card" href="<?= e(url('reports.php')) ?>">
+        <div class="stat-ic navy"><?= icon('reports') ?></div>
+        <div>
+          <div class="card-title">Department report</div>
+          <div class="card-sub">Download <?= e($department) ?> records as Excel, Word or PDF</div>
+        </div>
+        <span class="link-card-go"><?= icon('chevron', 16) ?></span>
+      </a>
+    </div>
+  <?php endif; ?>
 
 <?php endif; ?>
 

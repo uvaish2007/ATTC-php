@@ -34,6 +34,7 @@ $filters = em_resolve_filters($user, [
     'academic_year'  => input('academic_year'),
     'faculty_id'     => input('faculty_id'),
     'student_reg'    => input('student_reg'),
+    'target_metric'  => input('target_metric'),   // one target type, or all
     'meeting_number' => input('meeting_number'),
     'em'             => input('em'),   // FEAT-07 EM1 / EM2 / All
 ]);

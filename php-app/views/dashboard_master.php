@@ -60,8 +60,12 @@ $cards = [];
 
 if ($user['role'] === 'HoD') {
     require_once __DIR__ . '/../models/Record.php';
+    require_once __DIR__ . '/../models/EditRequest.php';
     $hodDept = $user['department'] ?? '';
-    $hodRequests = edit_requests_list($hodDept, null, $data['scope']['year'] ?? null, (int)$user['id']);
+    $hodRequests = edit_requests_list([
+        'department'    => $hodDept ?: null,
+        'academic_year' => $data['scope']['year'] ?? null,
+    ]);
     $pendingReqCount = count(array_filter($hodRequests, fn($r) => $r['status'] === 'Pending'));
 
     $cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
@@ -96,7 +100,11 @@ if ($user['role'] === 'HoD') {
                 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
 } elseif ($user['role'] === 'Dean') {
     require_once __DIR__ . '/../models/Record.php';
-    $pendingDeanRequests = count(edit_requests_list(null, 'Pending', $data['scope']['year'] ?? null));
+    require_once __DIR__ . '/../models/EditRequest.php';
+    $pendingDeanRequests = count(edit_requests_list([
+        'status'        => 'Pending',
+        'academic_year' => $data['scope']['year'] ?? null,
+    ]));
 
     $cards[] = ['label' => 'Total Records', 'value' => (string) $stats['totalRecords'],
                 'sub' => $approved . ' approved across departments', 'icon' => 'layers', 'tone' => 'brand'];
@@ -132,6 +140,20 @@ if ($user['role'] === 'HoD') {
         $cards[] = ['label' => 'Team', 'value' => (string) $stats['users'], 'sub' => 'Registered accounts', 'icon' => 'users', 'tone' => 'navy'];
     } else {
         $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'], 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
+    }
+
+    // FEAT-11 — password reset requests from the login page. Only the Admin
+    // decides these, so only the Admin is shown the card; Principal / Director
+    // fall through this branch too and must not see it.
+    if ($user['role'] === 'Admin') {
+        require_once __DIR__ . '/../models/PasswordResetRequest.php';
+        $pwPending = password_reset_requests_pending_count();
+        $cards[] = ['label' => 'Password Reset Requests', 'value' => (string) $pwPending,
+                    'sub' => $pwPending
+                        ? 'Pending · awaiting your decision'
+                        : 'No pending requests',
+                    'icon' => 'key', 'tone' => $pwPending ? 'brand' : 'navy',
+                    'href' => url('password-requests.php?status=Pending')];
     }
 }
 

@@ -2,6 +2,7 @@
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/icons.php';   // the role cards draw icons
 require_once __DIR__ . '/models/Target.php';
+require_once __DIR__ . '/models/PasswordResetRequest.php';   // FEAT-11
 
 auth_boot();
 
@@ -9,6 +10,12 @@ $error = '';
 $email = '';
 $selectedRole = '';
 $showStep3 = false;
+
+// FEAT-11: the password-request panel's own messages, kept apart from the
+// login form's $error so one never appears under the other's heading.
+$prError  = '';
+$prNotice = '';
+$prOpen   = false;   // reopen the panel after a submission, so the reply is seen
 
 // If already logged in, check if Admin still needs to step through Academic
 // Year Selection this login (the active year itself is a system-wide value,
@@ -33,7 +40,41 @@ $roles = [
     'Faculty'     => ['icon' => 'user',       'desc' => 'Submit academic records & track status'],
 ];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+/* ---------------------------------------------------------------------------
+ *  FEAT-11 — "Request Admin to Change Password".
+ *
+ *  This raises a Pending ticket for the Administrator. It never changes a
+ *  password and never signs anyone in, so it is handled before (and entirely
+ *  apart from) the login branch below.
+ *
+ *  Whatever happens — the identifier matched, it did not, a ticket was already
+ *  waiting, or the session hit its cap — the page says the same sentence. An
+ *  unauthenticated visitor must not be able to tell an account exists from
+ *  this form, so no branch below varies the wording.
+ * ------------------------------------------------------------------------ */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'password_reset_request') {
+    $prOpen = true;
+
+    if (!csrf_verify()) {
+        $prError = 'Your session or security token has expired. Please reload the page and try again.';
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    } else {
+        $identifier = trim((string) input('identifier'));
+
+        if ($identifier === '') {
+            // Not enumeration: nothing was submitted to look up.
+            $prError = 'Enter the username or email you sign in with.';
+        } elseif (!password_reset_request_session_allowed()) {
+            $prNotice = PASSWORD_RESET_GENERIC_REPLY;
+        } else {
+            password_reset_request_session_record();
+            // The result is deliberately discarded: it says whether an account
+            // matched, which is exactly what must not reach this page.
+            password_reset_request_create($identifier, (string) input('message'));
+            $prNotice = PASSWORD_RESET_GENERIC_REPLY;
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $error = 'Your session or security token has expired. Please try logging in again.';
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
@@ -169,6 +210,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .password-toggle-btn svg {
       display:block;
     }
+
+    /* ---- FEAT-11: "Request Admin to Change Password" ---------------------
+       Sits under the card's form, visible at both steps, and reads as help
+       rather than a second way in — so it never competes with Login. */
+    .login-help {
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      flex-wrap:wrap; text-align:center;
+      margin-top:18px; padding-top:16px; border-top:1px solid var(--hairline);
+    }
+    .login-help-k { font-size:12.5px; color:var(--ink-faint); }
+    .login-help-btn { font-size:12.5px; font-weight:600; color:var(--orange-600); padding:4px 8px; }
+    .login-help-btn:hover { color:var(--orange-700); background:var(--orange-50); }
   </style>
 </head>
 <body>
@@ -207,6 +260,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       <?php if ($error): ?>
         <div class="alert alert-error"><?= icon('alert-triangle', 16) ?><span><?= e($error) ?></span></div>
+      <?php endif; ?>
+
+      <?php /* FEAT-11: the reply to a password request. The success wording is
+               the same whether or not an account matched — see login.php's
+               handler above. */ ?>
+      <?php if ($prNotice): ?>
+        <div class="alert alert-success"><?= icon('check', 16) ?><span><?= e($prNotice) ?></span></div>
+      <?php endif; ?>
+      <?php if ($prError): ?>
+        <div class="alert alert-error"><?= icon('alert-triangle', 16) ?><span><?= e($prError) ?></span></div>
       <?php endif; ?>
 
       <form method="post" id="loginForm">
@@ -265,10 +328,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </button>
         </div>
       </form>
+
+      <?php /* FEAT-11. Outside the login form (a form cannot be nested) and
+               outside both steps, so somebody who is stuck at the role picker
+               can still reach it. */ ?>
+      <div class="login-help">
+        <span class="login-help-k">Forgot your password?</span>
+        <button type="button" class="btn btn-ghost btn-sm login-help-btn" id="pwReqOpen">
+          <?= icon('key', 15) ?> Request Admin to Change Password
+        </button>
+      </div>
     </div>
   </div>
 
 </div>
+
+<!-- FEAT-11: request form. Raises a Pending ticket for the Administrator;
+     it never changes a password here. -->
+<dialog class="modal" id="pwReqDlg" style="max-width:30rem">
+  <form method="post" id="pwReqForm">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="password_reset_request">
+
+    <div class="modal-head">
+      <div>
+        <h3>Request Admin to Change Password</h3>
+        <div class="msub">The Administrator will review your request and set a new password.</div>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div class="field">
+        <label for="pr-identifier">Username / Email <span class="req">*</span></label>
+        <input class="input" type="text" name="identifier" id="pr-identifier" required
+               autocomplete="username" placeholder="you@college.edu or username (e.g. admin)"
+               value="<?= e($prError ? (string) input('identifier') : '') ?>">
+      </div>
+      <div class="field">
+        <label for="pr-message">Message (optional)</label>
+        <textarea class="input textarea" name="message" id="pr-message" rows="3" maxlength="2000"
+                  placeholder="Anything that helps the Administrator identify you or understand the problem…"><?= e($prError ? (string) input('message') : '') ?></textarea>
+      </div>
+      <div class="card-sub" style="font-size:12px; line-height:1.5">
+        You will not be able to set the password yourself. The Administrator
+        changes it and tells you the new one.
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Submit Request</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
   const roleCards = document.querySelectorAll('.role-card');
@@ -380,6 +492,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       window.location.reload();
     }
   });
+
+  /* ---- FEAT-11: the password-request dialog ------------------------------
+     A plain <dialog>, the same one the rest of the portal uses. Without
+     JavaScript the button does nothing, but the form still posts and the
+     reply still renders on the card, so no check depends on this running. */
+  (function () {
+    var open = document.getElementById('pwReqOpen');
+    var dlg  = document.getElementById('pwReqDlg');
+    if (!open || !dlg) return;
+
+    open.addEventListener('click', function () {
+      dlg.showModal();
+      var id = document.getElementById('pr-identifier');
+      if (id) id.focus();
+    });
+
+    // Trim before posting, so " admin " resolves the same as "admin".
+    var form = document.getElementById('pwReqForm');
+    if (form) {
+      form.addEventListener('submit', function () {
+        var id = document.getElementById('pr-identifier');
+        if (id) id.value = id.value.trim();
+      });
+    }
+
+    // Something was wrong with the last submission: bring the form back with
+    // what was typed still in it. A successful request does NOT reopen it —
+    // its reply is on the card.
+    <?php if ($prOpen && $prError): ?>
+      dlg.showModal();
+    <?php endif; ?>
+  })();
 
   // If there's an error and a role was selected, show step 2
   <?php if ($error && $selectedRole): ?>

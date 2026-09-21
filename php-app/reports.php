@@ -51,9 +51,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
 }
 
 // ---- Filters -------------------------------------------------------------
-// Director cannot narrow anything; a HoD cannot choose a department; Faculty
-// and Coordinator keep the basic status/type filters within their own scope.
-$department = ($isAdmin || $isDean) ? (trim((string) input('department')) ?: null) : null;
+// Director cannot narrow anything; a HoD/Coordinator/Faculty cannot choose a department;
+// Oversight roles can choose a department.
+$department = user_department_scope($user, input('department'));
 $status     = !$isDirector ? (trim((string) input('status')) ?: null) : null;
 $type       = !$isDirector ? (trim((string) input('type'))   ?: null) : null;
 // Category narrows to one of the three groups the dashboard charts — the
@@ -193,7 +193,7 @@ require __DIR__ . '/inc/header.php';
   <form method="get" class="fbar mt-5" onsubmit="return validatePeriodRange()">
     <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
 
-    <?php if ($isAdmin || $isDean): ?>
+    <?php if (user_can_choose_department($user)): ?>
       <label class="fb-field"><span class="fb-k">Department</span>
         <select name="department" onchange="this.form.submit()">
           <option value="">All</option>
@@ -347,7 +347,7 @@ require __DIR__ . '/inc/header.php';
   $totalScoped = count($scoped);
 
   // The target proforma + metrics summary scope to the effective department.
-  $effDept = $isOversight ? $department : (in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?: null) : null);
+  $effDept = $department;
   $tStmt   = db()->prepare('SELECT COUNT(*) FROM targets' . ($effDept ? ' WHERE department = ?' : ''));
   $tStmt->execute($effDept ? [$effDept] : []);
   $targetCount = (int) $tStmt->fetchColumn();
@@ -411,9 +411,9 @@ require __DIR__ . '/inc/header.php';
 <?php if ($canFacultyAchievementsBox): ?>
   <?php
     // FEAT-04: Department & Faculty Achievements Report data
-    // HoD is strictly locked server-side to their own assigned department.
+    // HoD/Coordinator/Faculty is strictly locked server-side to their own assigned department.
     // Admin, Principal, Director, Dean can view all departments or filter by the selected department.
-    $effDeptForFaculty = $isHod ? ($user['department'] ?: null) : ($department ?: null);
+    $effDeptForFaculty = $department;
     $feat4FacultyGrid  = faculty_achievements_grid($user, $effDeptForFaculty, $year, null, null, null, em_filter_window($em, $year));   // FEAT-07 Meeting filter
 
     // Group faculty members under their respective departments
@@ -424,10 +424,8 @@ require __DIR__ . '/inc/header.php';
     }
 
     // Determine the list of departments to display
-    if ($isHod) {
-        $feat4Depts = [$user['department'] ?: 'My Department'];
-    } elseif ($department) {
-        $feat4Depts = [$department];
+    if ($effDeptForFaculty) {
+        $feat4Depts = [$effDeptForFaculty];
     } else {
         // Collect all official departments
         $feat4Depts = [];

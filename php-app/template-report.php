@@ -32,10 +32,8 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
  * Scope by role: oversight roles (Admin, Director, Dean) may pick any department or
  * see all; everyone else is pinned to their own department.
  */
-$isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
-$department  = $isOversight
-    ? (trim((string) input('department')) ?: null)
-    : ($user['department'] ?? null);
+$isOversight = user_can_choose_department($user);
+$department  = user_department_scope($user, input('department'));
 
 // Respect centralized active academic year system
 $yearInput = trim((string) input('year', ''));

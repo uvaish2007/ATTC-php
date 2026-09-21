@@ -22,7 +22,7 @@ require_module('reports');
 
 // ---- Read the same filters the Reports page uses ------------------------
 $format     = strtolower(trim((string) input('format', 'csv')));
-$department = trim((string) input('department', '')) ?: null;
+$department = user_department_scope($user, input('department'));
 $status     = trim((string) input('status', '')) ?: null;
 $type       = trim((string) input('type', '')) ?: null;
 $category   = trim((string) input('category', '')) ?: null;

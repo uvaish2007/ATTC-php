@@ -20,8 +20,8 @@ require_module('reports');
 
 $role = $user['role'] ?? '';
 
-// FEAT-04: Authorization check — Admin, Dean, HoD (and Principal/Director if authorized)
-$allowedRoles = ['Admin', 'Dean', 'HoD', 'Principal', 'Director'];
+// FEAT-04: Authorization check — Admin, Dean, HoD, Coordinator (and Principal/Director if authorized)
+$allowedRoles = ['Admin', 'Dean', 'HoD', 'Coordinator', 'Principal', 'Director'];
 if (!in_array($role, $allowedRoles, true)) {
     http_response_code(403);
     echo "<h1>403 Forbidden</h1><p>You are not authorized to export Department &amp; Faculty Achievements.</p>";
@@ -36,14 +36,8 @@ if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
 }
 
 // Department scoping:
-// HoD is strictly locked server-side to their own authorized department.
-// Any client-supplied department parameter for HoD is ignored.
-if ($role === 'HoD') {
-    $effDept = $user['department'] ?: null;
-} else {
-    // Admin, Dean, Principal can view all or filter by department
-    $effDept = trim((string) input('department', '')) ?: null;
-}
+// Single source of truth via user_department_scope()
+$effDept = user_department_scope($user, input('department'));
 
 $category  = trim((string) input('category', '')) ?: null;
 $facultyId = (int) input('faculty_id', 0) ?: null;

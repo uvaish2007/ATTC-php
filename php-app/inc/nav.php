@@ -24,7 +24,10 @@ function navigation_for(string $role): array
             ['section' => 'Manage',    'label' => 'Users',                'path' => 'users.php',                'icon' => 'users'],
             ['section' => 'Manage',    'label' => 'Departments',          'path' => 'departments.php',          'icon' => 'building'],
             ['section' => 'Manage',    'label' => 'Report Template',      'path' => 'report-template.php',      'icon' => 'reports'],
-            ['section' => 'Account',   'label' => 'Settings',             'path' => 'settings.php',             'icon' => 'settings'],
+            // FEAT-11 lives inside Settings (its last tab), so the pending count
+            // rides on Settings. Admin only — no other role's list has this entry,
+            // and password-requests.php gates on the role itself regardless.
+            ['section' => 'Account',   'label' => 'Settings',             'path' => 'settings.php',             'icon' => 'settings', 'badge' => 'password_requests'],
         ],
         'Principal' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
@@ -82,6 +85,19 @@ function navigation_for(string $role): array
             ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
     ];
+
+    // The staff directory is open to every role that may already open another
+    // person's Faculty Details document (see can_user_view_faculty_report):
+    // oversight roles browse all departments, a Coordinator their own only.
+    // The HoD menu lists it above already, so it is not repeated here.
+    if (in_array($role, ['Admin', 'Principal', 'Director', 'Dean', 'Coordinator'], true)) {
+        $items[$role][] = [
+            'section' => $role === 'Admin' ? 'Manage' : 'Workspace',
+            'label'   => 'Faculty',
+            'path'    => 'faculty.php',
+            'icon'    => 'graduation',
+        ];
+    }
 
     return $items[$role] ?? [];
 }

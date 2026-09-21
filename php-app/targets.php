@@ -188,7 +188,7 @@ $isHodOrDean = $isHod || $isDean;
 // Target creation and management permissions: Academic Year lock does NOT prevent target editing
 $canCreate   = in_array($user['role'], ['HoD', 'Admin'], true);
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
-$deptFilter   = ($isHod || $isCoord) ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
+$deptFilter   = user_department_scope($user, $_GET['department'] ?? null);
 $yearFilter   = $selectedYear;
 $statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
 $metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
@@ -242,14 +242,14 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <div class="actions">
-    <?php $tgActive = (($selectedYear !== $activeYear) ? 1 : 0) + ((!$isHod && !$isCoord && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
+    <?php $tgActive = (($selectedYear !== $activeYear) ? 1 : 0) + ((user_can_choose_department($user) && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
 
     <?php
       // The meeting report always reflects what is on screen: same department
       // (forced to their own for a HoD) and the same year filter. Same report,
       // three formats — Word, Excel and a print-to-PDF view.
       $reportBase = array_filter([
-          'department' => ($isHod || $isCoord) ? null : $deptFilter,
+          'department' => $deptFilter,
           'year'       => $selectedYear,
       ]);
       $reportUrl = fn(string $fmt) => e(url('meeting-report.php') . '?' . http_build_query($reportBase + ['format' => $fmt]));
@@ -288,7 +288,7 @@ require __DIR__ . '/inc/header.php';
     </select>
   </label>
 
-  <?php if (!$isHod && !$isCoord): ?>
+  <?php if (user_can_choose_department($user)): ?>
     <label class="fb-field"><span class="fb-k">Department</span>
       <select name="department" onchange="this.form.submit()">
         <option value="">All</option>
