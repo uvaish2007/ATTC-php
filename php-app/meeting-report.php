@@ -17,7 +17,7 @@ require_once __DIR__ . '/models/Setting.php';
 $user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
 $params = array_filter([
-    'department' => trim((string) input('department')) ?: null,
+    'department' => user_department_scope($user, trim((string) input('department')) ?: null),
     'year'       => trim((string) input('year')) ?: null,
     'format'     => in_array((string) input('format'), ['word', 'excel', 'pdf'], true) ? (string) input('format') : null,
 ]);

@@ -20,10 +20,10 @@ if (input('ajax') === 'faculty_detail') {
     $year  = trim((string) input('year')) ?: null;
     $cat   = trim((string) input('category')) ?: null;
 
-    // Verify HoD authorization
-    if ($user['role'] === 'HoD') {
+    // Verify department authorization for HoD and Coordinator
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
         $targetUser = user_find_by_id($facId);
-        if (!$targetUser || $targetUser['department'] !== $user['department']) {
+        if (!$targetUser || !department_names_match($targetUser['department'] ?? '', $user['department'] ?? '')) {
             echo json_encode(['error' => 'Unauthorized access to faculty outside your department']);
             exit;
         }
@@ -65,8 +65,15 @@ $allCategories = faculty_achievement_categories();
 $facParams = [];
 $facSql = "SELECT id, name, department FROM users WHERE role IN ('Faculty', 'Coordinator', 'HoD')";
 if ($department) {
-    $facSql .= " AND department = ?";
-    $facParams[] = $department;
+    $deptVars = department_variants($department);
+    if (!empty($deptVars)) {
+        $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+        $facSql .= " AND department IN ($inPh)";
+        $facParams = array_merge($facParams, $deptVars);
+    } else {
+        $facSql .= " AND department = ?";
+        $facParams[] = $department;
+    }
 }
 $facSql .= " ORDER BY name ASC";
 $facStmt = db()->prepare($facSql);
@@ -74,17 +81,10 @@ $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
 // ---- Fetch Data ---------------------------------------------------------
-<<<<<<< HEAD
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
-$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
-=======
 $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
 $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
 
 // Query string for exports
 $exportQ = array_filter([
@@ -292,7 +292,7 @@ require __DIR__ . '/inc/header.php';
   </label>
 
   <!-- Department -->
-  <?php if ($isHod): ?>
+  <?php if (!user_can_choose_department($user)): ?>
     <label class="fb-field" title="Locked to your assigned department">
       <span class="fb-k">Department</span>
       <select disabled><option selected><?= e($user['department']) ?></option></select>
@@ -574,8 +574,20 @@ require __DIR__ . '/inc/header.php';
               <?php
                 $groupedGrid = [];
                 foreach ($facGrid as $f) {
-                    $deptName = $f['department'] ?: 'Other Department';
-                    $groupedGrid[$deptName][] = $f;
+                    $rawDept = $f['department'] ?: 'Other Department';
+                    $matchedKey = null;
+                    if ($department && department_names_match($rawDept, $department)) {
+                        $matchedKey = $department;
+                    } else {
+                        foreach (array_keys($groupedGrid) as $existing) {
+                            if (department_names_match($existing, $rawDept)) {
+                                $matchedKey = $existing;
+                                break;
+                            }
+                        }
+                    }
+                    $groupName = $matchedKey ?: $rawDept;
+                    $groupedGrid[$groupName][] = $f;
                 }
                 $sno = 1;
               ?>
@@ -609,6 +621,11 @@ require __DIR__ . '/inc/header.php';
                         </a>
                         <a href="<?= e(url('present-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?>" class="btn btn-secondary btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px; background:#131D3B; color:#ffffff; border:1px solid #131D3B;">
                           <?= icon('play-circle', 13) ?> Present
+                        </a>
+                        <!-- Faculty Details: the A4 document of everything ATTS holds on this
+                             person. Same id-based authorization as the report links above. -->
+                        <a href="<?= e(url('faculty-details-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?><?= $em !== 'all' ? '&em=' . urlencode($em) : '' ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;" title="Open <?= e($f['name']) ?>'s Faculty Details as an A4 document">
+                          <?= icon('user', 13) ?> Details PDF
                         </a>
                       </div>
                     </td>

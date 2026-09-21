@@ -15,6 +15,7 @@ require_once __DIR__ . '/../models/Announcement.php';
 require_once __DIR__ . '/../models/Target.php';
 require_once __DIR__ . '/../models/ExecutiveMeeting.php';   // FEAT-07 status pill
 require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/../models/User.php';        // profile photograph
 
 $user   = $user ?? current_user();
 $active = basename($_SERVER['SCRIPT_NAME']);
@@ -29,10 +30,19 @@ $atts_emStatus = em_status($atts_activeYear);
 $headerNotifications = fetch_header_notifications($user);
 $unreadNotifCount    = count(array_filter($headerNotifications, fn($n) => !empty($n['unread'])));
 
+// The signed-in person's own passport photo, shown instead of their initials
+// in the sidebar and topbar. Null when there is none, or when the photo
+// column has not been added yet, so the initials keep working as before.
+$myPhotoFile = !empty($user['id']) ? user_photo_filename((int) $user['id']) : null;
+$myPhotoUrl  = $myPhotoFile !== null
+    ? url('photo.php?user=' . (int) $user['id'] . '&v=' . substr(md5($myPhotoFile), 0, 8))
+    : null;
+
 $navItems = navigation_for($user['role']);
 $groups   = group_navigation($navItems);
 
 require_once __DIR__ . '/../models/EditRequest.php';
+require_once __DIR__ . '/../models/PasswordResetRequest.php';   // FEAT-11 badge
 
 $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
@@ -44,6 +54,9 @@ $badgeCounts = [
     'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
     'edit_requests' => edit_requests_pending_count($user),
+    // FEAT-11 — only the Admin decides password requests, so only the Admin is
+    // told how many are waiting. The count is not even queried for anyone else.
+    'password_requests' => $user['role'] === 'Admin' ? password_reset_requests_pending_count() : 0,
 ];
 
 $pageTitle    = $pageTitle    ?? 'Dashboard';
@@ -131,6 +144,9 @@ $flashes      = take_flashes();
             <?php foreach ($items as $item):
               if ($active === 'approvals.php' || $active === 'edit-requests.php') {
                 $isActive = (strtok($item['path'], '?') === 'approvals.php');
+              } elseif ($active === 'password-requests.php') {
+                // FEAT-11 is a tab of Settings, so Settings stays lit while it is open.
+                $isActive = (strtok($item['path'], '?') === 'settings.php');
               } else {
                 $isActive = (strtok($item['path'], '?') === $active);
               }
@@ -159,7 +175,11 @@ $flashes      = take_flashes();
 
     <div class="sidebar-foot">
       <div class="side-user">
-        <div class="avatar"><?= e(initials($user['name'])) ?></div>
+        <?php if ($myPhotoUrl !== null): ?>
+          <img class="avatar avatar-photo" src="<?= e($myPhotoUrl) ?>" alt="Your profile photo">
+        <?php else: ?>
+          <div class="avatar"><?= e(initials($user['name'])) ?></div>
+        <?php endif; ?>
         <div class="meta">
           <div class="nm" title="<?= e($user['name']) ?>"><?= e($user['name']) ?></div>
           <div class="rl"><?= e($user['role']) ?><?= !empty($user['department']) ? ' · ' . e($user['department']) : '' ?></div>
@@ -269,7 +289,11 @@ $flashes      = take_flashes();
           <div class="nm"><?= e($user['name']) ?></div>
           <div class="rl"><?= e($user['role']) ?><?= $user['department'] ? ' · ' . e($user['department']) : '' ?></div>
         </div>
-        <div class="avatar-dark"><?= e(initials($user['name'])) ?></div>
+        <?php if ($myPhotoUrl !== null): ?>
+          <img class="avatar-dark avatar-photo" src="<?= e($myPhotoUrl) ?>" alt="Your profile photo">
+        <?php else: ?>
+          <div class="avatar-dark"><?= e(initials($user['name'])) ?></div>
+        <?php endif; ?>
       </div>
     </header>
 

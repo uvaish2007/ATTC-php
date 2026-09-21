@@ -2,12 +2,16 @@
 /**
  * Settings — Admin only.
  *
- * The page has three tabs. Which one you see comes from the address bar,
+ * The page has four tabs. Which one you see comes from the address bar,
  * e.g. settings.php?tab=account :
  *
  *   metrics  → the list of things the IQAC tracks (used by Targets)
  *   account  → your own name, phone and password
  *   system   → read-only facts about this installation
+ *
+ * The fourth tab, Password Requests, is a page of its own
+ * (password-requests.php) because it has its own POST handler; the tab strip
+ * in inc/settings_tabs.php is shared so both look like one Settings screen.
  */
 
 require_once __DIR__ . '/inc/auth.php';
@@ -103,14 +107,8 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
-<!-- Tab bar: each tab is just a link back to this page -->
-<div class="tabs">
-  <?php foreach ($tabs as $key => $label): ?>
-    <a class="tab<?= $tab === $key ? ' active' : '' ?>" href="<?= e(url('settings.php?tab=' . $key)) ?>">
-      <?= e($label) ?>
-    </a>
-  <?php endforeach; ?>
-</div>
+<!-- Tab bar — shared with password-requests.php, which draws the same strip -->
+<?php $settingsTab = $tab; require __DIR__ . '/inc/settings_tabs.php'; ?>
 
 
 <?php if ($tab === 'metrics'): ?>

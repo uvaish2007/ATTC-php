@@ -300,8 +300,15 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
     $params = [];
 
     if ($department) {
-        $sql .= ' AND t.department = ?';
-        $params[] = $department;
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $sql .= " AND t.department IN ($inPh)";
+            $params = array_merge($params, $deptVars);
+        } else {
+            $sql .= ' AND t.department = ?';
+            $params[] = $department;
+        }
     }
     if ($year) {
         $sql .= ' AND t.academic_year = ?';
@@ -342,8 +349,15 @@ function target_report_items(?string $department = null, ?string $year = null): 
     $params = [];
 
     if ($department) {
-        $sql .= ' AND department = ?';
-        $params[] = $department;
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $sql .= " AND department IN ($inPh)";
+            $params = array_merge($params, $deptVars);
+        } else {
+            $sql .= ' AND department = ?';
+            $params[] = $department;
+        }
     }
     if ($year) {
         $sql .= ' AND academic_year = ?';
@@ -881,11 +895,7 @@ function target_approved_records(array $target): array
                 ?? $row['student_name']
                 ?? $row['creator_name']
                 ?? 'Faculty';
-<<<<<<< HEAD
-            $row['_proof_url']  = !empty($row['proof_file']) ? proof_url($row['proof_file']) : null;
-=======
             $row['_proof_url']  = !empty($row['proof_file']) ? url('view-proof.php?file=' . rawurlencode($row['proof_file']) . '&type=' . rawurlencode($type) . '&id=' . (int)($row['id'] ?? 0)) : null;
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
             $row['_doc_url']    = !empty($row['document_link']) ? $row['document_link'] : (!empty($row['certificate_link']) ? $row['certificate_link'] : null);
             $results[] = $row;
         }

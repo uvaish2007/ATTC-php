@@ -36,8 +36,8 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 
 // Scope: oversight roles choose a department (or all); everyone else is pinned
 // to their own. This mirrors report_records()'s own scoping.
-$isOversight  = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
-$department   = $isOversight ? (trim((string) input('department')) ?: null) : ($user['department'] ?? null);
+$isOversight  = user_can_choose_department($user);
+$department   = user_department_scope($user, input('department'));
 // Centralized active academic year system (with valid explicit year override)
 $yearInput = trim((string) input('year', ''));
 $year      = (is_valid_academic_year($yearInput) ? $yearInput : null) ?: active_academic_year();

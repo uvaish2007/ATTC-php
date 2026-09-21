@@ -145,30 +145,18 @@ function time_ago($datetime): string
 function status_class(string $status): string
 {
     $map = [
-<<<<<<< HEAD
         'Draft'                 => 'neutral',
         'Submitted'             => 'info',
         'HOD Pending'           => 'info',
         'Dean Pending'          => 'warning',
         'Approved'              => 'success',
         'Rejected'              => 'danger',
+        'Pending'               => 'warning',
+        'Completed'             => 'success',
         'Edit Requested'        => 'warning',
         'Unlocked for Edit'     => 'primary',
         'Resubmitted'           => 'info',
         'Correction Authorized' => 'primary',
-        'Completed'             => 'success',
-=======
-        'Draft'             => 'neutral',
-        'Submitted'         => 'info',
-        'HOD Pending'       => 'info',
-        'Dean Pending'      => 'warning',
-        'Approved'          => 'success',
-        'Rejected'          => 'danger',
-        'Pending'           => 'warning',
-        'Completed'         => 'info',
-        'Edit Requested'    => 'warning',
-        'Unlocked for Edit' => 'info',
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
     ];
 
     return $map[$status] ?? 'neutral';
@@ -350,13 +338,9 @@ if (!function_exists('mb_strlen')) {
     function mb_strlen(string $string, ?string $encoding = null): int {
         return strlen($string);
     }
-<<<<<<< HEAD
-}/**
-=======
 }
 
 /**
-<<<<<<< HEAD
  * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
  * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
  */
@@ -430,8 +414,73 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
-=======
->>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
+/**
+ * Return all known name variations and aliases for a department name for SQL IN queries.
+ * E.g. 'CSE' -> ['CSE', 'cse', 'Computer Science and Engineering', 'computer science and engineering', 'Computer Science & Engineering', 'computer science & engineering']
+ *
+ * @return string[]
+ */
+function department_variants(?string $dept): array
+{
+    if ($dept === null) {
+        return [];
+    }
+    $trim = trim($dept);
+    if ($trim === '' || $trim === '__UNASSIGNED_DEPT__') {
+        return [];
+    }
+
+    $variants = [$trim];
+    $clean = function(string $s): string {
+        $s = strtolower($s);
+        $s = str_replace(['&', 'and'], '+', $s);
+        $s = preg_replace('/[^a-z0-9+]/', '', $s);
+        return $s;
+    };
+    $cDept = $clean($trim);
+    $lowerDept = strtolower($trim);
+
+    $knownAliases = [
+        'cse'   => ['CSE', 'cse', 'Computer Science and Engineering', 'computer science and engineering', 'Computer Science & Engineering', 'computer science & engineering'],
+        'csbs'  => ['CSBS', 'csbs', 'Computer Science and Business Systems', 'computer science and business systems', 'Computer Science & Business Systems', 'computer science & business systems'],
+        'aids'  => ['AI & DS', 'ai & ds', 'AIDS', 'aids', 'AI&DS', 'ai&ds', 'Artificial Intelligence and Data Science', 'artificial intelligence and data science', 'Artificial Intelligence & Data Science', 'artificial intelligence & data science'],
+        'aiml'  => ['AI & ML', 'ai & ml', 'AIML', 'aiml', 'AI&ML', 'ai&ml', 'Artificial Intelligence and Machine Learning', 'artificial intelligence and machine learning', 'Artificial Intelligence & Machine Learning', 'artificial intelligence & machine learning'],
+        'ece'   => ['ECE', 'ece', 'Electronics and Communication Engineering', 'electronics and communication engineering', 'Electronics & Communication Engineering', 'electronics & communication engineering'],
+        'eee'   => ['EEE', 'eee', 'Electrical and Electronics Engineering', 'electrical and electronics engineering', 'Electrical & Electronics Engineering', 'electrical & electronics engineering'],
+        'it'    => ['IT', 'it', 'Information Technology', 'information technology'],
+        'mech'  => ['MECH', 'mech', 'Mechanical Engineering', 'mechanical engineering'],
+        'civil' => ['CIVIL', 'civil', 'Civil Engineering', 'civil engineering'],
+        'aero'  => ['AERO', 'aero', 'Aeronautical Engineering', 'aeronautical engineering'],
+        'chem'  => ['CHEM', 'chem', 'Chemical Engineering', 'chemical engineering'],
+        'cyber' => ['Cyber Security', 'cyber security', 'Cybersecurity', 'cybersecurity'],
+        'arch'  => ['Architecture', 'architecture', 'Arch', 'arch'],
+        'mca'   => ['MCA', 'mca', 'Master of Computer Applications', 'master of computer applications'],
+        'mba'   => ['MBA', 'mba', 'Master of Business Administration', 'master of business administration'],
+    ];
+
+    foreach ($knownAliases as $code => $group) {
+        $matched = false;
+        if ($cDept === $code || in_array($lowerDept, array_map('strtolower', $group), true)) {
+            $matched = true;
+        } else {
+            foreach ($group as $alias) {
+                if (department_names_match($trim, $alias)) {
+                    $matched = true;
+                    break;
+                }
+            }
+        }
+        if ($matched) {
+            foreach ($group as $alias) {
+                $variants[] = $alias;
+            }
+        }
+    }
+
+    return array_values(array_unique($variants));
+}
+
+/**
  * Build a secure URL for accessing a record proof attachment.
  * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
  */
@@ -575,5 +624,38 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         . icon('download', 14) . '</a>'
         . '</div>';
 }
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
+
+if (!function_exists('user_can_choose_department')) {
+    function user_can_choose_department(?array $user = null): bool
+    {
+        if ($user === null && function_exists('current_user')) {
+            $user = current_user();
+        }
+        if (!$user || empty($user['role'])) {
+            return false;
+        }
+        return in_array($user['role'], ['Admin', 'Principal', 'Director', 'Dean'], true);
+    }
+}
+
+if (!function_exists('user_department_scope')) {
+    function user_department_scope(?array $user = null, ?string $requestedDepartment = null): ?string
+    {
+        if ($user === null && function_exists('current_user')) {
+            $user = current_user();
+        }
+        if (!$user) {
+            return null;
+        }
+
+        if (user_can_choose_department($user)) {
+            $requested = trim((string) $requestedDepartment);
+            return $requested !== '' ? $requested : null;
+        }
+
+        $dept = trim((string) ($user['department'] ?? ''));
+        return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
+    }
+}
+
 

@@ -15,6 +15,15 @@ $user = require_login();
 
 // ---- Handle the two forms ------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    // A body larger than php.ini's post_max_size is thrown away before PHP
+    // fills $_POST and $_FILES, which would otherwise look like a CSRF
+    // failure. Say what actually happened instead. Phone photos are often
+    // several megabytes, so this is easy to hit.
+    if ($_POST === [] && $_FILES === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+        flash('error', 'That file was too large for the server to accept. A profile photo must be no more than 2 MB.');
+        redirect('/profile.php');
+    }
+
     csrf_check();
     $action = (string) input('action');
 
@@ -35,6 +44,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (string) input('confirm_password')
         );
         flash($ok ? 'success' : 'error', $msg);
+    } elseif ($action === 'upload_photo') {
+        [$ok, $msg] = user_save_photo($user['id'], $_FILES['photo'] ?? null);
+        flash($ok ? 'success' : 'error', $msg);
+
+    } elseif ($action === 'remove_photo') {
+        [$ok, $msg] = user_delete_photo($user['id']);
+        flash($ok ? 'success' : 'error', $msg);
     }
 
     redirect('/profile.php');
@@ -42,6 +58,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 // ---- Everything the page shows -------------------------------------------
 $me      = user_find($user['id']);
+
+// The passport photo, if this account has one. The ?v= part changes whenever
+// a new photo is stored, so the browser never shows the previous one.
+$photoFile = user_photo_filename($user['id']);
+$photoUrl  = $photoFile !== null
+    ? url('photo.php?user=' . (int) $user['id'] . '&v=' . substr(md5($photoFile), 0, 8))
+    : null;
 $counts  = user_record_counts($user['id']);
 $records = my_records($user['id']);
 
@@ -71,7 +94,12 @@ require __DIR__ . '/inc/header.php';
 <!-- Who you are -->
 <div class="card">
   <div class="card-body profile-hero">
-    <div class="avatar-xl"><?= e(initials($me['name'])) ?></div>
+    <?php if ($photoUrl !== null): ?>
+      <img class="avatar-xl avatar-photo" src="<?= e($photoUrl) ?>"
+           alt="Profile photo of <?= e($me['name']) ?>">
+    <?php else: ?>
+      <div class="avatar-xl"><?= e(initials($me['name'])) ?></div>
+    <?php endif; ?>
 
     <div class="min-w-0">
       <div class="profile-name"><?= e($me['name']) ?></div>
@@ -89,6 +117,60 @@ require __DIR__ . '/inc/header.php';
         Member since <?= e(date('d M Y', strtotime($me['created_at']))) ?>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- Passport-size photograph -->
+<div class="card mt-5">
+  <div class="card-head">
+    <div>
+      <div class="card-title">Profile photo</div>
+      <div class="card-sub">A passport-size photograph, shown here and on your Faculty Details A4 document</div>
+    </div>
+  </div>
+
+  <div class="card-body photo-manage">
+
+    <div class="photo-frame">
+      <?php if ($photoUrl !== null): ?>
+        <img src="<?= e($photoUrl) ?>" alt="Your current profile photo">
+      <?php else: ?>
+        <span>No photo<br>yet</span>
+      <?php endif; ?>
+    </div>
+
+    <div class="min-w-0 grow">
+      <form method="post" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="upload_photo">
+
+        <div class="field">
+          <label>Choose a photograph <span class="req">*</span></label>
+          <input class="input" type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
+          <div class="hint">
+            Passport size (35 x 45 mm). JPG, PNG or WEBP, at least 150 x 150 pixels, up to 2 MB.
+            A head-and-shoulders photo on a plain background prints best.
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button type="submit" class="btn btn-primary btn-sm">
+            <?= icon('upload', 15) ?> <?= $photoUrl !== null ? 'Replace Photo' : 'Upload Photo' ?>
+          </button>
+          <span class="card-sub">Replacing a photo deletes the old one.</span>
+        </div>
+      </form>
+
+      <?php if ($photoUrl !== null): ?>
+        <form method="post" class="mt-3"
+              onsubmit="return confirm('Remove your profile photo? The Faculty Details document will show &quot;Photo Not Available&quot; again.');">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="remove_photo">
+          <button type="submit" class="btn btn-outline btn-sm"><?= icon('x', 14) ?> Remove Photo</button>
+        </form>
+      <?php endif; ?>
+    </div>
+
   </div>
 </div>
 

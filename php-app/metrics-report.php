@@ -26,7 +26,7 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
     $format = 'word';
 }
 
-$department = trim((string) input('department')) ?: null;   // honoured only for Admin
+$department = user_department_scope($user, input('department'));
 $from       = parse_date_input((string) input('from'));
 $to         = parse_date_input((string) input('to'));
 // FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
@@ -39,11 +39,7 @@ $emFilter    = em_filter_value(input('em'));
 $records = report_records($user, $department, null, null, $from, $to, em_filter_year($emFilter));
 
 // The label shown on the report reflects the scope actually applied.
-if ($user['role'] === 'HoD') {
-    $deptLabel = $user['department'] ?: 'ALL DEPARTMENTS';
-} else {
-    $deptLabel = $department ?: 'ALL DEPARTMENTS';   // Admin/Director may narrow
-}
+$deptLabel = $department ?: 'ALL DEPARTMENTS';
 // The full department name shown in the report itself; $deptLabel (raw code)
 // is kept only for building the download filename below.
 $deptDisplay = department_full_name($deptLabel);

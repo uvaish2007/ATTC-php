@@ -173,10 +173,30 @@ function edit_request_get(int $id): ?array
 
 /**
  * List edit request tickets with optional filters.
+ *
+ * Accepts either an associative array of filters:
+ *   ['department' => ..., 'status' => ..., 'academic_year' => ..., 'requested_by' => ..., 'q' => ...]
+ * or legacy/positional arguments:
+ *   edit_requests_list(?string $dept, ?string $status, ?string $academic_year, ?int $requested_by)
+ *
+ * @param array|string|null $filters Filter array or department string
+ * @param string|null $status Ticket status filter (when using positional args)
+ * @param string|null $academicYear Academic year filter (when using positional args)
+ * @param int|null $requestedBy Requester user ID filter (when using positional args)
+ * @return array List of edit request rows
  */
-function edit_requests_list(array $filters = []): array
+function edit_requests_list($filters = [], ?string $status = null, ?string $academicYear = null, ?int $requestedBy = null): array
 {
     edit_requests_table_init();
+
+    if (!is_array($filters)) {
+        $department = $filters;
+        $filters = [];
+        if (!empty($department)) { $filters['department'] = (string) $department; }
+        if (!empty($status)) { $filters['status'] = (string) $status; }
+        if (!empty($academicYear)) { $filters['academic_year'] = (string) $academicYear; }
+        if (!empty($requestedBy)) { $filters['requested_by'] = (int) $requestedBy; }
+    }
 
     $sql = "SELECT er.*, 
                    u_req.name AS requester_name, u_req.email AS requester_email,
@@ -197,9 +217,14 @@ function edit_requests_list(array $filters = []): array
         $params[] = $filters['status'];
     }
 
-    if (!empty($filters['academic_year'])) {
+    if (!empty($filters['academic_year']) && $filters['academic_year'] !== 'all') {
         $sql .= " AND er.academic_year = ?";
         $params[] = $filters['academic_year'];
+    }
+
+    if (!empty($filters['requested_by'])) {
+        $sql .= " AND er.requested_by = ?";
+        $params[] = (int) $filters['requested_by'];
     }
 
     if (!empty($filters['q'])) {
@@ -372,3 +397,29 @@ function edit_request_original_record(string $recordType, int $recordId): ?array
         return null;
     }
 }
+
+/**
+ * Fetch a single edit request by ID (alias for edit_request_get).
+ */
+function edit_request_find(int $id): ?array
+{
+    return edit_request_get($id);
+}
+
+/**
+ * Review an edit request (Dean or Admin approves or rejects).
+ */
+function edit_request_review(int $requestId, string $decision, ?string $comment, array $user): array
+{
+    $action = ($decision === 'approve') ? 'approve' : 'reject';
+    return edit_request_process($requestId, $action, $comment, (int) ($user['id'] ?? 0), (string) ($user['role'] ?? 'Dean'));
+}
+
+/**
+ * Mark edit request as completed upon Coordinator resubmission.
+ */
+function edit_request_complete(int $recordId, string $recordType, int $coordinatorId = 0, ?array $oldValues = null, ?array $newValues = null): void
+{
+    edit_request_mark_completed_for_record($recordType, $recordId);
+}
+

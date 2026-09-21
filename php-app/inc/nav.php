@@ -24,7 +24,10 @@ function navigation_for(string $role): array
             ['section' => 'Manage',    'label' => 'Users',                'path' => 'users.php',                'icon' => 'users'],
             ['section' => 'Manage',    'label' => 'Departments',          'path' => 'departments.php',          'icon' => 'building'],
             ['section' => 'Manage',    'label' => 'Report Template',      'path' => 'report-template.php',      'icon' => 'reports'],
-            ['section' => 'Account',   'label' => 'Settings',             'path' => 'settings.php',             'icon' => 'settings'],
+            // FEAT-11 lives inside Settings (its last tab), so the pending count
+            // rides on Settings. Admin only — no other role's list has this entry,
+            // and password-requests.php gates on the role itself regardless.
+            ['section' => 'Account',   'label' => 'Settings',             'path' => 'settings.php',             'icon' => 'settings', 'badge' => 'password_requests'],
         ],
         'Principal' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
@@ -55,16 +58,8 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
-<<<<<<< HEAD
-            ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
-=======
-<<<<<<< HEAD
-            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals'],
-=======
             ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
->>>>>>> ce549edeab09125eef00af2f61dbd5c99437b8d5
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target'],
->>>>>>> 60ca102dbc2bc82b12538eb61a23b1aa2aa06fd2
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],
@@ -90,6 +85,19 @@ function navigation_for(string $role): array
             ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
     ];
+
+    // The staff directory is open to every role that may already open another
+    // person's Faculty Details document (see can_user_view_faculty_report):
+    // oversight roles browse all departments, a Coordinator their own only.
+    // The HoD menu lists it above already, so it is not repeated here.
+    if (in_array($role, ['Admin', 'Principal', 'Director', 'Dean', 'Coordinator'], true)) {
+        $items[$role][] = [
+            'section' => $role === 'Admin' ? 'Manage' : 'Workspace',
+            'label'   => 'Faculty',
+            'path'    => 'faculty.php',
+            'icon'    => 'graduation',
+        ];
+    }
 
     return $items[$role] ?? [];
 }

@@ -22,6 +22,7 @@ $filters = em_resolve_filters($user, [
     'academic_year'  => input('academic_year'),
     'faculty_id'     => input('faculty_id'),
     'student_reg'    => input('student_reg'),
+    'target_metric'  => input('target_metric'),   // one target type, or all
     'meeting_number' => input('meeting_number'),
     'em'             => input('em'),   // FEAT-07 EM1 / EM2 / All
 ]);
@@ -35,6 +36,7 @@ $departments   = departments_all();
 $years         = academic_years();
 $facultyList   = em_faculty_options($user, $filters['department']);
 $studentList   = em_student_options($user, $filters['department'], $filters['year']);
+$targetList    = em_target_options($filters['department'], $filters['year']);
 $canPickDept   = em_can_pick_department($user);
 $presentUrl    = url('present-executive-meeting.php') . '?' . http_build_query(em_filter_query($filters));
 
@@ -121,6 +123,25 @@ require __DIR__ . '/inc/header.php';
           <?= e($st['student_name']) ?> (<?= e($st['reg_no']) ?>)
         </option>
       <?php endforeach; ?>
+    </select>
+  </label>
+
+  <!-- Targets: every target type set in this scope. Open to every role; what
+       the list contains is decided by the department the server resolved. -->
+  <label class="fb-field em-target-field" title="Narrow the Target vs Achieved section to one target type">
+    <span class="fb-k">Targets</span>
+    <select name="target_metric">
+      <?php if (empty($targetList)): ?>
+        <option value="">No targets set for this scope</option>
+      <?php else: ?>
+        <option value="">All Targets</option>
+        <?php foreach ($targetList as $t): ?>
+          <option value="<?= e($t['metric']) ?>" title="<?= e($t['label']) ?>"
+                  <?= ($filters['target_metric'] ?? null) === $t['metric'] ? 'selected' : '' ?>>
+            <?= e($t['label']) ?>
+          </option>
+        <?php endforeach; ?>
+      <?php endif; ?>
     </select>
   </label>
 
@@ -281,6 +302,8 @@ require __DIR__ . '/inc/header.php';
   .em-chip-k { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
       color:var(--ink-muted,#64748b); }
   #emFilterForm .fb-field select { min-width:150px; }
+  /* Proforma metrics are long sentences; keep the filter bar readable. */
+  #emFilterForm .em-target-field select { max-width:260px; }
 </style>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

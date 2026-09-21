@@ -201,3 +201,185 @@ function user_reset_password(int $id, string $newPassword): array
 
     return [true, 'Password reset.'];
 }
+
+/* ---------------------------------------------------------------------------
+ *  Profile photograph (passport size)
+ *
+ *  One optional photo per account, for every role. Only the stored file name
+ *  lives in users.photo (added by sql/user_photo.sql); the image itself sits
+ *  in uploads/photos/ and is served by photo.php, never linked directly.
+ * ------------------------------------------------------------------------ */
+
+/** Largest photo accepted, in bytes. */
+const USER_PHOTO_MAX_BYTES = 2097152; // 2 MB
+
+/**
+ * Is the photo column present?
+ *
+ * Checked once per request so that a site which has not yet run
+ * sql/user_photo.sql keeps working exactly as before instead of erroring.
+ */
+function user_photo_supported(): bool
+{
+    static $has = null;
+    if ($has === null) {
+        try {
+            $stmt = db()->query("SHOW COLUMNS FROM users LIKE 'photo'");
+            $has = (bool) $stmt->fetch();
+        } catch (\PDOException $e) {
+            $has = false;
+        }
+    }
+    return $has;
+}
+
+/** Absolute path of the folder holding the photos (created on demand). */
+function user_photo_dir(): string
+{
+    $dir = rtrim(defined('UPLOAD_DIR') ? UPLOAD_DIR : dirname(__DIR__) . '/uploads', '/\\') . '/photos';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0775, true);
+    }
+    return $dir;
+}
+
+/** The stored file name for one account, or null when there is no photo. */
+function user_photo_filename(int $id): ?string
+{
+    if (!user_photo_supported()) {
+        return null;
+    }
+    $stmt = db()->prepare('SELECT photo FROM users WHERE id = ?');
+    $stmt->execute([$id]);
+    $name = basename(trim((string) $stmt->fetchColumn()));
+    return $name !== '' ? $name : null;
+}
+
+/** Full path of a stored photo, or null when the file is missing from disk. */
+function user_photo_path(?string $filename): ?string
+{
+    $filename = basename(trim((string) $filename));
+    if ($filename === '') {
+        return null;
+    }
+    $path = user_photo_dir() . DIRECTORY_SEPARATOR . $filename;
+    return (is_file($path) && is_readable($path)) ? $path : null;
+}
+
+/**
+ * The URL that shows one account's photo, or null when there is none.
+ * Always points at photo.php, which re-checks who is allowed to see it.
+ */
+function user_photo_url(int $id): ?string
+{
+    return user_photo_filename($id) !== null ? url('photo.php?user=' . $id) : null;
+}
+
+/**
+ * The photo as a data: URI, for documents that must print without any
+ * further HTTP request (the A4 Faculty Details PDF). Null when unavailable.
+ */
+function user_photo_data_uri(?string $filename): ?string
+{
+    $path = user_photo_path($filename);
+    if ($path === null || filesize($path) > USER_PHOTO_MAX_BYTES) {
+        return null;
+    }
+    $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $mime = ($ext === 'png') ? 'image/png' : (($ext === 'webp') ? 'image/webp' : 'image/jpeg');
+    $raw  = @file_get_contents($path);
+    return $raw === false ? null : 'data:' . $mime . ';base64,' . base64_encode($raw);
+}
+
+/**
+ * Store a newly uploaded passport photo for one account.
+ *
+ * Validated on the server: a real upload, a real image, an accepted type and
+ * within the size limit. The old photo is removed once the new one is safely
+ * in place. Returns [ok, message].
+ */
+function user_save_photo(int $id, ?array $file): array
+{
+    if (!user_photo_supported()) {
+        return [false, 'Photo storage is not set up yet. Ask the Admin to run sql/user_photo.sql.'];
+    }
+    if (!user_find($id)) {
+        return [false, 'User not found.'];
+    }
+    if (!$file || !isset($file['error']) || $file['error'] === UPLOAD_ERR_NO_FILE) {
+        return [false, 'Choose a photo to upload.'];
+    }
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        return [false, ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE)
+            ? 'That photo is too large to upload.'
+            : 'The photo could not be uploaded. Please try again.'];
+    }
+    if (!is_uploaded_file($file['tmp_name'])) {
+        return [false, 'The photo could not be uploaded (invalid temporary file).'];
+    }
+    if ((int) $file['size'] > USER_PHOTO_MAX_BYTES) {
+        return [false, 'The photo is larger than 2 MB. Please upload a smaller one.'];
+    }
+
+    $ext = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)) {
+        return [false, 'The photo must be a JPG, PNG or WEBP image.'];
+    }
+
+    // Trust the file itself, not the name the browser sent.
+    $info    = @getimagesize($file['tmp_name']);
+    $allowed = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'];
+    if (!$info || !isset($allowed[$info[2]])) {
+        return [false, 'That file is not a readable JPG, PNG or WEBP image.'];
+    }
+    [$width, $height] = $info;
+    if ($width < 150 || $height < 150) {
+        return [false, 'The photo is too small. Use at least 150 x 150 pixels (passport size is 35 x 45 mm).'];
+    }
+
+    $stored = 'photo_' . $id . '_' . bin2hex(random_bytes(6)) . '.' . $allowed[$info[2]];
+    $dest   = user_photo_dir() . DIRECTORY_SEPARATOR . $stored;
+
+    if (!move_uploaded_file($file['tmp_name'], $dest) || !is_file($dest)) {
+        return [false, 'The photo could not be saved to the upload directory.'];
+    }
+
+    $previous = user_photo_filename($id);
+
+    $stmt = db()->prepare('UPDATE users SET photo = ? WHERE id = ?');
+    if (!$stmt->execute([$stored, $id])) {
+        @unlink($dest);
+        return [false, 'The photo could not be saved. Please try again.'];
+    }
+
+    if ($previous !== null && $previous !== $stored) {
+        $old = user_photo_path($previous);
+        if ($old !== null) {
+            @unlink($old);
+        }
+    }
+
+    return [true, 'Profile photo updated.'];
+}
+
+/** Remove one account's photo, from the database and from disk. */
+function user_delete_photo(int $id): array
+{
+    if (!user_photo_supported()) {
+        return [false, 'Photo storage is not set up yet.'];
+    }
+    $existing = user_photo_filename($id);
+    if ($existing === null) {
+        return [false, 'There is no photo to remove.'];
+    }
+
+    $stmt = db()->prepare('UPDATE users SET photo = NULL WHERE id = ?');
+    $stmt->execute([$id]);
+
+    $path = user_photo_path($existing);
+    if ($path !== null) {
+        @unlink($path);
+    }
+
+    return [true, 'Profile photo removed.'];
+}

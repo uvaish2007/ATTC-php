@@ -111,6 +111,11 @@ require __DIR__ . '/inc/header.php';
         <a class="dropdown-item" href="<?= $exportLink('csv') ?>" style="display:flex; align-items:center; gap:8px; padding:8px 16px; font-weight:500;">
           <?= icon('download', 14) ?> Export CSV
         </a>
+        <!-- Faculty Details: the A4 document (personal details, achievements,
+             document status, declaration, signature) for this same faculty id. -->
+        <a class="dropdown-item" href="<?= e(url('faculty-details-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:8px; padding:8px 16px; font-weight:500; border-top:1px solid var(--hairline,#E6EAF2);">
+          <?= icon('user', 14) ?> Faculty Details (A4 PDF)
+        </a>
       </div>
     </div>
   </div>

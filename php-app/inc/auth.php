@@ -36,6 +36,82 @@ function auth_boot(): void
     session_start();
 }
 
+/**
+ * Resolve a user record by email, username, or login alias.
+ */
+function auth_find_user(string $login): ?array
+{
+    $login = trim($login);
+    if ($login === '') {
+        return null;
+    }
+    $lower = strtolower($login);
+    $aliasMap = [
+        'admin'                => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'admin@atts.edu'       => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'principal'            => ['director@atts.edu', 'principal@atts.edu'],
+        'principal@atts.edu'   => ['director@atts.edu', 'principal@atts.edu'],
+        'director'             => ['director@atts.edu', 'principal@atts.edu'],
+        'director@atts.edu'    => ['director@atts.edu', 'principal@atts.edu'],
+        'hod'                  => ['hod@atts.edu'],
+        'hod@atts.edu'         => ['hod@atts.edu'],
+        'coordinator'          => ['coordinator@atts.edu'],
+        'coordinator@atts.edu' => ['coordinator@atts.edu'],
+        'faculty'              => ['faculty@atts.edu'],
+        'faculty@atts.edu'     => ['faculty@atts.edu'],
+        'dean'                 => ['dean@atts.edu'],
+        'dean@atts.edu'        => ['dean@atts.edu'],
+        'hod_cse'              => ['cse_hod@atts.local'],
+        'cse_hod'              => ['cse_hod@atts.local'],
+        'coordinator_cse'      => ['cse_coord@atts.local'],
+        'cse_coordinator'      => ['cse_coord@atts.local'],
+        'cse_coord'            => ['cse_coord@atts.local'],
+        'faculty_cse'          => ['cse_fac@atts.local'],
+        'cse_faculty'          => ['cse_fac@atts.local'],
+        'cse_fac'              => ['cse_fac@atts.local'],
+        'hod_ece'              => ['ece_hod@atts.local'],
+        'ece_hod'              => ['ece_hod@atts.local'],
+        'coordinator_ece'      => ['ece_coord@atts.local'],
+        'ece_coordinator'      => ['ece_coord@atts.local'],
+        'ece_coord'            => ['ece_coord@atts.local'],
+        'faculty_ece'          => ['ece_fac@atts.local'],
+        'ece_faculty'          => ['ece_fac@atts.local'],
+        'ece_fac'              => ['ece_fac@atts.local'],
+        'hod_eee'              => ['eee_hod@atts.local'],
+        'eee_hod'              => ['eee_hod@atts.local'],
+        'coordinator_eee'      => ['eee_coord@atts.local'],
+        'eee_coordinator'      => ['eee_coord@atts.local'],
+        'eee_coord'            => ['eee_coord@atts.local'],
+        'faculty_eee'          => ['eee_fac@atts.local'],
+        'eee_faculty'          => ['eee_fac@atts.local'],
+        'eee_fac'              => ['eee_fac@atts.local'],
+        'hod_csbs'             => ['hod@atts.edu'],
+        'csbs_hod'             => ['hod@atts.edu'],
+        'coordinator_csbs'     => ['coordinator@atts.edu'],
+        'csbs_coordinator'     => ['coordinator@atts.edu'],
+        'csbs_coord'           => ['coordinator@atts.edu'],
+        'faculty_csbs'         => ['faculty@atts.edu'],
+    ];
+
+    $lookupEmails = $aliasMap[$lower] ?? [$login];
+    $inPlaceholders = implode(',', array_fill(0, count($lookupEmails), '?'));
+    $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) OR LOWER(email) = ? LIMIT 1");
+    $stmt->execute(array_merge($lookupEmails, [$lower]));
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(SUBSTRING_INDEX(email, '@', 1)) = ? LIMIT 1");
+        $stmt->execute([$lower]);
+        $user = $stmt->fetch();
+    }
+    if (!$user) {
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(role) = ? OR LOWER(name) = ? LIMIT 1");
+        $stmt->execute([$lower, $lower]);
+        $user = $stmt->fetch();
+    }
+    return $user ?: null;
+}
+
 /** Attempt login. Returns the user row on success, or null on failure.
  *  If $role is provided, verifies that user's role matches before setting session.
  */
@@ -335,3 +411,49 @@ function csrf_check(): void
         exit;
     }
 }
+
+if (!function_exists('user_can_choose_department')) {
+    /**
+     * Whether the user role is authorized to choose/filter by department across the system.
+     * Institutional leadership roles (Admin, Principal, Director, Dean) can select departments or view all.
+     * Departmental roles (HoD, Coordinator, Faculty) are strictly pinned to their authenticated department.
+     */
+    function user_can_choose_department(?array $user = null): bool
+    {
+        if ($user === null) {
+            $user = current_user();
+        }
+        if (!$user || empty($user['role'])) {
+            return false;
+        }
+        return in_array($user['role'], ['Admin', 'Principal', 'Director', 'Dean'], true);
+    }
+}
+
+if (!function_exists('user_department_scope')) {
+    /**
+     * Single source of truth for resolving effective department scope.
+     * For department-scoped users (HoD, Coordinator, Faculty), this ALWAYS returns their own department,
+     * ignoring any requested department in $_GET or $_POST.
+     * For oversight users (Admin, Principal, Director, Dean), this returns the requested department filter,
+     * or null if viewing all departments.
+     */
+    function user_department_scope(?array $user = null, ?string $requestedDepartment = null): ?string
+    {
+        if ($user === null) {
+            $user = current_user();
+        }
+        if (!$user) {
+            return null;
+        }
+
+        if (user_can_choose_department($user)) {
+            $requested = trim((string) $requestedDepartment);
+            return $requested !== '' ? $requested : null;
+        }
+
+        $dept = trim((string) ($user['department'] ?? ''));
+        return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
+    }
+}
+

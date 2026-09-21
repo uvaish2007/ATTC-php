@@ -815,6 +815,13 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
                 <tbody>
           `;
 
+          if (slide.categories.length === 0) {
+            html += `
+              <tr><td colspan="5" style="text-align:center; color:#64748B; padding:22px;">
+                No achievements or targets recorded for Academic Year ${escapeHtml(slide.academic_year)}.
+              </td></tr>`;
+          }
+
           slide.categories.forEach(c => {
             const tgt = c.configured ? c.target : 'Not Configured';
             const rem = c.configured ? c.remaining : 'N/A';

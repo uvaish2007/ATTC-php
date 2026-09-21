@@ -8,6 +8,7 @@
  */
 
 require_once __DIR__ . '/../inc/db.php';
+require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/Target.php';   // academic_years()
 require_once __DIR__ . '/Record.php';
 
@@ -77,11 +78,7 @@ function dashboard_data(array $user): array
     $isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
 
     // Server-side scope: only oversight roles may choose a department.
-    if ($isOversight) {
-        $departmentFilter = trim((string) ($_GET['department'] ?? '')) ?: null;
-    } else {
-        $departmentFilter = $user['department'] ?: null;
-    }
+    $departmentFilter = user_department_scope($user, $_GET['department'] ?? null);
 
     $valid  = ['Draft', 'Submitted', 'Approved', 'Rejected'];
     $status = in_array(($_GET['status'] ?? ''), $valid, true) ? $_GET['status'] : null;
@@ -105,6 +102,7 @@ function dashboard_data(array $user): array
         $sql    = "SELECT department, $expr AS n FROM `{$m['table']}`";
         $where  = [];
         $params = [];
+        if ($departmentFilter !== null)   { $where[] = 'department = ?';   $params[] = $departmentFilter; }
         if ($status !== null)             { $where[] = 'status = ?';        $params[] = $status; }
         if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
@@ -125,16 +123,18 @@ function dashboard_data(array $user): array
 
     // ---- department list: admin-managed if any, else derived from data ----
     require_once __DIR__ . '/Department.php';
-    $configured = array_map(fn($d) => $d['name'], departments_all());
-    $dataDepartments = array_keys($seen);
+    $configured      = array_map(fn($d) => $d['name'], departments_all());
     $usingConfigured = count($configured) > 0;
-    $departments = $usingConfigured ? array_values(array_unique(array_merge($configured, $dataDepartments))) : $dataDepartments;
-    sort($departments);
+    $dataDepartments = array_keys($seen);
 
-    // ---- matrix rows (real data; single row when a department is selected) ----
-    $matrixDepartments = $departmentFilter !== null
-        ? array_values(array_filter($dataDepartments, fn($d) => $d === $departmentFilter))
-        : $dataDepartments;
+    if ($departmentFilter !== null) {
+        $departments       = [$departmentFilter];
+        $matrixDepartments = [$departmentFilter];
+    } else {
+        $departments       = $usingConfigured ? array_values(array_unique(array_merge($configured, $dataDepartments))) : $dataDepartments;
+        sort($departments);
+        $matrixDepartments = $dataDepartments;
+    }
 
     $matrixRows = [];
     foreach ($matrixDepartments as $dept) {
@@ -199,15 +199,30 @@ function dashboard_data(array $user): array
         }
     }
 
-    // ---- top-line stats (targets count scoped to active year if set) ----
-    $targetCountSql = 'SELECT COUNT(*) FROM targets' . ($year !== null ? ' WHERE academic_year = ?' : '');
+    // ---- top-line stats (targets count scoped to active year and department if set) ----
+    $targetWhere = [];
+    $targetParams = [];
+    if ($departmentFilter !== null) {
+        $targetWhere[] = 'department = ?';
+        $targetParams[] = $departmentFilter;
+    }
+    if ($year !== null) {
+        $targetWhere[] = 'academic_year = ?';
+        $targetParams[] = $year;
+    }
+    $targetCountSql = 'SELECT COUNT(*) FROM targets' . ($targetWhere ? ' WHERE ' . implode(' AND ', $targetWhere) : '');
     $targetCountStmt = $pdo->prepare($targetCountSql);
-    $targetCountStmt->execute($year !== null ? [$year] : []);
+    $targetCountStmt->execute($targetParams);
     $targetCount = (int) $targetCountStmt->fetchColumn();
 
+    $userCountSql = 'SELECT COUNT(*) FROM users' . ($departmentFilter !== null ? ' WHERE department = ?' : '');
+    $userCountStmt = $pdo->prepare($userCountSql);
+    $userCountStmt->execute($departmentFilter !== null ? [$departmentFilter] : []);
+    $userCount = (int) $userCountStmt->fetchColumn();
+
     $stats = [
-        'users'       => (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn(),
-        'departments' => count($departments),
+        'users'       => $userCount,
+        'departments' => $departmentFilter !== null ? 1 : count($departments),
         'metrics'     => (int) $pdo->query('SELECT COUNT(*) FROM metrics')->fetchColumn(),
         'targets'     => $targetCount,
         'totalRecords'=> $grandTotal,
@@ -216,7 +231,10 @@ function dashboard_data(array $user): array
 
     // ---- users by role ----
     $usersByRole = ['Admin' => 0, 'Principal' => 0, 'Dean' => 0, 'HoD' => 0, 'Coordinator' => 0, 'Faculty' => 0];
-    foreach ($pdo->query('SELECT role, COUNT(*) AS n FROM users GROUP BY role') as $row) {
+    $usersByRoleSql = 'SELECT role, COUNT(*) AS n FROM users' . ($departmentFilter !== null ? ' WHERE department = ?' : '') . ' GROUP BY role';
+    $usersByRoleStmt = $pdo->prepare($usersByRoleSql);
+    $usersByRoleStmt->execute($departmentFilter !== null ? [$departmentFilter] : []);
+    foreach ($usersByRoleStmt as $row) {
         $roleName = in_array($row['role'], ['Director', 'Principal'], true) ? 'Principal' : $row['role'];
         if (isset($usersByRole[$roleName])) {
             $usersByRole[$roleName] += (int) $row['n'];
@@ -260,8 +278,9 @@ function dashboard_data(array $user): array
     }
 
     return [
-        'scope'          => ['department' => $departmentFilter, 'status' => $status, 'year' => $year],
-        'isOversight'    => $isOversight,
+        'scope'            => ['department' => $departmentFilter, 'status' => $status, 'year' => $year],
+        'departmentFilter' => $departmentFilter,
+        'isOversight'      => $isOversight,
         'departments'    => $departments,
         'years'          => academic_years(),
         'usingConfigured'=> $usingConfigured,

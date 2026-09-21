@@ -150,6 +150,66 @@ function em_student_options(array $user, ?string $dept, ?string $year): array
 }
 
 /**
+ * The target types selectable in this scope.
+ *
+ * There is no "target type" column in this schema - a target's type IS its
+ * metric, numbered by the proforma (S.No 1..30). The master `metrics` table
+ * lists only a handful of those names, so the options are read from the
+ * targets themselves, through the very function the report uses
+ * (target_report_items), department-name variants and all. The dropdown can
+ * therefore never offer a type the report has no rows for.
+ */
+function em_target_options(?string $dept, ?string $year): array
+{
+    // Both the filter validation and the page ask for this list in the same
+    // request; build it once.
+    static $memo = [];
+    $key = ($dept ?? '') . '|' . ($year ?? '');
+    if (isset($memo[$key])) {
+        return $memo[$key];
+    }
+
+    try {
+        $rows = target_report_items($dept, $year);
+    } catch (\PDOException $e) {
+        return $memo[$key] = [];
+    }
+
+    $options = [];
+    foreach ($rows as $r) {
+        $metric = trim((string) ($r['metric'] ?? ''));
+        if ($metric === '') {
+            continue;
+        }
+        $serial = trim((string) ($r['serial_no'] ?? ''));
+        $order  = isset($r['sort_order']) && $r['sort_order'] !== null ? (int) $r['sort_order'] : PHP_INT_MAX;
+
+        // The same proforma item is set once per department, so one entry per
+        // metric: the earliest position any department gave it, and the first
+        // serial number actually recorded - none is invented.
+        if (!isset($options[$metric])) {
+            $options[$metric] = ['metric' => $metric, 'serial' => $serial, 'order' => $order, 'count' => 0];
+        }
+        $options[$metric]['order'] = min($options[$metric]['order'], $order);
+        if ($options[$metric]['serial'] === '' && $serial !== '') {
+            $options[$metric]['serial'] = $serial;
+        }
+        $options[$metric]['count']++;
+    }
+
+    $options = array_values($options);
+    usort($options, static fn(array $a, array $b): int
+        => [$a['order'], $a['metric']] <=> [$b['order'], $b['metric']]);
+
+    foreach ($options as &$o) {
+        $o['label'] = ($o['serial'] !== '' ? $o['serial'] . '. ' : '') . $o['metric'];
+    }
+    unset($o);
+
+    return $memo[$key] = $options;
+}
+
+/**
  * Validate the submitted filters into the exact set used for both the preview
  * page and the presentation, so the two can never disagree.
  */
@@ -181,6 +241,17 @@ function em_resolve_filters(array $user, array $in): array
         $allowed = array_column(em_student_options($user, $department, $year), 'reg_no');
         if (!in_array($studentReg, $allowed, true)) {
             $studentReg = null;
+        }
+    }
+
+    // --- Target type: one of the metrics actually set in this scope, or all
+    //     of them. Checked against the same rows the report will read, so a
+    //     hand-edited target_metric= selects nothing it should not.
+    $targetMetric = trim((string) ($in['target_metric'] ?? '')) ?: null;
+    if ($targetMetric !== null) {
+        $allowed = array_column(em_target_options($department, $year), 'metric');
+        if (!in_array($targetMetric, $allowed, true)) {
+            $targetMetric = null;         // silently widen to "All Targets"
         }
     }
 
@@ -229,6 +300,7 @@ function em_resolve_filters(array $user, array $in): array
         'department'     => $department,
         'faculty_id'     => $facultyId,
         'student_reg'    => $studentReg,
+        'target_metric'  => $targetMetric,
         'meeting_number' => $meetingNumber,
         'meeting'        => $meeting,
         'meetings'       => $meetings,
@@ -248,6 +320,7 @@ function em_filter_query(array $f): array
         'academic_year'  => $f['year'],
         'faculty_id'     => $f['faculty_id'],
         'student_reg'    => $f['student_reg'],
+        'target_metric'  => $f['target_metric'] ?? null,
         'meeting_number' => $f['meeting_number'],
         'em'             => $f['em'] !== 'all' ? $f['em'] : null,   // FEAT-07
     ], fn($v) => $v !== null && $v !== '');
@@ -276,11 +349,24 @@ function em_filter_summary(array $user, array $f): array
         }
     }
 
+    // The target type, shown by its proforma number when it has one.
+    $targetLabel = 'All Targets';
+    if (!empty($f['target_metric'])) {
+        $targetLabel = (string) $f['target_metric'];
+        foreach (em_target_options($f['department'], $f['year']) as $o) {
+            if ($o['metric'] === $f['target_metric']) {
+                $targetLabel = $o['label'];
+                break;
+            }
+        }
+    }
+
     return [
         'Department'        => $f['department'] ? department_full_name($f['department']) : 'All Departments',
         'Academic Year'     => $f['year'],
         'Faculty'           => $facultyLabel,
         'Student'           => $studentLabel,
+        'Targets'           => $targetLabel,
         // FEAT-07: the EM1/EM2 period. The title slide reads this key.
         'Executive Meeting' => $f['em'] === 'all' ? 'All (EM1 & EM2)' : em_filter_label($f['em'], $f['year']),
         'Recorded Meeting'  => $f['meeting']
@@ -408,6 +494,16 @@ function em_dataset(array $user, array $f): array
     // Target vs achieved — the existing report query, unchanged.
     $targets = target_report_items($f['department'], $f['year']);
 
+    // One target type only, when one was chosen. It narrows the Target vs
+    // Achieved section (and the rollup that section reports); the record
+    // sections are unaffected, because a target is not a record.
+    if (!empty($f['target_metric'])) {
+        $targets = array_values(array_filter(
+            $targets,
+            static fn(array $t): bool => (string) ($t['metric'] ?? '') === $f['target_metric']
+        ));
+    }
+
     // FEAT-07: for one Executive Meeting, "achieved" is what was achieved
     // DURING it, counted by the existing target_record_count() over the
     // meeting's window. A target whose metric maps to no record type (pass
@@ -482,8 +578,11 @@ function em_paginate(array $rows, int $per = EM_SLIDE_ROWS): array
 }
 
 /**
- * Build the deck. Sections with no data still produce ONE slide carrying a
- * plain explanation, so the presenter never hits a blank or missing section.
+ * Build the deck. A section with no rows in the current scope is left out
+ * of the deck entirely, so the presentation never shows a heading with
+ * nothing under it. When no section has anything, the deck is a single
+ * slide that states why. The rule is the same for every role; what differs
+ * is only the scope the server resolved for that role.
  */
 function em_slides(array $ds): array
 {
@@ -537,29 +636,23 @@ function em_slides(array $ds): array
         ],
     ];
 
+    // Cover and overview are always present. Everything after this point is a
+    // data section, and a data section with no rows adds no slide at all.
+    $sectionsStart = count($slides);
+
     // 3 — Faculty achievements, paginated.
     $facultyRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['faculty']);
-    $pages       = em_paginate($facultyRows);
-    if (!$pages) {
+    foreach (em_paginate($facultyRows) as $i => $page) {
         $slides[] = [
-            'type'    => 'empty',
-            'title'   => 'Faculty Achievements',
-            'summary' => $summary,
-            'message' => 'No faculty achievements available for the selected filters.',
+            'type'        => 'records',
+            'title'       => 'Faculty Achievements',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($facultyRows) / EM_SLIDE_ROWS),
+            'total_rows'  => count($facultyRows),
+            'kind'        => 'faculty',
         ];
-    } else {
-        foreach ($pages as $i => $page) {
-            $slides[] = [
-                'type'        => 'records',
-                'title'       => 'Faculty Achievements',
-                'summary'     => $summary,
-                'rows'        => $page,
-                'page'        => $i + 1,
-                'total_pages' => count($pages),
-                'total_rows'  => count($facultyRows),
-                'kind'        => 'faculty',
-            ];
-        }
     }
 
     // 4 — Activities & outreach, only when there is something to show.
@@ -579,27 +672,17 @@ function em_slides(array $ds): array
 
     // 5 — Student information, paginated.
     $studentRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['student']);
-    $pages       = em_paginate($studentRows);
-    if (!$pages) {
+    foreach (em_paginate($studentRows) as $i => $page) {
         $slides[] = [
-            'type'    => 'empty',
-            'title'   => 'Student Information',
-            'summary' => $summary,
-            'message' => 'No student data available for the selected filters.',
+            'type'        => 'records',
+            'title'       => 'Student Achievements & Records',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($studentRows) / EM_SLIDE_ROWS),
+            'total_rows'  => count($studentRows),
+            'kind'        => 'student',
         ];
-    } else {
-        foreach ($pages as $i => $page) {
-            $slides[] = [
-                'type'        => 'records',
-                'title'       => 'Student Achievements & Records',
-                'summary'     => $summary,
-                'rows'        => $page,
-                'page'        => $i + 1,
-                'total_pages' => count($pages),
-                'total_rows'  => count($studentRows),
-                'kind'        => 'student',
-            ];
-        }
     }
 
     // 6 — Target vs achieved, paginated, plus the rollup on each page.
@@ -619,26 +702,16 @@ function em_slides(array $ds): array
             'unlinked'   => $unlinked,
         ];
     }
-    $pages = em_paginate($targetRows);
-    if (!$pages) {
+    foreach (em_paginate($targetRows) as $i => $page) {
         $slides[] = [
-            'type'    => 'empty',
-            'title'   => 'Target vs Achieved',
-            'summary' => $summary,
-            'message' => 'No target data available for the selected filters.',
+            'type'        => 'targets',
+            'title'       => 'Target vs Achieved',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'rollup'      => $ds['rollup'],
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($targetRows) / EM_SLIDE_ROWS),
         ];
-    } else {
-        foreach ($pages as $i => $page) {
-            $slides[] = [
-                'type'        => 'targets',
-                'title'       => 'Target vs Achieved',
-                'summary'     => $summary,
-                'rows'        => $page,
-                'rollup'      => $ds['rollup'],
-                'page'        => $i + 1,
-                'total_pages' => count($pages),
-            ];
-        }
     }
 
     // 7 — The meetings themselves.
@@ -652,27 +725,32 @@ function em_slides(array $ds): array
             'admin'  => (string) ($m['admin_name'] ?? ''),
         ];
     }
-    if (!$meetingRows) {
+    foreach (em_paginate($meetingRows) as $i => $page) {
         $slides[] = [
-            'type'    => 'empty',
-            'title'   => 'Executive Meetings',
-            'summary' => $summary,
-            'message' => 'No Executive Meetings recorded for ' . $f['year'] . '.',
+            'type'        => 'meetings',
+            'title'       => 'Executive Meeting Summary',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($meetingRows) / EM_SLIDE_ROWS),
         ];
-    } else {
-        foreach (em_paginate($meetingRows) as $i => $page) {
-            $slides[] = [
-                'type'        => 'meetings',
-                'title'       => 'Executive Meeting Summary',
-                'summary'     => $summary,
-                'rows'        => $page,
-                'page'        => $i + 1,
-                'total_pages' => (int) ceil(count($meetingRows) / EM_SLIDE_ROWS),
-            ];
-        }
     }
 
     // 8 — Close on the same numbers the deck opened with.
+    // No section had anything: one stated reason, rather than a cover, an
+    // overview and a closing that all report zero.
+    if (count($slides) === $sectionsStart) {
+        return [[
+            'type'    => 'empty',
+            'title'   => 'Executive Meeting Presentation',
+            'summary' => $summary,
+            'message' => !empty($f['department'])
+                ? 'No presentation data available for ' . department_full_name($f['department'])
+                  . ' for the selected Academic Year / Executive Meeting.'
+                : 'No presentation data available for the selected filters.',
+        ]];
+    }
+
     $slides[] = [
         'type'    => 'closing',
         'title'   => 'Summary',
