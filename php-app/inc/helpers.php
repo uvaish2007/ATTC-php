@@ -415,8 +415,6 @@ function department_names_match(?string $deptA, ?string $deptB): bool
 }
 
 /**
-<<<<<<< HEAD
-=======
  * Return all known name variations and aliases for a department name for SQL IN queries.
  * E.g. 'CSE' -> ['CSE', 'cse', 'Computer Science and Engineering', 'computer science and engineering', 'Computer Science & Engineering', 'computer science & engineering']
  *
@@ -484,7 +482,6 @@ function department_variants(?string $dept): array
 
 /**
  * Build a secure URL for accessing a record proof attachment.
->>>>>>> f0b32ef49ab080d09ab02230247cd6c281860b8d
  * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
  */
 function record_proof_url(string $type, int $id, ?string $filename = null, bool $download = false, bool $absolute = true): string
@@ -627,8 +624,6 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         . icon('download', 14) . '</a>'
         . '</div>';
 }
-<<<<<<< HEAD
-=======
 
 if (!function_exists('user_can_choose_department')) {
     function user_can_choose_department(?array $user = null): bool
@@ -662,6 +657,4 @@ if (!function_exists('user_department_scope')) {
         return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
     }
 }
-
->>>>>>> f0b32ef49ab080d09ab02230247cd6c281860b8d
 

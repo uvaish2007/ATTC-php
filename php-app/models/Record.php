@@ -552,11 +552,7 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
 
     // HoD can NEVER approve or reject records directly
     if ($userRole === 'HoD' && in_array($action, ['approve', 'reject', 'approve_edit'], true)) {
-<<<<<<< HEAD
         return [false, 'HOD is a reviewer only and cannot approve or reject submitted records. To request changes, use Request Edit to Dean.'];
-=======
-        return [false, 'HOD is not authorized to directly approve or reject records. Please use the Request Edit to Dean/Admin workflow.'];
->>>>>>> f0b32ef49ab080d09ab02230247cd6c281860b8d
     }
 
     $effectiveYear = $year ?: active_academic_year();
@@ -857,7 +853,6 @@ function can_edit_record(string $type, int $id, array $user): array
 }
 
 /**
-<<<<<<< HEAD
  * Create an edit request from HoD to Dean.
  * HoD department is auto-determined from authenticated user session.
  */
@@ -1202,8 +1197,6 @@ function edit_request_complete(int $recordId, string $recordType, int $coordinat
 }
 
 /**
-=======
->>>>>>> f0b32ef49ab080d09ab02230247cd6c281860b8d
  * HoD acknowledges the review of a corrected/resubmitted record.
  * Status becomes 'Approved' and audit event HOD_REVIEW_ACKNOWLEDGED is logged.
  */

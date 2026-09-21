@@ -402,28 +402,34 @@ function edit_request_original_record(string $recordType, int $recordId): ?array
     }
 }
 
-/**
- * Fetch a single edit request by ID (alias for edit_request_get).
- */
-function edit_request_find(int $id): ?array
-{
-    return edit_request_get($id);
+if (!function_exists('edit_request_find')) {
+    /**
+     * Fetch a single edit request by ID (alias for edit_request_get).
+     */
+    function edit_request_find(int $id): ?array
+    {
+        return edit_request_get($id);
+    }
 }
 
-/**
- * Review an edit request (Dean or Admin approves or rejects).
- */
-function edit_request_review(int $requestId, string $decision, ?string $comment, array $user): array
-{
-    $action = ($decision === 'approve') ? 'approve' : 'reject';
-    return edit_request_process($requestId, $action, $comment, (int) ($user['id'] ?? 0), (string) ($user['role'] ?? 'Dean'));
+if (!function_exists('edit_request_review')) {
+    /**
+     * Review an edit request (Dean or Admin approves or rejects).
+     */
+    function edit_request_review(int $requestId, string $decision, ?string $comment, array $user): array
+    {
+        $action = ($decision === 'approve') ? 'approve' : 'reject';
+        return edit_request_process($requestId, $action, $comment, (int) ($user['id'] ?? 0), (string) ($user['role'] ?? 'Dean'));
+    }
 }
 
-/**
- * Mark edit request as completed upon Coordinator resubmission.
- */
-function edit_request_complete(int $recordId, string $recordType, int $coordinatorId = 0, ?array $oldValues = null, ?array $newValues = null): void
-{
-    edit_request_mark_completed_for_record($recordType, $recordId);
+if (!function_exists('edit_request_complete')) {
+    /**
+     * Mark edit request as completed upon Coordinator resubmission.
+     */
+    function edit_request_complete(int $recordId, string $recordType, int $coordinatorId = 0, ?array $oldValues = null, ?array $newValues = null): void
+    {
+        edit_request_mark_completed_for_record($recordType, $recordId);
+    }
 }
 
