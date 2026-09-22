@@ -61,9 +61,31 @@ if ($type !== '' && $recordId > 0) {
         http_response_code(500);
         exit('Database error while locating record.');
     }
+} elseif ($recordId > 0) {
+    // Locate record by ID across all record types when category is omitted
+    foreach ($types as $tKey => $tInfo) {
+        $tbl = $tInfo['table'];
+        try {
+            $stmt = db()->prepare("SELECT * FROM `{$tbl}` WHERE `id` = ? LIMIT 1");
+            $stmt->execute([$recordId]);
+            $found = $stmt->fetch();
+            if ($found && !empty($found['proof_file'])) {
+                $record          = $found;
+                $recordTypeKey   = $tKey;
+                $recordTypeLabel = $tInfo['label'] ?? 'Record';
+                break;
+            } elseif ($found && !$record) {
+                $record          = $found;
+                $recordTypeKey   = $tKey;
+                $recordTypeLabel = $tInfo['label'] ?? 'Record';
+            }
+        } catch (\PDOException $e) {
+            continue;
+        }
+    }
 } elseif ($fileParam !== '') {
     $cleanFileName = basename($fileParam);
-    if ($cleanFileName !== '') {
+    if ($cleanFileName !== '' && stripos($cleanFileName, 'upload.php') === false) {
         foreach ($types as $tKey => $tInfo) {
             $tbl = $tInfo['table'];
             try {
@@ -110,16 +132,24 @@ if ($record) {
     }
 } else {
     // Record not in DB by ID or filename, but file requested
-    if (!in_array($userRole, ['Admin', 'Dean', 'Principal', 'Director', 'HoD', 'Coordinator', 'Faculty'], true)) {
+    if (!in_array($userRole, ['Admin', 'Dean', 'Principal', 'Director'], true)) {
         http_response_code(403);
         exit('Access Denied.');
     }
 }
 
 $storedName = basename(trim((string) ($record['proof_file'] ?? $fileParam)));
-if ($storedName === '') {
+if ($storedName === '' || stripos($storedName, 'upload.php') !== false) {
     http_response_code(404);
-    exit('No proof file is associated with this record.');
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>No Proof Attached - ATTS IQAC</title>';
+    echo '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#F8FAFC;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1E293B}';
+    echo '.card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:32px;max-width:440px;text-align:center;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}';
+    echo 'h1{font-size:18px;margin:0 0 8px;color:#0F172A}p{font-size:14px;color:#64748B;margin:0 0 20px;line-height:1.5}';
+    echo 'a{display:inline-block;padding:8px 16px;background:#2563EB;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500}</style></head><body>';
+    echo '<div class="card"><h1>No proof attached</h1>';
+    echo '<p>No proof document was attached to this record.</p>';
+    echo '<a href="javascript:window.close()">Close Window</a></div></body></html>';
+    exit;
 }
 
 $ext = strtolower(pathinfo($storedName, PATHINFO_EXTENSION));
@@ -145,82 +175,16 @@ foreach ($candidatePaths as $p) {
     }
 }
 
-// Fallback recovery: if file is not on disk and is PDF, attempt to generate attestation document
-if (!$filePath && $ext === 'pdf' && $record) {
-    $title = $record['title'] ?? $record['paper_title'] ?? $record['event_title'] ?? $record['book_title'] ?? $record['patent_title'] ?? $record['company_name'] ?? 'Record Document';
-    $who   = $record['faculty_name'] ?? $record['candidate_name'] ?? $record['student_name'] ?? ($user['name'] ?? 'Faculty Member');
-    $dept  = $record['department'] ?? ($userDept ?: 'General');
-    $date  = $record['created_at'] ?? date('Y-m-d');
-
-    $lines = [
-        'MEENAKSHI SUNDARARAJAN ENGINEERING COLLEGE',
-        'INTERNAL QUALITY ASSURANCE CELL (IQAC) - ATTS',
-        '--------------------------------------------------------------------------------',
-        'OFFICIAL RECORD PROOF & VERIFICATION ATTESTATION',
-        '',
-        'Record Type:       ' . $recordTypeLabel,
-        'Title / Event:     ' . $title,
-        'Faculty / Person:  ' . $who,
-        'Department:        ' . $dept,
-        'Date:              ' . $date,
-        'Proof Reference:   ' . $storedName,
-        'Status:            Approved & Verified in ATTS Portal',
-        '',
-        '--------------------------------------------------------------------------------',
-        'This attestation document certifies that the record above has been verified and',
-        'recorded in the Academic Target Tracking System (ATTS) for institutional audit.',
-        'Issued by IQAC ATTS Portal on ' . date('d-M-Y H:i:s')
-    ];
-
-    $content = "BT\n/F1 14 Tf\n50 770 Td\n";
-    $content .= "(" . addcslashes($lines[0], "()\\") . ") Tj\n";
-    $content .= "T*\n/F1 10 Tf\n(" . addcslashes($lines[1], "()\\") . ") Tj\n";
-    $content .= "T*\n(" . addcslashes($lines[2], "()\\") . ") Tj\n";
-    $content .= "T*\n/F1 12 Tf\n(" . addcslashes($lines[3], "()\\") . ") Tj\n";
-    $content .= "T*\n/F1 10 Tf\n";
-    for ($i = 4; $i < count($lines); $i++) {
-        $content .= "T*\n(" . addcslashes($lines[$i], "()\\") . ") Tj\n";
-    }
-    $content .= "ET\n";
-    $streamLen = strlen($content);
-
-    $out = "%PDF-1.4\n";
-    $offsets = [];
-    $offsets[1] = strlen($out);
-    $out .= "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
-    $offsets[2] = strlen($out);
-    $out .= "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n";
-    $offsets[3] = strlen($out);
-    $out .= "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n";
-    $offsets[4] = strlen($out);
-    $out .= "4 0 obj\n<< /Length $streamLen >>\nstream\n" . $content . "endstream\nendobj\n";
-    $offsets[5] = strlen($out);
-    $out .= "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n";
-    $xrefOffset = strlen($out);
-    $out .= "xref\n0 6\n0000000000 65535 f \n";
-    for ($i = 1; $i <= 5; $i++) {
-        $out .= sprintf("%010d 00000 n \n", $offsets[$i]);
-    }
-    $out .= "trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n$xrefOffset\n%%EOF\n";
-
-    if (!is_dir($uploadsDir)) { @mkdir($uploadsDir, 0775, true); }
-    if (!is_dir($proofsDir))  { @mkdir($proofsDir, 0775, true); }
-    @file_put_contents($uploadsDir . '/' . $storedName, $out);
-    @file_put_contents($proofsDir . '/' . $storedName, $out);
-
-    $filePath = $uploadsDir . '/' . $storedName;
-}
-
 if (!$filePath || !is_file($filePath)) {
     http_response_code(404);
-    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Proof Not Found</title>';
-    echo '<style>body{font-family:sans-serif;background:#F8FAFC;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1E293B}';
-    echo '.box{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:32px;max-width:460px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.05)}';
-    echo 'h2{color:#DC2626;margin-top:0}.btn{display:inline-block;padding:10px 18px;background:#2563EB;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;margin-top:16px}</style></head><body>';
-    echo '<div class="box"><h2>Proof Document Missing</h2>';
-    echo '<p>The requested proof attachment (<code>' . htmlspecialchars($storedName, ENT_QUOTES) . '</code>) is not found in the upload archive.</p>';
-    echo '<p style="font-size:13px;color:#64748B">The file may not have been attached during submission or was archived. The faculty or coordinator may re-upload the proof.</p>';
-    echo '<a class="btn" href="javascript:history.back()">Go Back</a></div></body></html>';
+    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Proof Unavailable - ATTS IQAC</title>';
+    echo '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#F8FAFC;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1E293B}';
+    echo '.card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:32px;max-width:440px;text-align:center;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}';
+    echo 'h1{font-size:18px;margin:0 0 8px;color:#0F172A}p{font-size:14px;color:#64748B;margin:0 0 20px;line-height:1.5}';
+    echo 'a{display:inline-block;padding:8px 16px;background:#2563EB;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500}</style></head><body>';
+    echo '<div class="card"><h1>Proof Unavailable</h1>';
+    echo '<p>The requested proof attachment could not be found on the server. Please contact your coordinator or administrator.</p>';
+    echo '<a href="javascript:window.close()">Close Window</a></div></body></html>';
     exit;
 }
 

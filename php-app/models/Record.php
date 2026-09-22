@@ -493,9 +493,19 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
         $params = $targetStatuses;
 
         if ($department) {
-            $sql .= ' AND (department = ? OR REPLACE(department, " ", "") = REPLACE(?, " ", ""))';
-            $params[] = $department;
-            $params[] = $department;
+            $deptVars = department_variants($department);
+            if (!empty($deptVars)) {
+                $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+                $sql .= " AND (department IN ($inPh) OR REPLACE(department, ' ', '') = REPLACE(?, ' ', ''))";
+                foreach ($deptVars as $v) {
+                    $params[] = $v;
+                }
+                $params[] = $department;
+            } else {
+                $sql .= ' AND (department = ? OR REPLACE(department, " ", "") = REPLACE(?, " ", ""))';
+                $params[] = $department;
+                $params[] = $department;
+            }
         }
         if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
             $ayVars = academic_year_variants($year);
@@ -622,8 +632,15 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     $params   = array_merge([$newStatus, $remark ?: null, $approvedBy, $id], $validCurrent);
 
     if ($scopeDept !== null) {
-        $sql     .= ' AND (department = ? OR REPLACE(department, " ", "") = REPLACE(?, " ", ""))';
-        $params[] = $scopeDept;
+        $dVars = department_variants($scopeDept);
+        if (empty($dVars)) {
+            $dVars = [$scopeDept];
+        }
+        $dPlaceholders = implode(',', array_fill(0, count($dVars), '?'));
+        $sql     .= " AND (department IN ($dPlaceholders) OR REPLACE(department, ' ', '') = REPLACE(?, ' ', ''))";
+        foreach ($dVars as $dv) {
+            $params[] = $dv;
+        }
         $params[] = $scopeDept;
     }
     if ($year !== null && in_array('academic_year', target_record_table_columns($table), true)) {
@@ -687,7 +704,7 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     if ($department === '') {
         return [false, 'No department given.'];
     }
-    if ($scopeDept !== null && $scopeDept !== $department) {
+    if ($scopeDept !== null && !department_names_match($scopeDept, $department)) {
         return [false, 'You can only approve your own department.'];
     }
 
@@ -714,6 +731,12 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     $lockedWindows = ($userRole !== 'Admin') ? em_locked_windows($effectiveYear) : [];
     $heldBack      = 0;
 
+    $dVars = department_variants($department);
+    if (empty($dVars)) {
+        $dVars = [$department];
+    }
+    $dPlaceholders = implode(',', array_fill(0, count($dVars), '?'));
+
     foreach (record_types() as $key => $t) {
         if (!record_requires_approval($key)) {
             continue;
@@ -724,16 +747,16 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
             $approvedAtSql = ($hasApprovedAt && $newStatus === 'Approved') ? ', approved_at = NOW()' : '';
 
             $sql    = "UPDATE `{$t['table']}` SET status = ?, approved_by = ?{$approvedAtSql}, updated_at = NOW()
-                        WHERE status IN ($inClause) AND department = ?";
-            $params = array_merge([$newStatus, $approvedBy], $validCurrent, [$department]);
+                        WHERE status IN ($inClause) AND (department IN ($dPlaceholders) OR REPLACE(department, ' ', '') = REPLACE(?, ' ', ''))";
+            $params = array_merge([$newStatus, $approvedBy], $validCurrent, $dVars, [$department]);
             if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
                 $sql      .= ' AND academic_year = ?';
                 $params[]  = $year;
             }
 
             if ($lockedWindows) {
-                $countSql    = "SELECT COUNT(*) FROM `{$t['table']}` WHERE status IN ($inClause) AND department = ?";
-                $countParams = array_merge($validCurrent, [$department]);
+                $countSql    = "SELECT COUNT(*) FROM `{$t['table']}` WHERE status IN ($inClause) AND (department IN ($dPlaceholders) OR REPLACE(department, ' ', '') = REPLACE(?, ' ', ''))";
+                $countParams = array_merge($validCurrent, $dVars, [$department]);
                 if ($year !== null && in_array('academic_year', target_record_table_columns($t['table']), true)) {
                     $countSql     .= ' AND academic_year = ?';
                     $countParams[] = $year;

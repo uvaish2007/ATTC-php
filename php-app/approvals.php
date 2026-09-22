@@ -403,25 +403,35 @@ require __DIR__ . '/inc/header.php';
                   </td>
                   <td style="padding:14px 16px; vertical-align:top">
                     <?php
-                      $erProof = $er['proof_file'] ?? null;
-                      if (!$erProof && !empty($er['record_type']) && !empty($er['record_id'])) {
+                      $erProof = trim((string)($er['proof_file'] ?? ''));
+                      if ($erProof === '' && !empty($er['record_type']) && !empty($er['record_id'])) {
                           $foundOrig = record_find($er['record_type'], (int)$er['record_id']);
-                          $erProof = $foundOrig['proof_file'] ?? null;
+                          $erProof = trim((string)($foundOrig['proof_file'] ?? ''));
+                      }
+                      if ($erProof !== '' && stripos($erProof, 'upload.php') !== false) {
+                          $erProof = '';
                       }
                     ?>
-                    <?php if (!empty($erProof)): ?>
-                      <?php $erProofUrl = proof_url($erProof); ?>
+                    <?php if ($erProof === ''): ?>
+                      <span class="card-sub" style="font-size:11px">No proof attached</span>
+                    <?php elseif (!proof_file_exists($erProof)): ?>
+                      <span class="card-sub" style="color:var(--ink-muted,#64748b); font-size:11px">Proof unavailable</span>
+                    <?php else: ?>
+                      <?php $erProofUrl = record_proof_url($er['record_type'], (int)$er['record_id'], $erProof, false, false); ?>
                       <div style="display:inline-flex; align-items:center; gap:4px">
                         <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px; border-radius:6px; cursor:pointer"
-                          onclick="openProofViewer(<?= e(json_encode($erProofUrl)) ?>, <?= e(json_encode($er['record_title'])) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['department'])) ?>, <?= e(json_encode($types[$er['record_type']]['label'] ?? $er['record_type'])) ?>)">
+                          data-url="<?= e($erProofUrl) ?>"
+                          data-title="<?= e($er['record_title'] ?? '') ?>"
+                          data-who="<?= e($er['faculty_name'] ?? '') ?>"
+                          data-dept="<?= e($er['department'] ?? '') ?>"
+                          data-label="<?= e($types[$er['record_type']]['label'] ?? $er['record_type']) ?>"
+                          onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
                           <?= icon('paperclip', 13) ?> View Proof
                         </button>
                         <a href="<?= e($erProofUrl) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:28px; padding:0 6px; font-size:11px" title="Open proof document directly in a new tab">
                           <?= icon('external-link', 12) ?>
                         </a>
                       </div>
-                    <?php else: ?>
-                      <span class="card-sub" style="font-size:11px">—</span>
                     <?php endif; ?>
                   </td>
                   <td style="padding:14px 16px; vertical-align:top; max-width:320px">
@@ -784,21 +794,33 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td style="vertical-align:middle">
                 <?php
-                  $pProof = !empty($r['proof_file']) ? $r['proof_file'] : ($r['document_link'] ?? $r['certificate_link'] ?? $r['report_link'] ?? $r['proceedings_link'] ?? $r['appointment_order_link'] ?? null);
+                  $pProof = trim((string)($r['proof_file'] ?? ''));
+                  if ($pProof !== '' && stripos($pProof, 'upload.php') !== false) {
+                      $pProof = '';
+                  }
                 ?>
-                <?php if (!empty($pProof)): ?>
-                  <?php $pUrl = proof_url($pProof); ?>
+                <?php if ($pProof === ''): ?>
+                  <span class="card-sub">No proof attached</span>
+                <?php elseif (!proof_file_exists($pProof)): ?>
+                  <span class="card-sub" style="color:var(--ink-muted,#64748b);">Proof unavailable</span>
+                <?php else: ?>
+                  <?php
+                    $pUrl = record_proof_url($r['_type_key'], (int)$r['id'], $pProof, false, false);
+                  ?>
                   <div style="display:inline-flex; align-items:center; gap:6px">
                     <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:12px; display:inline-flex; align-items:center; gap:4px; font-weight:600; border-radius:6px; cursor:pointer"
-                      onclick="openProofViewer(<?= e(json_encode($pUrl)) ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['_type_label'])) ?>)">
+                      data-url="<?= e($pUrl) ?>"
+                      data-title="<?= e($r['_title']) ?>"
+                      data-who="<?= e($who) ?>"
+                      data-dept="<?= e($r['department'] ?? '') ?>"
+                      data-label="<?= e($r['_type_label']) ?>"
+                      onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
                       <?= icon('paperclip', 13) ?> View Proof
                     </button>
                     <a href="<?= e($pUrl) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:28px; padding:0 6px; font-size:11px; display:inline-flex; align-items:center; gap:3px" title="Open proof document directly in a new tab">
                       <?= icon('external-link', 12) ?> Tab
                     </a>
                   </div>
-                <?php else: ?>
-                  <span class="card-sub">—</span>
                 <?php endif; ?>
               </td>
               <td class="card-sub" style="vertical-align:middle" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>">
@@ -1104,7 +1126,6 @@ require __DIR__ . '/inc/header.php';
 <script>
 const currentRole = <?= json_encode($user['role']) ?>;
 const canProcess = <?= json_encode($canProcess) ?>;
-const ticketData = <?= json_encode($ticketDetails ?? []) ?>;\nconst ticketsByRecord = <?= json_encode($ticketsByRecord ?? []) ?>;
 
 // Open HoD Edit Request dialog with auto-populated metadata
 function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
@@ -1115,7 +1136,10 @@ function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
   document.getElementById('her-cat').textContent = typeLabel || type;
   document.getElementById('her-year').textContent = year || '';
   document.getElementById('her-rec-id').textContent = '#' + id;
-  document.getElementById('hodEditDlg').showModal();
+  var dlg = document.getElementById('hodEditDlg');
+  if (dlg && dlg.showModal) {
+    dlg.showModal();
+  }
 }
 
 // Open Dean Decision dialog for Edit Requests
@@ -1147,10 +1171,14 @@ function openDecisionModal(decision, reqId, reqLabel, faculty, title) {
     btn.style.cssText = '';
   }
 
-  document.getElementById('decisionDlg').showModal();
+  var dlg = document.getElementById('decisionDlg');
+  if (dlg && dlg.showModal) {
+    dlg.showModal();
+  }
 }
 
-// Coordinator / Admin standard review record dialogfunction reviewRecord(type, id, action) {
+// Coordinator / Admin standard review record dialog
+function reviewRecord(type, id, action) {
   document.getElementById('rv-type').value = type;
   document.getElementById('rv-id').value = id;
   document.getElementById('rv-action').value = action;
@@ -1167,12 +1195,16 @@ function openDecisionModal(decision, reqId, reqLabel, faculty, title) {
     btn.style.cssText = '';
   } else {
     title.textContent = currentRole === 'Coordinator' ? 'Approve & Save to Database' : 'Approve Record';
-    label.textContent = 'Remark (Optional)';    btn.textContent = currentRole === 'Coordinator' ? 'Approve & Save to DB' : 'Approve';
+    label.textContent = 'Remark (Optional)';
+    btn.textContent = currentRole === 'Coordinator' ? 'Approve & Save to DB' : 'Approve';
     btn.className = 'btn btn-sm';
     btn.style.cssText = 'background:#047857; color:#fff; font-weight:600';
   }
 
-  document.getElementById('reviewDlg').showModal();
+  var dlg = document.getElementById('reviewDlg');
+  if (dlg && dlg.showModal) {
+    dlg.showModal();
+  }
 }
 
 // HoD acknowledge review of resubmitted record
@@ -1192,15 +1224,17 @@ function acknowledgeReview(type, id) {
 function approveAll(ev, dept, n) {
   ev.preventDefault();
   ev.stopPropagation();
-  let msg = 'Approve all ' + n + ' pending record' + (n === 1 ? '' : 's') + ' in ' + dept + ' directly into the database?';  if (!confirm(msg)) return;
+  let msg = 'Approve all ' + n + ' pending record' + (n === 1 ? '' : 's') + ' in ' + dept + ' directly into the database?';
+  if (!confirm(msg)) return;
   document.getElementById('bulk-dept').value = dept;
   document.getElementById('bulkForm').submit();
 }
 
 // Proof Viewer functions
 function openProofViewer(url, title, who, dept, typeLabel) {
+  if (!url || url.indexOf('upload.php') !== -1) return;
   document.getElementById('pv-title').textContent = title || 'Proof Attachment';
-  document.getElementById('pv-type').textContent = typeLabel || 'PDF';
+  document.getElementById('pv-type').textContent = typeLabel || 'Document';
   var metaParts = [];
   if (who) metaParts.push(who);
   if (dept) metaParts.push('Dept: ' + dept);
@@ -1212,26 +1246,63 @@ function openProofViewer(url, title, who, dept, typeLabel) {
   var loader = document.getElementById('pv-loader');
   if (loader) {
     loader.style.display = 'flex';
-    setTimeout(function() {
-      loader.style.display = 'none';
-    }, 350);
   }
 
   var frame = document.getElementById('pv-frame');
   frame.src = url;
 
-  document.getElementById('proofDlg').showModal();
+  var dlg = document.getElementById('proofDlg');
+  if (dlg) {
+    if (typeof dlg.showModal === 'function') {
+      dlg.showModal();
+    } else {
+      dlg.setAttribute('open', '');
+    }
+  }
+
+  // Safety fallback if iframe load event doesn't fire for PDF plugins
+  setTimeout(function() {
+    if (loader) loader.style.display = 'none';
+  }, 1500);
 }
 
 function closeProofViewer() {
   var dlg = document.getElementById('proofDlg');
   var frame = document.getElementById('pv-frame');
   if (frame) frame.src = '';
-  if (dlg) dlg.close();
+  if (dlg) {
+    if (typeof dlg.close === 'function') {
+      dlg.close();
+    } else {
+      dlg.removeAttribute('open');
+    }
+  }
 }
 
-document.getElementById('proofDlg').addEventListener('close', function() {
-  document.getElementById('pv-frame').src = '';
-});</script>
+// Dialog backdrop click-to-close handlers
+['proofDlg', 'reviewDlg', 'decisionDlg', 'hodEditDlg'].forEach(function(id) {
+  var d = document.getElementById(id);
+  if (d) {
+    d.addEventListener('click', function(e) {
+      var rect = this.getBoundingClientRect();
+      if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+        if (id === 'proofDlg') {
+          closeProofViewer();
+        } else {
+          this.close();
+        }
+      }
+    });
+  }
+});
+
+var proofDlgEl = document.getElementById('proofDlg');
+if (proofDlgEl) {
+  proofDlgEl.addEventListener('close', function() {
+    var frame = document.getElementById('pv-frame');
+    if (frame) frame.src = '';
+  });
+}
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

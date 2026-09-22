@@ -786,7 +786,7 @@ if ($editId > 0 && isset($types[$selectedType])) {
             $canEdit = ((int)($rec['created_by'] ?? 0) === (int)$user['id']);
         } elseif (in_array($user['role'], ['Coordinator', 'HoD'], true)) {
             $canEdit = ((int)($rec['created_by'] ?? 0) === (int)$user['id']) 
-                || (!empty($user['department']) && ($rec['department'] ?? '') === $user['department']);
+                || (!empty($user['department']) && department_names_match($rec['department'] ?? '', $user['department']));
         }
         if ($canEdit) {
             $editRecord = $rec;
