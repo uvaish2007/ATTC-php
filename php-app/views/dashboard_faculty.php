@@ -36,6 +36,22 @@ $cards = [
     <div class="sub">Your submissions and their status</div>
   </div>
   <div class="actions">
+    <form method="get" class="fbar fbar-bare">
+      <?php // EM-SPEC-03 — narrow every figure on this dashboard to EM1's or
+            // EM2's dates. The label carries the dates, so "EM1" is never
+            // ambiguous. ?>
+      <label class="fb-field" title="Show only what was submitted inside a meeting's dates">
+        <span class="fb-k">Meeting</span>
+        <select name="em" onchange="this.form.submit()">
+          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All meetings</option>
+          <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
+            <option value="<?= e($emKey) ?>" <?= ($data['scope']['em'] ?? 'all') === $emKey ? 'selected' : '' ?>>
+              <?= e(em_filter_label($emKey, $data['scope']['year'] ?? null)) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    </form>
     <a class="btn btn-primary" href="<?= e(nav_href('upload.php?reset=1')) ?>">
       <?= icon('upload') ?> Submit a Record
     </a>

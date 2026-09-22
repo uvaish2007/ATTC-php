@@ -152,16 +152,22 @@ function em_schedule_for_year(?string $year = null): ?array
         // The dates are what matter; missing audit details are not fatal.
     }
 
-    return $cache[$year] = array_merge(['year' => $year], $clean, $meta);
+    $dates = [
+        'em1_start' => $clean['em1_start'] ?? null,
+        'em1_end'   => $clean['em1_end'] ?? null,
+        'em2_start' => $clean['em2_start'] ?? null,
+        'em2_end'   => $clean['em2_end'] ?? null,
+    ];
+
+    return $cache[$year] = array_merge(['year' => $year], $dates, $meta);
 }
 
 /**
  * Validate a schedule. Returns [ok, errors[], clean-dates].
  *
- * Rules: every date present and real; each meeting starts before it ends;
- * EM2 starts after EM1 ends (EM1 runs to the end of its last day, so EM2 may
- * begin the following day at the earliest); all dates inside the academic
- * year they belong to.
+ * Rules: valid format (Y-m-d); if a meeting has start, end is required (and vice-versa);
+ * start <= end (end date cannot be before start date); EM2 starts after EM1 ends;
+ * all dates inside the academic year June-May span.
  */
 function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, ?string $em2Start, ?string $em2End): array
 {
@@ -178,40 +184,69 @@ function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, 
     $given = ['em1_start' => $em1Start, 'em1_end' => $em1End, 'em2_start' => $em2Start, 'em2_end' => $em2End];
     $clean = [];
 
+    // Parse and validate syntax for any non-empty date string
     foreach ($given as $key => $value) {
-        if (trim((string) $value) === '') {
-            $errors[] = $labels[$key] . ' is required.';
-            continue;
+        $trimmed = trim((string) $value);
+        if ($trimmed !== '') {
+            $d = em_parse_date($trimmed);
+            if ($d === null) {
+                $errors[] = $labels[$key] . ' is not a valid date.';
+            } else {
+                $clean[$key] = $d;
+            }
         }
-        $d = em_parse_date($value);
-        if ($d === null) {
-            $errors[] = $labels[$key] . ' is not a valid date.';
-            continue;
-        }
-        $clean[$key] = $d;
     }
 
-    // Order checks only make sense once every date parsed.
-    if (count($clean) === 4) {
-        if ($clean['em1_start'] >= $clean['em1_end']) {
-            $errors[] = 'EM1 start date must be before the EM1 end date.';
+    // Pair checks: if start is present, end is required; if end is present, start is required
+    $hasEm1Start = trim((string) $em1Start) !== '';
+    $hasEm1End   = trim((string) $em1End) !== '';
+    if ($hasEm1Start && !$hasEm1End) {
+        $errors[] = 'EM1 end date is required.';
+    } elseif (!$hasEm1Start && $hasEm1End) {
+        $errors[] = 'EM1 start date is required.';
+    }
+
+    $hasEm2Start = trim((string) $em2Start) !== '';
+    $hasEm2End   = trim((string) $em2End) !== '';
+    if ($hasEm2Start && !$hasEm2End) {
+        $errors[] = 'EM2 end date is required.';
+    } elseif (!$hasEm2Start && $hasEm2End) {
+        $errors[] = 'EM2 start date is required.';
+    }
+
+    // If completely empty, at least one meeting range must be provided
+    if (!$hasEm1Start && !$hasEm1End && !$hasEm2Start && !$hasEm2End) {
+        $errors[] = 'Please provide the Executive Meeting schedule dates.';
+    }
+
+    // Range checks: start must not be after end
+    if (isset($clean['em1_start'], $clean['em1_end'])) {
+        if ($clean['em1_start'] > $clean['em1_end']) {
+            $errors[] = 'EM1 end date cannot be before EM1 start date.';
         }
-        if ($clean['em2_start'] >= $clean['em2_end']) {
-            $errors[] = 'EM2 start date must be before the EM2 end date.';
+    }
+    if (isset($clean['em2_start'], $clean['em2_end'])) {
+        if ($clean['em2_start'] > $clean['em2_end']) {
+            $errors[] = 'EM2 end date cannot be before EM2 start date.';
         }
+    }
+
+    // Sequence check: EM2 cannot start before or on EM1 end date
+    if (isset($clean['em1_end'], $clean['em2_start'])) {
         if ($clean['em2_start'] <= $clean['em1_end']) {
             $errors[] = 'EM2 cannot start before EM1 ends — choose an EM2 start date after '
                 . date('d-m-Y', strtotime($clean['em1_end'])) . '.';
         }
+    }
 
-        $span = em_academic_year_span($year);
-        if ($span) {
-            foreach ($clean as $key => $d) {
-                if ($d < $span['from'] || $d > $span['to']) {
-                    $errors[] = $labels[$key] . ' must fall within academic year ' . $year . ' ('
-                        . date('d-m-Y', strtotime($span['from'])) . ' to '
-                        . date('d-m-Y', strtotime($span['to'])) . ').';
-                }
+    // Span check: all provided dates must fall within academic year span
+    $span = em_academic_year_span($year);
+    if ($span) {
+        foreach ($clean as $key => $d) {
+            if ($d < $span['from'] || $d > $span['to']) {
+                $errors[] = $labels[$key] . ' must fall within academic year ' . $year . ' ('
+                    . date('d-m-Y', strtotime($span['from'])) . ' to '
+                    . date('d-m-Y', strtotime($span['to'])) . ').';
             }
         }
     }
@@ -222,12 +257,29 @@ function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, 
 /**
  * Admin saves the schedule for a year. Callers must already have gated the
  * request to the Admin role and verified CSRF; this validates and stores.
+ * Merges submitted dates with existing saved dates for that year.
  * Returns [ok, message].
  */
 function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?string $em2Start, ?string $em2End, int $adminId): array
 {
     $year = trim($year);
-    [$ok, $errors, $clean] = em_schedule_validate($year, $em1Start, $em1End, $em2Start, $em2End);
+
+    // Validate the submitted inputs directly first
+    [$inputOk, $inputErrors, $inputClean] = em_schedule_validate($year, $em1Start, $em1End, $em2Start, $em2End);
+    if (!$inputOk) {
+        return [false, implode(' ', $inputErrors)];
+    }
+
+    // Retrieve existing schedule to allow merging when only one meeting is submitted
+    $existing = em_schedule_for_year($year);
+
+    $mergedEm1Start = array_key_exists('em1_start', $inputClean) ? $inputClean['em1_start'] : ($existing['em1_start'] ?? null);
+    $mergedEm1End   = array_key_exists('em1_end', $inputClean)   ? $inputClean['em1_end']   : ($existing['em1_end'] ?? null);
+    $mergedEm2Start = array_key_exists('em2_start', $inputClean) ? $inputClean['em2_start'] : ($existing['em2_start'] ?? null);
+    $mergedEm2End   = array_key_exists('em2_end', $inputClean)   ? $inputClean['em2_end']   : ($existing['em2_end'] ?? null);
+
+    // Validate the merged schedule
+    [$ok, $errors, $clean] = em_schedule_validate($year, $mergedEm1Start, $mergedEm1End, $mergedEm2Start, $mergedEm2End);
     if (!$ok) {
         return [false, implode(' ', $errors)];
     }
@@ -253,9 +305,17 @@ function em_now(?DateTimeInterface $now = null): DateTimeImmutable
 /** A meeting's window as full timestamps: start 00:00:00 to end 23:59:59. */
 function em_window_bounds(array $schedule, string $meeting): array
 {
+    $start = $schedule[$meeting . '_start'] ?? null;
+    $end   = $schedule[$meeting . '_end'] ?? null;
+    if (!$start || !$end) {
+        return [
+            'from' => '9999-12-31 23:59:59',
+            'to'   => '0001-01-01 00:00:00',
+        ];
+    }
     return [
-        'from' => $schedule[$meeting . '_start'] . ' 00:00:00',
-        'to'   => $schedule[$meeting . '_end'] . ' 23:59:59',
+        'from' => $start . ' 00:00:00',
+        'to'   => $end . ' 23:59:59',
     ];
 }
 
@@ -288,13 +348,14 @@ function em_status(?string $year = null, ?DateTimeInterface $now = null): array
         'label'        => 'EM · NOT SET',
         'detail'       => EM_NOT_CONFIGURED_MESSAGE,
     ];
-    if (!$schedule) {
+    if (!$schedule || empty($schedule['em1_start']) || empty($schedule['em1_end'])) {
         return $base;
     }
 
     $t   = em_now($now)->format('Y-m-d H:i:s');
     $em1 = em_window_bounds($schedule, 'em1');
-    $em2 = em_window_bounds($schedule, 'em2');
+    $hasEm2 = !empty($schedule['em2_start']) && !empty($schedule['em2_end']);
+    $em2 = $hasEm2 ? em_window_bounds($schedule, 'em2') : null;
     $fmt = fn(string $d): string => date('d M Y', strtotime($d));
 
     $s = array_merge($base, ['configured' => true]);
@@ -308,6 +369,11 @@ function em_status(?string $year = null, ?DateTimeInterface $now = null): array
         $s['current'] = 'em1';
         $s['label']   = 'EM1 · ACTIVE';
         $s['detail']  = 'EM1 is in session until ' . $fmt($schedule['em1_end']) . '.';
+    } elseif (!$hasEm2) {
+        $s['state']      = EM_STATE_BETWEEN;
+        $s['em1_locked'] = true;
+        $s['label']      = 'EM1 · LOCKED';
+        $s['detail']     = 'EM1 closed on ' . $fmt($schedule['em1_end']) . ' and is read-only.';
     } elseif ($t < $em2['from']) {
         $s['state']        = EM_STATE_BETWEEN;
         $s['em1_locked']   = true;

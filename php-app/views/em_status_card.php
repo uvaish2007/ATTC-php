@@ -19,7 +19,7 @@ $emDashFmt = fn(string $d): string => date('d M Y', strtotime($d));
       <?php if (!$emDash['configured']): ?>
         <div class="em-dash-v"><?= e(EM_NOT_CONFIGURED_MESSAGE) ?></div>
         <?php if (($user['role'] ?? '') === 'Admin'): ?>
-          <a class="em-dash-link" href="<?= e(url('academic-years.php') . '?year=' . urlencode($emDash['year']) . '#emScheduleBox') ?>">
+          <a class="em-dash-link" href="<?= e(url('em-schedule.php')) ?>">
             Configure the EM1 / EM2 schedule &rarr;
           </a>
         <?php endif; ?>

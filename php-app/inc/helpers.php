@@ -21,7 +21,7 @@ function url(string $path = ''): string
 function proof_url(?string $filename): string
 {
     $filename = trim((string) $filename);
-    if ($filename === '') {
+    if ($filename === '' || stripos($filename, 'upload.php') !== false) {
         return '';
     }
     if (str_starts_with($filename, 'http://') || str_starts_with($filename, 'https://')) {
@@ -491,7 +491,10 @@ function record_proof_url(string $type, int $id, ?string $filename = null, bool 
         'id'   => $id,
     ];
     if ($filename !== null && $filename !== '') {
-        $params['file'] = basename($filename);
+        $clean = basename($filename);
+        if (stripos($clean, 'upload.php') === false) {
+            $params['file'] = $clean;
+        }
     }
     if ($download) {
         $params['download'] = '1';
@@ -597,7 +600,8 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
 {
     require_once __DIR__ . '/icons.php';
 
-    if (empty($proofFile)) {
+    $proofFile = trim((string)$proofFile);
+    if ($proofFile === '' || stripos($proofFile, 'upload.php') !== false) {
         return '<span class="card-sub">No proof attached</span>';
     }
 
@@ -605,17 +609,21 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         return '<span class="card-sub" style="color:var(--ink-muted,#64748b);">Proof unavailable</span>';
     }
 
-    $params = ['file' => $proofFile];
-    if (!empty($typeKey)) {
-        $params['type'] = $typeKey;
+    if (!empty($typeKey) && !empty($recordId)) {
+        $viewUrl = record_proof_url($typeKey, (int)$recordId, $proofFile, false, false);
+        $downloadUrl = record_proof_url($typeKey, (int)$recordId, $proofFile, true, false);
+    } else {
+        $params = ['file' => $proofFile];
+        if (!empty($typeKey)) {
+            $params['type'] = $typeKey;
+        }
+        if (!empty($recordId)) {
+            $params['id'] = $recordId;
+        }
+        $viewUrl = url('proof.php?' . http_build_query($params));
+        $params['download'] = '1';
+        $downloadUrl = url('proof.php?' . http_build_query($params));
     }
-    if (!empty($recordId)) {
-        $params['id'] = $recordId;
-    }
-
-    $viewUrl = url('view-proof.php?' . http_build_query($params));
-    $params['download'] = '1';
-    $downloadUrl = url('view-proof.php?' . http_build_query($params));
 
     return '<div style="display:inline-flex;align-items:center;gap:6px;">'
         . '<a class="btn btn-ghost btn-sm" href="' . e($viewUrl) . '" target="_blank" rel="noopener" title="View Proof">'

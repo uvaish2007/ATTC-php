@@ -71,14 +71,14 @@ if (!$isOversight) {
 
         if (in_array($userRole, ['HoD', 'Coordinator'], true)) {
             // HoD / Coordinator can access submissions in their department or filed by themselves
-            if ($userDept !== '' && $recordDept !== '' && strcasecmp($userDept, $recordDept) !== 0 && $recordCreated !== $userId) {
+            if ($userDept !== '' && $recordDept !== '' && !department_names_match($userDept, $recordDept) && $recordCreated !== $userId) {
                 http_response_code(403);
                 exit('You do not have access to view this document.');
             }
         } elseif ($userRole === 'Faculty') {
             // Faculty can access their own submissions or approved department records
             $isOwner = ($recordCreated === $userId);
-            $isSameDeptApproved = ($userDept !== '' && strcasecmp($userDept, $recordDept) === 0 && ($record['status'] ?? '') === 'Approved');
+            $isSameDeptApproved = ($userDept !== '' && department_names_match($userDept, $recordDept) && ($record['status'] ?? '') === 'Approved');
             if (!$isOwner && !$isSameDeptApproved) {
                 http_response_code(403);
                 exit('You do not have access to view this document.');

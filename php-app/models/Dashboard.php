@@ -11,6 +11,7 @@ require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/Target.php';   // academic_years()
 require_once __DIR__ . '/Record.php';
+require_once __DIR__ . '/ExecutiveMeeting.php';   // EM-SPEC-03 meeting filter
 
 /**
  * Every record type the dashboard counts, and how to count it. This is the one
@@ -89,6 +90,13 @@ function dashboard_data(array $user): array
     // true for Faculty/Coordinator/HoD/Dean/Director too, not just Admin.
     $year = active_academic_year();
 
+    // EM-SPEC-03 — "EM1 Duration" / "EM2 Duration" narrows every record figure
+    // below to what was submitted inside that meeting's dates. "all" leaves
+    // the year untouched. A year with no schedule selects nothing rather than
+    // silently showing everything (em_filter_window).
+    $em       = em_filter_value($_GET['em'] ?? null);
+    $emWindow = em_filter_window($em, $year);
+
     $metrics = all_metrics();
 
     // ---- per-department counts, one grouped query per metric ----
@@ -105,6 +113,10 @@ function dashboard_data(array $user): array
         if ($departmentFilter !== null)   { $where[] = 'department = ?';   $params[] = $departmentFilter; }
         if ($status !== null)             { $where[] = 'status = ?';        $params[] = $status; }
         if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
+        if ($emWindow !== null) {
+            $where[] = 'created_at >= ?'; $params[] = $emWindow['from'] . ' 00:00:00';
+            $where[] = 'created_at <= ?'; $params[] = $emWindow['to'] . ' 23:59:59';
+        }
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' GROUP BY department';
 
@@ -183,6 +195,10 @@ function dashboard_data(array $user): array
         $params = [];
         if ($departmentFilter !== null)   { $where[] = 'department = ?';    $params[] = $departmentFilter; }
         if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
+        if ($emWindow !== null) {
+            $where[] = 'created_at >= ?'; $params[] = $emWindow['from'] . ' 00:00:00';
+            $where[] = 'created_at <= ?'; $params[] = $emWindow['to'] . ' 23:59:59';
+        }
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' GROUP BY status';
         try {
@@ -242,7 +258,7 @@ function dashboard_data(array $user): array
     }
 
     // ---- recent submissions + how the targets are doing ----
-    $recent  = recent_activity($departmentFilter, $status, null, $year);
+    $recent  = recent_activity($departmentFilter, $status, null, $year, $emWindow);
     $targets = target_progress($departmentFilter, 6, $year);
 
     /*
@@ -278,7 +294,9 @@ function dashboard_data(array $user): array
     }
 
     return [
-        'scope'            => ['department' => $departmentFilter, 'status' => $status, 'year' => $year],
+        'scope'            => ['department' => $departmentFilter, 'status' => $status, 'year' => $year,
+                               'em' => $em, 'emLabel' => em_filter_label($em, $year),
+                               'emWindow' => $emWindow],
         'departmentFilter' => $departmentFilter,
         'isOversight'      => $isOversight,
         'departments'    => $departments,
@@ -648,7 +666,7 @@ function target_filter_options(): array
 }
 
 /** Recent submissions across every record type. */
-function recent_activity(?string $department, ?string $status, ?int $createdBy = null, ?string $year = null): array
+function recent_activity(?string $department, ?string $status, ?int $createdBy = null, ?string $year = null, ?array $emWindow = null): array
 {
     // table, label, its title column, and whether it keeps an academic_year.
     $sources = [
@@ -679,6 +697,10 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
         if ($department !== null)         { $where[] = 'department = ?';    $params[] = $department; }
         if ($createdBy !== null)          { $where[] = 'created_by = ?';    $params[] = $createdBy; }
         if ($year !== null && $s['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
+        if ($emWindow !== null) {
+            $where[] = 'created_at >= ?'; $params[] = $emWindow['from'] . ' 00:00:00';
+            $where[] = 'created_at <= ?'; $params[] = $emWindow['to'] . ' 23:59:59';
+        }
 
         $sql = "SELECT `{$s['title']}` AS title, status, created_at, department FROM `{$s['table']}`";
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
@@ -715,6 +737,10 @@ function my_dashboard_data(array $user): array
     $uid  = (int) $user['id'];
     $year = active_academic_year();
 
+    // EM-SPEC-03 — the same meeting filter, over this person's own records.
+    $em       = em_filter_value($_GET['em'] ?? null);
+    $emWindow = em_filter_window($em, $year);
+
     $metrics = dept_metrics() + other_metrics();
     $statusBreakdown = [
         'Approved'     => 0,
@@ -734,6 +760,7 @@ function my_dashboard_data(array $user): array
                 $sql .= ' AND academic_year = ?';
                 $params[] = $year;
             }
+            $sql .= em_window_sql($emWindow, $params);
             $sql .= ' GROUP BY status';
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
@@ -763,6 +790,8 @@ function my_dashboard_data(array $user): array
         'totals'          => $totals,
         'metricLabels'    => array_map(fn($m) => $m['label'], $metrics),
         'statusBreakdown' => $statusBreakdown,
-        'recent'          => recent_activity(null, null, $uid, $year),
+        'recent'          => recent_activity(null, null, $uid, $year, $emWindow),
+        'scope'           => ['year' => $year, 'em' => $em, 'emLabel' => em_filter_label($em, $year),
+                              'emWindow' => $emWindow],
     ];
 }

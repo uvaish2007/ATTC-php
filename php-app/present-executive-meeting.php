@@ -8,7 +8,7 @@
  * and are re-validated here against this user's own scope — the URL is never
  * trusted.
  *
- * Auto mode advances every 10 seconds (EM_AUTO_ADVANCE_MS); manual mode stops
+ * Auto mode advances every 5 seconds (EM_AUTO_ADVANCE_MS); manual mode stops
  * the timer entirely. One timer handle exists, and it is always cleared before
  * another is started.
  */
@@ -21,9 +21,9 @@ if (!defined('REPORT_INSTITUTION')) {
     define('REPORT_INSTITUTION', 'Mohamed Sathak Engineering College');
 }
 
-/** Auto mode dwell time per slide. The requirement is 10 seconds, not 5. */
+/** Auto mode dwell time per slide: 5 seconds (EM-SPEC-09). */
 if (!defined('EM_AUTO_ADVANCE_MS')) {
-    define('EM_AUTO_ADVANCE_MS', 10000);
+    define('EM_AUTO_ADVANCE_MS', 5000);
 }
 
 $user = require_login();
@@ -44,6 +44,9 @@ $slides  = em_slides($dataset);
 
 $slidesJson = json_encode($slides, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_filter_query($filters));
+// EM-SPEC-05: shown inside the report page's full-screen modal. Leaving then
+// closes that modal instead of navigating this frame back to the report.
+$embed      = (string) input('embed') === '1';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -130,7 +133,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
     .slide-card.active { opacity: 1; transform: translateY(0) scale(1); }
     .slide-body { padding: 12px 16px; flex: 1; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 
-    /* Auto-mode countdown, so the 10 seconds are visible. */
+    /* Auto-mode countdown, so the 5 seconds are visible. */
     .auto-bar { position: absolute; top: 0; left: 0; height: 4px; width: 0;
       background: var(--brand); z-index: 5; }
     .auto-bar.running { animation: emCountdown linear forwards; }
@@ -474,7 +477,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
     <div class="hdr-actions">
       <!-- Auto / Manual. The active mode is always visible. -->
       <div class="mode-switch" role="group" aria-label="Presentation mode">
-        <button type="button" class="mode-btn" id="btnAuto" onclick="setMode('auto')" title="Advance automatically every 10 seconds">
+        <button type="button" class="mode-btn" id="btnAuto" onclick="setMode('auto')" title="Advance automatically every 5 seconds">
           <?= icon('play-circle', 14) ?> Auto Mode
         </button>
         <button type="button" class="mode-btn active" id="btnManual" onclick="setMode('manual')" title="Advance only when you choose">
@@ -486,9 +489,15 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
         <?= icon('maximize', 14) ?> <span id="fsText">Fullscreen</span>
       </button>
 
-      <a href="<?= e($exitUrl) ?>" class="btn-hdr btn-hdr-brand" title="Exit presentation (Esc)">
-        <?= icon('x', 14) ?> Exit
-      </a>
+      <?php if ($embed): ?>
+        <button type="button" class="btn-hdr btn-hdr-brand" onclick="exitPresentation()" title="Close presentation (Esc)">
+          <?= icon('x', 14) ?> Exit
+        </button>
+      <?php else: ?>
+        <a href="<?= e($exitUrl) ?>" class="btn-hdr btn-hdr-brand" title="Exit presentation (Esc)">
+          <?= icon('x', 14) ?> Exit
+        </a>
+      <?php endif; ?>
     </div>
   </header>
 
@@ -516,8 +525,9 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
   <script>
     const slides = <?= $slidesJson ?>;
+    const EMBEDDED = <?= $embed ? 'true' : 'false' ?>;
 
-    /* Auto mode dwell: 10 seconds per slide, per the FEAT-06 requirement. */
+    /* Auto mode dwell: 5 seconds per slide (EM-SPEC-09). */
     const AUTO_ADVANCE_MS = <?= EM_AUTO_ADVANCE_MS ?>;
 
     /* Rows per table slide, so continued pages keep numbering in sequence. */
@@ -615,6 +625,11 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
       clearAutoTimer();
       if (document.fullscreenElement && document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
+      }
+      if (EMBEDDED) {
+        // Ask the report page to close the modal this is running in.
+        window.parent.postMessage({ atts: 'em-present-close' }, window.location.origin);
+        return;
       }
       location.href = '<?= e($exitUrl) ?>';
     }
