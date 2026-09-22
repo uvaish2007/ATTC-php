@@ -565,15 +565,104 @@ function student_achievement_presentation_data(
     $byCategory = $details['by_category'];
     $slides = [];
 
+    $contribItems = [];
+    $totalCount = 0;
+    $totalApproved = 0;
+    $totalInProg = 0;
+
+    foreach ($categoriesMeta as $catKey => $meta) {
+        $label = $meta['label'];
+        $recs = $byCategory[$label] ?? [];
+        $cnt = count($recs);
+        if ($cnt === 0) continue;
+
+        $appr = 0;
+        $inProg = 0;
+        foreach ($recs as $r) {
+            $st = strtolower((string)($r['status'] ?? ''));
+            if ($st === 'approved') {
+                $appr++;
+            } else {
+                $inProg++;
+            }
+        }
+        $totalCount += $cnt;
+        $totalApproved += $appr;
+        $totalInProg += $inProg;
+
+        $code = strlen($label) > 12 ? substr($label, 0, 10) . '..' : $label;
+        if (stripos($label, 'Journal') !== false) $code = 'Journal';
+        elseif (stripos($label, 'Conference') !== false) $code = 'Conf';
+        elseif (stripos($label, 'Internship') !== false) $code = 'Intern';
+        elseif (stripos($label, 'Symposium') !== false) $code = 'Symp';
+        elseif (stripos($label, 'Certification') !== false || stripos($label, 'Course') !== false) $code = 'Course';
+        elseif (stripos($label, 'Sports') !== false) $code = 'Sports';
+
+        $contribItems[] = [
+            'code'        => $code,
+            'name'        => $label,
+            'target'      => $cnt,
+            'achieved'    => $appr,
+            'in_progress' => $inProg,
+            'total'       => $cnt,
+        ];
+    }
+
+    usort($contribItems, fn($a, $b) => ($b['total'] <=> $a['total']) ?: ($b['achieved'] <=> $a['achieved']));
+    $top3 = array_slice($contribItems, 0, 3);
+
+    $slices = [];
+    $palette = ['#1B65C5', '#EA580C', '#168A53', '#94A3B8', '#7C3AED'];
+    $i = 0;
+    $otherTotal = 0;
+    foreach ($contribItems as $item) {
+        if ($i < 3) {
+            $pct = $totalCount > 0 ? round(($item['total'] / $totalCount) * 100) : 0;
+            $slices[] = [
+                'label'      => $item['code'],
+                'count'      => $item['total'],
+                'percentage' => $pct,
+                'color'      => $palette[$i % count($palette)],
+            ];
+        } else {
+            $otherTotal += $item['total'];
+        }
+        $i++;
+    }
+    if ($otherTotal > 0) {
+        $pct = $totalCount > 0 ? round(($otherTotal / $totalCount) * 100) : 0;
+        $slices[] = [
+            'label'      => 'Other Types',
+            'count'      => $otherTotal,
+            'percentage' => $pct,
+            'color'      => '#94A3B8',
+        ];
+    }
+
+    $studentContrib = [
+        'mode'           => 'category',
+        'title'          => 'Category-wise Student Contributions',
+        'sub_title'      => 'Top 3 Categories',
+        'chart_label'    => 'Achievement Distribution',
+        'items'          => $contribItems,
+        'top3'           => $top3,
+        'donut_slices'   => $slices,
+        'total_target'   => $totalCount,
+        'total_achieved' => $totalApproved,
+        'total_in_prog'  => $totalInProg,
+        'total_count'    => $totalCount,
+    ];
+
     // Title Slide
     $slides[] = [
-        'type'        => 'title',
-        'title'       => $student['name'],
-        'reg_no'      => $student['reg_no'],
-        'department'  => $student['department'],
-        'academicYear'=> $academicYear,
-        'total'       => $details['summary']['total'],
-        'approved'    => $details['summary']['approved'],
+        'type'          => 'title',
+        'title'         => $student['name'],
+        'reg_no'        => $student['reg_no'],
+        'department'    => $student['department'],
+        'academicYear'  => $academicYear,
+        'total'         => $details['summary']['total'],
+        'approved'      => $details['summary']['approved'],
+        'contributions' => $studentContrib,
     ];
 
     // Category Slides
@@ -592,9 +681,10 @@ function student_achievement_presentation_data(
     }
 
     return [
-        'student' => $student,
-        'slides'  => $slides,
-        'summary' => $details['summary'],
+        'student'       => $student,
+        'slides'        => $slides,
+        'summary'       => $details['summary'],
+        'contributions' => $studentContrib,
     ];
 }
 

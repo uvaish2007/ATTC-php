@@ -786,18 +786,140 @@ function faculty_achievement_presentation_data(int $facultyId, ?string $academic
         'configured' => $hasConfiguredTargets,
     ];
 
+    $deptTargetsAchieved = 0;
+    $deptTargetsInProgress = 0;
+    foreach ($allTargets as $t) {
+        $tv = (int) ($t['target_value'] ?? 0);
+        $av = (int) ($t['achieved_value'] ?? 0);
+        if ($tv > 0 && $av >= $tv) {
+            $deptTargetsAchieved++;
+        } elseif ($tv > 0 && $av > 0 && $av < $tv) {
+            $deptTargetsInProgress++;
+        }
+    }
+    if ($deptTargetsInProgress === 0 && $deptTargetsAchieved === 0) {
+        foreach ($allTargets as $t) {
+            $tv = (int) ($t['target_value'] ?? 0);
+            $av = (int) ($t['achieved_value'] ?? 0);
+            if ($tv > 0 && $av < $tv && in_array($t['status'] ?? '', ['Approved', 'Pending Review'], true)) {
+                $deptTargetsInProgress++;
+            }
+        }
+    }
+    $deptTargetSummary = [
+        'academic_targets'    => count($allTargets),
+        'targets_achieved'    => $deptTargetsAchieved,
+        'targets_in_progress' => $deptTargetsInProgress,
+    ];
+
+    // Contributions summary for executive dashboard layout
+    $contribItems = [];
+    $totalTarget = 0;
+    $totalAchieved = 0;
+    $totalInProg = 0;
+    $totalCount = 0;
+
+    foreach ($categorySummaries as $cs) {
+        $tgt = (int)($cs['target'] ?? 0);
+        $ach = (int)($cs['achieved'] ?? 0);
+        $inProg = ($tgt > $ach) ? min($tgt - $ach, $deptTargetSummary['targets_in_progress']) : 0;
+        $tot = $ach + $inProg;
+
+        $totalTarget += $tgt;
+        $totalAchieved += $ach;
+        $totalInProg += $inProg;
+        $totalCount += $tot;
+
+        $label = $cs['label'];
+        $code = strlen($label) > 12 ? substr($label, 0, 10) . '..' : $label;
+        if (stripos($label, 'Journal') !== false) $code = 'Journal';
+        elseif (stripos($label, 'Conference') !== false) $code = 'Conf';
+        elseif (stripos($label, 'Patent') !== false) $code = 'Patent';
+        elseif (stripos($label, 'Book') !== false) $code = 'Book';
+        elseif (stripos($label, 'FDP') !== false || stripos($label, 'Workshop') !== false) $code = 'FDP/Wksp';
+        elseif (stripos($label, 'Internship') !== false) $code = 'Intern';
+
+        $contribItems[] = [
+            'code'        => $code,
+            'name'        => $label,
+            'target'      => $tgt,
+            'achieved'    => $ach,
+            'in_progress' => $inProg,
+            'total'       => $tot,
+        ];
+    }
+
+    usort($contribItems, fn($a, $b) => ($b['total'] <=> $a['total']) ?: ($b['achieved'] <=> $a['achieved']));
+    $top3 = array_slice($contribItems, 0, 3);
+
+    $slices = [];
+    $palette = ['#1B65C5', '#EA580C', '#168A53', '#94A3B8', '#7C3AED'];
+    $i = 0;
+    $otherTotal = 0;
+    foreach ($contribItems as $item) {
+        if ($i < 3) {
+            $pct = $totalCount > 0 ? round(($item['total'] / $totalCount) * 100) : 0;
+            $slices[] = [
+                'label'      => $item['code'],
+                'count'      => $item['total'],
+                'percentage' => $pct,
+                'color'      => $palette[$i % count($palette)],
+            ];
+        } else {
+            $otherTotal += $item['total'];
+        }
+        $i++;
+    }
+    if ($otherTotal > 0) {
+        $pct = $totalCount > 0 ? round(($otherTotal / $totalCount) * 100) : 0;
+        $slices[] = [
+            'label'      => 'Other Types',
+            'count'      => $otherTotal,
+            'percentage' => $pct,
+            'color'      => '#94A3B8',
+        ];
+    }
+
+    $facultyContrib = [
+        'mode'           => 'category',
+        'title'          => 'All Categories Contribution',
+        'sub_title'      => 'Top 3 Categories',
+        'chart_label'    => 'Category-wise Contribution',
+        'items'          => $contribItems,
+        'top3'           => $top3,
+        'donut_slices'   => $slices,
+        'total_target'   => $totalTarget,
+        'total_achieved' => $totalAchieved,
+        'total_in_prog'  => $totalInProg,
+        'total_count'    => $totalCount,
+    ];
+
     // Build final ordered slide stack:
-    // Slide 1: Intro
-    // Slide 2: Overall Target vs Achievement
-    // Slides 3..N: Category Slides
+    // Slide 1: Target Summary (First Page matching reference design)
+    // Slide 2: Intro
+    // Slide 3: Overall Target vs Achievement
+    // Slides 4..N: Category Slides
     // Final Slide: Overall Summary Matrix
     $slideDeck = [];
+
+    $slideDeck[] = [
+        'type'                => 'target_summary',
+        'title'               => 'Summary of Target Achievements',
+        'faculty'             => $faculty,
+        'academic_year'       => $academicYear,
+        'academic_targets'    => $deptTargetSummary['academic_targets'],
+        'targets_achieved'    => $deptTargetSummary['targets_achieved'],
+        'targets_in_progress' => $deptTargetSummary['targets_in_progress'],
+        'contributions'       => $facultyContrib,
+        'overall'             => $overallSummary,
+    ];
 
     $slideDeck[] = [
         'type'          => 'intro',
         'title'         => 'INDIVIDUAL FACULTY ACHIEVEMENT REPORT',
         'faculty'       => $faculty,
         'academic_year' => $academicYear,
+        'contributions' => $facultyContrib,
         'overall'       => $overallSummary,
     ];
 
@@ -806,6 +928,7 @@ function faculty_achievement_presentation_data(int $facultyId, ?string $academic
         'title'         => 'Target vs Achievement Summary',
         'faculty'       => $faculty,
         'academic_year' => $academicYear,
+        'contributions' => $facultyContrib,
         'overall'       => $overallSummary,
     ];
 

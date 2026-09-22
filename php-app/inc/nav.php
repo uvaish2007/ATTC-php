@@ -16,6 +16,11 @@ function navigation_for(string $role): array
         'Admin' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
+            // FEAT-12 — the historical archive of expired notices, kept beside
+            // the Announcements entry it belongs to. Admin only: no other
+            // role's list has it, and announcements-archive.php gates on the
+            // role itself regardless of what the menu shows.
+            ['section' => 'Overview',  'label' => 'Announcement Archive', 'path' => 'announcements-archive.php', 'icon' => 'archive'],
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Academic Year',        'path' => 'academic-years.php',       'icon' => 'calendar'],
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],

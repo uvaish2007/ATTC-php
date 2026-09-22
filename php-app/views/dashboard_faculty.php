@@ -16,7 +16,7 @@ $statusColours = [
     'Approved'     => '#059669',
     'Dean Pending' => '#F59E0B',
     'HOD Pending'  => '#2563EB',
-    'Submitted'    => '#2563EB',
+    'Submitted'    => '#7C3AED',
     'Rejected'     => '#DC2626',
     'Draft'        => '#6B7FA8',
 ];

@@ -230,6 +230,55 @@ require __DIR__ . '/inc/header.php';
       <?php endforeach; ?>
     </div>
 
+    <!-- FEAT: Summary of Target Achievements (First Page Preview) -->
+    <?php $ts = $dataset['target_summary'] ?? em_target_summary($dataset['targets']); ?>
+    <div class="ts-preview-box mt-4">
+      <div class="ts-preview-hdr">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="ts-preview-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="m22 2-6.5 6.5"/><path d="M12 2a10 10 0 1 0 10 10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+            </svg>
+          </div>
+          <div style="width:1.5px; height:24px; background:rgba(255,255,255,0.3);"></div>
+          <div>
+            <div style="font-size:11px; font-weight:600; color:#D6E4FF; line-height:1.2;">Summary of</div>
+            <div style="font-size:18px; font-weight:800; color:#FFFFFF; line-height:1.1; letter-spacing:-0.01em;">Target Achievements</div>
+          </div>
+        </div>
+        <span class="badge" style="background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.2); font-size:11px;">Presentation Slide 1</span>
+      </div>
+      <div class="ts-preview-grid">
+        <div class="ts-pcard">
+          <div class="ts-pcard-top blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4a2 2 0 0 1 2-2h8l4 4v4"/><path d="M4 8h8"/><path d="M4 12h5"/><path d="M12 17l4.5-2.5L21 17l-4.5 2.5z"/><path d="M14 18.2v2.3a2.5 2.5 0 0 0 5 0v-2.3"/><path d="M21 17v3"/><path d="M4 16v4a2 2 0 0 0 2 2h6"/>
+            </svg>
+            <span>Number of Academic Targets</span>
+          </div>
+          <div class="ts-pcard-num blue"><?= (int) $ts['academic_targets'] ?></div>
+        </div>
+        <div class="ts-pcard">
+          <div class="ts-pcard-top green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 6-6"/>
+            </svg>
+            <span>Number of Targets Achieved</span>
+          </div>
+          <div class="ts-pcard-num green"><?= (int) $ts['targets_achieved'] ?></div>
+        </div>
+        <div class="ts-pcard">
+          <div class="ts-pcard-top amber">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Number of Targets In Progress</span>
+          </div>
+          <div class="ts-pcard-num amber"><?= (int) $ts['targets_in_progress'] ?></div>
+        </div>
+      </div>
+    </div>
+
     <!-- Counts feeding the deck -->
     <div class="stat-grid grid-4 mt-4">
       <div class="stat">
@@ -304,6 +353,21 @@ require __DIR__ . '/inc/header.php';
   #emFilterForm .fb-field select { min-width:150px; }
   /* Proforma metrics are long sentences; keep the filter bar readable. */
   #emFilterForm .em-target-field select { max-width:260px; }
+
+  /* Summary of Target Achievements Preview Styles */
+  .ts-preview-box { background:#fff; border:1px solid var(--hairline,#E4E9F2); border-radius:12px; overflow:hidden; box-shadow:0 4px 14px rgba(0,0,0,0.04); }
+  .ts-preview-hdr { background:#0E2548; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
+  .ts-preview-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; padding:16px; background:#F8FAFC; }
+  .ts-pcard { background:#fff; border:1px solid #E2E8F0; border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .ts-pcard-top { padding:12px 14px; color:#fff; display:flex; align-items:center; gap:8px; font-weight:700; font-size:13px; }
+  .ts-pcard-top.blue  { background:#1B65C5; }
+  .ts-pcard-top.green { background:#168A53; }
+  .ts-pcard-top.amber { background:#E59819; }
+  .ts-pcard-num { padding:14px; text-align:center; font-size:38px; font-weight:900; line-height:1; }
+  .ts-pcard-num.blue  { background:#EBF3FC; color:#0E3366; }
+  .ts-pcard-num.green { background:#EAF6EE; color:#0A4D20; }
+  .ts-pcard-num.amber { background:#FEF8EC; color:#7E4A05; }
+  @media (max-width:768px) { .ts-preview-grid { grid-template-columns:1fr; } }
 </style>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

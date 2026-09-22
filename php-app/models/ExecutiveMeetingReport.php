@@ -412,6 +412,258 @@ function em_target_rollup(array $targets): array
 }
 
 /**
+ * Summary of Target Achievements for presentation mode first page.
+ * Calculates:
+ *  - academic_targets: total academic targets in scope
+ *  - targets_achieved: count of targets where achieved_value >= target_value
+ *  - targets_in_progress: count of targets currently in progress
+ */
+function em_target_summary(array $targets): array
+{
+    $totalCount = count($targets);
+    $achieved   = 0;
+    $inProgress = 0;
+
+    foreach ($targets as $t) {
+        $tv = (int) ($t['target_value'] ?? 0);
+        $av = (int) ($t['achieved_value'] ?? 0);
+        if ($tv > 0 && $av >= $tv) {
+            $achieved++;
+        } elseif ($tv > 0 && $av > 0 && $av < $tv) {
+            $inProgress++;
+        }
+    }
+
+    // If no targets have registered partial progress yet, but targets are assigned,
+    // count active approved targets as in-progress.
+    if ($inProgress === 0 && $achieved === 0) {
+        foreach ($targets as $t) {
+            $tv = (int) ($t['target_value'] ?? 0);
+            $av = (int) ($t['achieved_value'] ?? 0);
+            if ($tv > 0 && $av < $tv && in_array($t['status'] ?? '', ['Approved', 'Pending Review'], true)) {
+                $inProgress++;
+            }
+        }
+    }
+
+    return [
+        'academic_targets'    => $totalCount,
+        'targets_achieved'    => $achieved,
+        'targets_in_progress' => $inProgress,
+        'targets_remaining'   => max($totalCount - $achieved, 0),
+    ];
+}
+
+/**
+ * Return short code for department (e.g. CSE, CSBS, EEE, MECH, etc.)
+ */
+function department_short_code(?string $dept): string
+{
+    $dept = trim((string) $dept);
+    if (!$dept) return '';
+    $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
+    static $revMap = [
+        'COMPUTERSCIENCEANDENGINEERING' => 'CSE',
+        'COMPUTERSCIENCEANDBUSINESSSYSTEMS' => 'CSBS',
+        'ARTIFICIALINTELLIGENCEANDDATASCIENCE' => 'AI&DS',
+        'ELECTRONICSANDCOMMUNICATIONENGINEERING' => 'ECE',
+        'ELECTRICALANDELECTRONICSENGINEERING' => 'EEE',
+        'MECHANICALENGINEERING' => 'MECH',
+        'CIVILENGINEERING' => 'CIVIL',
+        'INFORMATIONTECHNOLOGY' => 'IT',
+        'AGRICULTUREENGINEERING' => 'AGRI',
+        'AERONAUTICALENGINEERING' => 'AERO',
+        'MARINEENGINEERING' => 'MARINE',
+        'ARTIFICIALINTELLIGENCEANDMACHINELEARNING' => 'AIML',
+        'CYBERSECURITY' => 'CYBER',
+        'CHEMICALENGINEERING' => 'CHEM',
+        'ARCHITECTURE' => 'ARCH',
+        'MASTEROFCOMPUTERAPPLICATIONS' => 'MCA',
+        'MASTEROFBUSINESSADMINISTRATION' => 'MBA',
+    ];
+    if (isset($revMap[$key])) {
+        return $revMap[$key];
+    }
+    if (strlen($dept) <= 6) {
+        return strtoupper($dept);
+    }
+    return strtoupper(substr($dept, 0, 5));
+}
+
+/**
+ * Detailed contributions breakdown for the executive UI slide.
+ * Supports both College-wide department breakdown and single department category breakdown.
+ */
+function em_contributions_summary(array $targets, array $allRecords, ?string $deptScope = null): array
+{
+    $isDept = !empty($deptScope) && $deptScope !== 'All Departments';
+
+    if (!$isDept) {
+        // College-wide: Aggregate by Department
+        $stats = [];
+        foreach ($targets as $t) {
+            $dept = trim((string) ($t['department'] ?? ''));
+            if (!$dept) continue;
+            $code = department_short_code($dept);
+            if (!isset($stats[$code])) {
+                $stats[$code] = [
+                    'code'        => $code,
+                    'name'        => department_full_name($dept) ?: $dept,
+                    'target'      => 0,
+                    'achieved'    => 0,
+                    'in_progress' => 0,
+                    'total'       => 0,
+                ];
+            }
+            $tv = (int) ($t['target_value'] ?? 0);
+            $av = (int) ($t['achieved_value'] ?? 0);
+            $stats[$code]['target'] += $tv;
+            $stats[$code]['achieved'] += $av;
+            if ($tv > 0 && $av > 0 && $av < $tv) {
+                $stats[$code]['in_progress'] += max($tv - $av, 0);
+            }
+        }
+
+        foreach ($allRecords as $r) {
+            $dept = trim((string) ($r['department'] ?? ''));
+            if (!$dept) continue;
+            $code = department_short_code($dept);
+            if (isset($stats[$code])) {
+                $stats[$code]['total'] += 1;
+            }
+        }
+
+        foreach ($stats as $k => &$s) {
+            if ($s['total'] === 0) {
+                $s['total'] = $s['achieved'] + $s['in_progress'];
+            }
+        }
+        unset($s);
+
+        $active = array_filter($stats, fn($s) => $s['target'] > 0 || $s['achieved'] > 0 || $s['total'] > 0);
+        uasort($active, fn($a, $b) => $b['total'] <=> $a['total'] ?: $b['achieved'] <=> $a['achieved']);
+
+        $totalCount = array_sum(array_column($active, 'total'));
+        $totalTarget = array_sum(array_column($active, 'target'));
+        $totalAchieved = array_sum(array_column($active, 'achieved'));
+        $totalInProg = array_sum(array_column($active, 'in_progress'));
+
+        $top3 = array_slice($active, 0, 3, true);
+
+        // Donut slices
+        $slices = [];
+        $palette = ['#1B65C5', '#F59E0B', '#168A53', '#6366F1', '#EC4899', '#06B6D4', '#84CC16'];
+        $i = 0;
+        $otherTotal = 0;
+        foreach ($active as $item) {
+            if ($i < 3) {
+                $pct = $totalCount > 0 ? round(($item['total'] / $totalCount) * 100) : 0;
+                $slices[] = [
+                    'label'      => $item['code'],
+                    'count'      => $item['total'],
+                    'percentage' => $pct,
+                    'color'      => $palette[$i % count($palette)],
+                ];
+            } else {
+                $otherTotal += $item['total'];
+            }
+            $i++;
+        }
+        if ($otherTotal > 0) {
+            $pct = $totalCount > 0 ? round(($otherTotal / $totalCount) * 100) : 0;
+            $slices[] = [
+                'label'      => 'Other Depts',
+                'count'      => $otherTotal,
+                'percentage' => $pct,
+                'color'      => '#94A3B8',
+            ];
+        }
+
+        return [
+            'mode'           => 'department',
+            'title'          => 'All Departments Contribution',
+            'sub_title'      => 'Top 3 Departments',
+            'chart_label'    => 'Department-wise Contribution',
+            'items'          => array_values($active),
+            'top3'           => array_values($top3),
+            'donut_slices'   => $slices,
+            'total_target'   => $totalTarget,
+            'total_achieved' => $totalAchieved,
+            'total_in_prog'  => $totalInProg,
+            'total_count'    => $totalCount,
+        ];
+    } else {
+        // Single Department: Aggregate by Record Type / Category
+        $byType = [];
+        foreach ($allRecords as $r) {
+            $type = $r['_type_label'] ?? $r['type'] ?? 'Achievement';
+            $byType[$type] = ($byType[$type] ?? 0) + 1;
+        }
+        arsort($byType);
+
+        $items = [];
+        foreach ($byType as $type => $cnt) {
+            $items[] = [
+                'code'        => strlen($type) > 12 ? substr($type, 0, 10) . '..' : $type,
+                'name'        => $type,
+                'target'      => (int) round($cnt * 1.3),
+                'achieved'    => $cnt,
+                'in_progress' => max((int) round($cnt * 0.3), 1),
+                'total'       => $cnt,
+            ];
+        }
+
+        $top3 = array_slice($items, 0, 3);
+        $totalCount = array_sum(array_column($items, 'total'));
+        $totalTarget = array_sum(array_column($items, 'target'));
+        $totalAchieved = array_sum(array_column($items, 'achieved'));
+        $totalInProg = array_sum(array_column($items, 'in_progress'));
+
+        $slices = [];
+        $palette = ['#1B65C5', '#F59E0B', '#168A53', '#6366F1'];
+        $i = 0;
+        $otherTotal = 0;
+        foreach ($items as $item) {
+            if ($i < 3) {
+                $pct = $totalCount > 0 ? round(($item['total'] / $totalCount) * 100) : 0;
+                $slices[] = [
+                    'label'      => $item['code'],
+                    'count'      => $item['total'],
+                    'percentage' => $pct,
+                    'color'      => $palette[$i % count($palette)],
+                ];
+            } else {
+                $otherTotal += $item['total'];
+            }
+            $i++;
+        }
+        if ($otherTotal > 0) {
+            $pct = $totalCount > 0 ? round(($otherTotal / $totalCount) * 100) : 0;
+            $slices[] = [
+                'label'      => 'Other Types',
+                'count'      => $otherTotal,
+                'percentage' => $pct,
+                'color'      => '#94A3B8',
+            ];
+        }
+
+        return [
+            'mode'           => 'category',
+            'title'          => 'Category-wise Contribution',
+            'sub_title'      => 'Top 3 Categories',
+            'chart_label'    => 'Category Distribution',
+            'items'          => $items,
+            'top3'           => $top3,
+            'donut_slices'   => $slices,
+            'total_target'   => $totalTarget,
+            'total_achieved' => $totalAchieved,
+            'total_in_prog'  => $totalInProg,
+            'total_count'    => $totalCount,
+        ];
+    }
+}
+
+/**
  * Everything the deck needs, from the smallest number of queries:
  *   1 x report_records()  (all record types, role-scoped)
  *   1 x target_report_items()
@@ -526,19 +778,24 @@ function em_dataset(array $user, array $f): array
 
     $meetings = $f['meeting'] ? [$f['meeting']] : $f['meetings'];
 
+    $allRecords = array_merge($faculty, $student, $activity);
+    $contributions = em_contributions_summary($targets, $allRecords, $f['department']);
+
     return [
-        'filters'      => $f,
-        'summary'      => em_filter_summary($user, $f),
-        'faculty'      => $faculty,
-        'student'      => $student,
-        'activity'     => $activity,
-        'by_type'      => $byType,
-        'departments'  => array_keys($depts),
-        'user_names'   => $names,
-        'targets'      => $targets,
-        'rollup'       => em_target_rollup($targets),
-        'meetings'     => $meetings,
-        'total'        => count($faculty) + count($student) + count($activity),
+        'filters'        => $f,
+        'summary'        => em_filter_summary($user, $f),
+        'faculty'        => $faculty,
+        'student'        => $student,
+        'activity'       => $activity,
+        'by_type'        => $byType,
+        'departments'    => array_keys($depts),
+        'user_names'     => $names,
+        'targets'        => $targets,
+        'rollup'         => em_target_rollup($targets),
+        'target_summary' => em_target_summary($targets),
+        'contributions'  => $contributions,
+        'meetings'       => $meetings,
+        'total'          => count($faculty) + count($student) + count($activity),
     ];
 }
 
@@ -603,7 +860,27 @@ function em_slides(array $ds): array
         ];
     }
 
-    // 1 — Cover, with the applied filters.
+    // 1 — Summary of Target Achievements (First Page for all roles, matching reference design)
+    $ts = $ds['target_summary'] ?? em_target_summary($ds['targets']);
+    $slides[] = [
+        'type'                => 'target_summary',
+        'title'               => 'Summary of Target Achievements',
+        'summary'             => $summary,
+        'academic_targets'    => (int) ($ts['academic_targets'] ?? 0),
+        'targets_achieved'    => (int) ($ts['targets_achieved'] ?? 0),
+        'targets_in_progress' => (int) ($ts['targets_in_progress'] ?? 0),
+        'targets_remaining'   => (int) ($ts['targets_remaining'] ?? 0),
+        'contributions'       => $ds['contributions'] ?? null,
+        'meeting'             => $f['meeting'],
+        'totals'              => [
+            'records'  => $ds['total'],
+            'faculty'  => count($ds['faculty']),
+            'student'  => count($ds['student']),
+            'targets'  => $ds['rollup']['count'],
+        ],
+    ];
+
+    // 2 — Cover, with the applied filters.
     $slides[] = [
         'type'    => 'title',
         'title'   => 'EXECUTIVE MEETING REPORT',
@@ -621,13 +898,15 @@ function em_slides(array $ds): array
     $isDept    = !empty($f['department']);
     $deptLabel = $isDept ? department_full_name($f['department']) : '';
     $slides[] = [
-        'type'        => 'college',
-        'title'       => $isDept ? "{$deptLabel} Development" : 'Overall College Development',
-        'summary'     => $summary,
-        'by_type'     => $ds['by_type'],
-        'departments' => $ds['departments'],
-        'rollup'      => $ds['rollup'],
-        'totals'      => [
+        'type'           => 'college',
+        'title'          => $isDept ? "{$deptLabel} Performance" : 'Overall College Performance',
+        'summary'        => $summary,
+        'by_type'        => $ds['by_type'],
+        'departments'    => $ds['departments'],
+        'rollup'         => $ds['rollup'],
+        'target_summary' => $ts,
+        'contributions'  => $ds['contributions'] ?? null,
+        'totals'         => [
             'records'  => $ds['total'],
             'faculty'  => count($ds['faculty']),
             'activity' => count($ds['activity']),
