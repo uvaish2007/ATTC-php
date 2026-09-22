@@ -192,18 +192,28 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 <!-- Review / process dialog -->
-<dialog class="modal" id="reviewDlg" style="max-width:40rem">
+<dialog class="modal" id="reviewDlg" style="max-width:40rem; max-height:calc(100vh - 40px); overflow-y:auto;">
   <form method="post" id="reviewForm">
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="process">
     <input type="hidden" name="id" id="rv-id">
 
-    <div class="modal-head">
-      <div>
-        <h3>Password Request <span id="rv-num" class="tabular"></span></h3>
-        <div class="msub">Raised from the login page</div>
+    <div class="modal-head" style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+      <div style="flex:1; min-width:0;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h3 style="margin:0;">Password Request <span id="rv-num" class="tabular"></span></h3>
+          <span class="badge" id="rv-status"></span>
+        </div>
+        <div class="msub" style="margin-top:3px;">Raised from the login page</div>
       </div>
-      <span class="badge" id="rv-status"></span>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('reviewDlg').close()" title="Back to requests" style="display:inline-flex; align-items:center; gap:5px; height:32px;">
+          <?= icon('arrow-left', 14) ?> Back
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('reviewDlg').close()" title="Close dialog" aria-label="Close" style="width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; color:var(--ink-muted); border-radius:8px;">
+          <?= icon('x', 16) ?>
+        </button>
+      </div>
     </div>
 
     <div class="modal-body">
@@ -243,7 +253,9 @@ require __DIR__ . '/inc/header.php';
     </div>
 
     <div class="modal-foot" id="rv-foot">
-      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()" style="display:inline-flex; align-items:center; gap:5px;">
+        <?= icon('arrow-left', 13) ?> Back
+      </button>
       <button type="submit" class="btn btn-outline btn-sm" name="decision" value="reject" id="rv-reject" formnovalidate>
         Reject Request
       </button>
@@ -313,5 +325,14 @@ document.getElementById('reviewForm').addEventListener('submit', function (ev) {
     alert('Give a reason for rejecting this request.');
   }
 });
+
+var rvDlg = document.getElementById('reviewDlg');
+if (rvDlg) {
+  rvDlg.addEventListener('click', function(e) {
+    if (e.target === rvDlg) {
+      rvDlg.close();
+    }
+  });
+}
 </script>
 <?php require __DIR__ . '/inc/footer.php'; ?>

@@ -824,7 +824,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
     function renderExecutiveBanner(title, subtitle, motto) {
       subtitle = (subtitle || 'Research • Innovation • Global Impact').replace(/&middot;/g, ' • ');
-      motto = motto || 'Better Research for a Brighter Future';
+      motto = motto || '';
       return `
         <div class="ex-banner">
           <div class="ex-banner-left">
@@ -842,12 +842,13 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
               <div class="ex-banner-subtitle">${esc(subtitle)}</div>
             </div>
           </div>
+          ${motto ? `
           <div class="ex-banner-right">
             <div class="ex-banner-motto">${esc(motto)}</div>
             <svg width="140" height="7" viewBox="0 0 140 7" fill="none" style="margin-top:2px;">
               <path d="M2 5 C 45 1, 95 6, 138 2" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
             </svg>
-          </div>
+          </div>` : ''}
         </div>`;
     }
 
@@ -931,7 +932,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
     }
 
     function renderExecutiveFooter(motto) {
-      motto = motto || 'Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow';
+      motto = motto || '';
       return `
         <div class="ex-footer">
           <div class="ex-footer-left">
@@ -942,7 +943,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
               </svg>
             </div>
           </div>
-          <div class="ex-footer-motto">${esc(motto)}</div>
+          <div class="ex-footer-motto">${motto ? esc(motto) : ''}</div>
           <div class="ex-footer-stripes">
             <span class="ex-footer-stripe s1"></span>
             <span class="ex-footer-stripe s2"></span>
@@ -1064,10 +1065,10 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Summary of Target Achievements', 'Research • Innovation • Global Impact', 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Summary of Target Achievements', 'Research • Innovation • Global Impact')}
             ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
             ${renderExecutiveSplitRow(c, 'Academic Target Achievements')}
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1083,7 +1084,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner(s.title, `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner(s.title, `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`)}
             ${renderExecutiveKpis(fixed, achieved || (s.totals ? s.totals.faculty : 0), achPct, inProg || (s.totals ? s.totals.student : 0), inProgPct, total, '(Records in Scope)')}
             <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:24px; text-align:center;">
               <div class="intro-badge" style="margin-bottom:12px;"><?= icon('presentation', 13) ?> Executive Presentation</div>
@@ -1093,7 +1094,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
               </p>
               <div style="margin-top:18px;" class="chips">${chipsOf(s.summary)}</div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1109,10 +1110,10 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner(s.title, 'Research • Innovation • Global Impact', 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner(s.title, 'Research • Innovation • Global Impact')}
             ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
             ${renderExecutiveSplitRow(c, 'Academic Records & Publications')}
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1138,7 +1139,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner(s.title, `${scope} &middot; ${pageInfo}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner(s.title, `${scope} &middot; ${pageInfo}`)}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
                 <div class="ex-panel-title">${esc(s.title)} &mdash; Verified Records</div>
@@ -1160,7 +1161,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1179,7 +1180,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Academic Targets vs Achievements', `${scope}${pageInfo ? ' &middot; ' + pageInfo : ''}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Academic Targets vs Achievements', `${scope}${pageInfo ? ' &middot; ' + pageInfo : ''}`)}
             ${renderExecutiveKpis(r.target, r.achieved, r.percentage, r.remaining, null, r.count, '(Configured Targets)')}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
@@ -1201,7 +1202,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1218,7 +1219,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Executive Meeting Schedule & Minutes', scope, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Executive Meeting Schedule & Minutes', scope)}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
                 <div class="ex-panel-title">Executive Reviews</div>
@@ -1238,7 +1239,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1247,7 +1248,7 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
         const r = s.rollup;
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Executive Performance Summary', scope, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Executive Performance Summary', scope)}
             ${renderExecutiveKpis(r.target, r.achieved, r.percentage, r.remaining, null, s.totals.records, '(Total Records)')}
             <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:24px; text-align:center;">
               <h2 style="font-size:32px; font-weight:900; color:#0B2D59;">Summary of Performance & Targets</h2>
@@ -1260,20 +1261,20 @@ $exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_fi
               </div>
               <div style="margin-top:24px;" class="chips">${chipsOf(s.summary)}</div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
       // Empty state
       return `
         <div class="ex-wrap">
-          ${renderExecutiveBanner('Executive Meeting Presentation', scope, 'Better Research for a Brighter Future')}
+          ${renderExecutiveBanner('Executive Meeting Presentation', scope)}
           <div class="empty-wrap" style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:40px;">
             <div class="empty-ic"><?= icon('info', 22) ?></div>
             <div style="font-size:18px; font-weight:700; color:var(--ink);">${esc(s.message || 'No records in this scope.')}</div>
             <div style="font-size:13px; color:#64748B;">Adjust the report filters to widen this section.</div>
           </div>
-          ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          ${renderExecutiveFooter()}
         </div>`;
     }
 

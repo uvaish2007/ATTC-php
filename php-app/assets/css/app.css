@@ -1645,6 +1645,7 @@ table.data.ay-reg th:last-child,  table.data.ay-reg td:last-child  { padding-rig
 dialog.modal {
   border:0; border-radius:var(--r-xl); padding:0; width:100%; max-width:32rem;
   box-shadow:var(--shadow-pop); color:var(--ink); background:var(--surface);
+  max-height:calc(100vh - 48px); overflow-y:auto;
 }
 dialog.modal[open] { animation:modal-in var(--dur-slow) var(--ease-out); }
 @keyframes modal-in {
