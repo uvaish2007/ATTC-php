@@ -41,7 +41,38 @@ if (!$faculty) {
 
 $slidesJson = json_encode($presentation['slides'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $years      = academic_years();
-$exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
+
+$from     = trim((string) input('from', ''));
+$referer  = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+$userRole = $user['role'] ?? '';
+
+// Build return query parameters for faculty-achievements
+$faParams = [];
+if (!empty($academicYear)) {
+    $faParams['academic_year'] = $academicYear;
+}
+if (input('return_dept')) {
+    $faParams['department'] = input('return_dept');
+}
+if (input('return_cat')) {
+    $faParams['category'] = input('return_cat');
+}
+$faUrl = url('faculty-achievements.php') . ($faParams ? '?' . http_build_query($faParams) : '');
+
+if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strpos($referer, 'faculty-achievements.php') !== false) {
+    $exitUrl = $faUrl;
+} elseif ($from === 'reports' || strpos($referer, 'reports.php') !== false) {
+    $exitUrl = url('reports.php');
+} elseif ($from === 'individual' || $from === 'individual-faculty-report' || strpos($referer, 'individual-faculty-report.php') !== false) {
+    $exitUrl = url('individual-faculty-report.php?id=' . $targetFacultyId . (!empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : ''));
+} else {
+    // Principal/Director manage primarily from Faculty Achievements, so exit returns there
+    if (in_array($userRole, ['Principal', 'Director'], true)) {
+        $exitUrl = $faUrl;
+    } else {
+        $exitUrl = url('individual-faculty-report.php?id=' . $targetFacultyId . (!empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : ''));
+    }
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -684,7 +715,14 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
     <div class="hdr-actions">
       <label style="display:flex; align-items:center; gap:6px; color:#94A3B8; font-size:12px; font-weight:600;">
         <span>Academic Year:</span>
-        <select onchange="location.href='present-faculty-report.php?id=<?= $targetFacultyId ?>&academic_year=' + this.value" style="background:#1E2B52; color:#fff; border:1px solid rgba(255,255,255,0.2); padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600;">
+        <?php
+          $switchYearParams = ['id' => $targetFacultyId];
+          if (!empty($from)) $switchYearParams['from'] = $from;
+          if (input('return_dept')) $switchYearParams['return_dept'] = input('return_dept');
+          if (input('return_cat'))  $switchYearParams['return_cat'] = input('return_cat');
+          $switchYearBase = url('present-faculty-report.php') . '?' . http_build_query($switchYearParams) . '&academic_year=';
+        ?>
+        <select onchange="location.href='<?= e($switchYearBase) ?>' + this.value" style="background:#1E2B52; color:#fff; border:1px solid rgba(255,255,255,0.2); padding:4px 8px; border-radius:6px; font-size:12px; font-weight:600;">
           <?php foreach ($years as $y): ?>
             <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>><?= e($y) ?></option>
           <?php endforeach; ?>
@@ -977,7 +1015,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
 
     function renderExecutiveBanner(title, subtitle, motto) {
       subtitle = (subtitle || 'Research • Innovation • Global Impact').replace(/&middot;/g, ' • ');
-      motto = motto || 'Better Research for a Brighter Future';
+      motto = motto || '';
       return `
         <div class="ex-banner">
           <div class="ex-banner-left">
@@ -995,12 +1033,13 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
               <div class="ex-banner-subtitle">${escapeHtml(subtitle)}</div>
             </div>
           </div>
+          ${motto ? `
           <div class="ex-banner-right">
             <div class="ex-banner-motto">${escapeHtml(motto)}</div>
             <svg width="140" height="7" viewBox="0 0 140 7" fill="none" style="margin-top:2px;">
               <path d="M2 5 C 45 1, 95 6, 138 2" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
             </svg>
-          </div>
+          </div>` : ''}
         </div>`;
     }
 
@@ -1084,7 +1123,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
     }
 
     function renderExecutiveFooter(motto) {
-      motto = motto || 'Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow';
+      motto = motto || '';
       return `
         <div class="ex-footer">
           <div class="ex-footer-left">
@@ -1095,7 +1134,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
               </svg>
             </div>
           </div>
-          <div class="ex-footer-motto">${escapeHtml(motto)}</div>
+          <div class="ex-footer-motto">${motto ? escapeHtml(motto) : ''}</div>
           <div class="ex-footer-stripes">
             <span class="ex-footer-stripe s1"></span>
             <span class="ex-footer-stripe s2"></span>
@@ -1229,10 +1268,10 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner('Summary of Target Achievements', `Dept. of ${escapeHtml(f.department)} &middot; AY ${escapeHtml(slide.academic_year)}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner('Summary of Target Achievements', `Dept. of ${escapeHtml(f.department)} &middot; AY ${escapeHtml(slide.academic_year)}`)}
               ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
               ${renderExecutiveSplitRow(c, 'Academic Target Achievements')}
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         } else if (slide.type === 'intro') {
@@ -1246,7 +1285,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner(slide.title, `${escapeHtml(f.name)} &middot; ${escapeHtml(f.designation)} &middot; Dept. of ${escapeHtml(f.department)}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner(slide.title, `${escapeHtml(f.name)} &middot; ${escapeHtml(f.designation)} &middot; Dept. of ${escapeHtml(f.department)}`)}
               ${renderExecutiveKpis(fixed || 'Not Set', achieved, achPct, inProg, null, achieved + inProg, '(Verified Achievements)')}
               <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:28px; text-align:center;">
                 <div class="intro-badge" style="margin-bottom:12px;"><?= icon('presentation', 13) ?> Individual Faculty Review</div>
@@ -1261,7 +1300,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
                   Comprehensive individual faculty portfolio reviewing publication metrics, sponsored research, consultancy, patents, and faculty development achievements.
                 </div>
               </div>
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         } else if (slide.type === 'overall_summary') {
@@ -1276,10 +1315,10 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner('Target vs Achievement Summary', `Overall Performance Summary &middot; AY ${escapeHtml(slide.academic_year)}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner('Target vs Achievement Summary', `Overall Performance Summary &middot; AY ${escapeHtml(slide.academic_year)}`)}
               ${renderExecutiveKpis(fixed || 'Not Set', achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
               ${renderExecutiveSplitRow(c, 'Faculty Academic Achievements')}
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         } else if (slide.type === 'category') {
@@ -1304,7 +1343,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner(slide.category_label, `Faculty Achievements &middot; AY ${escapeHtml(slide.academic_year)} &middot; ${pageInfo}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner(slide.category_label, `Faculty Achievements &middot; AY ${escapeHtml(slide.academic_year)} &middot; ${pageInfo}`)}
               ${renderExecutiveKpis(tgtText, slide.achieved, slide.configured ? slide.percentage : null, remText, null, slide.achieved, '(Category Submissions)')}
               <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
                 <div class="ex-panel-hdr">
@@ -1326,7 +1365,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
                   </table>
                 </div>
               </div>
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         } else if (slide.type === 'final_summary') {
@@ -1354,7 +1393,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner('Faculty Achievement Summary Matrix', `Consolidated Faculty Review &middot; AY ${escapeHtml(slide.academic_year)}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner('Faculty Achievement Summary Matrix', `Consolidated Faculty Review &middot; AY ${escapeHtml(slide.academic_year)}`)}
               ${renderExecutiveKpis(fixed || 'Not Set', achieved, achPct, inProg, null, total, '(Total Verified)')}
               <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
                 <div class="ex-panel-hdr">
@@ -1375,7 +1414,7 @@ $exitUrl    = url('individual-faculty-report.php?id=' . $targetFacultyId);
                   </table>
                 </div>
               </div>
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         }

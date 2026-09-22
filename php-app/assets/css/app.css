@@ -1653,6 +1653,7 @@ dialog.em-present-modal iframe { display:block; width:100%; height:100%; border:
 dialog.modal {
   border:0; border-radius:var(--r-xl); padding:0; width:100%; max-width:32rem;
   box-shadow:var(--shadow-pop); color:var(--ink); background:var(--surface);
+  max-height:calc(100vh - 48px); overflow-y:auto;
 }
 dialog.modal[open] { animation:modal-in var(--dur-slow) var(--ease-out); }
 @keyframes modal-in {

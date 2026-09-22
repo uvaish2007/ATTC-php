@@ -71,13 +71,21 @@ if (!empty($presentation['summary']['total']) && count($slides) > 1) {
 
 $slidesJson = json_encode($slides, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $years      = academic_years();
-$exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
-    'key'           => $student['key'],
-    'reg_no'        => $student['reg_no'],
-    'name'          => $student['name'],
-    'dept'          => $student['department'],
-    'academic_year' => $academicYear,
-]);
+$from       = trim((string) input('from', ''));
+$referer    = (string) ($_SERVER['HTTP_REFERER'] ?? '');
+$userRole   = $user['role'] ?? '';
+
+if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strpos($referer, 'faculty-achievements.php') !== false || (in_array($userRole, ['Principal', 'Director'], true) && $from !== 'individual')) {
+    $exitUrl = url('faculty-achievements.php' . (!empty($academicYear) ? '?academic_year=' . urlencode($academicYear) : ''));
+} else {
+    $exitUrl = url('individual-student-report.php') . '?' . http_build_query([
+        'key'           => $student['key'],
+        'reg_no'        => $student['reg_no'],
+        'name'          => $student['name'],
+        'dept'          => $student['department'],
+        'academic_year' => $academicYear,
+    ]);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -887,7 +895,7 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
 
     function renderExecutiveBanner(title, subtitle, motto) {
       subtitle = (subtitle || 'Research • Innovation • Global Impact').replace(/&middot;/g, ' • ');
-      motto = motto || 'Better Research for a Brighter Future';
+      motto = motto || '';
       return `
         <div class="ex-banner">
           <div class="ex-banner-left">
@@ -905,12 +913,13 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
               <div class="ex-banner-subtitle">${esc(subtitle)}</div>
             </div>
           </div>
+          ${motto ? `
           <div class="ex-banner-right">
             <div class="ex-banner-motto">${esc(motto)}</div>
             <svg width="140" height="7" viewBox="0 0 140 7" fill="none" style="margin-top:2px;">
               <path d="M2 5 C 45 1, 95 6, 138 2" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
             </svg>
-          </div>
+          </div>` : ''}
         </div>`;
     }
 
@@ -994,7 +1003,7 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
     }
 
     function renderExecutiveFooter(motto) {
-      motto = motto || 'Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow';
+      motto = motto || '';
       return `
         <div class="ex-footer">
           <div class="ex-footer-left">
@@ -1005,7 +1014,7 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
               </svg>
             </div>
           </div>
-          <div class="ex-footer-motto">${esc(motto)}</div>
+          <div class="ex-footer-motto">${motto ? esc(motto) : ''}</div>
           <div class="ex-footer-stripes">
             <span class="ex-footer-stripe s1"></span>
             <span class="ex-footer-stripe s2"></span>
@@ -1136,10 +1145,10 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner('Student Achievement Report', `${esc(slide.title)} &middot; Dept. of ${esc(slide.department)} &middot; Reg: ${esc(slide.reg_no)}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner('Student Achievement Report', `${esc(slide.title)} &middot; Dept. of ${esc(slide.department)} &middot; Reg: ${esc(slide.reg_no)}`)}
               ${renderExecutiveKpis(total, approved, apprPct, pending, inProgPct, total, '(Total Verified Submissions)')}
               ${renderExecutiveSplitRow(c, 'Student Performance Milestones')}
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         } else if (slide.type === 'overall_summary') {
@@ -1153,10 +1162,10 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner('Overall Student Achievement Summary', `Consolidated Student Activity Breakdown &middot; AY ${esc(slide.academic_year)}`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner('Overall Student Achievement Summary', `Consolidated Student Activity Breakdown &middot; AY ${esc(slide.academic_year)}`)}
               ${renderExecutiveKpis(total, approved, apprPct, pending, inProgPct, total, '(Achieved + Pending)')}
               ${renderExecutiveSplitRow(c, 'Student Achievements & Activities')}
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         } else if (slide.type === 'category') {
@@ -1176,7 +1185,7 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
 
           html = `
             <div class="ex-wrap">
-              ${renderExecutiveBanner(slide.category, `Student Records &middot; AY ${esc(academicYear)} &middot; ${slide.count} Submissions`, 'Better Research for a Brighter Future')}
+              ${renderExecutiveBanner(slide.category, `Student Records &middot; AY ${esc(academicYear)} &middot; ${slide.count} Submissions`)}
               ${renderExecutiveKpis(slide.count, slide.count, 100, 0, 0, slide.count, '(Category Records)')}
               <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
                 <div class="ex-panel-hdr">
@@ -1198,7 +1207,7 @@ $exitUrl    = url('individual-student-report.php') . '?' . http_build_query([
                   </table>
                 </div>
               </div>
-              ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+              ${renderExecutiveFooter()}
             </div>
           `;
         }

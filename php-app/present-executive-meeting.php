@@ -949,7 +949,7 @@ $embed      = (string) input('embed') === '1';
 
     function renderExecutiveBanner(title, subtitle, motto) {
       subtitle = (subtitle || 'Research • Innovation • Global Impact').replace(/&middot;/g, ' • ');
-      motto = motto || 'Better Research for a Brighter Future';
+      motto = motto || '';
       return `
         <div class="ex-banner">
           <div class="ex-banner-left">
@@ -967,12 +967,13 @@ $embed      = (string) input('embed') === '1';
               <div class="ex-banner-subtitle">${esc(subtitle)}</div>
             </div>
           </div>
+          ${motto ? `
           <div class="ex-banner-right">
             <div class="ex-banner-motto">${esc(motto)}</div>
             <svg width="140" height="7" viewBox="0 0 140 7" fill="none" style="margin-top:2px;">
               <path d="M2 5 C 45 1, 95 6, 138 2" stroke="#60A5FA" stroke-width="2" stroke-linecap="round"/>
             </svg>
-          </div>
+          </div>` : ''}
         </div>`;
     }
 
@@ -1056,7 +1057,7 @@ $embed      = (string) input('embed') === '1';
     }
 
     function renderExecutiveFooter(motto) {
-      motto = motto || 'Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow';
+      motto = motto || '';
       return `
         <div class="ex-footer">
           <div class="ex-footer-left">
@@ -1067,7 +1068,7 @@ $embed      = (string) input('embed') === '1';
               </svg>
             </div>
           </div>
-          <div class="ex-footer-motto">${esc(motto)}</div>
+          <div class="ex-footer-motto">${motto ? esc(motto) : ''}</div>
           <div class="ex-footer-stripes">
             <span class="ex-footer-stripe s1"></span>
             <span class="ex-footer-stripe s2"></span>
@@ -1235,7 +1236,30 @@ $embed      = (string) input('embed') === '1';
     function buildSlide(s) {
       const scope = `${esc(s.summary['Department'])} &middot; ${esc(s.summary['Academic Year'])}`;
 
+<<<<<<< HEAD
       // 1: Title / Executive Meeting Overview Slide
+=======
+      // 1: Target Summary (First Slide)
+      if (s.type === 'target_summary') {
+        const c = s.contributions;
+        const fixed = c ? c.total_target : (s.academic_targets || 0);
+        const achieved = c ? c.total_achieved : (s.targets_achieved || 0);
+        const inProg = c ? c.total_in_prog : (s.targets_in_progress || 0);
+        const total = c ? c.total_count : (achieved + inProg);
+        const achPct = fixed > 0 ? Math.round((achieved / fixed) * 100) : 0;
+        const inProgPct = fixed > 0 ? Math.round((inProg / fixed) * 100) : 0;
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner('Summary of Target Achievements', 'Research • Innovation • Global Impact')}
+            ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
+            ${renderExecutiveSplitRow(c, 'Academic Target Achievements')}
+            ${renderExecutiveFooter()}
+          </div>`;
+      }
+
+      // 2: Title / Cover Slide
+>>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
       if (s.type === 'title') {
         const c = s.contributions;
         const tot = s.totals || {};
@@ -1264,12 +1288,21 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
+<<<<<<< HEAD
             ${renderExecutiveBanner('Executive Meeting Report', `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`, 'Better Research for a Brighter Future')}
             ${renderExecutiveKpis(fixed, achieved || (tot.faculty || 0), achPct, inProg || (tot.student || 0), inProgPct, total, '(Records in Scope)')}
             <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:20px; text-align:center; min-height:0; overflow-y:auto;">
               <div class="intro-badge" style="margin-bottom:8px;"><?= icon('presentation', 13) ?> Executive Presentation Mode</div>
               <h2 style="font-size:26px; font-weight:800; color:#0B2D59;">Internal Quality Assurance Cell (IQAC)</h2>
               <p style="font-size:13.5px; color:#64748B; margin-top:4px; max-width:680px;">
+=======
+            ${renderExecutiveBanner(s.title, `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`)}
+            ${renderExecutiveKpis(fixed, achieved || (s.totals ? s.totals.faculty : 0), achPct, inProg || (s.totals ? s.totals.student : 0), inProgPct, total, '(Records in Scope)')}
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:24px; text-align:center;">
+              <div class="intro-badge" style="margin-bottom:12px;"><?= icon('presentation', 13) ?> Executive Presentation</div>
+              <h2 style="font-size:28px; font-weight:800; color:#0B2D59;">Internal Quality Assurance Cell (IQAC)</h2>
+              <p style="font-size:14px; color:#64748B; margin-top:6px; max-width:640px;">
+>>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
                 Comprehensive institutional performance review covering faculty publications, academic targets, student milestones, and department achievements for <strong>${esc(s.summary['Academic Year'])}</strong>.
               </p>
 
@@ -1304,7 +1337,7 @@ $embed      = (string) input('embed') === '1';
 
               <div style="margin-top:14px;" class="chips">${chipsOf(s.summary)}</div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1635,6 +1668,7 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
+<<<<<<< HEAD
             ${renderExecutiveBanner(s.title || 'Department Milestones & Contributions', `${scope} &middot; Institutional Milestones`, 'Better Research for a Brighter Future')}
             ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
             ${renderExecutiveSplitRow(c, 'Department Academic Milestones & Records')}
@@ -1777,6 +1811,12 @@ $embed      = (string) input('embed') === '1';
               </div>
             </div>
             ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+=======
+            ${renderExecutiveBanner(s.title, 'Research • Innovation • Global Impact')}
+            ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
+            ${renderExecutiveSplitRow(c, 'Academic Records & Publications')}
+            ${renderExecutiveFooter()}
+>>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
           </div>`;
       }
 
@@ -1802,7 +1842,7 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner(s.title, `${scope} &middot; ${pageInfo}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner(s.title, `${scope} &middot; ${pageInfo}`)}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
                 <div class="ex-panel-title">${esc(s.title)} &mdash; Verified Records</div>
@@ -1824,7 +1864,7 @@ $embed      = (string) input('embed') === '1';
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1843,7 +1883,7 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Academic Targets vs Achievements', `${scope}${pageInfo ? ' &middot; ' + pageInfo : ''}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Academic Targets vs Achievements', `${scope}${pageInfo ? ' &middot; ' + pageInfo : ''}`)}
             ${renderExecutiveKpis(r.target, r.achieved, r.percentage, r.remaining, null, r.count, '(Configured Targets)')}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
@@ -1865,7 +1905,7 @@ $embed      = (string) input('embed') === '1';
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1882,7 +1922,7 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Executive Meeting Schedule & Minutes', scope, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Executive Meeting Schedule & Minutes', scope)}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
                 <div class="ex-panel-title">Executive Reviews</div>
@@ -1902,7 +1942,7 @@ $embed      = (string) input('embed') === '1';
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
@@ -1911,7 +1951,7 @@ $embed      = (string) input('embed') === '1';
         const r = s.rollup;
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Executive Performance Summary', scope, 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner('Executive Performance Summary', scope)}
             ${renderExecutiveKpis(r.target, r.achieved, r.percentage, r.remaining, null, s.totals.records, '(Total Records)')}
             <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:24px; text-align:center;">
               <h2 style="font-size:32px; font-weight:900; color:#0B2D59;">Summary of Performance & Targets</h2>
@@ -1924,20 +1964,20 @@ $embed      = (string) input('embed') === '1';
               </div>
               <div style="margin-top:24px;" class="chips">${chipsOf(s.summary)}</div>
             </div>
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+            ${renderExecutiveFooter()}
           </div>`;
       }
 
       // Empty state
       return `
         <div class="ex-wrap">
-          ${renderExecutiveBanner('Executive Meeting Presentation', scope, 'Better Research for a Brighter Future')}
+          ${renderExecutiveBanner('Executive Meeting Presentation', scope)}
           <div class="empty-wrap" style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:40px;">
             <div class="empty-ic"><?= icon('info', 22) ?></div>
             <div style="font-size:18px; font-weight:700; color:var(--ink);">${esc(s.message || 'No records in this scope.')}</div>
             <div style="font-size:13px; color:#64748B;">Adjust the report filters to widen this section.</div>
           </div>
-          ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          ${renderExecutiveFooter()}
         </div>`;
     }
 

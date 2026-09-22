@@ -167,9 +167,15 @@ require __DIR__ . '/inc/header.php';
 
   <?php // EM-SPEC-04: the Executive Meeting Report is reached from the page
         // header, above the filter bar — not from a control inside it. ?>
+<<<<<<< HEAD
   <div class="actions">
     <a id="header_em_report_btn" class="btn btn-primary btn-sm" href="<?= e($emReportUrl) ?>"
        title="Filter and present the Executive Meeting Report">
+=======
+  <div class="actions flex gap-2 items-center" style="flex-wrap:wrap;">
+    <a class="btn btn-primary btn-sm" href="<?= e(url('executive-meeting-report.php')) ?>"
+       title="Executive Meeting Report &amp; Presentation Mode">
+>>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
       <?= icon('presentation', 15) ?> Executive Meeting Report
     </a>
   </div>
@@ -861,9 +867,6 @@ require __DIR__ . '/inc/header.php';
                 <?= icon('eye', 13) ?> View only
               </a>
             <?php endif; ?>
-            <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
-              <?= icon('chevron-down', 13) ?> <span class="cat-btn-txt">Expand</span>
-            </button>
           </div>
         </div>
         <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>" hidden>
@@ -981,19 +984,12 @@ require __DIR__ . '/inc/header.php';
 
     // 2. Individual Category collapse/expand
     const catHead = e.target.closest('.js-toggle-cat');
-    const catBtn = e.target.closest('.js-cat-btn');
-    if (catHead || catBtn) {
-      const ckey = (catBtn || catHead).dataset.cat;
+    if (catHead && !e.target.closest('a')) {
+      const ckey = catHead.dataset.cat;
       const body = document.getElementById('cat-body-' + ckey);
-      const btn = document.querySelector('.js-cat-btn[data-cat="' + ckey + '"]');
       if (body) {
         const isHidden = body.hidden;
         body.hidden = !isHidden;
-        if (btn) {
-          const txt = btn.querySelector('.cat-btn-txt');
-          if (txt) txt.textContent = isHidden ? 'Collapse' : 'Expand';
-          btn.querySelector('svg').outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
-        }
         const anyOpen = Array.from(document.querySelectorAll('.rec-cat-body')).some(b => !b.hidden);
         const allCatsBtn = document.getElementById('toggleCatsAllBtn');
         if (allCatsBtn) {
@@ -1016,11 +1012,6 @@ require __DIR__ . '/inc/header.php';
       const txt = document.getElementById('toggleCatsAllTxt');
       if (txt) txt.textContent = open ? 'Expand categories' : 'Collapse categories';
       allCatsBtn.querySelector('svg').outerHTML = open ? '<?= icon('chevron-down', 14) ?>' : '<?= icon('chevron-up', 14) ?>';
-      document.querySelectorAll('.js-cat-btn').forEach(btn => {
-        const txt = btn.querySelector('.cat-btn-txt');
-        if (txt) txt.textContent = open ? 'Expand' : 'Collapse';
-        btn.querySelector('svg').outerHTML = open ? '<?= icon('chevron-down', 13) ?>' : '<?= icon('chevron-up', 13) ?>';
-      });
       return;
     }
 
@@ -1046,12 +1037,6 @@ require __DIR__ . '/inc/header.php';
         const svg = allCatsBtn.querySelector('svg');
         if (svg) svg.outerHTML = '<?= icon('chevron-up', 14) ?>';
       }
-      document.querySelectorAll('.js-cat-btn').forEach(btn => {
-        const txt = btn.querySelector('.cat-btn-txt');
-        if (txt) txt.textContent = 'Collapse';
-        const svg = btn.querySelector('svg');
-        if (svg) svg.outerHTML = '<?= icon('chevron-up', 13) ?>';
-      });
     }
     document.querySelectorAll('.rec-group').forEach(g => setGroup(g, open));
     all.dataset.on = open ? '1' : '0';

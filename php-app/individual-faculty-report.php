@@ -80,11 +80,11 @@ require __DIR__ . '/inc/header.php';
 
   <div class="actions flex gap-2 items-center" style="flex-wrap:wrap;">
     <?php if (!$isSelf): ?>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
-        <?= icon('arrow-left', 14) ?> Back to Reports
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Back to Faculty Achievements">
+        <?= icon('award', 14) ?> Faculty Achievements
       </a>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Go to Performance Matrix">
-        <?= icon('award', 14) ?> Performance Matrix
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
+        <?= icon('reports', 14) ?> Reports Hub
       </a>
     <?php endif; ?>
 
@@ -92,7 +92,7 @@ require __DIR__ . '/inc/header.php';
       <?= icon('refresh', 14) ?> Refresh
     </a>
 
-    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
+    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>&from=individual" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
       <?= icon('play-circle', 14) ?> Present Report
     </a>
 
