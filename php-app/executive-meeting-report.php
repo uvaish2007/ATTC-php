@@ -147,7 +147,7 @@ require __DIR__ . '/inc/header.php';
 
   <!-- Executive Meeting period (FEAT-07): EM1 / EM2 from the configured schedule -->
   <label class="fb-field" title="Records submitted during EM1 or EM2, per the Executive Meeting schedule">
-    <span class="fb-k">Executive Meeting</span>
+    <span class="fb-k">EM Duration</span>
     <select name="em">
       <option value="all" <?= $filters['em'] === 'all' ? 'selected' : '' ?>>All (EM1 &amp; EM2)</option>
       <?php foreach (EM_MEETINGS as $emKey => $emName): ?>

@@ -28,14 +28,12 @@ $type       = trim((string) input('type', '')) ?: null;
 $category   = trim((string) input('category', '')) ?: null;
 $from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
 $to         = parse_date_input(input('to', ''));     // period end
-// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
-$emFilter    = em_filter_value(input('em'));
-[$from, $to] = em_intersect_period($emFilter, $from, $to);
-
-// Respect centralized active academic year system
-$yearInput = trim((string) input('year', ''));
-$year = (is_valid_academic_year($yearInput) ? $yearInput : null)
-    ?: (em_filter_year($emFilter) ?: active_academic_year());
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear  = input('academic_year') ?: input('year');
+$emCtx    = em_resolve_filter_context($rawYear, input('em'));
+$year     = $emCtx['year'];
+$emFilter = $emCtx['em'];
+[$from, $to] = em_intersect_period($emFilter, $from, $to, $year);
 
 if (!in_array($format, ['csv', 'excel', 'word', 'pdf'], true)) {
     $format = 'csv';

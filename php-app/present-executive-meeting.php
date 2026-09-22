@@ -39,13 +39,31 @@ $filters = em_resolve_filters($user, [
     'em'             => input('em'),   // FEAT-07 EM1 / EM2 / All
 ]);
 
+// EM-SPEC-05: Server-side validation for active session presentation.
+// When launched as an active session, verify that the meeting is currently in session and not closed/locked.
+if ((string) input('active_session') === '1') {
+    $emStatus = em_status($filters['year']);
+    $emReq = $filters['em'] ?? 'em1';
+    if ($emReq === 'em1') {
+        $em1Active = !empty($emStatus['configured'])
+            && ($emStatus['current'] === 'em1' || ($emStatus['em1']['state'] ?? '') === 'ACTIVE')
+            && empty($emStatus['em1_locked']);
+        if (!$em1Active) {
+            http_response_code(403);
+            echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>EM1 Presentation Closed</title><link rel='stylesheet' href='" . e(url('assets/css/app.css')) . "'></head><body style='background:#0D1427; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; font-family:sans-serif; margin:0;'><div style='text-align:center; padding:32px; background:#1E2B52; border-radius:12px; max-width:480px; box-shadow:0 20px 50px rgba(0,0,0,0.5);'><h2 style='color:#F8FAFC; margin-bottom:12px;'>EM1 Presentation Closed</h2><p style='color:#94A3B8; font-size:14px; line-height:1.5;'>Executive Meeting 1 for " . e($filters['year']) . " has ended and is locked. Active session presentation is not permitted.</p><p style='margin-top:24px;'><a href='" . e(url('dashboard.php')) . "' class='btn btn-primary btn-sm' style='text-decoration:none;'>&larr; Return to Dashboard</a></p></div></body></html>";
+            exit;
+        }
+    }
+}
+
 $dataset = em_dataset($user, $filters);
 $slides  = em_slides($dataset);
 
 $slidesJson = json_encode($slides, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
-$exitUrl    = url('executive-meeting-report.php') . '?' . http_build_query(em_filter_query($filters));
-// EM-SPEC-05: shown inside the report page's full-screen modal. Leaving then
-// closes that modal instead of navigating this frame back to the report.
+$exitUrl    = ((string) input('active_session') === '1')
+    ? url('dashboard.php')
+    : url('executive-meeting-report.php') . '?' . http_build_query(em_filter_query($filters));
+// EM-SPEC-05: shown inside the full-screen modal. Leaving then closes that modal.
 $embed      = (string) input('embed') === '1';
 ?>
 <!DOCTYPE html>
@@ -428,6 +446,66 @@ $embed      = (string) input('embed') === '1';
     .ex-footer-stripe.s2 { background: #0B2D59; }
     .ex-footer-stripe.s3 { background: #38BDF8; }
 
+    /* ---- Category Metrics & Dynamic Slides (EM-SPEC-06) ---- */
+    .ex-cat-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; height: 100%; min-height: 0;
+    }
+    .ex-cat-card {
+      background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 12px 16px;
+      display: flex; align-items: center; gap: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+      transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .ex-cat-card:hover { transform: translateY(-2px); border-color: #94A3B8; }
+    .ex-cat-ic {
+      width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .ex-cat-val { font-size: 26px; font-weight: 900; color: #0B2D59; line-height: 1.1; }
+    .ex-cat-lbl { font-size: 11.5px; font-weight: 700; color: #475569; margin-top: 2px; }
+
+    .ex-em-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px; width: 100%; max-width: 800px; margin-top: 14px;
+    }
+    .ex-em-card {
+      background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 14px 18px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.04); text-align: left;
+    }
+
+    /* ---- Target vs Achieved Slide (EM-SPEC-08) ---- */
+    .ex-target-table {
+      width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px;
+    }
+    .ex-target-table thead th {
+      background: #0B2D59; color: #FFFFFF; font-size: 11px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.04em; padding: 10px 14px; position: sticky; top: 0; z-index: 2;
+    }
+    .ex-target-table tbody tr {
+      background: #FFFFFF; transition: background 0.15s ease;
+    }
+    .ex-target-table tbody tr:nth-child(even) { background: #F8FAFC; }
+    .ex-target-table tbody tr:hover { background: #F1F5F9; }
+    .ex-target-table tbody td {
+      padding: 10px 14px; border-bottom: 1px solid #E2E8F0; vertical-align: middle;
+    }
+    .ex-target-metric-name {
+      font-size: 13px; font-weight: 800; color: #0B2D59; line-height: 1.2;
+    }
+    .ex-target-metric-dept {
+      font-size: 11px; color: #64748B; font-weight: 600; margin-top: 2px;
+    }
+    .ex-target-progress-wrap {
+      display: flex; flex-direction: column; gap: 3px; width: 100%;
+    }
+    .ex-target-bar-bg {
+      height: 12px; background: #E2E8F0; border-radius: 999px; overflow: hidden; position: relative; border: 1px solid #CBD5E1;
+    }
+    .ex-target-bar-fill {
+      height: 100%; border-radius: 999px; transition: width 0.3s ease;
+    }
+    .ex-target-bar-fill.green { background: linear-gradient(90deg, #10B981, #059669); }
+    .ex-target-bar-fill.blue  { background: linear-gradient(90deg, #3B82F6, #1D4ED8); }
+    .ex-target-bar-fill.amber { background: linear-gradient(90deg, #F59E0B, #D97706); }
+    .ex-target-bar-fill.gray  { background: #94A3B8; }
+
     /* ---- Bottom control bar ---- */
     .bbar {
       background: var(--navy); border-top: 1px solid rgba(255,255,255,0.1);
@@ -477,10 +555,10 @@ $embed      = (string) input('embed') === '1';
     <div class="hdr-actions">
       <!-- Auto / Manual. The active mode is always visible. -->
       <div class="mode-switch" role="group" aria-label="Presentation mode">
-        <button type="button" class="mode-btn" id="btnAuto" onclick="setMode('auto')" title="Advance automatically every 5 seconds">
+        <button type="button" class="mode-btn active" id="btnAuto" onclick="setMode('auto')" title="Advance automatically every 5 seconds">
           <?= icon('play-circle', 14) ?> Auto Mode
         </button>
-        <button type="button" class="mode-btn active" id="btnManual" onclick="setMode('manual')" title="Advance only when you choose">
+        <button type="button" class="mode-btn" id="btnManual" onclick="setMode('manual')" title="Advance only when you choose">
           <?= icon('grip', 14) ?> Manual Mode
         </button>
       </div>
@@ -534,7 +612,7 @@ $embed      = (string) input('embed') === '1';
     const SLIDE_ROWS = <?= EM_SLIDE_ROWS ?>;
 
     let currentIndex = 0;
-    let mode = 'manual';
+    let mode = 'auto';           // EM-SPEC-09: start in auto mode by default
     let autoTimer = null;        // the ONLY timer handle; never more than one
 
     /* ---- Timer control -------------------------------------------------- */
@@ -616,6 +694,7 @@ $embed      = (string) input('embed') === '1';
       }, 120);
     }
 
+    // EM-SPEC-09: boundary behavior — stops at first/last (no unexpected loop).
     function prevSlide() { if (currentIndex > 0) renderSlide(currentIndex - 1, true); }
     function nextSlide() { if (currentIndex < slides.length - 1) renderSlide(currentIndex + 1, true); }
     function firstSlide() { renderSlide(0, true); }
@@ -635,18 +714,24 @@ $embed      = (string) input('embed') === '1';
     }
 
     /* ---- Keyboard ------------------------------------------------------- */
-
+    // EM-SPEC-09: Input-field safety: do NOT navigate slides when the user is
+    // typing in an input, textarea, or select element.
     document.addEventListener('keydown', (e) => {
+      const tag = (document.activeElement || {}).tagName || '';
+      const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+        || (document.activeElement || {}).isContentEditable);
+
       switch (e.key) {
         case 'ArrowRight':
-        case ' ':
-        case 'PageDown':  e.preventDefault(); nextSlide(); break;
+        case 'PageDown':  if (!inInput) { e.preventDefault(); nextSlide(); } break;
         case 'ArrowLeft':
-        case 'PageUp':    e.preventDefault(); prevSlide(); break;
-        case 'Home':      e.preventDefault(); firstSlide(); break;
-        case 'End':       e.preventDefault(); lastSlide(); break;
+        case 'PageUp':    if (!inInput) { e.preventDefault(); prevSlide(); } break;
+        case ' ':         if (!inInput) { e.preventDefault(); nextSlide(); } break;
+        case 'Home':      if (!inInput) { e.preventDefault(); firstSlide(); } break;
+        case 'End':       if (!inInput) { e.preventDefault(); lastSlide(); } break;
         case 'Escape':    exitPresentation(); break;
-        case 'a': case 'A': setMode(mode === 'auto' ? 'manual' : 'auto'); break;
+        case 'a': case 'A':
+          if (!inInput) setMode(mode === 'auto' ? 'manual' : 'auto'); break;
       }
     });
 
@@ -708,6 +793,31 @@ $embed      = (string) input('embed') === '1';
     }
 
     /* ---- Executive Chart & SVG Helpers ---- */
+
+    function renderIconSvg(name) {
+      switch (name) {
+        case 'book-open':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>`;
+        case 'users':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+        case 'file-text':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
+        case 'calendar':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`;
+        case 'briefcase':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>`;
+        case 'shield':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`;
+        case 'award':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>`;
+        case 'graduation':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`;
+        case 'check-circle':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+        default:
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
+      }
+    }
 
     function renderGroupedBarChart(top3) {
       if (!top3 || !top3.length) {
@@ -1062,58 +1172,459 @@ $embed      = (string) input('embed') === '1';
             </div>
           </div>
         </div>`;
+    function renderTargetProgressBar(target, achieved, unlinked) {
+      if (unlinked) {
+        return `
+          <div class="ex-target-progress-wrap" style="display:flex; align-items:center; gap:8px;">
+            <span class="pill" style="font-size:11px; color:#64748B; background:#F1F5F9; border:1px solid #CBD5E1;">Not linked</span>
+          </div>`;
+      }
+      const tv = Number(target) || 0;
+      const av = Number(achieved) || 0;
+
+      if (tv <= 0) {
+        if (av > 0) {
+          return `
+            <div class="ex-target-progress-wrap" style="display:flex; align-items:center; gap:8px;">
+              <span class="pill pill-ok" style="font-size:11px; background:#ECFDF5; color:#059669; border:1px solid #A7F3D0; font-weight:700;">No target set (${av} achieved)</span>
+            </div>`;
+        }
+        return `
+          <div class="ex-target-progress-wrap" style="display:flex; align-items:center; gap:8px;">
+            <span class="pill" style="font-size:11px; color:#64748B; background:#F1F5F9; border:1px solid #CBD5E1;">No target set</span>
+          </div>`;
+      }
+
+      // Safe progress percentage: (achieved / target) * 100
+      const rawPct = (av / tv) * 100;
+      const pct = Math.round(rawPct * 10) / 10;
+      // Visual bar capped at 100% so it never overflows or breaks layout
+      const barWidth = Math.min(Math.max(rawPct, 0), 100);
+
+      let colorClass = 'amber';
+      let pillStyle = 'background:#FFFBEB; color:#B45309; border:1px solid #FDE68A;';
+      let pillText = `${pct}%`;
+
+      if (av > tv) {
+        // Target exceeded: keep actual achieved value, cap bar at 100%, show exceeded indicator
+        colorClass = 'green';
+        pillStyle = 'background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:800;';
+        pillText = `${pct}% &middot; Exceeded (+${av - tv})`;
+      } else if (pct >= 100) {
+        colorClass = 'green';
+        pillStyle = 'background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:700;';
+        pillText = `100% Achieved`;
+      } else if (pct >= 50) {
+        colorClass = 'blue';
+        pillStyle = 'background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; font-weight:700;';
+        pillText = `${pct}%`;
+      }
+
+      return `
+        <div class="ex-target-progress-wrap" style="display:flex; flex-direction:column; gap:4px; min-width:200px; width:100%;">
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+            <span class="pill" style="${pillStyle} font-size:11px; padding:2px 8px; border-radius:6px; white-space:nowrap;">${pillText}</span>
+            <span style="font-size:10.5px; color:#64748B; font-weight:600;">${av} / ${tv}</span>
+          </div>
+          <div class="ex-target-bar-bg" style="height:10px;">
+            <div class="ex-target-bar-fill ${colorClass}" style="width:${barWidth}%;"></div>
+          </div>
+        </div>`;
     }
 
     function buildSlide(s) {
       const scope = `${esc(s.summary['Department'])} &middot; ${esc(s.summary['Academic Year'])}`;
 
-      // 1: Target Summary (First Slide)
-      if (s.type === 'target_summary') {
-        const c = s.contributions;
-        const fixed = c ? c.total_target : (s.academic_targets || 0);
-        const achieved = c ? c.total_achieved : (s.targets_achieved || 0);
-        const inProg = c ? c.total_in_prog : (s.targets_in_progress || 0);
-        const total = c ? c.total_count : (achieved + inProg);
-        const achPct = fixed > 0 ? Math.round((achieved / fixed) * 100) : 0;
-        const inProgPct = fixed > 0 ? Math.round((inProg / fixed) * 100) : 0;
-
-        return `
-          <div class="ex-wrap">
-            ${renderExecutiveBanner('Summary of Target Achievements', 'Research • Innovation • Global Impact', 'Better Research for a Brighter Future')}
-            ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
-            ${renderExecutiveSplitRow(c, 'Academic Target Achievements')}
-            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
-          </div>`;
-      }
-
-      // 2: Title / Cover Slide
+      // 1: Title / Executive Meeting Overview Slide
       if (s.type === 'title') {
         const c = s.contributions;
-        const fixed = c ? c.total_target : (s.totals ? s.totals.targets : 0);
+        const tot = s.totals || {};
+        const fixed = c ? c.total_target : (tot.targets || 0);
         const achieved = c ? c.total_achieved : 0;
         const inProg = c ? c.total_in_prog : 0;
-        const total = s.totals ? s.totals.records : (c ? c.total_count : 0);
+        const total = tot.records !== undefined ? tot.records : (c ? c.total_count : 0);
         const achPct = fixed > 0 ? Math.round((achieved / fixed) * 100) : null;
         const inProgPct = fixed > 0 ? Math.round((inProg / fixed) * 100) : null;
 
+        const em = s.em_status || {};
+        const em1 = em.em1 || {};
+        const em2 = em.em2 || {};
+        const em1State = (em1.state || 'CLOSED').toUpperCase();
+        const em2State = (em2.state || 'SCHEDULED').toUpperCase();
+
+        const em1PillCls = em1State === 'ACTIVE' ? 'pill-ok' : (em1State === 'CLOSED' ? 'pill-warn' : 'pill');
+        const em2PillCls = em2State === 'ACTIVE' ? 'pill-ok' : (em2State === 'SCHEDULED' ? 'pill' : 'pill-warn');
+
+        const em1Dates = (em1.start_date && em1.end_date)
+          ? `${esc(em1.start_date)} to ${esc(em1.end_date)}`
+          : 'Schedule not configured';
+        const em2Dates = (em2.start_date && em2.end_date)
+          ? `${esc(em2.start_date)} to ${esc(em2.end_date)}`
+          : 'Schedule not configured';
+
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner(s.title, `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`, 'Better Research for a Brighter Future')}
-            ${renderExecutiveKpis(fixed, achieved || (s.totals ? s.totals.faculty : 0), achPct, inProg || (s.totals ? s.totals.student : 0), inProgPct, total, '(Records in Scope)')}
-            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:24px; text-align:center;">
-              <div class="intro-badge" style="margin-bottom:12px;"><?= icon('presentation', 13) ?> Executive Presentation</div>
-              <h2 style="font-size:28px; font-weight:800; color:#0B2D59;">Internal Quality Assurance Cell (IQAC)</h2>
-              <p style="font-size:14px; color:#64748B; margin-top:6px; max-width:640px;">
+            ${renderExecutiveBanner('Executive Meeting Report', `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(fixed, achieved || (tot.faculty || 0), achPct, inProg || (tot.student || 0), inProgPct, total, '(Records in Scope)')}
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:20px; text-align:center; min-height:0; overflow-y:auto;">
+              <div class="intro-badge" style="margin-bottom:8px;"><?= icon('presentation', 13) ?> Executive Presentation Mode</div>
+              <h2 style="font-size:26px; font-weight:800; color:#0B2D59;">Internal Quality Assurance Cell (IQAC)</h2>
+              <p style="font-size:13.5px; color:#64748B; margin-top:4px; max-width:680px;">
                 Comprehensive institutional performance review covering faculty publications, academic targets, student milestones, and department achievements for <strong>${esc(s.summary['Academic Year'])}</strong>.
               </p>
-              <div style="margin-top:18px;" class="chips">${chipsOf(s.summary)}</div>
+
+              <!-- Real EM1 & EM2 Schedule Cards -->
+              <div class="ex-em-grid">
+                <div class="ex-em-card" style="${em1State === 'ACTIVE' ? 'border:2px solid #10B981; background:#F0FDF4;' : ''}">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-size:14px; font-weight:800; color:#0B2D59;">Executive Meeting 1 (EM1)</span>
+                    <span class="pill ${em1PillCls}">${esc(em1State)}</span>
+                  </div>
+                  <div style="font-size:12px; color:#475569; font-weight:600; display:flex; align-items:center; gap:6px;">
+                    ${renderIconSvg('calendar')} <span>${em1Dates}</span>
+                  </div>
+                  <div style="font-size:11px; color:#64748B; margin-top:6px;">
+                    ${em.em1_locked ? 'EM1 period has concluded and forms are locked' : (em1State === 'ACTIVE' ? 'Active session &middot; forms available' : 'Scheduled period')}
+                  </div>
+                </div>
+
+                <div class="ex-em-card" style="${em2State === 'ACTIVE' ? 'border:2px solid #10B981; background:#F0FDF4;' : ''}">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+                    <span style="font-size:14px; font-weight:800; color:#0B2D59;">Executive Meeting 2 (EM2)</span>
+                    <span class="pill ${em2PillCls}">${esc(em2State)}</span>
+                  </div>
+                  <div style="font-size:12px; color:#475569; font-weight:600; display:flex; align-items:center; gap:6px;">
+                    ${renderIconSvg('calendar')} <span>${em2Dates}</span>
+                  </div>
+                  <div style="font-size:11px; color:#64748B; margin-top:6px;">
+                    ${em2State === 'ACTIVE' ? 'Active review period &middot; EM2 in progress' : 'Scheduled automatic switchover'}
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:14px;" class="chips">${chipsOf(s.summary)}</div>
             </div>
             ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
           </div>`;
       }
 
-      // 3: College / Department Performance (The Core Executive Dashboard View)
-      if (s.type === 'college') {
+      // 2: Overall College Development & Improvement (EM-SPEC-07)
+      if (s.type === 'college_development') {
+        const o = s.overview || {};
+        const tot = s.totals || {};
+        const r = s.rollup || {};
+
+        const fixedTargets = tot.targets || 0;
+        const achievedTargets = tot.achieved || 0;
+        const targetPct = fixedTargets > 0 ? Math.round((achievedTargets / fixedTargets) * 100) : null;
+        const totalRecords = tot.records || 0;
+        const approvalRate = tot.approval_rate !== undefined ? tot.approval_rate : 0;
+
+        const approved = tot.approved || 0;
+        const pending = tot.pending || 0;
+        const draft = tot.draft || 0;
+
+        // Historical Year-over-Year Trajectory
+        let yoyHtml = '';
+        if (o.has_prev_year_data) {
+          const diffSign = o.yoy_diff >= 0 ? '+' : '';
+          const pctSign = o.yoy_pct >= 0 ? '+' : '';
+          const isGrowth = o.yoy_diff >= 0;
+          yoyHtml = `
+            <div style="background:#FFFFFF; border:1px solid #CBD5E1; border-radius:10px; padding:16px 20px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div style="font-size:14px; font-weight:800; color:#0B2D59;">Historical Trajectory &amp; Year-over-Year Progress</div>
+                <span class="pill ${isGrowth ? 'pill-ok' : 'pill-warn'}">${isGrowth ? 'Positive Trajectory' : 'Review Required'}</span>
+              </div>
+              <div style="display:grid; grid-template-columns: 1fr auto 1fr; align-items:center; gap:16px; margin:14px 0;">
+                <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px; text-align:center;">
+                  <div style="font-size:11px; font-weight:700; color:#64748B; text-transform:uppercase;">Academic Year ${esc(o.prev_year)}</div>
+                  <div style="font-size:24px; font-weight:900; color:#1E293B; margin-top:4px;">${esc(o.prev_year_records)}</div>
+                  <div style="font-size:10.5px; color:#64748B;">Verified Submissions</div>
+                </div>
+                <div style="color:#0B2D59; font-size:20px; font-weight:900; display:flex; flex-direction:column; align-items:center;">
+                  <span>&rarr;</span>
+                  <span style="font-size:11px; font-weight:800; color:${isGrowth ? '#168A53' : '#D97706'};">${diffSign}${esc(o.yoy_diff)}</span>
+                </div>
+                <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:12px; text-align:center;">
+                  <div style="font-size:11px; font-weight:700; color:#166534; text-transform:uppercase;">Academic Year ${esc(o.academic_year)}</div>
+                  <div style="font-size:24px; font-weight:900; color:#166534; margin-top:4px;">${esc(totalRecords)}</div>
+                  <div style="font-size:10.5px; color:#166534; font-weight:700;">${pctSign}${esc(o.yoy_pct)}% Net Growth</div>
+                </div>
+              </div>
+              <div style="font-size:11px; color:#64748B; line-height:1.4;">
+                Institutional expansion reflects live database submissions across departments, active faculty publications, and student milestones verified through IQAC audit.
+              </div>
+            </div>`;
+        } else {
+          yoyHtml = `
+            <div style="background:#FFFFFF; border:1px solid #CBD5E1; border-radius:10px; padding:16px 20px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+              <div style="display:flex; align-items:center; justify-content:space-between;">
+                <div style="font-size:14px; font-weight:800; color:#0B2D59;">Institutional Baseline Tracking</div>
+                <span class="pill pill-ok">Active Baseline</span>
+              </div>
+              <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px; margin:14px 0; text-align:center;">
+                <div style="font-size:13px; font-weight:700; color:#0B2D59;">Academic Year ${esc(o.academic_year)} Baseline Tracking</div>
+                <div style="font-size:28px; font-weight:900; color:#FF4F01; margin-top:4px;">${esc(totalRecords)} Records</div>
+                <div style="font-size:11px; color:#64748B; margin-top:4px;">Prior-year comparison period ${esc(o.prev_year || 'historical')} has no archived electronic records. Current year forms institutional development baseline.</div>
+              </div>
+              <div style="font-size:11px; color:#64748B; line-height:1.4;">
+                Data is dynamically sourced from live active records and targets configured in the ATTS IQAC database.
+              </div>
+            </div>`;
+        }
+
+        const devCards = [
+          { label: 'Total Verified Records', val: totalRecords, sub: `${esc(tot.faculty || 0)} Faculty &middot; ${esc(tot.student || 0)} Student`, ic: 'check-circle', color: '#0B2D59', bg: '#E2E8F0' },
+          { label: 'Faculty Achievements', val: tot.faculty || 0, sub: 'Journals, Patents & Events', ic: 'book-open', color: '#0066CC', bg: '#EBF5FF' },
+          { label: 'Student Achievements', val: tot.student || 0, sub: 'NPTEL, Placements, Internships', ic: 'users', color: '#059669', bg: '#ECFDF5' },
+          { label: 'Academic Targets Configured', val: fixedTargets, sub: `${esc(achievedTargets)} Targets Realized`, ic: 'shield', color: '#D97706', bg: '#FEF3C7' },
+          { label: 'Record Approval Rate', val: `${esc(approvalRate)}%`, sub: `${esc(approved)} Approved &middot; ${esc(pending)} Pending`, ic: 'award', color: '#7E22CE', bg: '#F3E8FF' },
+          { label: 'Participating Departments', val: tot.departments || 0, sub: `Active out of ${esc(tot.all_depts || tot.departments || 0)} total`, ic: 'graduation', color: '#0D9488', bg: '#CCFBF1' }
+        ];
+
+        const cardsHtml = devCards.map(c => `
+          <div class="ex-cat-card" style="padding:10px 14px;">
+            <div class="ex-cat-ic" style="background:${c.bg}; color:${c.color}; width:38px; height:38px;">
+              ${renderIconSvg(c.ic)}
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div class="ex-cat-val" style="font-size:22px;">${esc(c.val)}</div>
+              <div class="ex-cat-lbl" style="font-size:11px;">${esc(c.label)}</div>
+              <div style="font-size:9.5px; color:#64748B; margin-top:2px;">${c.sub}</div>
+            </div>
+          </div>
+        `).join('');
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner(s.title || 'Overall College Development & Improvement', `${scope} &middot; Institutional Development & Quality Growth`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(fixedTargets, achievedTargets, targetPct, tot.pending || 0, null, totalRecords, '(Total Verified Records)')}
+            <div style="flex:1; display:flex; flex-direction:column; gap:12px; min-height:0; overflow-y:auto;">
+              <!-- 6 Core Metric Cards -->
+              <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:10px;">
+                ${cardsHtml}
+              </div>
+
+              <!-- Split Row: Approval Pipeline + Historical Trajectory -->
+              <div style="display:flex; gap:12px; flex:1; min-height:0;">
+                <!-- Left: Verification Pipeline Status -->
+                <div style="background:#FFFFFF; border:1px solid #CBD5E1; border-radius:10px; padding:16px 20px; flex:1; display:flex; flex-direction:column; justify-content:space-between;">
+                  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+                    <div style="font-size:14px; font-weight:800; color:#0B2D59;">Record Quality &amp; Approval Pipeline</div>
+                    <span class="pill pill-ok">${esc(approvalRate)}% Verified</span>
+                  </div>
+
+                  <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div>
+                      <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700; color:#334155; margin-bottom:3px;">
+                        <span>Approved by Dean / HoD</span>
+                        <span>${esc(approved)} / ${esc(totalRecords)} (${totalRecords > 0 ? Math.round((approved / totalRecords) * 100) : 0}%)</span>
+                      </div>
+                      <div class="bar-track" style="height:10px;"><div class="bar-fill" style="width:${totalRecords > 0 ? Math.round((approved / totalRecords) * 100) : 0}%; background:#10B981;"></div></div>
+                    </div>
+
+                    <div>
+                      <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700; color:#334155; margin-bottom:3px;">
+                        <span>Pending Review (HoD / Dean)</span>
+                        <span>${esc(pending)} / ${esc(totalRecords)} (${totalRecords > 0 ? Math.round((pending / totalRecords) * 100) : 0}%)</span>
+                      </div>
+                      <div class="bar-track" style="height:10px;"><div class="bar-fill" style="width:${totalRecords > 0 ? Math.round((pending / totalRecords) * 100) : 0}%; background:#F59E0B;"></div></div>
+                    </div>
+
+                    <div>
+                      <div style="display:flex; justify-content:space-between; font-size:11.5px; font-weight:700; color:#334155; margin-bottom:3px;">
+                        <span>Draft / Submissions in Progress</span>
+                        <span>${esc(draft)} / ${esc(totalRecords)} (${totalRecords > 0 ? Math.round((draft / totalRecords) * 100) : 0}%)</span>
+                      </div>
+                      <div class="bar-track" style="height:10px;"><div class="bar-fill" style="width:${totalRecords > 0 ? Math.round((draft / totalRecords) * 100) : 0}%; background:#94A3B8;"></div></div>
+                    </div>
+                  </div>
+
+                  <div style="font-size:11px; color:#64748B; margin-top:8px;">
+                    Multi-level verification workflow ensures zero unverified data enters institutional NIRF/NAAC reporting datasets.
+                  </div>
+                </div>
+
+                <!-- Right: YoY Trajectory Card -->
+                ${yoyHtml}
+              </div>
+            </div>
+            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          </div>`;
+      }
+
+      // 3: Overall Institutional Performance / Key Metrics (EM-SPEC-07)
+      if (s.type === 'institutional_performance') {
+        const o = s.overview || {};
+        const tot = s.totals || {};
+        const fm = s.faculty_metrics || {};
+        const sm = s.student_metrics || {};
+        const c = s.contributions || {};
+
+        const totalRecords = tot.records || 0;
+        const facCount = tot.faculty || 0;
+        const studCount = tot.student || 0;
+        const actCount = tot.activity || 0;
+
+        const facPct = totalRecords > 0 ? Math.round((facCount / totalRecords) * 100) : 0;
+        const studPct = totalRecords > 0 ? Math.round((studCount / totalRecords) * 100) : 0;
+        const actPct = totalRecords > 0 ? Math.round((actCount / totalRecords) * 100) : 0;
+
+        const donutSlices = [
+          { label: 'Faculty Achievements', count: facCount, percentage: facPct, color: '#0066CC' },
+          { label: 'Student Milestones', count: studCount, percentage: studPct, color: '#10B981' },
+          { label: 'Outreach & Activities', count: actCount, percentage: actPct, color: '#F59E0B' }
+        ];
+
+        const donutSvg = renderDonutChart(donutSlices, totalRecords, 'Total Records');
+
+        const kpis = [
+          {
+            title: 'Research & Publications',
+            val: (fm.journals || 0) + (fm.conferences || 0) + (fm.books || 0) + (fm.patents || 0),
+            desc: `${esc(fm.journals || 0)} Journals &middot; ${esc(fm.conferences || 0)} Conf &middot; ${esc(fm.patents || 0)} Patents`,
+            ic: 'book-open',
+            color: '#0066CC',
+            bg: '#EBF5FF'
+          },
+          {
+            title: 'Student Placement & Training',
+            val: (sm.placements || 0) + (sm.internships || 0) + (sm.nptel || 0) + (sm.training || 0),
+            desc: `${esc(sm.placements || 0)} Placements &middot; ${esc(sm.internships || 0)} Internships &middot; ${esc(sm.nptel || 0)} NPTEL`,
+            ic: 'briefcase',
+            color: '#059669',
+            bg: '#ECFDF5'
+          },
+          {
+            title: 'Faculty Training & Events',
+            val: (fm.training || 0) + (fm.events || 0),
+            desc: `${esc(fm.training || 0)} FDP / Workshops &middot; ${esc(fm.events || 0)} Events Organized`,
+            ic: 'calendar',
+            color: '#7E22CE',
+            bg: '#F3E8FF'
+          },
+          {
+            title: 'Target Realization Index',
+            val: o.target_realization !== null && o.target_realization !== undefined ? `${esc(o.target_realization)}%` : 'Active',
+            desc: `${esc(o.targets_achieved || 0)} of ${esc(o.total_targets || 0)} institutional targets achieved`,
+            ic: 'shield',
+            color: '#D97706',
+            bg: '#FEF3C7'
+          }
+        ];
+
+        const kpiHtml = kpis.map(k => `
+          <div style="background:#FFFFFF; border:1px solid #CBD5E1; border-radius:10px; padding:12px 16px; display:flex; align-items:center; gap:14px; box-shadow:0 2px 6px rgba(0,0,0,0.03);">
+            <div style="width:42px; height:42px; border-radius:10px; background:${k.bg}; color:${k.color}; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              ${renderIconSvg(k.ic)}
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div style="font-size:11.5px; font-weight:700; color:#475569;">${esc(k.title)}</div>
+              <div style="font-size:22px; font-weight:900; color:#0B2D59; line-height:1.2;">${esc(k.val)}</div>
+              <div style="font-size:10px; color:#64748B; margin-top:2px;">${k.desc}</div>
+            </div>
+          </div>
+        `).join('');
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner(s.title || 'Overall Institutional Performance', `${scope} &middot; Institutional Performance Metrics`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(o.total_targets || 0, o.targets_achieved || 0, o.target_realization, o.pending_records || 0, null, totalRecords, '(Verified Database Records)')}
+            <div style="flex:1; display:flex; gap:16px; min-height:0; overflow-y:auto;">
+              <!-- Left Panel: Domain Distribution Donut -->
+              <div class="ex-panel" style="flex:1; display:flex; flex-direction:column; min-height:0;">
+                <div class="ex-panel-hdr">
+                  <div class="ex-panel-title">Core Domain Contribution Distribution</div>
+                  <div class="ex-panel-sub">Share of verified achievements across institutional categories</div>
+                </div>
+                <div class="ex-panel-body" style="display:flex; flex-direction:column; align-items:center; justify-content:space-between; padding:16px;">
+                  <div style="width:100%; height:180px; display:flex; align-items:center; justify-content:center;">
+                    ${donutSvg}
+                  </div>
+                  <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; width:100%; margin-top:8px;">
+                    <div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:8px; padding:8px; text-align:center;">
+                      <div style="font-size:10px; font-weight:700; color:#0369A1;">Faculty</div>
+                      <div style="font-size:16px; font-weight:900; color:#0369A1;">${esc(facCount)}</div>
+                      <div style="font-size:9.5px; color:#0284C7;">${esc(facPct)}%</div>
+                    </div>
+                    <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:8px; text-align:center;">
+                      <div style="font-size:10px; font-weight:700; color:#15803D;">Student</div>
+                      <div style="font-size:16px; font-weight:900; color:#15803D;">${esc(studCount)}</div>
+                      <div style="font-size:9.5px; color:#16A34A;">${esc(studPct)}%</div>
+                    </div>
+                    <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:8px; text-align:center;">
+                      <div style="font-size:10px; font-weight:700; color:#B45309;">Outreach</div>
+                      <div style="font-size:16px; font-weight:900; color:#B45309;">${esc(actCount)}</div>
+                      <div style="font-size:9.5px; color:#D97706;">${esc(actPct)}%</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Right Panel: Key Performance Indicators -->
+              <div class="ex-panel" style="flex:1.2; display:flex; flex-direction:column; min-height:0;">
+                <div class="ex-panel-hdr">
+                  <div class="ex-panel-title">Institutional Key Performance Indicators (KPIs)</div>
+                  <div class="ex-panel-sub">Academic productivity, student engagement &amp; institutional capacity</div>
+                </div>
+                <div class="ex-panel-body" style="padding:14px; display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start;">
+                  ${kpiHtml}
+                </div>
+              </div>
+            </div>
+            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          </div>`;
+      }
+
+      // 4: Faculty Achievements Summary (Dynamic matching /faculty-achievements.php)
+      if (s.type === 'faculty_summary') {
+        const m = s.metrics || {};
+        const tot = s.totals || {};
+        const catMap = [
+          { label: 'Journal Publications', key: 'journals', count: m.journals || 0, icon: 'book-open', color: '#0066CC', bg: '#EBF5FF' },
+          { label: 'Conference Publications', key: 'conferences', count: m.conferences || 0, icon: 'users', color: '#059669', bg: '#ECFDF5' },
+          { label: 'Books / Book Chapters', key: 'books', count: m.books || 0, icon: 'file-text', color: '#FF4F01', bg: '#FFF3EC' },
+          { label: 'Events Organized', key: 'events', count: m.events || 0, icon: 'calendar', color: '#DC2626', bg: '#FEF2F2' },
+          { label: 'Training Programmes & FDP', key: 'training', count: m.training || 0, icon: 'briefcase', color: '#7E22CE', bg: '#F3E8FF' },
+          { label: 'Patents & Copyrights', key: 'patents', count: m.patents || 0, icon: 'shield', color: '#0D9488', bg: '#CCFBF1' },
+          { label: 'Other Achievements / MoUs', key: 'other', count: m.other || 0, icon: 'award', color: '#475569', bg: '#F1F5F9' },
+          { label: 'Total Faculty Achievements', key: 'total', count: m.total || 0, icon: 'check-circle', color: '#0B2D59', bg: '#E2E8F0', isTotal: true }
+        ];
+
+        const cardsHtml = catMap.map(c => `
+          <div class="ex-cat-card" style="${c.isTotal ? 'background:#F8FAFC; border:2px solid #0B2D59;' : ''}">
+            <div class="ex-cat-ic" style="background:${c.bg}; color:${c.color};">
+              ${renderIconSvg(c.icon)}
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div class="ex-cat-val" style="${c.isTotal ? 'color:#FF4F01;' : ''}">${esc(c.count)}</div>
+              <div class="ex-cat-lbl" title="${esc(c.label)}">${esc(c.label)}</div>
+            </div>
+          </div>
+        `).join('');
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner('Faculty Achievements Performance', `${scope} &middot; Verified Academic Database`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(tot.total_faculty || 0, tot.total || 0, tot.approval_rate !== null ? tot.approval_rate : null, tot.approved || 0, null, tot.pending || 0, '(Pending Review)')}
+            <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+              <div class="ex-panel-hdr">
+                <div class="ex-panel-title">Faculty Performance by Achievement Metric</div>
+                <div class="ex-panel-sub">Live database aggregation matching Faculty Achievements Performance Matrix</div>
+              </div>
+              <div style="flex:1; min-height:0; overflow-y:auto; padding:12px 16px;">
+                <div class="ex-cat-grid">
+                  ${cardsHtml}
+                </div>
+              </div>
+            </div>
+            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          </div>`;
+      }
+
+      // 3: Department Milestones & Performance
+      if (s.type === 'department_milestones' || s.type === 'college') {
         const c = s.contributions;
         const fixed = c ? c.total_target : (s.rollup ? s.rollup.target : 0);
         const achieved = c ? c.total_achieved : (s.rollup ? s.rollup.achieved : 0);
@@ -1124,9 +1635,147 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner(s.title, 'Research • Innovation • Global Impact', 'Better Research for a Brighter Future')}
+            ${renderExecutiveBanner(s.title || 'Department Milestones & Contributions', `${scope} &middot; Institutional Milestones`, 'Better Research for a Brighter Future')}
             ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
-            ${renderExecutiveSplitRow(c, 'Academic Records & Publications')}
+            ${renderExecutiveSplitRow(c, 'Department Academic Milestones & Records')}
+            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          </div>`;
+      }
+
+      // 4: Target vs Achieved Summary
+      if (s.type === 'target_summary') {
+        const c = s.contributions;
+        const r = s.rollup || {};
+        const fixed = r.target !== undefined ? r.target : (c ? c.total_target : (s.academic_targets || 0));
+        const achieved = r.achieved !== undefined ? r.achieved : (c ? c.total_achieved : (s.targets_achieved || 0));
+        const inProg = r.remaining !== undefined ? r.remaining : (c ? c.total_in_prog : (s.targets_in_progress || 0));
+        const total = r.count !== undefined ? r.count : (c ? c.total_count : (achieved + inProg));
+        const achPct = fixed > 0 ? Math.round((achieved / fixed) * 100) : 0;
+        const inProgPct = fixed > 0 ? Math.round((inProg / fixed) * 100) : 0;
+
+        let tableHtml = '';
+        if (s.target_rows && s.target_rows.length > 0) {
+          const rows = s.target_rows.map(t => `
+            <tr>
+              <td>
+                <div class="ex-target-metric-name">${esc(t.metric)}</div>
+                <div class="ex-target-metric-dept">${esc(t.department || scope)}</div>
+              </td>
+              <td class="num" style="text-align:center; font-size:14px; font-weight:700; color:#334155;">${esc(t.target)}</td>
+              <td class="num" style="text-align:center; font-size:15px; font-weight:800; color:#0F172A;">${t.unlinked ? '&mdash;' : esc(t.achieved !== null && t.achieved !== undefined ? t.achieved : 0)}</td>
+              <td>${renderTargetProgressBar(t.target, t.achieved, t.unlinked)}</td>
+            </tr>`).join('');
+          tableHtml = `
+            <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+              <div class="ex-panel-hdr">
+                <div class="ex-panel-title">Institutional Targets vs Achievements</div>
+                <div class="ex-panel-sub">Verified academic achievement counts vs approved targets &middot; Visual Progress Tracking</div>
+              </div>
+              <div style="flex:1; min-height:0; overflow-y:auto;">
+                <table class="ex-target-table">
+                  <thead>
+                    <tr>
+                      <th style="width:34%;">Target / Metric Category</th>
+                      <th style="text-align:center; width:14%;">Target</th>
+                      <th style="text-align:center; width:14%;">Achieved</th>
+                      <th style="width:38%;">Progress toward Target</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>
+            </div>`;
+        } else if (c && c.items && c.items.length > 0) {
+          const rows = c.items.map(item => `
+            <tr>
+              <td>
+                <div class="ex-target-metric-name">${esc(item.name)}</div>
+                <div class="ex-target-metric-dept">${esc(item.code || scope)}</div>
+              </td>
+              <td class="num" style="text-align:center; font-size:14px; font-weight:700; color:#334155;">${item.target > 0 ? esc(item.target) : '<span style="color:#94A3B8;">0</span>'}</td>
+              <td class="num" style="text-align:center; font-size:15px; font-weight:800; color:#0F172A;">${esc(item.achieved)}</td>
+              <td>${renderTargetProgressBar(item.target, item.achieved, false)}</td>
+            </tr>`).join('');
+          tableHtml = `
+            <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+              <div class="ex-panel-hdr">
+                <div class="ex-panel-title">Academic Targets vs Achievements</div>
+                <div class="ex-panel-sub">Category-wise target vs verified achievement comparison</div>
+              </div>
+              <div style="flex:1; min-height:0; overflow-y:auto;">
+                <table class="ex-target-table">
+                  <thead>
+                    <tr>
+                      <th style="width:34%;">Category / Metric</th>
+                      <th style="text-align:center; width:14%;">Target</th>
+                      <th style="text-align:center; width:14%;">Achieved</th>
+                      <th style="width:38%;">Progress toward Target</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rows}</tbody>
+                </table>
+              </div>
+            </div>`;
+        } else {
+          tableHtml = `
+            <div class="empty-wrap" style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:30px;">
+              <div class="empty-ic">${renderIconSvg('shield')}</div>
+              <div style="font-size:16px; font-weight:700; color:var(--ink);">No targets configured for this academic year</div>
+              <div style="font-size:13px; color:#64748B;">Department targets can be configured in the Targets module.</div>
+            </div>`;
+        }
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner('Target vs Achieved', `${scope} &middot; Institutional Targets`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Configured Targets)')}
+            ${tableHtml}
+            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
+          </div>`;
+      }
+
+      // 5: Student Achievements Performance Matrix Slide
+      if (s.type === 'student_summary') {
+        const m = s.metrics || {};
+        const tot = s.totals || {};
+        const catMap = [
+          { label: 'SWAYAM-NPTEL Courses', count: m.nptel || 0, icon: 'award', color: '#0066CC', bg: '#EBF5FF' },
+          { label: 'Industrial Internships', count: m.internships || 0, icon: 'briefcase', color: '#059669', bg: '#ECFDF5' },
+          { label: 'Campus Placements', count: m.placements || 0, icon: 'users', color: '#FF4F01', bg: '#FFF3EC' },
+          { label: 'Online Courses', count: m.online_courses || 0, icon: 'graduation', color: '#7E22CE', bg: '#F3E8FF' },
+          { label: 'Student Achievements', count: m.achievements || 0, icon: 'shield', color: '#DC2626', bg: '#FEF2F2' },
+          { label: 'Student Participations', count: m.participations || 0, icon: 'calendar', color: '#0D9488', bg: '#CCFBF1' },
+          { label: 'Summer / Winter Training', count: m.training || 0, icon: 'file-text', color: '#D97706', bg: '#FEF3C7' },
+          { label: 'Total Student Records', count: m.total || 0, icon: 'check-circle', color: '#0B2D59', bg: '#E2E8F0', isTotal: true }
+        ];
+
+        const cardsHtml = catMap.map(c => `
+          <div class="ex-cat-card" style="${c.isTotal ? 'background:#F8FAFC; border:2px solid #0B2D59;' : ''}">
+            <div class="ex-cat-ic" style="background:${c.bg}; color:${c.color};">
+              ${renderIconSvg(c.icon)}
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div class="ex-cat-val" style="${c.isTotal ? 'color:#FF4F01;' : ''}">${esc(c.count)}</div>
+              <div class="ex-cat-lbl" title="${esc(c.label)}">${esc(c.label)}</div>
+            </div>
+          </div>
+        `).join('');
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner('Student Achievements Performance Matrix', `${scope} &middot; Verified Academic Database`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(tot.total_students || 0, tot.total || 0, null, m.internships || 0, null, m.placements || 0, '(Campus Placements)')}
+            <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+              <div class="ex-panel-hdr">
+                <div class="ex-panel-title">Student Achievement Distribution</div>
+                <div class="ex-panel-sub">Live student achievements across active categories</div>
+              </div>
+              <div style="flex:1; min-height:0; overflow-y:auto; padding:12px 16px;">
+                <div class="ex-cat-grid">
+                  ${cardsHtml}
+                </div>
+              </div>
+            </div>
             ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
           </div>`;
       }
@@ -1292,7 +1941,9 @@ $embed      = (string) input('embed') === '1';
         </div>`;
     }
 
-    renderSlide(0, false);
+    // EM-SPEC-09: render first slide, then start auto-play immediately.
+    // setMode() also updates the button states to reflect 'auto' is active.
+    renderSlide(0, false);   // draws slide 0, which calls startAutoTimer()
     wake();
   </script>
 </body>

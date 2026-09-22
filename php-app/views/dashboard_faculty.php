@@ -37,15 +37,24 @@ $cards = [
   </div>
   <div class="actions">
     <form method="get" class="fbar fbar-bare">
-      <?php // EM-SPEC-03 — narrow every figure on this dashboard to EM1's or
-            // EM2's dates. The label carries the dates, so "EM1" is never
-            // ambiguous. ?>
-      <label class="fb-field" title="Show only what was submitted inside a meeting's dates">
-        <span class="fb-k">Meeting</span>
+      <label class="fb-field" title="Filter by Academic Year">
+        <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
+        <select name="academic_year" onchange="this.form.submit()">
+          <?php foreach (($data['years'] ?? academic_years()) as $y): ?>
+            <option value="<?= e($y) ?>" <?= ($data['scope']['year'] ?? '') === $y ? 'selected' : '' ?>>
+              <?= e($y) ?><?= $y === ($data['activeYear'] ?? '') ? ' (Active)' : '' ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+
+      <?php // EM-SPEC-03 — EM Duration filter: All, EM1 Duration, EM2 Duration ?>
+      <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+        <span class="fb-k">EM Duration</span>
         <select name="em" onchange="this.form.submit()">
-          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All meetings</option>
+          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All</option>
           <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
-            <option value="<?= e($emKey) ?>" <?= ($data['scope']['em'] ?? 'all') === $emKey ? 'selected' : '' ?>>
+            <option value="<?= e($emKey) ?>" <?= ($data['scope']['em'] ?? '') === $emKey ? 'selected' : '' ?>>
               <?= e(em_filter_label($emKey, $data['scope']['year'] ?? null)) ?>
             </option>
           <?php endforeach; ?>

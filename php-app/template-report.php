@@ -35,9 +35,13 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
 $isOversight = user_can_choose_department($user);
 $department  = user_department_scope($user, input('department'));
 
-// Respect centralized active academic year system
-$yearInput = trim((string) input('year', ''));
-$year = (is_valid_academic_year($yearInput) ? $yearInput : null) ?: active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear  = input('academic_year') ?: input('year');
+$emCtx    = em_resolve_filter_context($rawYear, input('em'));
+$year     = $emCtx['year'];
+$em       = $emCtx['em'];
+$emWindow = $emCtx['window'];
 
 $columns = template_columns();
 $rows    = template_rows();
@@ -168,7 +172,12 @@ report_document_head($reportDocTitle, 'landscape');
 
 <?php
 require_once __DIR__ . '/models/Target.php';   // academic_years()
-[$durFrom, $durTo] = report_year_duration($year);
+if ($em !== 'all' && $emWindow !== null && empty($emWindow['empty'])) {
+    $durFrom = date('d-m-Y', strtotime($emWindow['from']));
+    $durTo   = date('d-m-Y', strtotime($emWindow['to']));
+} else {
+    [$durFrom, $durTo] = report_year_duration($year);
+}
 
 // One proforma per department to render (all of them when none was chosen).
 foreach ($deptsToRender as $dIndex => $dept):

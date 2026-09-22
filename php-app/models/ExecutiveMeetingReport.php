@@ -20,6 +20,9 @@ require_once __DIR__ . '/Record.php';
 require_once __DIR__ . '/Target.php';
 require_once __DIR__ . '/Department.php';
 require_once __DIR__ . '/ExecutiveMeeting.php';   // FEAT-07 EM1/EM2 engine
+require_once __DIR__ . '/FacultyAchievement.php';
+require_once __DIR__ . '/StudentAchievement.php';
+require_once __DIR__ . '/Dashboard.php';
 require_once __DIR__ . '/../inc/report_layout.php';   // department_full_name()
 
 /** Rows shown on one table slide before it spills onto another slide. */
@@ -519,7 +522,7 @@ function em_contributions_summary(array $targets, array $allRecords, ?string $de
             $av = (int) ($t['achieved_value'] ?? 0);
             $stats[$code]['target'] += $tv;
             $stats[$code]['achieved'] += $av;
-            if ($tv > 0 && $av > 0 && $av < $tv) {
+            if ($tv > 0 && $av < $tv) {
                 $stats[$code]['in_progress'] += max($tv - $av, 0);
             }
         }
@@ -528,14 +531,25 @@ function em_contributions_summary(array $targets, array $allRecords, ?string $de
             $dept = trim((string) ($r['department'] ?? ''));
             if (!$dept) continue;
             $code = department_short_code($dept);
-            if (isset($stats[$code])) {
-                $stats[$code]['total'] += 1;
+            if (!isset($stats[$code])) {
+                $stats[$code] = [
+                    'code'        => $code,
+                    'name'        => department_full_name($dept) ?: $dept,
+                    'target'      => 0,
+                    'achieved'    => 0,
+                    'in_progress' => 0,
+                    'total'       => 0,
+                ];
             }
+            $stats[$code]['total'] += 1;
         }
 
         foreach ($stats as $k => &$s) {
             if ($s['total'] === 0) {
                 $s['total'] = $s['achieved'] + $s['in_progress'];
+            }
+            if ($s['target'] === 0 && $s['achieved'] === 0 && $s['total'] > 0) {
+                $s['achieved'] = $s['total'];
             }
         }
         unset($s);
@@ -593,7 +607,20 @@ function em_contributions_summary(array $targets, array $allRecords, ?string $de
             'total_count'    => $totalCount,
         ];
     } else {
-        // Single Department: Aggregate by Record Type / Category
+        // Single Department: Aggregate real target and record metrics
+        $targetMap = [];
+        foreach ($targets as $t) {
+            $metric = trim((string) ($t['metric'] ?? ''));
+            if ($metric !== '') {
+                $tv = (int) ($t['target_value'] ?? 0);
+                $av = (int) ($t['achieved_value'] ?? 0);
+                $targetMap[$metric] = [
+                    'target'   => $tv,
+                    'achieved' => $av,
+                ];
+            }
+        }
+
         $byType = [];
         foreach ($allRecords as $r) {
             $type = $r['_type_label'] ?? $r['type'] ?? 'Achievement';
@@ -602,15 +629,48 @@ function em_contributions_summary(array $targets, array $allRecords, ?string $de
         arsort($byType);
 
         $items = [];
+        $handledTargets = [];
         foreach ($byType as $type => $cnt) {
+            $matched = null;
+            $matchedMetric = null;
+            foreach ($targetMap as $mName => $mData) {
+                if (stripos($mName, $type) !== false || stripos($type, $mName) !== false) {
+                    $matched = $mData;
+                    $matchedMetric = $mName;
+                    break;
+                }
+            }
+            if ($matchedMetric !== null) {
+                $handledTargets[$matchedMetric] = true;
+            }
+            $targetVal = $matched ? $matched['target'] : 0;
+            $achievedVal = $matched ? $matched['achieved'] : $cnt;
+            $inProgVal = max($targetVal - $achievedVal, 0);
+
             $items[] = [
                 'code'        => strlen($type) > 12 ? substr($type, 0, 10) . '..' : $type,
                 'name'        => $type,
-                'target'      => (int) round($cnt * 1.3),
-                'achieved'    => $cnt,
-                'in_progress' => max((int) round($cnt * 0.3), 1),
+                'target'      => $targetVal,
+                'achieved'    => $achievedVal,
+                'in_progress' => $inProgVal,
                 'total'       => $cnt,
             ];
+        }
+
+        // Include any targets for this department that had no records yet
+        foreach ($targetMap as $mName => $mData) {
+            if (!isset($handledTargets[$mName])) {
+                $tv = $mData['target'];
+                $av = $mData['achieved'];
+                $items[] = [
+                    'code'        => strlen($mName) > 12 ? substr($mName, 0, 10) . '..' : $mName,
+                    'name'        => $mName,
+                    'target'      => $tv,
+                    'achieved'    => $av,
+                    'in_progress' => max($tv - $av, 0),
+                    'total'       => $av,
+                ];
+            }
         }
 
         $top3 = array_slice($items, 0, 3);
@@ -756,19 +816,20 @@ function em_dataset(array $user, array $f): array
         ));
     }
 
-    // FEAT-07: for one Executive Meeting, "achieved" is what was achieved
-    // DURING it, counted by the existing target_record_count() over the
-    // meeting's window. A target whose metric maps to no record type (pass
-    // percentage, CGPA, …) has no dated records to count, so it is marked
-    // unlinked rather than shown with the whole year's figure.
-    if ($f['em'] !== 'all') {
-        foreach ($targets as &$t) {
+    // For each target, compute achieved value over the meeting window or whole academic year
+    foreach ($targets as &$t) {
+        if ($f['em'] !== 'all') {
             $count               = target_record_count($t, $f['record_from'], $f['record_to']);
             $t['_em_unlinked']   = ($count === null);
             $t['achieved_value'] = $count;
+        } else {
+            $count               = target_record_count($t);
+            $t['_em_unlinked']   = ($count === null);
+            $t['achieved_value'] = $count;
         }
-        unset($t);
     }
+    unset($t);
+
     if ($f['faculty_id'] !== null) {
         // A single faculty member has no targets of their own in this schema;
         // targets are set per department, so the department's targets stand as
@@ -781,21 +842,126 @@ function em_dataset(array $user, array $f): array
     $allRecords = array_merge($faculty, $student, $activity);
     $contributions = em_contributions_summary($targets, $allRecords, $f['department']);
 
+    // Dynamic Faculty Achievements & Student Achievements from active models
+    $emWindow = null;
+    if ($f['em'] !== 'all' && !empty($f['record_from']) && !empty($f['record_to'])) {
+        $emWindow = ['from' => $f['record_from'], 'to' => $f['record_to']];
+    }
+
+    $facSummary = faculty_achievements_summary($user, $f['department'], $f['year'], null, $f['faculty_id'], $emWindow);
+    $catCounts = $facSummary['categoryCounts'] ?? [];
+    $facultyMetrics = [
+        'journals'       => (int) ($catCounts['Journal Publication'] ?? 0),
+        'conferences'    => (int) ($catCounts['Conference Publication'] ?? 0),
+        'books'          => (int) ($catCounts['Book / Book Chapter'] ?? 0),
+        'events'         => (int) ($catCounts['Events Organized'] ?? 0),
+        'training'       => (int) (($catCounts['FDP / Workshop / Seminar'] ?? 0) + ($catCounts['Training Programmes'] ?? 0)),
+        'patents'        => (int) ($catCounts['Patents & Copyrights'] ?? 0),
+        'other'          => (int) (($catCounts['SWAYAM-NPTEL Courses'] ?? 0) + ($catCounts['Online Courses'] ?? 0) + ($catCounts['MoUs Signed'] ?? 0)),
+        'total'          => (int) ($facSummary['totalAchievements'] ?? 0),
+        'approved'       => (int) ($facSummary['approvedRecords'] ?? 0),
+        'pending'        => (int) ($facSummary['pendingRecords'] ?? 0),
+        'approval_rate'  => (int) ($facSummary['approvalRate'] ?? 0),
+        'total_faculty'  => (int) ($facSummary['totalFaculty'] ?? 0),
+        'departments'    => (int) ($facSummary['departments'] ?? 0),
+    ];
+
+    $studSummary = student_achievements_summary($user, $f['department'], $f['year'], null, $f['student_reg'], $emWindow);
+    $studCats = $studSummary['categoryCounts'] ?? [];
+    $studentMetrics = [
+        'nptel'          => (int) ($studCats['SWAYAM-NPTEL'] ?? 0),
+        'internships'    => (int) ($studCats['Internships'] ?? 0),
+        'placements'     => (int) ($studCats['Placements'] ?? 0),
+        'online_courses' => (int) ($studCats['Online Courses'] ?? 0),
+        'achievements'   => (int) ($studCats['Student Achievements'] ?? 0),
+        'participations' => (int) ($studCats['Student Participations'] ?? 0),
+        'training'       => (int) ($studCats['Summer / Winter Training'] ?? 0),
+        'total'          => (int) ($studSummary['totalAchievements'] ?? 0),
+        'total_students' => (int) ($studSummary['totalStudents'] ?? 0),
+    ];
+
+    $emStatus = em_status($f['year']);
+
+    // Institutional Development & College-Wide Performance (EM-SPEC-07)
+    $allDepts = departments_all();
+    $totalDeptCount = count($allDepts) > 0 ? count($allDepts) : count($depts);
+    $activeDeptCount = count($depts);
+
+    $approvedRecords = count(array_filter($allRecords, fn($r) => in_array($r['status'] ?? '', ['Approved'], true)));
+    $pendingRecords = count(array_filter($allRecords, fn($r) => in_array($r['status'] ?? '', ['Submitted', 'Dean Pending', 'HOD Pending', 'Pending Review'], true)));
+    $draftRecords = count(array_filter($allRecords, fn($r) => in_array($r['status'] ?? '', ['Draft', ''], true)));
+    $overallApprovalRate = count($allRecords) > 0 ? round(($approvedRecords / count($allRecords)) * 100, 1) : 0;
+
+    $rollupData = em_target_rollup($targets);
+    $targetSummaryData = em_target_summary($targets);
+
+    // Legitimate Year-over-Year comparison where prior year records exist
+    $allYears = academic_years();
+    $currYearIdx = array_search($f['year'], $allYears, true);
+    $prevYear = ($currYearIdx !== false && isset($allYears[$currYearIdx + 1])) ? $allYears[$currYearIdx + 1] : null;
+    $prevYearRecordsCount = 0;
+    $hasPrevYearData = false;
+    $yoyDiff = null;
+    $yoyPct = null;
+
+    if ($prevYear !== null) {
+        $prevRecords = report_records($user, $f['department'], null, null, null, null, $prevYear, true);
+        $prevYearRecordsCount = count($prevRecords);
+        if ($prevYearRecordsCount > 0) {
+            $hasPrevYearData = true;
+            $yoyDiff = count($allRecords) - $prevYearRecordsCount;
+            $yoyPct = round(($yoyDiff / $prevYearRecordsCount) * 100, 1);
+        }
+    }
+
+    $institutionalOverview = [
+        'is_institutional'      => empty($f['department']),
+        'department_name'       => !empty($f['department']) ? department_full_name($f['department']) : 'All Departments',
+        'academic_year'         => $f['year'],
+        'total_records'         => count($allRecords),
+        'faculty_records'       => count($faculty),
+        'student_records'       => count($student),
+        'activity_records'      => count($activity),
+        'faculty_achievements'  => $facultyMetrics['total'],
+        'student_achievements'  => $studentMetrics['total'],
+        'approved_records'      => $approvedRecords,
+        'pending_records'       => $pendingRecords,
+        'draft_records'         => $draftRecords,
+        'approval_rate'         => $overallApprovalRate,
+        'total_departments'     => $totalDeptCount,
+        'active_departments'    => $activeDeptCount,
+        'total_targets'         => $rollupData['count'] ?? count($targets),
+        'targets_achieved'      => $targetSummaryData['targets_achieved'] ?? 0,
+        'targets_in_progress'   => $targetSummaryData['targets_in_progress'] ?? 0,
+        'target_realization'    => $rollupData['percentage'] ?? null,
+        'prev_year'             => $prevYear,
+        'prev_year_records'     => $prevYearRecordsCount,
+        'has_prev_year_data'    => $hasPrevYearData,
+        'yoy_diff'              => $yoyDiff,
+        'yoy_pct'               => $yoyPct,
+    ];
+
     return [
-        'filters'        => $f,
-        'summary'        => em_filter_summary($user, $f),
-        'faculty'        => $faculty,
-        'student'        => $student,
-        'activity'       => $activity,
-        'by_type'        => $byType,
-        'departments'    => array_keys($depts),
-        'user_names'     => $names,
-        'targets'        => $targets,
-        'rollup'         => em_target_rollup($targets),
-        'target_summary' => em_target_summary($targets),
-        'contributions'  => $contributions,
-        'meetings'       => $meetings,
-        'total'          => count($faculty) + count($student) + count($activity),
+        'filters'                => $f,
+        'summary'                => em_filter_summary($user, $f),
+        'faculty'                => $faculty,
+        'student'                => $student,
+        'activity'               => $activity,
+        'by_type'                => $byType,
+        'departments'            => array_keys($depts),
+        'user_names'             => $names,
+        'targets'                => $targets,
+        'rollup'                 => $rollupData,
+        'target_summary'         => $targetSummaryData,
+        'contributions'          => $contributions,
+        'meetings'               => $meetings,
+        'total'                  => count($faculty) + count($student) + count($activity),
+        'faculty_summary'        => $facSummary,
+        'faculty_metrics'        => $facultyMetrics,
+        'student_summary'        => $studSummary,
+        'student_metrics'        => $studentMetrics,
+        'em_status'              => $emStatus,
+        'institutional_overview' => $institutionalOverview,
     ];
 }
 
@@ -847,8 +1013,13 @@ function em_slides(array $ds): array
     $summary = $ds['summary'];
     $slides  = [];
 
+    $hasAnyData = ($ds['total'] > 0)
+        || (count($ds['targets']) > 0)
+        || (!empty($ds['faculty_metrics']['total']))
+        || (!empty($ds['student_metrics']['total']));
+
     // If scoped to a department and there is no presentation data:
-    if (!empty($f['department']) && $ds['total'] === 0 && count($ds['targets']) === 0) {
+    if (!empty($f['department']) && !$hasAnyData) {
         $deptName = department_full_name($f['department']);
         return [
             [
@@ -860,111 +1031,18 @@ function em_slides(array $ds): array
         ];
     }
 
-    // 1 — Summary of Target Achievements (First Page for all roles, matching reference design)
-    $ts = $ds['target_summary'] ?? em_target_summary($ds['targets']);
-    $slides[] = [
-        'type'                => 'target_summary',
-        'title'               => 'Summary of Target Achievements',
-        'summary'             => $summary,
-        'academic_targets'    => (int) ($ts['academic_targets'] ?? 0),
-        'targets_achieved'    => (int) ($ts['targets_achieved'] ?? 0),
-        'targets_in_progress' => (int) ($ts['targets_in_progress'] ?? 0),
-        'targets_remaining'   => (int) ($ts['targets_remaining'] ?? 0),
-        'contributions'       => $ds['contributions'] ?? null,
-        'meeting'             => $f['meeting'],
-        'totals'              => [
-            'records'  => $ds['total'],
-            'faculty'  => count($ds['faculty']),
-            'student'  => count($ds['student']),
-            'targets'  => $ds['rollup']['count'],
-        ],
-    ];
-
-    // 2 — Cover, with the applied filters.
-    $slides[] = [
-        'type'    => 'title',
-        'title'   => 'EXECUTIVE MEETING REPORT',
-        'summary' => $summary,
-        'meeting' => $f['meeting'],
-        'totals'  => [
-            'records'  => $ds['total'],
-            'faculty'  => count($ds['faculty']),
-            'student'  => count($ds['student']),
-            'targets'  => $ds['rollup']['count'],
-        ],
-    ];
-
-    // 2 — College or Department development, from the record counts actually found.
-    $isDept    = !empty($f['department']);
-    $deptLabel = $isDept ? department_full_name($f['department']) : '';
-    $slides[] = [
-        'type'           => 'college',
-        'title'          => $isDept ? "{$deptLabel} Performance" : 'Overall College Performance',
-        'summary'        => $summary,
-        'by_type'        => $ds['by_type'],
-        'departments'    => $ds['departments'],
-        'rollup'         => $ds['rollup'],
-        'target_summary' => $ts,
-        'contributions'  => $ds['contributions'] ?? null,
-        'totals'         => [
-            'records'  => $ds['total'],
-            'faculty'  => count($ds['faculty']),
-            'activity' => count($ds['activity']),
-            'student'  => count($ds['student']),
-            'meetings' => count($ds['meetings']),
-        ],
-    ];
-
-    // Cover and overview are always present. Everything after this point is a
-    // data section, and a data section with no rows adds no slide at all.
-    $sectionsStart = count($slides);
-
-    // 3 — Faculty achievements, paginated.
-    $facultyRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['faculty']);
-    foreach (em_paginate($facultyRows) as $i => $page) {
-        $slides[] = [
-            'type'        => 'records',
-            'title'       => 'Faculty Achievements',
-            'summary'     => $summary,
-            'rows'        => $page,
-            'page'        => $i + 1,
-            'total_pages' => (int) ceil(count($facultyRows) / EM_SLIDE_ROWS),
-            'total_rows'  => count($facultyRows),
-            'kind'        => 'faculty',
+    if (!$hasAnyData) {
+        return [
+            [
+                'type'    => 'empty',
+                'title'   => 'Executive Meeting Presentation',
+                'summary' => $summary,
+                'message' => 'No presentation data available for the selected Academic Year / Executive Meeting.',
+            ],
         ];
     }
 
-    // 4 — Activities & outreach, only when there is something to show.
-    $activityRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['activity']);
-    foreach (em_paginate($activityRows) as $i => $page) {
-        $slides[] = [
-            'type'        => 'records',
-            'title'       => 'Activities & Outreach',
-            'summary'     => $summary,
-            'rows'        => $page,
-            'page'        => $i + 1,
-            'total_pages' => (int) ceil(count($activityRows) / EM_SLIDE_ROWS),
-            'total_rows'  => count($activityRows),
-            'kind'        => 'activity',
-        ];
-    }
-
-    // 5 — Student information, paginated.
-    $studentRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['student']);
-    foreach (em_paginate($studentRows) as $i => $page) {
-        $slides[] = [
-            'type'        => 'records',
-            'title'       => 'Student Achievements & Records',
-            'summary'     => $summary,
-            'rows'        => $page,
-            'page'        => $i + 1,
-            'total_pages' => (int) ceil(count($studentRows) / EM_SLIDE_ROWS),
-            'total_rows'  => count($studentRows),
-            'kind'        => 'student',
-        ];
-    }
-
-    // 6 — Target vs achieved, paginated, plus the rollup on each page.
+    // Prepare target rows from real database targets
     $targetRows = [];
     foreach ($ds['targets'] as $t) {
         $tv       = (int) ($t['target_value'] ?? 0);
@@ -981,10 +1059,151 @@ function em_slides(array $ds): array
             'unlinked'   => $unlinked,
         ];
     }
+
+    // 1 — Slide 1: Executive Meeting & Academic Year Overview (EM1/EM2 info, scope, dates)
+    $ts = $ds['target_summary'] ?? em_target_summary($ds['targets']);
+    $isDept = !empty($f['department']);
+    $deptLabel = $isDept ? department_full_name($f['department']) : '';
+    $io = $ds['institutional_overview'] ?? [];
+
+    $slides[] = [
+        'type'          => 'title',
+        'title'         => 'EXECUTIVE MEETING REPORT',
+        'summary'       => $summary,
+        'meeting'       => $f['meeting'],
+        'em_status'     => $ds['em_status'] ?? em_status($f['year']),
+        'totals'        => [
+            'records'   => $ds['total'],
+            'faculty'   => count($ds['faculty']),
+            'student'   => count($ds['student']),
+            'activity'  => count($ds['activity']),
+            'targets'   => $ds['rollup']['count'],
+            'approved'  => $ds['faculty_metrics']['approved'] ?? 0,
+            'pending'   => $ds['faculty_metrics']['pending'] ?? 0,
+        ],
+        'rollup'        => $ds['rollup'],
+        'contributions' => $ds['contributions'] ?? null,
+    ];
+
+    // 2 — Slide 2: Overall College Development & Improvement (EM-SPEC-07)
+    $slides[] = [
+        'type'          => 'college_development',
+        'title'         => $isDept ? "{$deptLabel} Development & Improvement" : 'Overall College Development & Improvement',
+        'summary'       => $summary,
+        'overview'      => $io,
+        'rollup'        => $ds['rollup'],
+        'contributions' => $ds['contributions'] ?? null,
+        'totals'        => [
+            'records'        => $io['total_records'] ?? $ds['total'],
+            'faculty'        => $io['faculty_achievements'] ?? ($ds['faculty_metrics']['total'] ?? 0),
+            'student'        => $io['student_achievements'] ?? ($ds['student_metrics']['total'] ?? 0),
+            'activity'       => $io['activity_records'] ?? count($ds['activity']),
+            'targets'        => $io['total_targets'] ?? ($ds['rollup']['count'] ?? 0),
+            'achieved'       => $io['targets_achieved'] ?? 0,
+            'approved'       => $io['approved_records'] ?? 0,
+            'pending'        => $io['pending_records'] ?? 0,
+            'draft'          => $io['draft_records'] ?? 0,
+            'approval_rate'  => $io['approval_rate'] ?? 0,
+            'departments'    => $io['active_departments'] ?? count($ds['departments']),
+            'all_depts'      => $io['total_departments'] ?? count($ds['departments']),
+        ],
+    ];
+
+    // 3 — Slide 3: Overall Institutional Performance / Key Metrics (EM-SPEC-07)
+    $slides[] = [
+        'type'             => 'institutional_performance',
+        'title'            => $isDept ? "{$deptLabel} Performance & Key Metrics" : 'Overall Institutional Performance',
+        'summary'          => $summary,
+        'overview'         => $io,
+        'faculty_metrics'  => $ds['faculty_metrics'],
+        'student_metrics'  => $ds['student_metrics'],
+        'contributions'    => $ds['contributions'] ?? null,
+        'rollup'           => $ds['rollup'],
+        'target_summary'   => $ts,
+        'totals'           => [
+            'records'        => $io['total_records'] ?? $ds['total'],
+            'faculty'        => count($ds['faculty']),
+            'student'        => count($ds['student']),
+            'activity'       => count($ds['activity']),
+            'approval_rate'  => $io['approval_rate'] ?? 0,
+            'target_rate'    => $io['target_realization'] ?? null,
+        ],
+    ];
+
+    // 4 — Slide 4: Faculty Achievements Summary (Dynamic matching /faculty-achievements.php)
+    $slides[] = [
+        'type'            => 'faculty_summary',
+        'title'           => 'Faculty Achievements',
+        'summary'         => $summary,
+        'metrics'         => $ds['faculty_metrics'],
+        'category_counts' => $ds['faculty_summary']['categoryCounts'] ?? [],
+        'totals'          => [
+            'total'         => $ds['faculty_metrics']['total'],
+            'approved'      => $ds['faculty_metrics']['approved'],
+            'pending'       => $ds['faculty_metrics']['pending'],
+            'approval_rate' => $ds['faculty_metrics']['approval_rate'],
+            'total_faculty' => $ds['faculty_metrics']['total_faculty'],
+        ],
+    ];
+
+    // 5 — Slide 5: Student Achievements Performance Matrix
+    $slides[] = [
+        'type'            => 'student_summary',
+        'title'           => 'Student Achievements Performance Matrix',
+        'summary'         => $summary,
+        'metrics'         => $ds['student_metrics'],
+        'category_counts' => $ds['student_summary']['categoryCounts'] ?? [],
+        'totals'          => [
+            'total'          => $ds['student_metrics']['total'],
+            'total_students' => $ds['student_metrics']['total_students'],
+        ],
+    ];
+
+    // 6 — Slide 6: Department Achievements / Milestones
+    $slides[] = [
+        'type'           => 'department_milestones',
+        'title'          => $isDept ? "{$deptLabel} Milestones" : 'Department Milestones & Contributions',
+        'summary'        => $summary,
+        'by_type'        => $ds['by_type'],
+        'departments'    => $ds['departments'],
+        'rollup'         => $ds['rollup'],
+        'target_summary' => $ts,
+        'contributions'  => $ds['contributions'] ?? null,
+        'totals'         => [
+            'records'  => $ds['total'],
+            'faculty'  => count($ds['faculty']),
+            'activity' => count($ds['activity']),
+            'student'  => count($ds['student']),
+            'meetings' => count($ds['meetings']),
+        ],
+    ];
+
+    // 7 — Slide 7: Target vs Achieved Summary
+    $slides[] = [
+        'type'                => 'target_summary',
+        'title'               => 'Target vs Achieved',
+        'summary'             => $summary,
+        'academic_targets'    => (int) ($ts['academic_targets'] ?? 0),
+        'targets_achieved'    => (int) ($ts['targets_achieved'] ?? 0),
+        'targets_in_progress' => (int) ($ts['targets_in_progress'] ?? 0),
+        'targets_remaining'   => (int) ($ts['targets_remaining'] ?? 0),
+        'contributions'       => $ds['contributions'] ?? null,
+        'meeting'             => $f['meeting'],
+        'rollup'              => $ds['rollup'],
+        'target_rows'         => $targetRows,
+        'totals'              => [
+            'records'  => $ds['total'],
+            'faculty'  => count($ds['faculty']),
+            'student'  => count($ds['student']),
+            'targets'  => $ds['rollup']['count'],
+        ],
+    ];
+
+    // Paginated Target Breakdown (if target rows exist)
     foreach (em_paginate($targetRows) as $i => $page) {
         $slides[] = [
             'type'        => 'targets',
-            'title'       => 'Target vs Achieved',
+            'title'       => 'Target vs Achieved Breakdown',
             'summary'     => $summary,
             'rows'        => $page,
             'rollup'      => $ds['rollup'],
@@ -993,7 +1212,52 @@ function em_slides(array $ds): array
         ];
     }
 
-    // 7 — The meetings themselves.
+    // Paginated verified Faculty records (only if rows exist)
+    $facultyRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['faculty']);
+    foreach (em_paginate($facultyRows) as $i => $page) {
+        $slides[] = [
+            'type'        => 'records',
+            'title'       => 'Faculty Achievements & Verified Records',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($facultyRows) / EM_SLIDE_ROWS),
+            'total_rows'  => count($facultyRows),
+            'kind'        => 'faculty',
+        ];
+    }
+
+    // Paginated verified Student records (only if rows exist)
+    $studentRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['student']);
+    foreach (em_paginate($studentRows) as $i => $page) {
+        $slides[] = [
+            'type'        => 'records',
+            'title'       => 'Student Achievements & Records',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($studentRows) / EM_SLIDE_ROWS),
+            'total_rows'  => count($studentRows),
+            'kind'        => 'student',
+        ];
+    }
+
+    // Paginated Activities & Outreach records (only if rows exist)
+    $activityRows = array_map(fn($r) => em_record_row($r, $ds['user_names']), $ds['activity']);
+    foreach (em_paginate($activityRows) as $i => $page) {
+        $slides[] = [
+            'type'        => 'records',
+            'title'       => 'Activities & Outreach',
+            'summary'     => $summary,
+            'rows'        => $page,
+            'page'        => $i + 1,
+            'total_pages' => (int) ceil(count($activityRows) / EM_SLIDE_ROWS),
+            'total_rows'  => count($activityRows),
+            'kind'        => 'activity',
+        ];
+    }
+
+    // Executive Meetings Summary (if meetings exist)
     $meetingRows = [];
     foreach ($ds['meetings'] as $m) {
         $meetingRows[] = [
@@ -1015,24 +1279,10 @@ function em_slides(array $ds): array
         ];
     }
 
-    // 8 — Close on the same numbers the deck opened with.
-    // No section had anything: one stated reason, rather than a cover, an
-    // overview and a closing that all report zero.
-    if (count($slides) === $sectionsStart) {
-        return [[
-            'type'    => 'empty',
-            'title'   => 'Executive Meeting Presentation',
-            'summary' => $summary,
-            'message' => !empty($f['department'])
-                ? 'No presentation data available for ' . department_full_name($f['department'])
-                  . ' for the selected Academic Year / Executive Meeting.'
-                : 'No presentation data available for the selected filters.',
-        ]];
-    }
-
+    // Performance Summary / Closing Slide
     $slides[] = [
         'type'    => 'closing',
-        'title'   => 'Summary',
+        'title'   => 'Performance Summary',
         'summary' => $summary,
         'totals'  => [
             'records'  => $ds['total'],

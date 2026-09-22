@@ -16,7 +16,13 @@ $studentKey   = trim((string) input('key', ''));
 $regNoHint    = trim((string) input('reg_no', ''));
 $nameHint     = trim((string) input('name', ''));
 $deptHint     = trim((string) input('dept', ''));
-$academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
+$em           = $emCtx['em'];
+$emWindow     = $emCtx['window'];
 $category     = trim((string) input('category', '')) ?: null;
 
 // If key is empty but we have reg_no or name+dept, compute key
@@ -39,7 +45,7 @@ if ($studentKey === '') {
 }
 
 // Fetch detailed student data
-$data    = student_achievement_details($studentKey, $academicYear, $category, null, $regNoHint, $nameHint, $deptHint);
+$data    = student_achievement_details($studentKey, $academicYear, $category, $emWindow, $regNoHint, $nameHint, $deptHint);
 $student = $data['student'];
 $records = $data['records'];
 $byCat   = $data['by_category'];
@@ -159,12 +165,25 @@ require __DIR__ . '/inc/header.php';
   <input type="hidden" name="dept" value="<?= e($student['department']) ?>">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filter Report</span>
 
-  <label class="fb-field">
+  <label class="fb-field" title="Filter by Academic Year">
     <span class="fb-k">Academic Year</span>
     <select name="academic_year" onchange="this.form.submit()">
-      <option value="">All Academic Years</option>
       <?php foreach ($years as $y): ?>
-        <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>><?= e($y) ?></option>
+        <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>>
+          <?= e($y) ?><?= $y === active_academic_year() ? ' (Active)' : '' ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+
+  <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+    <span class="fb-k">EM Duration</span>
+    <select name="em" onchange="this.form.submit()">
+      <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
+      <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
+        <option value="<?= e($emKey) ?>" <?= $em === $emKey ? 'selected' : '' ?>>
+          <?= e(em_filter_label($emKey, $academicYear)) ?>
+        </option>
       <?php endforeach; ?>
     </select>
   </label>

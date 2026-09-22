@@ -481,7 +481,7 @@ require __DIR__ . '/inc/header.php';
 
   <!-- Executive Meeting (FEAT-07) -->
   <label class="fb-field" title="Achievements submitted during EM1 or EM2">
-    <span class="fb-k">Meeting</span>
+    <span class="fb-k">EM Duration</span>
     <select name="em" onchange="this.form.submit()">
       <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
       <?php foreach (EM_MEETINGS as $emKey => $emName): ?>

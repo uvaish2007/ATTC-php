@@ -28,8 +28,11 @@ if (!in_array($role, $allowedRoles, true)) {
     exit;
 }
 
-// Global active academic year from FEAT-02 (no manual client override)
-$academicYear = active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
 $format       = strtolower(trim((string) input('format', 'excel')));
 if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
     $format = 'excel';

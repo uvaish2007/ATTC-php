@@ -176,20 +176,26 @@ $showDepartments = $isOversight && count($rows) > 1;
 // Drill-down: an oversight user can click a department anywhere on the page to
 // scope the whole dashboard to it (keeping the year filter).
 $deptUrl = function (string $dept) use ($data) {
-    $q = array_filter(['department' => $dept, 'year' => $data['scope']['year'] ?? '']);
+    $q = array_filter([
+        'department'    => $dept,
+        'academic_year' => $data['scope']['year'] ?? '',
+        'em'            => ($data['scope']['em'] ?? 'all') !== 'all' ? $data['scope']['em'] : '',
+    ]);
     return url('dashboard.php') . ($q ? '?' . http_build_query($q) : '');
 };
 
 /*
  * "View reports" from the Records by Category card. Passing a category opens
  * Reports narrowed to that group (Faculty / Activities / Student); passing none
- * opens the whole hub. The department the dashboard is scoped to carries over,
+ * opens the whole hub. The department and EM duration filters carry over,
  * so the reports match the figures the user is looking at.
  */
 $reportsUrl = function (?string $category = null) use ($data) {
     $q = array_filter([
-        'category'   => $category,
-        'department' => $data['scope']['department'] ?? '',
+        'category'      => $category,
+        'department'    => $data['scope']['department'] ?? '',
+        'academic_year' => $data['scope']['year'] ?? '',
+        'em'            => ($data['scope']['em'] ?? 'all') !== 'all' ? $data['scope']['em'] : '',
     ]);
     return url('reports.php') . ($q ? '?' . http_build_query($q) : '');
 };
@@ -356,25 +362,18 @@ if (!function_exists('dash_column_chart')) {
        more — it is the single system-wide active year (shown in the topbar
        indicator on every page); only the Admin switcher below can change it. -->
   <div class="actions">
-    <?php if ($user['role'] === 'Admin'): ?>
-      <form method="post" class="fbar fbar-bare">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="switch_academic_year">
-        <?php // Switching the system year is not a filter, so this pill never
-              // shows the orange "narrowed" state: its default is the current year. ?>
-        <label class="fb-field" for="adminYearSelect" title="Switch the system-wide academic year">
-          <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
-          <select id="adminYearSelect" name="academic_year" onchange="this.form.submit()"
-                  data-default="<?= e($data['scope']['year']) ?>">
-            <?php foreach ($data['years'] as $y): ?>
-              <option value="<?= e($y) ?>" <?= $data['scope']['year'] === $y ? 'selected' : '' ?>><?= e($y) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </label>
-      </form>
-    <?php endif; ?>
-
     <form method="get" class="fbar fbar-bare">
+      <label class="fb-field" title="Filter by Academic Year">
+        <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
+        <select name="academic_year" onchange="this.form.submit()">
+          <?php foreach ($data['years'] as $y): ?>
+            <option value="<?= e($y) ?>" <?= $data['scope']['year'] === $y ? 'selected' : '' ?>>
+              <?= e($y) ?><?= $y === ($data['activeYear'] ?? '') ? ' (Active)' : '' ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+
       <?php if ($isOversight): ?>
         <label class="fb-field"><span class="fb-k">Department</span>
           <select name="department" onchange="this.form.submit()">
@@ -397,13 +396,11 @@ if (!function_exists('dash_column_chart')) {
         </select>
       </label>
 
-      <?php // EM-SPEC-03 — narrow every figure on this dashboard to EM1's or
-            // EM2's dates. The label carries the dates, so "EM1" is never
-            // ambiguous. ?>
-      <label class="fb-field" title="Show only what was submitted inside a meeting's dates">
-        <span class="fb-k">Meeting</span>
+      <?php // EM-SPEC-03 — EM Duration filter: All, EM1 Duration, EM2 Duration ?>
+      <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+        <span class="fb-k">EM Duration</span>
         <select name="em" onchange="this.form.submit()">
-          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All meetings</option>
+          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All</option>
           <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
             <option value="<?= e($emKey) ?>" <?= ($data['scope']['em'] ?? 'all') === $emKey ? 'selected' : '' ?>>
               <?= e(em_filter_label($emKey, $data['scope']['year'] ?? null)) ?>

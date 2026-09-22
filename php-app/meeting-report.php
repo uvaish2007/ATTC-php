@@ -16,10 +16,15 @@ require_once __DIR__ . '/models/Setting.php';
 
 $user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
-$params = array_filter([
-    'department' => user_department_scope($user, trim((string) input('department')) ?: null),
-    'year'       => trim((string) input('year')) ?: null,
-    'format'     => in_array((string) input('format'), ['word', 'excel', 'pdf'], true) ? (string) input('format') : null,
+$rawYear = trim((string) (input('academic_year') ?: input('year')));
+$emRaw   = trim((string) input('em'));
+$em      = $emRaw !== '' ? em_filter_value($emRaw) : null;
+$params  = array_filter([
+    'department'    => user_department_scope($user, trim((string) input('department')) ?: null),
+    'academic_year' => $rawYear ?: null,
+    'year'          => $rawYear ?: null,
+    'em'            => ($em && $em !== 'all') ? $em : null,
+    'format'        => in_array((string) input('format'), ['word', 'excel', 'pdf'], true) ? (string) input('format') : null,
 ]);
 
 header('Location: ' . url('template-report.php') . ($params ? '?' . http_build_query($params) : ''));

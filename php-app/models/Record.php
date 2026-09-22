@@ -863,6 +863,10 @@ function can_edit_record(string $type, int $id, array $user): array
     if ($user['role'] === 'Admin') {
         return [true, 'Admin edit permitted.', $rec];
     }
+    // EM-SPEC-02: Check EM1 record lock
+    if (function_exists('em_record_is_locked') && em_record_is_locked($user['role'], $rec['created_at'] ?? null, $rec['academic_year'] ?? null)) {
+        return [false, 'Executive Meeting 1 has ended and is no longer editable.', $rec];
+    }
     if ($user['role'] === 'Coordinator') {
         if (!empty($user['department']) && !department_names_match($rec['department'] ?? '', $user['department'])) {
             return [false, 'Access Denied: You cannot edit records belonging to another department.', $rec];

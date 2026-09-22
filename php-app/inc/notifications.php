@@ -208,5 +208,37 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
+    // 6. Executive Meeting Schedule & Switchover Notifications
+    try {
+        require_once __DIR__ . '/../models/ExecutiveMeeting.php';
+        $activeYear = active_academic_year();
+        $emStatus   = em_status($activeYear);
+        if ($emStatus['configured']) {
+            if ($emStatus['em1_locked'] && $emStatus['em2_active']) {
+                $notifications[] = [
+                    'id'          => 'em_switchover_' . $activeYear . '_em2_active',
+                    'type'        => 'meeting',
+                    'title'       => 'EM2 Active',
+                    'description' => 'Executive Meeting 1 has ended. Executive Meeting 2 is now active.',
+                    'time'        => 'Active Now',
+                    'link'        => url('upload.php'),
+                    'unread'      => ($markAllTime === 0),
+                    'icon'        => 'reports'
+                ];
+            } elseif ($emStatus['state'] === EM_STATE_BETWEEN) {
+                $notifications[] = [
+                    'id'          => 'em_switchover_' . $activeYear . '_em1_closed',
+                    'type'        => 'meeting',
+                    'title'       => 'EM1 Closed',
+                    'description' => 'Executive Meeting 1 has ended and is read-only. EM2 opens on ' . date('d M Y', strtotime($emStatus['schedule']['em2_start'])) . '.',
+                    'time'        => 'Schedule Notice',
+                    'link'        => url('upload.php'),
+                    'unread'      => ($markAllTime === 0),
+                    'icon'        => 'reports'
+                ];
+            }
+        }
+    } catch (\Throwable $e) {}
+
     return $notifications;
 }

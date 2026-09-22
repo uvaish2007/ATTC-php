@@ -264,10 +264,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
 
-    // FEAT-07: once EM1 has closed and before EM2 opens, a new record could only
-    // be a late EM1 submission, and EM1 is locked. Checked here, before any file
-    // is stored or row inserted, so a direct POST cannot get past it.
-    if ($emBlock = em_submission_block_reason($user['role'], $targetYear)) {
+    // EM-SPEC-02: Check EM schedule and meeting lock
+    $meetingParam = trim((string) input('meeting', input('em', '')));
+    if ($emBlock = em_submission_block_reason($user['role'], $targetYear, null, $meetingParam ?: null)) {
         flash('error', $emBlock);
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
@@ -567,7 +566,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         [$canEdit, $errMsg, $existingRec] = can_edit_record($type, $editId, $user);
         if (!$canEdit) {
             flash('error', $errMsg);
-            redirect('/approvals.php');
+            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
+        }
+        if (em_record_is_locked($user['role'], $existingRec['created_at'] ?? null, $existingRec['academic_year'] ?? $activeYear)) {
+            flash('error', 'Executive Meeting 1 has ended and is no longer editable.');
+            redirect('/upload.php?type=' . $type . '&edit_id=' . $editId);
         }
 
         $setPairs = [];
@@ -1013,7 +1016,14 @@ require __DIR__ . '/inc/header.php';
 })();
 </script>
 
-<?php $isUploadLocked = academic_year_is_locked($effectiveYear); ?>
+<?php
+  $isUploadLocked   = academic_year_is_locked($effectiveYear);
+  $emStatus         = em_status($effectiveYear);
+  $emBlockReason    = em_submission_block_reason($user['role'], $effectiveYear);
+  $isRecordEmLocked = !empty($editRecord) && function_exists('em_record_is_locked') && em_record_is_locked($user['role'], $editRecord['created_at'] ?? null, $editRecord['academic_year'] ?? $effectiveYear);
+  $isEmLocked       = ($user['role'] !== 'Admin') && ($isRecordEmLocked || ($editRecord ? false : ($emBlockReason !== null)));
+  $isFormDisabled   = ($isUploadLocked || $isEmLocked) && ($user['role'] !== 'Admin');
+?>
 <?php if ($isUploadLocked): ?>
   <div style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
     <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
@@ -1022,6 +1032,52 @@ require __DIR__ . '/inc/header.php';
     <div style="flex:1">
       <div style="font-weight:700;font-size:13px">Academic Year <?= e($effectiveYear) ?> Cycle is Locked</div>
       <div style="font-size:12px;color:#B91C1C;margin-top:2px">The Administrator has frozen submissions for this academic year cycle following an Executive Meeting. <?= $user['role'] === 'Admin' ? 'As an Admin, you retain upload authority.' : 'New submissions are frozen across all roles until unlocked by an Administrator.' ?></div>
+    </div>
+  </div>
+<?php endif; ?>
+
+<?php if ($isRecordEmLocked): ?>
+  <div class="em-lock-banner" style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px">
+        Executive Meeting 1 Closed
+        <span class="ay-pill locked" style="font-size:11px;padding:2px 8px;">EM1 Closed</span>
+      </div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">
+        This record was submitted during Executive Meeting 1, which has ended and is now locked/read-only. Further edits are no longer permitted.
+      </div>
+    </div>
+  </div>
+<?php elseif ($emBlockReason && !$editRecord && $user['role'] !== 'Admin'): ?>
+  <div class="em-lock-banner" style="background:#FEF2F2;border:1px solid #FECACA;border-left:4px solid #DC2626;color:#991B1B;padding:14px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;gap:12px">
+    <div style="width:36px;height:36px;border-radius:8px;background:#FEE2E2;display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#DC2626">
+      <?= icon('lock', 20) ?>
+    </div>
+    <div style="flex:1">
+      <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:8px">
+        Executive Meeting 1 Closed
+        <span class="ay-pill locked" style="font-size:11px;padding:2px 8px;">EM1 Closed</span>
+        <?php if ($emStatus['em2_upcoming']): ?>
+          <span class="ay-pill newer" style="font-size:11px;padding:2px 8px;">EM2 Upcoming</span>
+        <?php endif; ?>
+      </div>
+      <div style="font-size:12px;color:#B91C1C;margin-top:2px">
+        <?= e($emBlockReason) ?>
+      </div>
+    </div>
+  </div>
+<?php elseif ($emStatus['em2_active'] && !$editRecord): ?>
+  <div class="em-active-banner" style="background:#F0FDF4;border:1px solid #BBF7D0;border-left:4px solid #16A34A;color:#166534;padding:12px 18px;border-radius:10px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="ay-pill locked" style="font-size:11px;padding:2px 8px;">EM1 Closed</span>
+      <span class="ay-pill active" style="font-size:11px;padding:2px 8px;">EM2 Active</span>
+      <span style="font-weight:600;font-size:13px">Executive Meeting 1 has ended. Executive Meeting 2 is now active.</span>
+    </div>
+    <div style="font-size:12px;color:#15803D">
+      EM2 in session until <?= date('d M Y', strtotime($emStatus['schedule']['em2_end'])) ?>
     </div>
   </div>
 <?php endif; ?>
@@ -1045,6 +1101,7 @@ require __DIR__ . '/inc/header.php';
   </div>
   <div class="card-body">
     <form method="post" enctype="multipart/form-data">
+      <fieldset <?= $isFormDisabled ? 'disabled' : '' ?> style="border:none;padding:0;margin:0;display:contents;">
       <?= csrf_field() ?>
       <input type="hidden" name="record_type" value="<?= e($selectedType) ?>">
       <?php if ($editRecord || $editId > 0): ?>
@@ -1281,17 +1338,35 @@ require __DIR__ . '/inc/header.php';
           <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
         </div>
       </div>
+      </fieldset>
 
       <!-- Save this entry and add another of the same type, move on to the next
            metric, or finish on the last one. -->
       <div class="upload-actions">
-        <?php if ($editId > 0 || !empty($editRecord)): ?>
+        <?php if ($isFormDisabled): ?>
+          <button type="button" class="btn btn-secondary" disabled style="cursor:not-allowed; opacity:0.85; font-weight:600; display:inline-flex; align-items:center; gap:6px;">
+            <?= icon('lock', 16) ?> <?= $isRecordEmLocked ? 'EM1 Closed — Record Locked' : ($isEmLocked ? 'EM1 Closed — Submissions Locked' : 'Academic Year Locked') ?>
+          </button>
+          <div class="spacer"></div>
+          <?php if ($editRecord): ?>
+            <a class="btn btn-ghost" href="<?= e(url('approvals.php')) ?>"><?= icon('arrow-left') ?> Back to Approvals</a>
+          <?php else: ?>
+            <?php if ($prevType): ?>
+              <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
+            <?php endif; ?>
+            <?php if (!$isLast): ?>
+              <a href="<?= e(url('upload.php?type=' . $nextType)) ?>" class="btn btn-outline">
+                Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
+              </a>
+            <?php endif; ?>
+          <?php endif; ?>
+        <?php elseif ($editId > 0 || !empty($editRecord)): ?>
           <button type="submit" name="nav" value="submit" class="btn btn-primary" style="background:#1D4ED8;border-color:#1D4ED8;font-weight:600;display:inline-flex;align-items:center;gap:6px">
             <?= icon('check') ?> Save &amp; Resubmit Record
           </button>
           <div class="spacer"></div>
           <a class="btn btn-ghost" href="<?= e(url('approvals.php')) ?>"><?= icon('arrow-left') ?> Cancel &amp; Back to Approvals</a>
-        <?php elseif (!$isUploadLocked || $user['role'] === 'Admin'): ?>
+        <?php else: ?>
           <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
           <div class="spacer"></div>
           <?php if ($prevType): ?>
@@ -1302,19 +1377,6 @@ require __DIR__ . '/inc/header.php';
             <button type="submit" name="nav" value="next" class="btn btn-outline">
               Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
             </button>
-          <?php endif; ?>
-        <?php else: ?>
-          <div style="display:flex;align-items:center;gap:8px;color:#991B1B;font-size:13px;font-weight:700">
-            <?= icon('lock', 16) ?> Submissions are disabled because Academic Year <?= e($effectiveYear) ?> is locked.
-          </div>
-          <div class="spacer"></div>
-          <?php if ($prevType): ?>
-            <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
-          <?php endif; ?>
-          <?php if (!$isLast): ?>
-            <a href="<?= e(url('upload.php?type=' . $nextType)) ?>" class="btn btn-primary">
-              Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
-            </a>
           <?php endif; ?>
         <?php endif; ?>
       </div>
