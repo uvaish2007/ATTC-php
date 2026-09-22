@@ -153,6 +153,14 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 
+  <?php // EM-SPEC-04: the Executive Meeting Report is reached from the page
+        // header, above the filter bar — not from a control inside it. ?>
+  <div class="actions">
+    <a class="btn btn-primary btn-sm" href="<?= e(url('executive-meeting-report.php')) ?>"
+       title="Filter and present the Executive Meeting Report">
+      <?= icon('presentation', 15) ?> Executive Meeting Report
+    </a>
+  </div>
 </div>
 
 

@@ -217,7 +217,8 @@ require __DIR__ . '/inc/header.php';
         in this scope
       </div>
     </div>
-    <a class="btn btn-primary em-present-btn" href="<?= e($presentUrl) ?>" title="Open the filtered report as a full-screen presentation">
+    <a class="btn btn-primary em-present-btn" href="<?= e($presentUrl) ?>" id="emPresentBtn"
+       onclick="return openPresentation(event);" title="Present the filtered report full screen">
       <?= icon('play-circle', 17) ?> PRESENT
     </a>
   </div>
@@ -369,5 +370,44 @@ require __DIR__ . '/inc/header.php';
   .ts-pcard-num.amber { background:#FEF8EC; color:#7E4A05; }
   @media (max-width:768px) { .ts-preview-grid { grid-template-columns:1fr; } }
 </style>
+
+<?php // EM-SPEC-05: the deck runs in a full-screen modal over this page, so the
+      // filters stay exactly where they were when it closes. ?>
+<dialog id="presentDlg" class="em-present-modal" aria-label="Executive Meeting presentation">
+  <iframe id="presentFrame" title="Executive Meeting presentation" allowfullscreen allow="fullscreen"></iframe>
+</dialog>
+
+<script>
+  const PRESENT_URL = <?= json_encode($presentUrl) ?>;
+
+  function openPresentation(evt) {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (!dlg || !frame || typeof dlg.showModal !== 'function') return true;   // no dialog support: follow the link
+    if (evt) evt.preventDefault();
+    frame.src = PRESENT_URL + (PRESENT_URL.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    dlg.showModal();
+    return false;
+  }
+
+  function closePresentation() {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (dlg && dlg.open) dlg.close();
+    if (frame) frame.removeAttribute('src');    // stops the auto-advance timer
+  }
+
+  // The deck asks to be closed (its Exit button, or Esc inside the frame).
+  window.addEventListener('message', function (e) {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.atts === 'em-present-close') closePresentation();
+  });
+
+  // Esc handled by <dialog> itself: clear the frame so nothing keeps running.
+  document.getElementById('presentDlg').addEventListener('close', function () {
+    const frame = document.getElementById('presentFrame');
+    if (frame) frame.removeAttribute('src');
+  });
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

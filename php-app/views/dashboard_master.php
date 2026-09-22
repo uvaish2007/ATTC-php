@@ -396,6 +396,21 @@ if (!function_exists('dash_column_chart')) {
           <?php endforeach; ?>
         </select>
       </label>
+
+      <?php // EM-SPEC-03 — narrow every figure on this dashboard to EM1's or
+            // EM2's dates. The label carries the dates, so "EM1" is never
+            // ambiguous. ?>
+      <label class="fb-field" title="Show only what was submitted inside a meeting's dates">
+        <span class="fb-k">Meeting</span>
+        <select name="em" onchange="this.form.submit()">
+          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All meetings</option>
+          <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
+            <option value="<?= e($emKey) ?>" <?= ($data['scope']['em'] ?? 'all') === $emKey ? 'selected' : '' ?>>
+              <?= e(em_filter_label($emKey, $data['scope']['year'] ?? null)) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </label>
     </form>
   </div>
 </div>
@@ -1023,6 +1038,7 @@ if (!function_exists('dash_column_chart')) {
     <form method="get" action="<?= e(url('dashboard.php')) ?>#targetChart" class="chart-filters">
       <input type="hidden" name="department" value="<?= e($data['scope']['department'] ?? '') ?>">
       <input type="hidden" name="status"     value="<?= e($data['scope']['status'] ?? '') ?>">
+      <input type="hidden" name="em"         value="<?= e($data['scope']['em'] ?? 'all') ?>">
 
       <span class="card-sub" style="display:flex;align-items:center;gap:6px">
         <?= icon('filter', 14) ?> Filter
