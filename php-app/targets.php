@@ -18,6 +18,11 @@ require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
+// The deadline column is part of this page, so make sure it is there before
+// anything reads or writes it. A database that never ran sql/target_deadline.sql
+// used to take the whole page down with "Unknown column 'target_deadline'".
+targets_deadline_ready();
+
 // Active academic year determines default operating year
 $activeYear  = active_academic_year();
 $years       = academic_years();
@@ -109,6 +114,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [$ok, $msg] = [false, 'Target not found.'];
         } elseif (!target_can_edit($existing, $user)) {
             [$ok, $msg] = [false, 'You cannot edit this target.'];
+        } elseif (!targets_deadline_ready()) {
+            // The column is missing and could not be added, so there is nowhere
+            // to put the date; say so rather than throwing.
+            [$ok, $msg] = [false, 'Deadlines are unavailable: the targets table has no target_deadline column.'];
         } else {
             db()->prepare('UPDATE targets SET target_deadline = ?, updated_at = NOW() WHERE id = ?')->execute([$targetDeadline, $id]);
             [$ok, $msg] = [true, 'Target deadline updated.'];

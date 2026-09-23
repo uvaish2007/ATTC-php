@@ -444,14 +444,24 @@ function target_create(array $user, string $department, string $academicYear, st
         }
     }
 
+    // The deadline column is only named when it exists (targets_deadline_ready
+    // adds it if the migration never ran); without it the target still saves.
+    $hasDeadline = targets_deadline_ready();
+
+    $cols = ['department', 'academic_year', 'metric', 'target_value'];
+    $vals = [$department, $academicYear, $metric, $targetValue];
+    if ($hasDeadline) {
+        $cols[] = 'target_deadline';
+        $vals[] = $targetDeadline;
+    }
+    array_push($cols, 'remarks', 'coordinator', 'status', 'submitted_at', 'created_by');
+    array_push($vals, $remarks ?: null, $coordinator ?: null, $statusVal, $submittedAt, $user['id']);
+
     $stmt = db()->prepare(
-        'INSERT INTO targets (department, academic_year, metric, target_value, target_deadline, remarks, coordinator, status, submitted_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO targets (' . implode(', ', $cols) . ')
+         VALUES (' . implode(', ', array_fill(0, count($cols), '?')) . ')'
     );
-    $stmt->execute([
-        $department, $academicYear, $metric, $targetValue, $targetDeadline, $remarks ?: null, $coordinator ?: null,
-        $statusVal, $submittedAt, $user['id'],
-    ]);
+    $stmt->execute($vals);
 
     if ($isPending) {
         return [true, 'Target created and submitted for Dean review.'];
@@ -527,8 +537,16 @@ function target_update(int $id, array $user, string $department, string $academi
         }
     }
 
-    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, target_deadline = ?, achieved_value = ?, remarks = ?, coordinator = ?';
-    $args = [$department, $targetYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
+    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?';
+    $args = [$department, $targetYear, $metric, $targetValue];
+
+    if (targets_deadline_ready()) {
+        $sql   .= ', target_deadline = ?';
+        $args[] = $targetDeadline;
+    }
+
+    $sql   .= ', achieved_value = ?, remarks = ?, coordinator = ?';
+    array_push($args, $achievedValue, $remarks ?: null, $coordinator ?: null);
 
     if ($fixedText !== null) {
         $sql .= ', fixed_text = ?';
@@ -1218,6 +1236,39 @@ function academic_years_overview(array $years): array
     return $out;
 }
 
+/**
+ * Whether targets.target_deadline exists, adding it if it does not.
+ *
+ * The deadline feature shipped with sql/target_deadline.sql, but a database
+ * that never had the migration applied still fataled on sight: viewing the
+ * Targets page calls ensure_default_targets(), whose INSERT names the column,
+ * so an HoD opening the page got "Unknown column 'target_deadline'" instead of
+ * a page. Adding it here means a deployment cannot be left half-migrated.
+ *
+ * Checked once per request. False only when the column is missing and could
+ * not be added (the database user may not ALTER); callers then leave the
+ * deadline out of their statement rather than failing outright.
+ */
+function targets_deadline_ready(): bool
+{
+    static $ready = null;
+    if ($ready !== null) {
+        return $ready;
+    }
+    try {
+        db()->query('SELECT target_deadline FROM targets LIMIT 1');
+        return $ready = true;
+    } catch (\PDOException $e) {
+        // Missing: fall through and add it.
+    }
+    try {
+        db()->exec('ALTER TABLE targets ADD COLUMN target_deadline DATE NULL AFTER target_value');
+        return $ready = true;
+    } catch (\PDOException $e) {
+        return $ready = false;
+    }
+}
+
 /* ==========================================================================
    Executive meetings
    Recording a finished Executive Meeting locks its academic year for every
@@ -1529,8 +1580,15 @@ function ensure_default_targets(string $department, ?string $academicYear = null
     }
 
     $defaults = target_defaults();
-    $sql = 'INSERT INTO targets (department, academic_year, sort_order, serial_no, metric, fixed_text, target_value, target_deadline, achieved_value, status, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, \'Draft\', ?, NOW(), NOW())';
+    // This seed only ever writes NULL into target_deadline, so when the column
+    // is absent it is left out rather than blocking the seed - leaving it in is
+    // what made merely opening the Targets page fatal.
+    $hasDeadline = targets_deadline_ready();
+    $dlCol = $hasDeadline ? 'target_deadline, ' : '';
+    $dlVal = $hasDeadline ? 'NULL, ' : '';
+
+    $sql = 'INSERT INTO targets (department, academic_year, sort_order, serial_no, metric, fixed_text, target_value, ' . $dlCol . 'achieved_value, status, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ' . $dlVal . '0, \'Draft\', ?, NOW(), NOW())';
     $stmt = db()->prepare($sql);
 
     $inserted = 0;
