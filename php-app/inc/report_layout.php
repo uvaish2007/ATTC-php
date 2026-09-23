@@ -2,22 +2,48 @@
 require_once __DIR__ . '/helpers.php';   
 const REPORT_INSTITUTION = 'Mohamed Sathak Engineering College';
 
-function report_banner_datauri(): string
+// True when this response is a Word document rather than a page in the browser.
+// A .doc has to carry its images inside it; a page can just link to them.
+function report_is_word_download(): bool
 {
-    static $uri = null;
-    if ($uri !== null) {
-        return $uri;
-    }
-    $dir = dirname(__DIR__) . '/assets/img/';
-    foreach (['letterhead.jpg' => 'image/jpeg', 'letterhead.png' => 'image/png'] as $file => $mime) {
-        if (is_file($dir . $file)) {
-            $uri = 'data:' . $mime . ';base64,' . base64_encode((string) file_get_contents($dir . $file));
-            return $uri;
+    foreach (headers_list() as $h) {
+        if (stripos($h, 'application/msword') !== false) {
+            return true;
         }
     }
-    $uri = '';
-    return $uri;
+    return false;
 }
+
+function report_banner_datauri(): string
+{
+    static $cache = [];
+
+    $dir = dirname(__DIR__) . '/assets/img/';
+    $key = report_is_word_download() ? 'inline' : 'linked';
+
+    if (isset($cache[$key])) {
+        return $cache[$key];
+    }
+
+    foreach (['letterhead.jpg' => 'image/jpeg', 'letterhead.png' => 'image/png'] as $file => $mime) {
+        if (!is_file($dir . $file)) {
+            continue;
+        }
+
+        // Word keeps the artwork only if it is embedded. A browser would
+        // otherwise hold a copy per letterhead, and the targets proforma draws
+        // one per department — seventeen copies of the same image, which took
+        // that report past two megabytes.
+        $cache[$key] = $key === 'inline'
+            ? 'data:' . $mime . ';base64,' . base64_encode((string) file_get_contents($dir . $file))
+            : url('assets/img/' . $file);
+
+        return $cache[$key];
+    }
+
+    return $cache[$key] = '';
+}
+
 
 function department_full_name(?string $dept): string
 {
@@ -126,6 +152,24 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
 <body>
 <div class="WordSection1">
 <?php
+}
+
+// The college banner as an <img>, or '' when the file is missing.
+//
+// Exports show the letterhead artwork rather than the college name set in
+// type: it carries the crest, the accreditations and the address, which a
+// line of text cannot, and it is what the printed proformas are expected to
+// look like. Callers fall back to REPORT_INSTITUTION when this returns ''.
+function report_banner_img(int $width = 680, string $extraStyle = ''): string
+{
+    $banner = report_banner_datauri();
+    if ($banner === '') {
+        return '';
+    }
+
+    return '<img src="' . $banner . '" alt="' . e(REPORT_INSTITUTION) . '"'
+         . ' width="' . $width . '" align="center"'
+         . ' style="display:block; margin:0 auto; max-width:100%; height:auto;' . $extraStyle . '">';
 }
 
 function report_letterhead(string $title, array $meta = [], array $headingLines = []): void

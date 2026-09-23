@@ -145,6 +145,7 @@ if ($format === 'word') {
   <style>
     body { font-family: "Calibri", "Segoe UI", Arial, sans-serif; font-size: 13px; color: #131D3B; margin: 20px; line-height: 1.4; }
     .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border-bottom: 2px solid #131D3B; }
+    .hdr-banner { text-align:center; margin-bottom:8px; }
     .hdr-logo { font-size: 20px; font-weight: 800; color: #FF4F01; letter-spacing: -.02em; }
     .hdr-sub { font-size: 12px; color: #5A6785; font-weight: 600; text-transform: uppercase; }
     .title-box { background: #F4F6FA; border: 1px solid #E4E9F2; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
@@ -173,10 +174,17 @@ if ($format === 'word') {
       [$faculty['name'] ?? '', $faculty['department'] ?? '', 'AY ' . $academicYear]); ?>
 <?php endif; ?>
 
+  <?php $bannerImg = report_banner_img(680); ?>
+  <?php if ($bannerImg !== ''): ?>
+    <div class="hdr-banner"><?= $bannerImg ?></div>
+  <?php endif; ?>
+
   <table class="hdr-table">
     <tr>
       <td>
-        <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
+        <?php if ($bannerImg === ''): ?>
+          <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
+        <?php endif; ?>
         <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Faculty Profile</div>
       </td>
       <td style="text-align:right; font-size:11px; color:#5A6785;">
