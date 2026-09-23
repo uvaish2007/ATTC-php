@@ -22,6 +22,7 @@ const MIGRATION_FILES = [
     'workflow_hierarchy.sql',
     'workflow_edit_requests.sql',
     'executive_meetings.sql',
+    'department_names.sql',
 ];
 
 const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (

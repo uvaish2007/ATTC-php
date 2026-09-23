@@ -44,6 +44,81 @@ if ($seesEveryone) {
 }
 
 $counts = record_counts_for_users(array_column($people, 'id'));
+user_photos_preload(array_column($people, 'id'));
+
+// Group the list by department, the way the Users page does, so a roll of
+// sixty names reads as seventeen departments instead of one long table.
+require_once __DIR__ . '/models/Department.php';
+
+// users.department holds a code on some rows ("AERO") and a full name on
+// others ("AGRICULTURE"), so index each department under both and resolve a
+// person by whichever they carry.
+$deptKey   = static fn(string $v): string => mb_strtolower(trim($v));
+$deptIndex = [];
+$deptOrder = [];
+foreach (departments_all() as $i => $d) {
+    foreach ([$d['code'] ?? '', $d['name'] ?? ''] as $alias) {
+        $alias = $deptKey((string) $alias);
+        if ($alias === '') {
+            continue;
+        }
+        $deptIndex[$alias] = $d;
+        $deptOrder[$alias] = $i;
+    }
+}
+
+$roleRank = ['HoD' => 0, 'Coordinator' => 1, 'Faculty' => 2];
+
+$facultyGroups = [];
+foreach ($people as $person) {
+    $rawDept = trim((string) ($person['department'] ?? ''));
+    $alias   = $deptKey($rawDept);
+    $known   = $deptIndex[$alias] ?? null;
+
+    // One key per department, whichever spelling the person's row used.
+    $key = $rawDept === ''
+        ? '__unassigned'
+        : ($known ? $deptKey((string) $known['code']) : $alias);
+
+    if (!isset($facultyGroups[$key])) {
+        if ($key === '__unassigned') {
+            $facultyGroups[$key] = ['kind' => 'unassigned', 'name' => 'No department set', 'code' => null];
+        } elseif ($known) {
+            $facultyGroups[$key] = ['kind' => 'department', 'name' => $known['name'],
+                                    'code' => $known['code']];
+        } else {
+            $facultyGroups[$key] = ['kind' => 'unlisted', 'name' => $rawDept, 'code' => null];
+        }
+        $facultyGroups[$key] += ['key' => $key, 'people' => [], 'roles' => [],
+                                 'records' => 0, 'approved' => 0, 'pending' => 0];
+    }
+
+    $facultyGroups[$key]['people'][] = $person;
+
+    $role = (string) $person['role'];
+    $facultyGroups[$key]['roles'][$role] = ($facultyGroups[$key]['roles'][$role] ?? 0) + 1;
+
+    $mine = $counts[(int) $person['id']] ?? null;
+    $facultyGroups[$key]['records']  += $mine['total']     ?? 0;
+    $facultyGroups[$key]['approved'] += $mine['Approved']  ?? 0;
+    $facultyGroups[$key]['pending']  += $mine['Submitted'] ?? 0;
+}
+
+// Departments in their configured order; anything off the list, then the
+// unassigned bucket, last.
+uasort($facultyGroups, static function (array $a, array $b) use ($deptOrder): int {
+    $rank = static fn(array $g): int => $g['kind'] === 'unassigned' ? 2 : ($g['kind'] === 'unlisted' ? 1 : 0);
+    return [$rank($a), $deptOrder[$a['key']] ?? PHP_INT_MAX, $a['name']]
+       <=> [$rank($b), $deptOrder[$b['key']] ?? PHP_INT_MAX, $b['name']];
+});
+
+foreach ($facultyGroups as &$g) {
+    usort($g['people'], static fn($x, $y) => [$roleRank[$x['role']] ?? 9, $x['name']]
+                                         <=> [$roleRank[$y['role']] ?? 9, $y['name']]);
+    $g['noHod'] = empty($g['roles']['HoD']) && $g['kind'] === 'department';
+}
+unset($g);
+
 
 $totals = ['records' => 0, 'Approved' => 0, 'Submitted' => 0];
 
@@ -61,6 +136,10 @@ $cards = [
 ];
 
 $activeFilters = ($search !== '' ? 1 : 0) + ($seesEveryone && $deptFilter !== '' ? 1 : 0);
+
+// Collapsed by default once there are enough groups to be worth scanning;
+// a filtered or searched list stays open because it is already narrow.
+$openByDefault = $activeFilters > 0 || count($facultyGroups) <= 3;
 
 $pageTitle  = 'Faculty';
 $breadcrumb = 'Faculty';
@@ -132,18 +211,10 @@ require __DIR__ . '/inc/header.php';
     <?php endforeach; ?>
   </div>
 
-  <!-- The people themselves -->
-  <div class="mt-5 card">
-    <div class="card-head">
-      <div>
-        <div class="card-title"><?= $seesEveryone ? 'Faculty across the institution' : 'Department staff' ?></div>
-        <div class="card-sub">Counts include every record type, in any status</div>
-      </div>
-    </div>
+  <?php if (empty($people)): ?>
 
-    <div class="card-body">
-      <?php if (empty($people)): ?>
-
+    <div class="mt-5 card">
+      <div class="card-body">
         <div class="empty">
           <div class="ic"><?= icon('users', 20) ?></div>
           <p><?= $activeFilters ? 'Nobody matches those filters' : 'No faculty accounts yet' ?></p>
@@ -153,15 +224,73 @@ require __DIR__ . '/inc/header.php';
                   : 'The Admin adds accounts and assigns them a department.' ?>
           </div>
         </div>
+      </div>
+    </div>
 
-      <?php else: ?>
+  <?php else: ?>
+
+    <div class="ug-toolbar mt-5">
+      <span class="ug-caption">
+        <?= icon('users', 14) ?>
+        <?= count($people) ?> <?= count($people) === 1 ? 'person' : 'people' ?>
+        across <?= count($facultyGroups) ?> <?= count($facultyGroups) === 1 ? 'group' : 'groups' ?>
+        &middot; counts include every record type, in any status
+      </span>
+      <button type="button" class="btn btn-ghost btn-sm" id="facToggle"><?= icon('layers', 14) ?> Collapse all</button>
+    </div>
+
+    <?php foreach ($facultyGroups as $g): ?>
+      <details class="card tg-group ug-group" data-ug-key="<?= e($g['key']) ?>" <?= $openByDefault ? 'open' : '' ?>>
+        <summary>
+          <?php if ($g['kind'] === 'unassigned'): ?>
+            <span class="ug-code warn" aria-hidden="true"><?= icon('alert-triangle', 17) ?></span>
+          <?php elseif ($g['kind'] === 'unlisted'): ?>
+            <span class="ug-code warn" aria-hidden="true"><?= icon('alert-triangle', 17) ?></span>
+          <?php else: ?>
+            <span class="ug-code" aria-hidden="true"><?= e($g['code'] ?: mb_substr($g['name'], 0, 4)) ?></span>
+          <?php endif; ?>
+
+          <span class="ug-head">
+            <span class="ug-name">
+              <?= e($g['name']) ?>
+              <?php if ($g['kind'] === 'unlisted'): ?>
+                <span class="badge badge-warning">Not on the Departments list</span>
+              <?php endif; ?>
+              <?php if ($g['noHod']): ?>
+                <span class="badge badge-warning" title="Nobody in this department can review its records">
+                  <?= icon('alert-triangle', 11) ?> No HoD
+                </span>
+              <?php endif; ?>
+            </span>
+            <span class="ug-roles">
+              <?php
+                $bits = [];
+                foreach ($roleRank as $r => $_) {
+                    if (!empty($g['roles'][$r])) {
+                        $bits[] = '<b>' . (int) $g['roles'][$r] . '</b> ' . e($r);
+                    }
+                }
+              ?>
+              <?= implode(' <span class="ug-dot">&middot;</span> ', $bits) ?>
+            </span>
+          </span>
+
+          <span class="ug-meta">
+            <?php if ($g['pending'] > 0): ?>
+              <span class="badge badge-info"><?= (int) $g['pending'] ?> awaiting</span>
+            <?php endif; ?>
+            <span class="ug-count">
+              <b><?= (int) $g['records'] ?></b>
+              <span class="ug-count-word">record<?= $g['records'] !== 1 ? 's' : '' ?></span>
+            </span>
+          </span>
+        </summary>
 
         <div class="table-wrap">
-          <table class="data wide">
+          <table class="data wide ug-table">
             <thead>
               <tr>
                 <th>Person</th>
-                <?php if ($seesEveryone): ?><th>Department</th><?php endif; ?>
                 <th>Role</th>
                 <th>Contact</th>
                 <th class="num">Records</th>
@@ -172,7 +301,7 @@ require __DIR__ . '/inc/header.php';
               </tr>
             </thead>
             <tbody>
-              <?php foreach ($people as $person): ?>
+              <?php foreach ($g['people'] as $person): ?>
                 <?php
                   $personId = (int) $person['id'];
                   $mine     = $counts[$personId] ?? null;
@@ -195,16 +324,13 @@ require __DIR__ . '/inc/header.php';
                         <div class="avatar-dark avatar-sm"><?= e(initials($person['name'])) ?></div>
                       <?php endif; ?>
                       <div class="min-w-0">
-                        <div class="fw-500 truncate"><?= e($person['name']) ?></div>
+                        <div class="ug-person truncate"><?= e($person['name']) ?></div>
                         <div class="card-sub truncate"><?= e($person['email']) ?></div>
                       </div>
                     </div>
                   </td>
-                  <?php if ($seesEveryone): ?>
-                    <td class="faint truncate"><?= $person['department'] ? e($person['department']) : '—' ?></td>
-                  <?php endif; ?>
                   <td><span class="badge badge-neutral"><?= e($person['role']) ?></span></td>
-                  <td class="faint"><?= $person['phone'] ? e($person['phone']) : '—' ?></td>
+                  <td class="faint"><?= $person['phone'] ? e($person['phone']) : '&mdash;' ?></td>
                   <td class="num tabular fw-600"><?= (int) $records ?></td>
                   <td class="num tabular"><?= (int) $ok ?></td>
                   <td class="num tabular">
@@ -233,10 +359,10 @@ require __DIR__ . '/inc/header.php';
             </tbody>
           </table>
         </div>
+      </details>
+    <?php endforeach; ?>
 
-      <?php endif; ?>
-    </div>
-  </div>
+  <?php endif; ?>
 
   <!-- Where to go next -->
   <?php if (!$seesEveryone): ?>
@@ -262,5 +388,51 @@ require __DIR__ . '/inc/header.php';
   <?php endif; ?>
 
 <?php endif; ?>
+
+<script>
+(function () {
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.ug-group'));
+  var toggle = document.getElementById('facToggle');
+  if (!groups.length || !toggle) return;
+
+  var KEY = 'atts.faculty.collapsed';
+
+  function label() {
+    var open = groups.filter(function (g) { return g.open; }).length;
+    toggle.innerHTML = open ? '<?= icon('layers', 14) ?> Collapse all'
+                            : '<?= icon('layers', 14) ?> Expand all';
+  }
+
+  // Remember which departments were shut, so the list stays where you left it.
+  try {
+    var shut = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+    groups.forEach(function (g) {
+      if (shut.indexOf(g.getAttribute('data-ug-key')) !== -1) g.open = false;
+    });
+  } catch (e) {}
+
+  function remember() {
+    try {
+      sessionStorage.setItem(KEY, JSON.stringify(
+        groups.filter(function (g) { return !g.open; })
+              .map(function (g) { return g.getAttribute('data-ug-key'); })
+      ));
+    } catch (e) {}
+  }
+
+  groups.forEach(function (g) {
+    g.addEventListener('toggle', function () { label(); remember(); });
+  });
+
+  toggle.addEventListener('click', function () {
+    var anyOpen = groups.some(function (g) { return g.open; });
+    groups.forEach(function (g) { g.open = !anyOpen; });
+    label();
+    remember();
+  });
+
+  label();
+})();
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

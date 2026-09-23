@@ -47,23 +47,37 @@ $roleRank  = ['Admin' => 0, 'Principal' => 1, 'Director' => 1, 'Dean' => 2, 'HoD
 $shownRole = fn(string $r) => $r === 'Director' ? 'Principal' : $r;
 $deptKey   = fn(string $name) => mb_strtolower(trim($name));
 
+// A user's department is a code on some rows ("AERO") and a full name on
+// others, so index each department under both spellings.
 $deptIndex = [];
 $deptOrder = ['__institution' => -1];
 foreach ($departments as $i => $d) {
-    $deptIndex[$deptKey($d['name'])] = $d;
-    $deptOrder[$deptKey($d['name'])] = $i;
+    foreach ([$d['code'] ?? '', $d['name'] ?? ''] as $alias) {
+        $alias = $deptKey((string) $alias);
+        if ($alias === '') {
+            continue;
+        }
+        $deptIndex[$alias] = $d;
+        $deptOrder[$alias] = $i;
+    }
 }
 
 $userGroups = [];
 foreach ($users as $u) {
-    $raw = trim((string) ($u['department'] ?? ''));
-    $key = $raw === '' ? '__institution' : $deptKey($raw);
+    $raw   = trim((string) ($u['department'] ?? ''));
+    $known = $deptIndex[$deptKey($raw)] ?? null;
+
+    // One key per department, whichever spelling the row used.
+    $key = $raw === ''
+        ? '__institution'
+        : ($known ? $deptKey((string) ($known['code'] ?: $known['name'])) : $deptKey($raw));
+
     if (!isset($userGroups[$key])) {
         if ($key === '__institution') {
             $userGroups[$key] = ['kind' => 'institution', 'name' => 'Institution', 'code' => null, 'dept' => ''];
-        } elseif (isset($deptIndex[$key])) {
-            $userGroups[$key] = ['kind' => 'department', 'name' => $deptIndex[$key]['name'],
-                                 'code' => $deptIndex[$key]['code'] ?: $deptIndex[$key]['name'], 'dept' => $deptIndex[$key]['name']];
+        } elseif ($known) {
+            $userGroups[$key] = ['kind' => 'department', 'name' => $known['name'],
+                                 'code' => $known['code'] ?: $known['name'], 'dept' => $known['name']];
         } else {
             $userGroups[$key] = ['kind' => 'unlisted', 'name' => $raw, 'code' => null, 'dept' => $raw];
         }

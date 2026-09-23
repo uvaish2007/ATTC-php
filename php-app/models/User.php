@@ -213,10 +213,55 @@ function user_photo_filename(int $id): ?string
     if (!user_photo_supported()) {
         return null;
     }
+
+    $cache = &user_photo_cache();
+    if (array_key_exists($id, $cache)) {
+        return $cache[$id];
+    }
+
     $stmt = db()->prepare('SELECT photo FROM users WHERE id = ?');
     $stmt->execute([$id]);
     $name = basename(trim((string) $stmt->fetchColumn()));
-    return $name !== '' ? $name : null;
+
+    return $cache[$id] = ($name !== '' ? $name : null);
+}
+
+function &user_photo_cache(): array
+{
+    static $cache = [];
+    return $cache;
+}
+
+// One query for a whole page of people instead of one per row: a staff list of
+// sixty was firing sixty SELECTs just to decide whether to draw an avatar.
+function user_photos_preload(array $ids): void
+{
+    if (!user_photo_supported()) {
+        return;
+    }
+
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    if (!$ids) {
+        return;
+    }
+
+    $cache = &user_photo_cache();
+    $need  = array_values(array_filter($ids, static fn($id) => !array_key_exists($id, $cache)));
+    if (!$need) {
+        return;
+    }
+
+    $in   = implode(',', array_fill(0, count($need), '?'));
+    $stmt = db()->prepare("SELECT id, photo FROM users WHERE id IN ($in)");
+    $stmt->execute($need);
+
+    foreach ($need as $id) {
+        $cache[$id] = null;
+    }
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $name = basename(trim((string) $row['photo']));
+        $cache[(int) $row['id']] = $name !== '' ? $name : null;
+    }
 }
 
 function user_photo_path(?string $filename): ?string
