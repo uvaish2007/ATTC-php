@@ -114,6 +114,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login · ATTS IQAC</title>
+  <?php require __DIR__ . '/inc/favicon.php'; ?>
   <meta name="theme-color" content="#131D3B">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

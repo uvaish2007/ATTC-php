@@ -80,6 +80,7 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Presentation: <?= e($faculty['name']) ?> — ATTS IQAC</title>
+  <?php require __DIR__ . '/inc/favicon.php'; ?>
   <style>
     :root {
       --navy: #131D3B;

@@ -69,6 +69,7 @@ $flashes      = take_flashes();
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($pageTitle) ?> · ATTS IQAC</title>
   <meta name="theme-color" content="#131D3B">
+  <?php require __DIR__ . '/favicon.php'; ?>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Inter when the machine is online; Segoe UI is the fallback, so the portal
