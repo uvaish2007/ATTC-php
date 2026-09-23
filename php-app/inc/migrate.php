@@ -15,6 +15,8 @@ const MIGRATION_FILES = [
     'target_workflow.sql',
     'target_unlock.sql',
     'target_deadline.sql',
+    'target_proforma_columns.sql',
+    'user_role_dean.sql',
     'upload_proofs.sql',
     'user_photo.sql',
     'workflow_hierarchy.sql',
@@ -108,13 +110,39 @@ function migration_statements(string $sql): array
 {
     $sql = preg_replace('/^\s*--.*$/m', '', $sql);
 
-    $out = [];
-    foreach (preg_split('/;\s*[\r\n]+/', $sql) as $part) {
-        $part = trim($part, " \t\r\n;");
-        if ($part !== '') {
-            $out[] = $part;
+    // DELIMITER is a mysql client directive, not SQL, so PDO cannot run it.
+    // Honour it here: a file that declares a stored procedure has semicolons
+    // inside the body, and splitting on those tears the procedure apart.
+    $delimiter = ';';
+    $out       = [];
+    $buffer    = '';
+
+    foreach (preg_split('/\R/', $sql) as $line) {
+        if (preg_match('/^\s*DELIMITER\s+(\S+)\s*$/i', $line, $m)) {
+            if (trim($buffer) !== '') {
+                $out[]  = trim($buffer);
+                $buffer = '';
+            }
+            $delimiter = $m[1];
+            continue;
+        }
+
+        $buffer .= $line . "
+";
+
+        while (($pos = strpos($buffer, $delimiter)) !== false) {
+            $statement = trim(substr($buffer, 0, $pos));
+            $buffer    = substr($buffer, $pos + strlen($delimiter));
+            if ($statement !== '') {
+                $out[] = $statement;
+            }
         }
     }
+
+    if (trim($buffer) !== '') {
+        $out[] = trim($buffer);
+    }
+
     return $out;
 }
 
