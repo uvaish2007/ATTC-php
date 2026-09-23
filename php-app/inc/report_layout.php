@@ -221,9 +221,29 @@ function report_letterhead(string $title, array $meta = [], array $headingLines 
 <?php
 }
 
-/** The signature line. Defaults to the standard IQAC sign-off. */
-function report_signoff(array $columns = ['HOD', 'IQAC COORDINATOR', 'PRINCIPAL']): void
+/**
+ * The standard sign-off columns, in order of authority.
+ *
+ * TS-REP-03 — Dean / Academics countersigns every IQAC export, so the column
+ * belongs in the shared default rather than in the handful of reports that
+ * happened to name it. $hodScope appends the department to the HOD column
+ * ("HOD / Computer Science and Business Systems") when a report covers one
+ * department; pass null for an all-department report.
+ */
+function report_signoff_columns(?string $hodScope = null, string $hodLabel = 'HOD'): array
 {
+    $hod = $hodLabel;
+    if ($hodScope !== null && trim($hodScope) !== '' && strcasecmp(trim($hodScope), 'ALL DEPARTMENTS') !== 0) {
+        $hod .= ' / ' . trim($hodScope);
+    }
+
+    return [$hod, 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+}
+
+/** The signature line. Defaults to the standard IQAC sign-off. */
+function report_signoff(?array $columns = null): void
+{
+    $columns = $columns ?? report_signoff_columns();
     ?>
   <table class="rpt-sign">
     <tr>
@@ -233,6 +253,27 @@ function report_signoff(array $columns = ['HOD', 'IQAC COORDINATOR', 'PRINCIPAL'
     </tr>
   </table>
 <?php
+}
+
+/**
+ * The same sign-off, as spreadsheet rows to append after the data.
+ *
+ * TS-REP-03 asks for the block on Excel exports too, where there is no table
+ * markup to hang it on — so it becomes a blank spacer row followed by the
+ * signature captions, padded to the sheet's column count.
+ */
+function report_signoff_rows(?array $columns = null, int $width = 0): array
+{
+    $columns = $columns ?? report_signoff_columns();
+    $width   = max($width, count($columns));
+
+    $blank = array_fill(0, $width, '');
+    $line  = $blank;
+    foreach (array_values($columns) as $i => $column) {
+        $line[$i] = $column;
+    }
+
+    return [$blank, $blank, $line];
 }
 
 /** Close the document. */

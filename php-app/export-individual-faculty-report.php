@@ -76,6 +76,10 @@ if ($format === 'excel') {
         ];
     }
 
+    // TS-REP-03 — this report is countersigned like every other export.
+    $rows = array_merge($rows, report_signoff_rows(
+        report_signoff_columns(department_full_name($faculty['department'] ?? null)), count($headers)));
+
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Individual Report', [
         'title'       => $title,
         'department'  => $faculty['department'],

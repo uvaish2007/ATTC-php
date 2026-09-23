@@ -107,8 +107,11 @@ if ($format === 'word') {
         'Report Date: ' . $today
     ];
 
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
-        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, mb_substr($spec['title'], 0, 31), $metaLines)
+    $xlsxData = class_exists('SimpleXlsxWriter')
+        ? SimpleXlsxWriter::createXlsx($headers,
+            array_merge($exportRows, report_signoff_rows(
+                report_signoff_columns($singleDept ? $deptFullName : null), count($headers))),
+            mb_substr($spec['title'], 0, 31), $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -217,5 +220,5 @@ report_letterhead($mainTitle, $meta, $headingLines);
   </table>
 
 <?php
-report_signoff(['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'PRINCIPAL']);
+report_signoff(report_signoff_columns($singleDept ? $deptFullName : null));
 report_document_foot();

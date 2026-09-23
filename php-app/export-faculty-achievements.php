@@ -182,6 +182,8 @@ if ($format === 'excel') {
         'Report Date: ' . $today,
     ];
 
+    $rows = array_merge($rows, report_signoff_rows(null, count($headers)));   // TS-REP-03
+
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Faculty Achievements', $metaLines);
     if ($xlsxData !== '') {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

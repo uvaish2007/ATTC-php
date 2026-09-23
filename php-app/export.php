@@ -207,8 +207,10 @@ if ($format === 'excel') {
         'Department: ' . $scopeLabel,
         'Report Date: ' . $today
     ];
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
-        ? SimpleXlsxWriter::createXlsx($columns, $exportRows, 'Academic Records', $metaLines)
+    $xlsxData = class_exists('SimpleXlsxWriter')
+        ? SimpleXlsxWriter::createXlsx($columns,
+            array_merge($exportRows, report_signoff_rows(report_signoff_columns($scopeLabel), count($columns))),
+            'Academic Records', $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -282,6 +284,6 @@ report_letterhead($reportTitle, $meta);
   </table>
 
 <?php
-report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+report_signoff(report_signoff_columns($scopeLabel));
 report_document_foot();
 

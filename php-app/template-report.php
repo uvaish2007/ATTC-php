@@ -133,8 +133,11 @@ if ($format === 'word') {
         }
     }
 
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
-        ? SimpleXlsxWriter::createXlsx($hdr, $exportRows, 'Targets Report', $metaLines)
+    $xlsxData = class_exists('SimpleXlsxWriter')
+        ? SimpleXlsxWriter::createXlsx($hdr,
+            array_merge($exportRows, report_signoff_rows(
+                report_signoff_columns($department ? department_full_name($department) : null), count($hdr))),
+            'Targets Report', $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -309,6 +312,6 @@ foreach ($deptsToRender as $dIndex => $dept):
   </table>
 
 <?php
-    report_signoff(['HOD' . ($dept ? ' / ' . department_full_name($dept) : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+    report_signoff(report_signoff_columns($dept ? department_full_name($dept) : null));
 endforeach;
 report_document_foot();

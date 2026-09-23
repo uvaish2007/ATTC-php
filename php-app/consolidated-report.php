@@ -205,6 +205,10 @@ if ($format === 'excel') {
         'Report Date: ' . $today,
     ];
 
+    // TS-REP-03 — the signature block closes the spreadsheet too, not just
+    // the printed document.
+    $rows = array_merge($rows, report_signoff_rows(null, count($headers)));
+
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Consolidated Report', $metaLines);
     if ($xlsxData !== '') {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -364,7 +368,7 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
   <?php endforeach; ?>
 
   <div style="margin-top:30px;">
-    <?php report_signoff(['HOD', 'DEAN', 'IQAC COORDINATOR', 'PRINCIPAL']); ?>
+    <?php report_signoff(report_signoff_columns()); ?>
   </div>
 
 <?php

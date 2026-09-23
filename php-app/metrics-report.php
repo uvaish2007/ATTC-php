@@ -114,8 +114,11 @@ if ($format === 'word') {
         $metaLines[] = 'Period: ' . $periodLabel;
     }
 
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
-        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, 'Metrics Summary', $metaLines)
+    $xlsxData = class_exists('SimpleXlsxWriter')
+        ? SimpleXlsxWriter::createXlsx($headers,
+            array_merge($exportRows, report_signoff_rows(
+                report_signoff_columns($deptLabel !== 'ALL DEPARTMENTS' ? $deptDisplay : null), count($headers))),
+            'Metrics Summary', $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -196,5 +199,5 @@ report_document_head('Metrics Report');
   </table>
 
 <?php
-report_signoff(['HOD' . ($deptLabel !== 'ALL DEPARTMENTS' ? ' / ' . $deptDisplay : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+report_signoff(report_signoff_columns($deptLabel !== 'ALL DEPARTMENTS' ? $deptDisplay : null));
 report_document_foot();

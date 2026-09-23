@@ -1,24 +1,130 @@
 <?php
 /**
- * Lightweight, native XLSX file generator using ZipArchive and OpenXML.
+ * Lightweight, native XLSX file generator using OpenXML.
  * Generates valid .xlsx files compatible with Microsoft Excel, Google Sheets, LibreOffice.
+ *
+ * TS-REP-01 — the ZIP container is written here in plain PHP rather than through
+ * ext/zip. ZipArchive is not compiled into every PHP build (it is absent from
+ * this project's own runtime), and when it was missing createXlsx() returned an
+ * empty string; every caller then fell through to its HTML branch and served a
+ * Word-flavoured page under an .xlsx name, which is what made Excel complain
+ * about a "linked image" and render a broken table. Deflate comes from zlib,
+ * which PHP has built in, so this path has no optional dependency at all.
  */
+
+/**
+ * The minimum of the ZIP format needed for an OpenXML package: local headers,
+ * a central directory and an end-of-central-directory record. No Zip64 — a
+ * spreadsheet of report rows is nowhere near 4 GB, and no entry is a directory.
+ */
+class SimpleZipWriter
+{
+    /** @var array<int, array<string, mixed>> */
+    private array $entries = [];
+    private string $data   = '';
+
+    public function addFromString(string $name, string $content): void
+    {
+        $crc     = crc32($content);
+        $rawSize = strlen($content);
+
+        // Deflate when zlib gives us something smaller; otherwise store as-is.
+        $method     = 0;
+        $compressed = $content;
+        $deflated   = @gzdeflate($content, 6);
+        if ($deflated !== false && strlen($deflated) < $rawSize) {
+            $method     = 8;
+            $compressed = $deflated;
+        }
+
+        [$dosTime, $dosDate] = self::dosTimestamp();
+
+        $this->entries[] = [
+            'name'     => $name,
+            'offset'   => strlen($this->data),
+            'crc'      => $crc,
+            'method'   => $method,
+            'compSize' => strlen($compressed),
+            'rawSize'  => $rawSize,
+            'time'     => $dosTime,
+            'date'     => $dosDate,
+        ];
+
+        $this->data .= pack('VvvvvvVVVvv',
+            0x04034b50,            // local file header signature
+            20,                    // version needed to extract (2.0)
+            0,                     // general purpose flags
+            $method,
+            $dosTime,
+            $dosDate,
+            $crc,
+            strlen($compressed),
+            $rawSize,
+            strlen($name),
+            0                      // extra field length
+        ) . $name . $compressed;
+    }
+
+    /** The finished archive as a byte string. */
+    public function getContents(): string
+    {
+        $central      = '';
+        $centralStart = strlen($this->data);
+
+        foreach ($this->entries as $e) {
+            $central .= pack('VvvvvvvVVVvvvvvVV',
+                0x02014b50,        // central directory header signature
+                20,                // version made by
+                20,                // version needed to extract
+                0,                 // general purpose flags
+                $e['method'],
+                $e['time'],
+                $e['date'],
+                $e['crc'],
+                $e['compSize'],
+                $e['rawSize'],
+                strlen($e['name']),
+                0,                 // extra field length
+                0,                 // file comment length
+                0,                 // disk number start
+                0,                 // internal file attributes
+                0x20,              // external file attributes (archive)
+                $e['offset']
+            ) . $e['name'];
+        }
+
+        $count = count($this->entries);
+
+        return $this->data . $central . pack('VvvvvVVv',
+            0x06054b50,            // end of central directory signature
+            0,                     // this disk number
+            0,                     // disk where central directory starts
+            $count,                // entries on this disk
+            $count,                // entries in total
+            strlen($central),
+            $centralStart,
+            0                      // archive comment length
+        );
+    }
+
+    /** Now, in the MS-DOS date/time fields the ZIP format still uses. */
+    private static function dosTimestamp(): array
+    {
+        $t    = getdate();
+        $year = max(1980, (int) $t['year']);
+
+        return [
+            (($t['hours'] << 11) | ($t['minutes'] << 5) | ((int) ($t['seconds'] / 2))) & 0xFFFF,
+            ((($year - 1980) << 9) | ($t['mon'] << 5) | $t['mday']) & 0xFFFF,
+        ];
+    }
+}
 
 class SimpleXlsxWriter
 {
     public static function createXlsx(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
     {
-        if (!class_exists('ZipArchive')) {
-            return '';
-        }
-        $tempFile = tempnam(sys_get_temp_dir(), 'xlsx_');
-        if ($tempFile === false) {
-            return '';
-        }
-        $zip = new ZipArchive();
-        if ($zip->open($tempFile, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return '';
-        }
+        $zip = new SimpleZipWriter();
 
         // Calculate column widths
         $colWidths = [];
@@ -225,11 +331,8 @@ class SimpleXlsxWriter
   ' . $hyperlinksXml . '
 </worksheet>';
         $zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
-        $zip->close();
 
-        $data = (string) file_get_contents($tempFile);
-        @unlink($tempFile);
-        return $data;
+        return $zip->getContents();
     }
 
     private static function sanitizeXml(string $str): string

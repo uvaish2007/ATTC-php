@@ -406,7 +406,7 @@ report_document_head('Faculty Details · ' . $profile['name']);
   </table>
 </div>
 
-<?php report_signoff(['HEAD OF THE DEPARTMENT', 'IQAC COORDINATOR', 'PRINCIPAL']); ?>
+<?php report_signoff(report_signoff_columns(null, 'HEAD OF THE DEPARTMENT')); ?>
 
 <table class="doc-foot">
   <tr>

@@ -1055,6 +1055,52 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
+<?php
+/* TS-FAC-01 — the page used to stop dead after the student matrix, with no way
+   through to the single-page view. This closing band routes there directly,
+   carrying the filters that are on screen so the report opens on the same
+   scope the reader was just looking at. */
+$facReportQs = ['academic_year' => $academicYear];
+if ($em !== 'all') { $facReportQs['em'] = $em; }
+$facReportUrl = url('individual-faculty-report.php') . '?' . http_build_query($facReportQs);
+?>
+<div class="mt-5 card fac-deanband">
+  <div class="card-body fac-deanband-row">
+    <div class="fac-deanband-copy">
+      <div class="fac-deanband-k"><?= icon('reports', 13) ?> Dean &middot; Academics</div>
+      <div class="fac-deanband-t">Individual Report &amp; Achievements</div>
+      <div class="card-sub fac-deanband-s">
+        Opens the dedicated single-page view &mdash; profile, achievement summary, category
+        breakdown and every record behind the figures above, on one page ready to sign.
+      </div>
+    </div>
+    <div class="fac-deanband-actions">
+      <a class="btn btn-primary" href="<?= e($facReportUrl) ?>">
+        <?= icon('reports', 16) ?> Open Single-Page Report
+      </a>
+      <a class="btn btn-secondary" href="<?= e(url('present-faculty-report.php') . '?' . http_build_query($facReportQs)) ?>">
+        <?= icon('presentation', 16) ?> Present
+      </a>
+    </div>
+  </div>
+</div>
+
+<style>
+  .fac-deanband { border-color: var(--navy-200, #C9D2E4); }
+  .fac-deanband-row { display:flex; align-items:center; justify-content:space-between;
+      gap:16px 28px; flex-wrap:wrap; padding:20px 24px; }
+  .fac-deanband-copy { flex:1 1 320px; min-width:0; }
+  .fac-deanband-k { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:700;
+      text-transform:uppercase; letter-spacing:.06em; color:var(--brand, #FF4F01); }
+  .fac-deanband-t { font-size:17px; font-weight:700; color:var(--ink, #131D3B); margin-top:5px; }
+  .fac-deanband-s { font-size:12.5px; margin-top:3px; max-width:78ch; }
+  .fac-deanband-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  @media (max-width: 640px) {
+    .fac-deanband-row { flex-direction:column; align-items:stretch; }
+    .fac-deanband-actions > .btn { flex:1 1 auto; justify-content:center; }
+  }
+</style>
+
 <!-- Faculty Detail Drill-Down Modal -->
 <div id="facultyModal" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(19,29,59,0.5); z-index:99999; backdrop-filter:blur(3px); align-items:center; justify-content:center; padding:20px;">
   <div class="modal-card" style="background:#fff; border-radius:16px; max-width:850px; width:100%; max-height:85vh; display:flex; flex-direction:column; box-shadow:var(--shadow-pop); border:1px solid var(--hairline,#E6EAF2); animation:pop-in .2s var(--ease-out);">
