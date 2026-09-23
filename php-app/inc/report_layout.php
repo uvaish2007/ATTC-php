@@ -168,6 +168,130 @@ function report_letterhead(string $title, array $meta = [], array $headingLines 
 <?php
 }
 
+// The review screen wrapped around a report opened as ?format=pdf.
+//
+// Shows the document as a sheet of paper on a neutral canvas with a toolbar
+// above it, so what you are about to print is what you are looking at. Both
+// the toolbar and the canvas are screen-only; printing gets the bare page.
+//
+// $facts are the short scope lines under the title ("All departments",
+// "2025-26", "42 records"). Links to the same report in the other formats are
+// derived from the current URL, so a caller passes nothing for them.
+function report_pdf_bar(string $title, array $facts = [], array $alsoOffer = ['word', 'excel'], ?string $orientation = null): void
+{
+    $landscape = ($orientation ?? $GLOBALS['REPORT_ORIENTATION'] ?? 'portrait') === 'landscape';
+    $sheetW    = $landscape ? '29.7cm' : '21cm';
+    $sheetMinH = $landscape ? '21cm'   : '29.7cm';
+
+    $swapFormat = static function (string $format): string {
+        $uri   = $_SERVER['REQUEST_URI'] ?? '';
+        $parts = parse_url($uri);
+        parse_str($parts['query'] ?? '', $q);
+        $q['format'] = $format;
+        return ($parts['path'] ?? '') . '?' . http_build_query($q);
+    };
+
+    $facts = array_values(array_filter($facts, static fn($f) => trim((string) $f) !== ''));
+    ?>
+  <style>
+    @media screen {
+      html { background: #EDF0F5; }
+      body { background: #EDF0F5; margin: 0; padding: 104px 20px 56px; }
+
+      /* The page itself, as paper. */
+      div.WordSection1, .pdf-sheet {
+        width: <?= $sheetW ?>; min-height: <?= $sheetMinH ?>; box-sizing: border-box;
+        margin: 0 auto; padding: 1.4cm 1.2cm; background: #fff;
+        box-shadow: 0 1px 2px rgba(19,29,59,.06), 0 18px 48px -12px rgba(19,29,59,.22);
+      }
+
+      .pdf-bar {
+        position: fixed; inset: 0 0 auto 0; z-index: 50;
+        background: #131D3B; color: #fff;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: 12px 20px; padding: 12px 22px; flex-wrap: wrap;
+        box-shadow: 0 1px 0 rgba(255,255,255,.08), 0 6px 24px rgba(12,19,41,.28);
+      }
+      .pdf-bar-id { min-width: 0; }
+      .pdf-bar-k {
+        font-size: 10px; font-weight: 700; letter-spacing: .09em;
+        text-transform: uppercase; color: #FF7A3D;
+      }
+      .pdf-bar-t {
+        font-size: 14.5px; font-weight: 650; margin-top: 2px; color: #fff;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 52vw;
+      }
+      .pdf-bar-facts {
+        font-size: 11.5px; color: #9AA7C4; margin-top: 3px;
+        display: flex; gap: 8px; flex-wrap: wrap;
+      }
+      .pdf-bar-facts span:not(:last-child)::after { content: '·'; margin-left: 8px; color: #55628A; }
+
+      .pdf-bar-do { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .pdf-btn {
+        font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+        border-radius: 8px; padding: 9px 15px; border: 1px solid transparent;
+        text-decoration: none; display: inline-flex; align-items: center; gap: 7px;
+        transition: background .15s ease, border-color .15s ease;
+      }
+      .pdf-btn-main { background: #FF4F01; color: #fff; }
+      .pdf-btn-main:hover { background: #E04400; }
+      .pdf-btn-alt {
+        background: transparent; color: #C9D2E4; border-color: rgba(255,255,255,.22);
+      }
+      .pdf-btn-alt:hover { background: rgba(255,255,255,.08); color: #fff; }
+      .pdf-kbd {
+        font-size: 10.5px; color: #8492B4; margin-left: 2px; white-space: nowrap;
+      }
+      .pdf-kbd b {
+        font-weight: 600; color: #C9D2E4; border: 1px solid rgba(255,255,255,.2);
+        border-radius: 4px; padding: 1px 5px; font-family: inherit;
+      }
+
+      @media (max-width: 720px) {
+        body { padding-top: 132px; }
+        .pdf-bar-t { max-width: 100%; white-space: normal; }
+        .pdf-kbd { display: none; }
+      }
+    }
+
+    /* Printing gets the document and nothing else. */
+    @media print {
+      .pdf-bar { display: none !important; }
+      html, body { background: #fff; margin: 0; padding: 0; }
+      div.WordSection1, .pdf-sheet {
+        width: auto; min-height: 0; margin: 0; padding: 0; box-shadow: none;
+      }
+    }
+  </style>
+
+  <div class="pdf-bar">
+    <div class="pdf-bar-id">
+      <div class="pdf-bar-k">Print preview</div>
+      <div class="pdf-bar-t" title="<?= e($title) ?>"><?= e($title) ?></div>
+      <?php if ($facts): ?>
+        <div class="pdf-bar-facts">
+          <?php foreach ($facts as $f): ?><span><?= e($f) ?></span><?php endforeach; ?>
+          <span><?= $landscape ? 'A4 landscape' : 'A4 portrait' ?></span>
+        </div>
+      <?php endif; ?>
+    </div>
+
+    <div class="pdf-bar-do">
+      <?php if (in_array('word', $alsoOffer, true)): ?>
+        <a class="pdf-btn pdf-btn-alt" href="<?= e($swapFormat('word')) ?>">Word</a>
+      <?php endif; ?>
+      <?php if (in_array('excel', $alsoOffer, true)): ?>
+        <a class="pdf-btn pdf-btn-alt" href="<?= e($swapFormat('excel')) ?>">Excel</a>
+      <?php endif; ?>
+      <button type="button" class="pdf-btn pdf-btn-main" onclick="window.print()">Print / Save as PDF</button>
+      <span class="pdf-kbd"><b>Ctrl</b> + <b>P</b></span>
+    </div>
+  </div>
+<?php
+}
+
 function report_signoff_columns(?string $hodScope = null, string $hodLabel = 'HOD'): array
 {
     $hod = $hodLabel;

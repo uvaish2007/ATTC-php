@@ -114,13 +114,9 @@ report_document_head($spec['title'], 'landscape');
 ?>
 
 <?php if ($format === 'pdf'): ?>
-  <div class="pdf-bar" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;
-       display:flex;align-items:center;justify-content:space-between;font-family:Arial,sans-serif;margin:-1.4cm -1.2cm 16px">
-    <span style="font-size:13px">Use your browser's print dialog and choose <strong>Save as PDF</strong>.</span>
-    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;
-       padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Print / Save as PDF</button>
-  </div>
-  <style>@media print { .pdf-bar { display:none !important; } }</style>
+  <?php report_pdf_bar($spec['title'], [$deptFullName ?? $deptLabel,
+      $year !== null ? 'AY ' . $year : 'All academic years',
+      number_format(count($records)) . ' records']); ?>
 <?php endif; ?>
 
 <?php

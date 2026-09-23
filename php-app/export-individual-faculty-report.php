@@ -169,10 +169,8 @@ if ($format === 'word') {
 <body>
 
 <?php if ($format === 'pdf'): ?>
-  <div class="no-print" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;margin:-20px -20px 20px -20px;display:flex;align-items:center;justify-content:space-between;">
-    <span style="font-size:13px">Use your browser's print dialog and select <strong>Save as PDF</strong>.</span>
-    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;">Print / Save as PDF</button>
-  </div>
+  <?php report_pdf_bar($title ?? 'Individual Faculty Report',
+      [$faculty['name'] ?? '', $faculty['department'] ?? '', 'AY ' . $academicYear]); ?>
 <?php endif; ?>
 
   <table class="hdr-table">

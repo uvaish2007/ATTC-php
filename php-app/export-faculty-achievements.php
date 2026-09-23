@@ -259,14 +259,9 @@ if ($format === 'word') {
 <body>
 
   <?php if ($format === 'pdf'): ?>
-    <div class="no-print" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 10px;">
-      <button onclick="window.print()" style="background: #FF4F01; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Print / Save as PDF
-      </button>
-      <button onclick="window.close()" style="background: #E4E9F2; color: #131D3B; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Close Window
-      </button>
-    </div>
+    <?php report_pdf_bar('Faculty Achievements', [$scopeLabel ?? '', 'AY ' . $academicYear,
+        number_format(count($rows ?? [])) . ' rows'], ['word', 'excel'], 'landscape'); ?>
+    <div class="pdf-sheet">
   <?php endif; ?>
 
   <table class="hdr-table">
@@ -409,5 +404,6 @@ if ($format === 'word') {
     Generated automatically by ATTS IQAC System on <?= e($today) ?> &middot; Academic Year: <?= e($academicYear) ?> &middot; Official Academic Record
   </div>
 
+<?php if ($format === 'pdf'): ?></div><?php endif; ?>
 </body>
 </html>
