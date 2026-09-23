@@ -481,7 +481,7 @@ require __DIR__ . '/inc/header.php';
 
   <!-- Executive Meeting (FEAT-07) -->
   <label class="fb-field" title="Achievements submitted during EM1 or EM2">
-    <span class="fb-k">Meeting</span>
+    <span class="fb-k">EM Duration</span>
     <select name="em" onchange="this.form.submit()">
       <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
       <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
@@ -761,7 +761,14 @@ require __DIR__ . '/inc/header.php';
                         <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?>" class="btn btn-primary btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px;">
                           <?= icon('file-text', 13) ?> View Report
                         </a>
-                        <a href="<?= e(url('present-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?>" class="btn btn-secondary btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px; background:#131D3B; color:#ffffff; border:1px solid #131D3B;">
+                        <?php
+                          $facPresQ = ['id' => (int) $f['id'], 'from' => 'faculty-achievements'];
+                          if (!empty($academicYear)) $facPresQ['academic_year'] = $academicYear;
+                          if (!empty($department))   $facPresQ['return_dept']   = $department;
+                          if (!empty($category))     $facPresQ['return_cat']    = $category;
+                          $facPresUrl = url('present-faculty-report.php') . '?' . http_build_query($facPresQ);
+                        ?>
+                        <a href="<?= e($facPresUrl) ?>" class="btn btn-secondary btn-sm" style="border-radius:999px; padding:4px 10px; font-size:11.5px; display:inline-flex; align-items:center; gap:4px; background:#131D3B; color:#ffffff; border:1px solid #131D3B;">
                           <?= icon('play-circle', 13) ?> Present
                         </a>
                         <!-- Faculty Details: the A4 document of everything ATTS holds on this
@@ -917,6 +924,7 @@ require __DIR__ . '/inc/header.php';
                         'name'          => $s['student_name'],
                         'dept'          => $s['department'],
                         'academic_year' => $academicYear,
+                        'from'          => 'faculty-achievements',
                     ]);
                   ?>
                   <tr class="drill-row" style="cursor:pointer;" title="Click to view <?= e($s['student_name']) ?>'s Individual Student Achievement Report" onclick="location.href='<?= e($studReportUrl) ?>'">

@@ -25,7 +25,14 @@ if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     exit;
 }
 
-$academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
+$em           = $emCtx['em'];
+$emWindow     = $emCtx['window'];
+$category     = trim((string) input('category', '')) ?: null;
 $format       = strtolower(trim((string) input('format', 'excel')));
 
 if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
@@ -33,7 +40,7 @@ if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
 }
 
 // Fetch faculty details and records
-$data = faculty_achievement_details($targetFacultyId, $academicYear);
+$data = faculty_achievement_details($targetFacultyId, $academicYear, $category, $emWindow);
 $faculty = $data['faculty'];
 $records = $data['records'];
 $byCategory = $data['by_category'];

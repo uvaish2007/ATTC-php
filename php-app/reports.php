@@ -63,11 +63,13 @@ $category   = !$isDirector ? (trim((string) input('category')) ?: null) : null;
 if ($category !== null && !isset($categories[$category])) {
     $category = null;
 }
-// Reports show the system's ONE active academic year — never a client-chosen
-// year, and never mixed with any other year's figures (section 6).
-$year       = active_academic_year();
-$rawFrom    = $canFilter   ? trim((string) input('from'))    : '';
-$rawTo      = $canFilter   ? trim((string) input('to'))      : '';
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear     = input('academic_year') ?: input('year');
+$emCtx       = em_resolve_filter_context($rawYear, input('em'));
+$year        = $emCtx['year'];
+$em          = $emCtx['em'];
+$rawFrom     = $canFilter   ? trim((string) input('from'))    : '';
+$rawTo       = $canFilter   ? trim((string) input('to'))      : '';
 
 $fromIso     = parse_date_input($rawFrom);
 $toIso       = parse_date_input($rawTo);
@@ -81,11 +83,6 @@ if ($fromIso && $toIso && $fromIso > $toIso) {
     $rangeError = 'From Date cannot be later than To Date.';
 }
 
-// FEAT-07: Executive Meeting filter (All / EM1 / EM2), offered to every role.
-// It only narrows within what report_records() already lets the role see, so
-// it widens nobody's scope. The EM engine turns it into a date window that is
-// intersected with any period above and applied in SQL.
-$em = em_filter_value(input('em'));
 [$recFrom, $recTo] = em_intersect_period($em, $rangeError ? null : $fromIso, $rangeError ? null : $toIso, $year);
 
 $records = report_records($user, $department, $status, $type, $recFrom, $recTo, $year);
@@ -120,11 +117,26 @@ if ($isHod) {
 // ---- Query strings each report link carries ------------------------------
 $emQ      = $em !== 'all' ? $em : null;   // carried so every download matches the screen
 $recordsQ = array_filter([
-    'department' => $department, 'status' => $status, 'type' => $type,
-    'category' => $category, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ,
+    'department'    => $department,
+    'academic_year' => $year,
+    'status'        => $status,
+    'type'          => $type,
+    'category'      => $category,
+    'from'          => $fromDisplay,
+    'to'            => $toDisplay,
+    'em'            => $emQ,
 ]);
-$meetingQ = array_filter(['department' => $department, 'year' => $year]);
-$metricsQ = array_filter(['department' => $department, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ]);
+$meetingQ = array_filter(['department' => $department, 'academic_year' => $year, 'year' => $year, 'em' => $emQ]);
+$metricsQ = array_filter(['department' => $department, 'academic_year' => $year, 'year' => $year, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ]);
+
+// EM-SPEC-04: Carry active Academic Year, EM Duration, and Department to the Executive Meeting Report.
+$emReportParams = array_filter([
+    'academic_year' => $year,
+    'em'            => ($em !== 'all' ? $em : null),
+    'department'    => $department,
+], fn($v) => $v !== null && $v !== '');
+$emReportUrl = url('executive-meeting-report.php') . ($emReportParams ? '?' . http_build_query($emReportParams) : '');
+
 
 $link = fn(string $file, array $q, string $fmt) =>
     e(url($file) . '?' . http_build_query($q + ['format' => $fmt]));
@@ -156,7 +168,7 @@ require __DIR__ . '/inc/header.php';
   <?php // EM-SPEC-04: the Executive Meeting Report is reached from the page
         // header, above the filter bar — not from a control inside it. ?>
   <div class="actions">
-    <a class="btn btn-primary btn-sm" href="<?= e(url('executive-meeting-report.php')) ?>"
+    <a id="header_em_report_btn" class="btn btn-primary btn-sm" href="<?= e($emReportUrl) ?>"
        title="Filter and present the Executive Meeting Report">
       <?= icon('presentation', 15) ?> Executive Meeting Report
     </a>
@@ -239,9 +251,20 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
 
-    <?php // FEAT-07 ?>
-    <label class="fb-field" title="Executive Meeting period — records submitted during EM1 or EM2">
-      <span class="fb-k">Meeting</span>
+    <label class="fb-field" title="Filter by Academic Year">
+      <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
+      <select name="academic_year" onchange="this.form.submit()">
+        <?php foreach ($years as $y): ?>
+          <option value="<?= e($y) ?>" <?= $year === $y ? 'selected' : '' ?>>
+            <?= e($y) ?><?= $y === active_academic_year() ? ' (Active)' : '' ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+
+    <?php // EM-SPEC-03: EM Duration filter ?>
+    <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+      <span class="fb-k">EM Duration</span>
       <select name="em" onchange="this.form.submit()">
         <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
         <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
@@ -286,8 +309,18 @@ require __DIR__ . '/inc/header.php';
         // single Executive Meeting — that narrows, it never widens. ?>
   <form method="get" class="fbar mt-5">
     <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
-    <label class="fb-field" title="Executive Meeting period — records submitted during EM1 or EM2">
-      <span class="fb-k">Meeting</span>
+    <label class="fb-field" title="Filter by Academic Year">
+      <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
+      <select name="academic_year" onchange="this.form.submit()">
+        <?php foreach ($years as $y): ?>
+          <option value="<?= e($y) ?>" <?= $year === $y ? 'selected' : '' ?>>
+            <?= e($y) ?><?= $y === active_academic_year() ? ' (Active)' : '' ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+      <span class="fb-k">EM Duration</span>
       <select name="em" onchange="this.form.submit()">
         <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
         <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
@@ -627,30 +660,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-<!-- ========================================================================
-     EXECUTIVE MEETING PRESENTATION (FEAT-06)
-     Open to every role; what each one sees is scoped server-side.
-     ===================================================================== -->
-<div class="mt-5 card">
-  <div class="card-body">
-    <div class="hero-card-row">
-      <div style="max-width:550px;">
-        <div style="font-weight:600; font-size:14px; color:var(--ink,#131D3B); display:flex; align-items:center; gap:8px;">
-          <?= icon('presentation', 15) ?> Executive Meeting Presentation
-        </div>
-        <div class="card-sub" style="margin-top:2px;">
-          Filter the meeting report by department, academic year, faculty, student and Executive Meeting,
-          then present it full screen with auto or manual slide advance.
-        </div>
-      </div>
-      <div class="hero-card-actions">
-        <a class="btn btn-primary" href="<?= e(url('executive-meeting-report.php')) ?>">
-          <?= icon('play-circle', 16) ?> Open Presentation Report
-        </a>
-      </div>
-    </div>
-  </div>
-</div>
+<?php // EM-SPEC-04: Obsolete duplicate hero card removed. The primary Executive Meeting Report action is in the top header. ?>
 
 <div class="mt-5 card">
   <div class="card-head">
@@ -851,9 +861,6 @@ require __DIR__ . '/inc/header.php';
                 <?= icon('eye', 13) ?> View only
               </a>
             <?php endif; ?>
-            <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
-              <?= icon('chevron-down', 13) ?> <span class="cat-btn-txt">Expand</span>
-            </button>
           </div>
         </div>
         <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>" hidden>
@@ -971,19 +978,12 @@ require __DIR__ . '/inc/header.php';
 
     // 2. Individual Category collapse/expand
     const catHead = e.target.closest('.js-toggle-cat');
-    const catBtn = e.target.closest('.js-cat-btn');
-    if (catHead || catBtn) {
-      const ckey = (catBtn || catHead).dataset.cat;
+    if (catHead && !e.target.closest('a')) {
+      const ckey = catHead.dataset.cat;
       const body = document.getElementById('cat-body-' + ckey);
-      const btn = document.querySelector('.js-cat-btn[data-cat="' + ckey + '"]');
       if (body) {
         const isHidden = body.hidden;
         body.hidden = !isHidden;
-        if (btn) {
-          const txt = btn.querySelector('.cat-btn-txt');
-          if (txt) txt.textContent = isHidden ? 'Collapse' : 'Expand';
-          btn.querySelector('svg').outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
-        }
         const anyOpen = Array.from(document.querySelectorAll('.rec-cat-body')).some(b => !b.hidden);
         const allCatsBtn = document.getElementById('toggleCatsAllBtn');
         if (allCatsBtn) {
@@ -1006,11 +1006,6 @@ require __DIR__ . '/inc/header.php';
       const txt = document.getElementById('toggleCatsAllTxt');
       if (txt) txt.textContent = open ? 'Expand categories' : 'Collapse categories';
       allCatsBtn.querySelector('svg').outerHTML = open ? '<?= icon('chevron-down', 14) ?>' : '<?= icon('chevron-up', 14) ?>';
-      document.querySelectorAll('.js-cat-btn').forEach(btn => {
-        const txt = btn.querySelector('.cat-btn-txt');
-        if (txt) txt.textContent = open ? 'Expand' : 'Collapse';
-        btn.querySelector('svg').outerHTML = open ? '<?= icon('chevron-down', 13) ?>' : '<?= icon('chevron-up', 13) ?>';
-      });
       return;
     }
 
@@ -1036,12 +1031,6 @@ require __DIR__ . '/inc/header.php';
         const svg = allCatsBtn.querySelector('svg');
         if (svg) svg.outerHTML = '<?= icon('chevron-up', 14) ?>';
       }
-      document.querySelectorAll('.js-cat-btn').forEach(btn => {
-        const txt = btn.querySelector('.cat-btn-txt');
-        if (txt) txt.textContent = 'Collapse';
-        const svg = btn.querySelector('svg');
-        if (svg) svg.outerHTML = '<?= icon('chevron-up', 13) ?>';
-      });
     }
     document.querySelectorAll('.rec-group').forEach(g => setGroup(g, open));
     all.dataset.on = open ? '1' : '0';
@@ -1313,6 +1302,33 @@ function validatePeriodRange() {
     return true;
   }
 }
+
+// EM-SPEC-04: Keep the top-header Executive Meeting Report link in sync with any client-side filter changes.
+(function() {
+  function syncEmReportLink() {
+    var btn = document.getElementById('header_em_report_btn');
+    if (!btn) return;
+    var form = document.querySelector('form.fbar');
+    if (!form) return;
+    var params = new URLSearchParams();
+    var yearEl = form.querySelector('select[name="academic_year"]');
+    if (yearEl && yearEl.value) params.set('academic_year', yearEl.value);
+    var emEl = form.querySelector('select[name="em"]');
+    if (emEl && emEl.value && emEl.value !== 'all') params.set('em', emEl.value);
+    var deptEl = form.querySelector('select[name="department"]');
+    if (deptEl && deptEl.value) params.set('department', deptEl.value);
+    var qs = params.toString();
+    var baseUrl = btn.href.split('?')[0];
+    btn.href = qs ? baseUrl + '?' + qs : baseUrl;
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    var form = document.querySelector('form.fbar');
+    if (!form) return;
+    form.querySelectorAll('select').forEach(function(sel) {
+      sel.addEventListener('change', syncEmReportLink);
+    });
+  });
+})();
 </script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

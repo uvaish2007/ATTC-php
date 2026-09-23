@@ -59,6 +59,7 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
     <?php
       $ufSelected = $flowState['year'] ?: $ufActive;
       $ufLocked   = academic_year_is_locked($ufActive);
+      $ufEmStatus = em_status($ufActive);
       $ufEmBlock  = em_submission_block_reason($user['role'], $ufActive);
     ?>
     <div class="uf-header">
@@ -101,7 +102,16 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
             Academic year <?= e($ufActive) ?> cycle is currently locked by the Administrator. New record submissions are frozen.
           </div>
         <?php elseif ($ufEmBlock): ?>
-          <div class="alert alert-warning" style="margin-bottom:20px;"><?= e($ufEmBlock) ?></div>
+          <div class="alert alert-warning" style="margin-bottom:20px; display:flex; align-items:center; gap:8px;">
+            <span class="ay-pill locked" style="font-size:11px; padding:2px 8px;">EM1 Closed</span>
+            <span><?= e($ufEmBlock) ?></span>
+          </div>
+        <?php elseif ($ufEmStatus['em2_active']): ?>
+          <div class="alert alert-success" style="margin-bottom:20px; background:#F0FDF4; border:1px solid #BBF7D0; color:#166534; display:flex; align-items:center; gap:8px;">
+            <span class="ay-pill locked" style="font-size:11px; padding:2px 8px;">EM1 Closed</span>
+            <span class="ay-pill active" style="font-size:11px; padding:2px 8px;">EM2 Active</span>
+            <span>Executive Meeting 1 has ended. Executive Meeting 2 is now active.</span>
+          </div>
         <?php endif; ?>
 
         <div class="uf-actions">
@@ -116,14 +126,38 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
     </section>
 
   <?php else: ?>
+    <?php
+      $ufYearEmStatus = em_status($flowState['year']);
+      $ufYearEmBlock  = em_submission_block_reason($user['role'], $flowState['year']);
+    ?>
     <div class="uf-header">
       <h1 class="uf-heading">UPLOAD DATA</h1>
       
-      <div style="margin-bottom:12px;">
+      <div style="margin-bottom:12px; display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap;">
         <span class="uf-year-pill">
           <?= icon('calendar', 14) ?> Academic Year: <?= e($flowState['year']) ?>
         </span>
+        <?php if ($ufYearEmStatus['em1_locked']): ?>
+          <span class="ay-pill locked" style="font-size:12px; padding:5px 12px; font-weight:600;">EM1 Closed</span>
+        <?php elseif ($ufYearEmStatus['current'] === 'em1'): ?>
+          <span class="ay-pill active" style="font-size:12px; padding:5px 12px; font-weight:600;">EM1 Active</span>
+        <?php endif; ?>
+        <?php if ($ufYearEmStatus['em2_active']): ?>
+          <span class="ay-pill active" style="font-size:12px; padding:5px 12px; font-weight:600;">EM2 Active</span>
+        <?php elseif ($ufYearEmStatus['em2_upcoming']): ?>
+          <span class="ay-pill newer" style="font-size:12px; padding:5px 12px; font-weight:600;">EM2 Upcoming</span>
+        <?php endif; ?>
       </div>
+
+      <?php if ($ufYearEmBlock && $user['role'] !== 'Admin'): ?>
+        <div class="alert alert-warning" style="max-width:540px; margin:0 auto 20px; text-align:left; font-size:13px;">
+          <?= e($ufYearEmBlock) ?>
+        </div>
+      <?php elseif ($ufYearEmStatus['em2_active']): ?>
+        <div class="alert alert-success" style="max-width:540px; margin:0 auto 20px; text-align:left; font-size:13px; background:#F0FDF4; border:1px solid #BBF7D0; color:#166534;">
+          Executive Meeting 1 has ended. Executive Meeting 2 is now active.
+        </div>
+      <?php endif; ?>
 
       <p class="uf-subtitle" style="font-weight:600; color:var(--ink,#131D3B);">Select Data Type</p>
     </div>
@@ -141,8 +175,8 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
           <h2 class="uf-choice-title">FACULTY DATA</h2>
           <p class="uf-choice-sub">Faculty academic records</p>
           <div class="uf-choice-foot">
-            <button type="submit" name="data_type" value="faculty" class="btn btn-primary">
-              SELECT
+            <button type="submit" name="data_type" value="faculty" class="btn btn-primary" <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'disabled style="cursor:not-allowed;opacity:0.75;"' : '' ?>>
+              <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'LOCKED' : 'SELECT' ?>
             </button>
           </div>
         </section>
@@ -155,8 +189,8 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
           <h2 class="uf-choice-title">STUDENT DATA</h2>
           <p class="uf-choice-sub">Student academic records</p>
           <div class="uf-choice-foot">
-            <button type="submit" name="data_type" value="student" class="btn btn-primary">
-              SELECT
+            <button type="submit" name="data_type" value="student" class="btn btn-primary" <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'disabled style="cursor:not-allowed;opacity:0.75;"' : '' ?>>
+              <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'LOCKED' : 'SELECT' ?>
             </button>
           </div>
         </section>

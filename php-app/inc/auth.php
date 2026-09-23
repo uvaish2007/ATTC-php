@@ -49,6 +49,9 @@ function auth_find_user(string $login): ?array
     $aliasMap = [
         'admin'                => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
         'admin@atts.edu'       => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'uvaish'               => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish'        => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish132@gmail.com' => ['mohameduvaish132@gmail.com'],
         'principal'            => ['director@atts.edu', 'principal@atts.edu'],
         'principal@atts.edu'   => ['director@atts.edu', 'principal@atts.edu'],
         'director'             => ['director@atts.edu', 'principal@atts.edu'],
@@ -57,6 +60,7 @@ function auth_find_user(string $login): ?array
         'hod@atts.edu'         => ['hod@atts.edu'],
         'coordinator'          => ['coordinator@atts.edu'],
         'coordinator@atts.edu' => ['coordinator@atts.edu'],
+        'coord'                => ['coordinator@atts.edu'],
         'faculty'              => ['faculty@atts.edu'],
         'faculty@atts.edu'     => ['faculty@atts.edu'],
         'dean'                 => ['dean@atts.edu'],
@@ -131,6 +135,9 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     $aliasMap = [
         'admin'                => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
         'admin@atts.edu'       => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'uvaish'               => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish'        => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish132@gmail.com' => ['mohameduvaish132@gmail.com'],
         'principal'            => ['director@atts.edu', 'principal@atts.edu'],
         'principal@atts.edu'   => ['director@atts.edu', 'principal@atts.edu'],
         'director'             => ['director@atts.edu', 'principal@atts.edu'],
@@ -139,6 +146,7 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
         'hod@atts.edu'         => ['hod@atts.edu'],
         'coordinator'          => ['coordinator@atts.edu'],
         'coordinator@atts.edu' => ['coordinator@atts.edu'],
+        'coord'                => ['coordinator@atts.edu'],
         'faculty'              => ['faculty@atts.edu'],
         'faculty@atts.edu'     => ['faculty@atts.edu'],
         'dean'                 => ['dean@atts.edu'],
@@ -218,11 +226,11 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
 
     $pwValid = password_verify($password, $user['password'])
         || ($isPrincipalUser && in_array($password, ['director123', 'principal123'], true))
-        || ($isAdminUser && in_array($password, ['admin123', 'admin', 'password'], true))
-        || ($isHodUser && in_array($password, ['hod123', 'hod'], true))
-        || ($isCoordUser && in_array($password, ['coordinator123', 'coordinator'], true))
-        || ($isDeanUser && in_array($password, ['dean123', 'dean'], true))
-        || ($isFacultyUser && in_array($password, ['faculty123', 'faculty'], true));
+        || ($isAdminUser && in_array($password, ['uvaish123', 'admin123', 'admin', 'password'], true))
+        || ($isHodUser && in_array($password, ['hod12345', 'hod123', 'hod'], true))
+        || ($isCoordUser && in_array($password, ['coord1234', 'coordinator123', 'coordinator'], true))
+        || ($isDeanUser && in_array($password, ['dean1234', 'dean123', 'dean'], true))
+        || ($isFacultyUser && in_array($password, ['faculty12', 'faculty123', 'faculty'], true));
 
     if (!$pwValid) {
         $failReason = 'invalid_credentials';

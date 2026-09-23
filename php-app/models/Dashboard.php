@@ -84,18 +84,13 @@ function dashboard_data(array $user): array
     $valid  = ['Draft', 'Submitted', 'Approved', 'Rejected'];
     $status = in_array(($_GET['status'] ?? ''), $valid, true) ? $_GET['status'] : null;
 
-    // The ONE centralized active academic year — every role reads the same
-    // system-wide value here, never a client-supplied $_GET['year']. This is
-    // what makes "Admin activates 2024-25 -> the whole system sees 2024-25"
-    // true for Faculty/Coordinator/HoD/Dean/Director too, not just Admin.
-    $year = active_academic_year();
-
-    // EM-SPEC-03 — "EM1 Duration" / "EM2 Duration" narrows every record figure
-    // below to what was submitted inside that meeting's dates. "all" leaves
-    // the year untouched. A year with no schedule selects nothing rather than
-    // silently showing everything (em_filter_window).
-    $em       = em_filter_value($_GET['em'] ?? null);
-    $emWindow = em_filter_window($em, $year);
+    // EM-SPEC-03 — Centralized Academic Year and EM Duration filter resolution.
+    // Defaults to system active academic year, validating against academic_years().
+    $rawYear  = $_GET['academic_year'] ?? ($_GET['year'] ?? null);
+    $emCtx    = em_resolve_filter_context($rawYear, $_GET['em'] ?? null);
+    $year     = $emCtx['year'];
+    $em       = $emCtx['em'];
+    $emWindow = $emCtx['window'];
 
     $metrics = all_metrics();
 
@@ -301,6 +296,7 @@ function dashboard_data(array $user): array
         'isOversight'      => $isOversight,
         'departments'    => $departments,
         'years'          => academic_years(),
+        'activeYear'     => active_academic_year(),
         'usingConfigured'=> $usingConfigured,
         'stats'          => $stats,
         'metricDefs'     => array_map(
@@ -735,11 +731,13 @@ function my_dashboard_data(array $user): array
 {
     $pdo  = db();
     $uid  = (int) $user['id'];
-    $year = active_academic_year();
 
-    // EM-SPEC-03 — the same meeting filter, over this person's own records.
-    $em       = em_filter_value($_GET['em'] ?? null);
-    $emWindow = em_filter_window($em, $year);
+    // EM-SPEC-03 — Centralized Academic Year and EM Duration filter resolution.
+    $rawYear  = $_GET['academic_year'] ?? ($_GET['year'] ?? null);
+    $emCtx    = em_resolve_filter_context($rawYear, $_GET['em'] ?? null);
+    $year     = $emCtx['year'];
+    $em       = $emCtx['em'];
+    $emWindow = $emCtx['window'];
 
     $metrics = dept_metrics() + other_metrics();
     $statusBreakdown = [
@@ -791,6 +789,8 @@ function my_dashboard_data(array $user): array
         'metricLabels'    => array_map(fn($m) => $m['label'], $metrics),
         'statusBreakdown' => $statusBreakdown,
         'recent'          => recent_activity(null, null, $uid, $year, $emWindow),
+        'years'           => academic_years(),
+        'activeYear'      => active_academic_year(),
         'scope'           => ['year' => $year, 'em' => $em, 'emLabel' => em_filter_label($em, $year),
                               'emWindow' => $emWindow],
     ];

@@ -25,17 +25,19 @@ if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     exit;
 }
 
-// Filters
-$academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
+$em           = $emCtx['em'];
+$emWindow     = $emCtx['window'];
 $category     = trim((string) input('category', '')) ?: null;
 
-// FEAT-02 global active year, kept separate from the filter above: the Dean
-// Report (FEAT-05) always covers the active year, whatever this page is
-// currently filtered to.
 $activeYear = active_academic_year();
 
 // Fetch data
-$data    = faculty_achievement_details($targetFacultyId, $academicYear, $category);
+$data    = faculty_achievement_details($targetFacultyId, $academicYear, $category, $emWindow);
 $faculty = $data['faculty'];
 $records = $data['records'];
 $byCat   = $data['by_category'];
@@ -58,6 +60,7 @@ $exportQ = array_filter([
     'id'            => $targetFacultyId,
     'academic_year' => $academicYear,
     'category'      => $category,
+    'em'            => ($em !== 'all') ? $em : null,
 ]);
 $exportLink = fn(string $fmt) => e(url('export-individual-faculty-report.php')) . '?' . http_build_query($exportQ + ['format' => $fmt]);
 
@@ -77,11 +80,11 @@ require __DIR__ . '/inc/header.php';
 
   <div class="actions flex gap-2 items-center" style="flex-wrap:wrap;">
     <?php if (!$isSelf): ?>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
-        <?= icon('arrow-left', 14) ?> Back to Reports
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Back to Faculty Achievements">
+        <?= icon('award', 14) ?> Faculty Achievements
       </a>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Go to Performance Matrix">
-        <?= icon('award', 14) ?> Performance Matrix
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
+        <?= icon('reports', 14) ?> Reports Hub
       </a>
     <?php endif; ?>
 
@@ -89,7 +92,7 @@ require __DIR__ . '/inc/header.php';
       <?= icon('refresh', 14) ?> Refresh
     </a>
 
-    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
+    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>&from=individual" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
       <?= icon('play-circle', 14) ?> Present Report
     </a>
 
@@ -157,12 +160,25 @@ require __DIR__ . '/inc/header.php';
   <input type="hidden" name="id" value="<?= $targetFacultyId ?>">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filter Report</span>
 
-  <label class="fb-field">
+  <label class="fb-field" title="Filter by Academic Year">
     <span class="fb-k">Academic Year</span>
     <select name="academic_year" onchange="this.form.submit()">
-      <option value="">All Academic Years</option>
       <?php foreach ($years as $y): ?>
-        <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>><?= e($y) ?></option>
+        <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>>
+          <?= e($y) ?><?= $y === $activeYear ? ' (Active)' : '' ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+
+  <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+    <span class="fb-k">EM Duration</span>
+    <select name="em" onchange="this.form.submit()">
+      <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
+      <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
+        <option value="<?= e($emKey) ?>" <?= $em === $emKey ? 'selected' : '' ?>>
+          <?= e(em_filter_label($emKey, $academicYear)) ?>
+        </option>
       <?php endforeach; ?>
     </select>
   </label>
