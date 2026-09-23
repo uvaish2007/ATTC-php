@@ -387,6 +387,9 @@ require __DIR__ . '/inc/header.php';
     if (evt) evt.preventDefault();
     frame.src = PRESENT_URL + (PRESENT_URL.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
     dlg.showModal();
+    frame.onload = function() {
+      try { frame.contentWindow.focus(); } catch (err) {}
+    };
     return false;
   }
 
@@ -401,6 +404,29 @@ require __DIR__ . '/inc/header.php';
   window.addEventListener('message', function (e) {
     if (e.origin !== window.location.origin) return;
     if (e.data && e.data.atts === 'em-present-close') closePresentation();
+  });
+
+  // Forward parent window keyboard navigation to the presentation iframe while modal is open
+  window.addEventListener('keydown', function (e) {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (!dlg || !dlg.open || !frame || !frame.contentWindow) return;
+
+    const tag = (document.activeElement || {}).tagName || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement || {}).isContentEditable) {
+      return;
+    }
+
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      try { frame.contentWindow.postMessage({ atts: 'em-nav', key: 'ArrowRight' }, window.location.origin); } catch (err) {}
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      try { frame.contentWindow.postMessage({ atts: 'em-nav', key: 'ArrowLeft' }, window.location.origin); } catch (err) {}
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closePresentation();
+    }
   });
 
   // Esc handled by <dialog> itself: clear the frame so nothing keeps running.

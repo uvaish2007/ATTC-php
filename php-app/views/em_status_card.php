@@ -113,6 +113,9 @@ if ($canPresent) {
     var embedUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
     frame.src = embedUrl;
     dlg.showModal();
+    frame.onload = function() {
+      try { frame.contentWindow.focus(); } catch (err) {}
+    };
     return false;
   }
 
@@ -135,6 +138,29 @@ if ($canPresent) {
   window.addEventListener('message', function (e) {
     if (e.origin !== window.location.origin) return;
     if (e.data && e.data.atts === 'em-present-close') {
+      closeEmDashboardPresentation();
+    }
+  });
+
+  // Forward parent window keyboard navigation to dashboard presentation iframe while modal is open
+  window.addEventListener('keydown', function (e) {
+    var dlg = document.getElementById('emDashboardPresentDlg');
+    var frame = document.getElementById('emDashboardPresentFrame');
+    if (!dlg || !dlg.open || !frame || !frame.contentWindow) return;
+
+    var tag = (document.activeElement || {}).tagName || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement || {}).isContentEditable) {
+      return;
+    }
+
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      try { frame.contentWindow.postMessage({ atts: 'em-nav', key: 'ArrowRight' }, window.location.origin); } catch (err) {}
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      try { frame.contentWindow.postMessage({ atts: 'em-nav', key: 'ArrowLeft' }, window.location.origin); } catch (err) {}
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
       closeEmDashboardPresentation();
     }
   });

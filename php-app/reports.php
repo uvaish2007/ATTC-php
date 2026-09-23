@@ -167,15 +167,9 @@ require __DIR__ . '/inc/header.php';
 
   <?php // EM-SPEC-04: the Executive Meeting Report is reached from the page
         // header, above the filter bar — not from a control inside it. ?>
-<<<<<<< HEAD
   <div class="actions">
     <a id="header_em_report_btn" class="btn btn-primary btn-sm" href="<?= e($emReportUrl) ?>"
        title="Filter and present the Executive Meeting Report">
-=======
-  <div class="actions flex gap-2 items-center" style="flex-wrap:wrap;">
-    <a class="btn btn-primary btn-sm" href="<?= e(url('executive-meeting-report.php')) ?>"
-       title="Executive Meeting Report &amp; Presentation Mode">
->>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
       <?= icon('presentation', 15) ?> Executive Meeting Report
     </a>
   </div>

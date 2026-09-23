@@ -598,7 +598,7 @@ $embed      = (string) input('embed') === '1';
 
     <div class="dots" id="dotsContainer"></div>
 
-    <div class="slide-counter" id="slideCounter">Slide <b>1</b> of 1</div>
+    <div class="slide-counter" id="slideCounter">Slide <b>1</b> / <?= count($slides) ?></div>
   </footer>
 
   <script>
@@ -613,7 +613,9 @@ $embed      = (string) input('embed') === '1';
 
     let currentIndex = 0;
     let mode = 'auto';           // EM-SPEC-09: start in auto mode by default
-    let autoTimer = null;        // the ONLY timer handle; never more than one
+    let autoTimer = null;        // the ONLY auto-play timer handle; never more than one
+    let renderTimer = null;      // the transition render timer handle
+    let keyListenerAttached = false;
 
     /* ---- Timer control -------------------------------------------------- */
 
@@ -623,22 +625,26 @@ $embed      = (string) input('embed') === '1';
         autoTimer = null;
       }
       const bar = document.getElementById('autoBar');
-      bar.classList.remove('running');
-      bar.style.animationDuration = '';
-      bar.style.width = '0';
+      if (bar) {
+        bar.classList.remove('running');
+        bar.style.animationDuration = '';
+        bar.style.width = '0';
+      }
     }
 
-    /* Always clears first, so switching modes or slides can never leave two
-       timers running against each other. */
+    /* Starts the 5000ms auto timer. Clears any existing timer first, guaranteeing
+       only one active auto-play timer at all times. */
     function startAutoTimer() {
       clearAutoTimer();
       if (mode !== 'auto') return;
       if (currentIndex >= slides.length - 1) return;   // stop on the final slide
 
       const bar = document.getElementById('autoBar');
-      bar.style.animationDuration = AUTO_ADVANCE_MS + 'ms';
-      void bar.offsetWidth;                            // restart the animation
-      bar.classList.add('running');
+      if (bar) {
+        bar.style.animationDuration = AUTO_ADVANCE_MS + 'ms';
+        void bar.offsetWidth;                            // restart the animation
+        bar.classList.add('running');
+      }
 
       autoTimer = setTimeout(() => {
         autoTimer = null;
@@ -648,8 +654,10 @@ $embed      = (string) input('embed') === '1';
 
     function setMode(next) {
       mode = (next === 'auto') ? 'auto' : 'manual';
-      document.getElementById('btnAuto').classList.toggle('active', mode === 'auto');
-      document.getElementById('btnManual').classList.toggle('active', mode === 'manual');
+      const btnAuto = document.getElementById('btnAuto');
+      const btnManual = document.getElementById('btnManual');
+      if (btnAuto) btnAuto.classList.toggle('active', mode === 'auto');
+      if (btnManual) btnManual.classList.toggle('active', mode === 'manual');
 
       if (mode === 'auto') {
         startAutoTimer();        // resumes from whichever slide is showing
@@ -660,48 +668,88 @@ $embed      = (string) input('embed') === '1';
 
     /* ---- Navigation ----------------------------------------------------- */
 
+    function updateSlideIndicator() {
+      const counter = document.getElementById('slideCounter');
+      if (!counter) return;
+      const cur = currentIndex + 1;
+      const total = slides.length;
+      counter.innerHTML = 'Slide <b>' + cur + '</b> / ' + total;
+      counter.setAttribute('data-slide', cur + ' / ' + total);
+      counter.setAttribute('aria-label', cur + ' / ' + total);
+    }
+
+    function updateNavButtons() {
+      const btnPrev = document.getElementById('btnPrev');
+      const btnNext = document.getElementById('btnNext');
+      if (btnPrev) btnPrev.disabled = currentIndex === 0;
+      if (btnNext) btnNext.disabled = currentIndex === slides.length - 1;
+    }
+
+    function updateDots() {
+      const dots = document.getElementById('dotsContainer');
+      if (!dots) return;
+      dots.innerHTML = '';
+      slides.forEach((_, i) => {
+        const dot = document.createElement('div');
+        dot.className = 'dot' + (i === currentIndex ? ' active' : '');
+        dot.title = 'Slide ' + (i + 1);
+        dot.onclick = () => renderSlide(i, true);
+        dots.appendChild(dot);
+      });
+    }
+
     function renderSlide(index, userDriven) {
       if (index < 0 || index >= slides.length) return;
       currentIndex = index;
 
-      clearAutoTimer();          // never advance off a slide being replaced
+      // Cancel any active auto timer immediately so manual navigation overrides
+      clearAutoTimer();
+
+      // Clear any pending render transition timeout so rapid navigation doesn't stack
+      if (renderTimer !== null) {
+        clearTimeout(renderTimer);
+        renderTimer = null;
+      }
 
       const card = document.getElementById('slideCard');
       const content = document.getElementById('slideContent');
-      card.classList.remove('active');
+      if (card) card.classList.remove('active');
 
-      setTimeout(() => {
-        content.innerHTML = buildSlide(slides[currentIndex]);
-        content.scrollTop = 0;
-        card.classList.add('active');
+      renderTimer = setTimeout(() => {
+        renderTimer = null;
+        if (content) {
+          content.innerHTML = buildSlide(slides[currentIndex]);
+          content.scrollTop = 0;
+        }
+        if (card) card.classList.add('active');
 
-        document.getElementById('slideCounter').innerHTML =
-          'Slide <b>' + (currentIndex + 1) + '</b> of ' + slides.length;
-        document.getElementById('btnPrev').disabled = currentIndex === 0;
-        document.getElementById('btnNext').disabled = currentIndex === slides.length - 1;
+        updateSlideIndicator();
+        updateNavButtons();
+        updateDots();
 
-        const dots = document.getElementById('dotsContainer');
-        dots.innerHTML = '';
-        slides.forEach((_, i) => {
-          const dot = document.createElement('div');
-          dot.className = 'dot' + (i === currentIndex ? ' active' : '');
-          dot.title = 'Slide ' + (i + 1);
-          dot.onclick = () => renderSlide(i, true);
-          dots.appendChild(dot);
-        });
-
-        startAutoTimer();        // a no-op unless auto mode is on
+        // Resets the 5-second auto timer so newly selected slide remains visible for ~5s
+        startAutoTimer();
       }, 120);
     }
 
     // EM-SPEC-09: boundary behavior — stops at first/last (no unexpected loop).
-    function prevSlide() { if (currentIndex > 0) renderSlide(currentIndex - 1, true); }
-    function nextSlide() { if (currentIndex < slides.length - 1) renderSlide(currentIndex + 1, true); }
+    function prevSlide(userDriven = true) {
+      if (currentIndex > 0) renderSlide(currentIndex - 1, userDriven);
+    }
+    function nextSlide(userDriven = true) {
+      if (currentIndex < slides.length - 1) renderSlide(currentIndex + 1, userDriven);
+    }
     function firstSlide() { renderSlide(0, true); }
     function lastSlide() { renderSlide(slides.length - 1, true); }
 
     function exitPresentation() {
       clearAutoTimer();
+      if (renderTimer !== null) {
+        clearTimeout(renderTimer);
+        renderTimer = null;
+      }
+      removeKeydownListener();
+
       if (document.fullscreenElement && document.exitFullscreen) {
         document.exitFullscreen().catch(() => {});
       }
@@ -716,22 +764,52 @@ $embed      = (string) input('embed') === '1';
     /* ---- Keyboard ------------------------------------------------------- */
     // EM-SPEC-09: Input-field safety: do NOT navigate slides when the user is
     // typing in an input, textarea, or select element.
-    document.addEventListener('keydown', (e) => {
+    function handleKeydown(e) {
       const tag = (document.activeElement || {}).tagName || '';
       const inInput = (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
         || (document.activeElement || {}).isContentEditable);
 
+      if (inInput) return; // Do not interfere with typing inside inputs/textareas
+
       switch (e.key) {
         case 'ArrowRight':
-        case 'PageDown':  if (!inInput) { e.preventDefault(); nextSlide(); } break;
+        case 'PageDown':  e.preventDefault(); nextSlide(true); break;
         case 'ArrowLeft':
-        case 'PageUp':    if (!inInput) { e.preventDefault(); prevSlide(); } break;
-        case ' ':         if (!inInput) { e.preventDefault(); nextSlide(); } break;
-        case 'Home':      if (!inInput) { e.preventDefault(); firstSlide(); } break;
-        case 'End':       if (!inInput) { e.preventDefault(); lastSlide(); } break;
-        case 'Escape':    exitPresentation(); break;
+        case 'PageUp':    e.preventDefault(); prevSlide(true); break;
+        case ' ':         e.preventDefault(); nextSlide(true); break;
+        case 'Home':      e.preventDefault(); firstSlide(); break;
+        case 'End':       e.preventDefault(); lastSlide(); break;
+        case 'Escape':    e.preventDefault(); exitPresentation(); break;
         case 'a': case 'A':
-          if (!inInput) setMode(mode === 'auto' ? 'manual' : 'auto'); break;
+          setMode(mode === 'auto' ? 'manual' : 'auto'); break;
+      }
+    }
+
+    function attachKeydownListener() {
+      if (!keyListenerAttached) {
+        document.addEventListener('keydown', handleKeydown);
+        keyListenerAttached = true;
+      }
+    }
+
+    function removeKeydownListener() {
+      if (keyListenerAttached) {
+        document.removeEventListener('keydown', handleKeydown);
+        keyListenerAttached = false;
+      }
+    }
+
+    // Support navigation forwarded from parent window (when embedded in an iframe modal)
+    window.addEventListener('message', function (e) {
+      if (e.origin !== window.location.origin) return;
+      if (e.data && e.data.atts === 'em-nav') {
+        if (e.data.key === 'ArrowRight' || e.data.key === 'PageDown' || e.data.key === ' ') {
+          nextSlide(true);
+        } else if (e.data.key === 'ArrowLeft' || e.data.key === 'PageUp') {
+          prevSlide(true);
+        } else if (e.data.key === 'Escape') {
+          exitPresentation();
+        }
       }
     });
 
@@ -1173,6 +1251,8 @@ $embed      = (string) input('embed') === '1';
             </div>
           </div>
         </div>`;
+    }
+
     function renderTargetProgressBar(target, achieved, unlinked) {
       if (unlinked) {
         return `
@@ -1236,30 +1316,7 @@ $embed      = (string) input('embed') === '1';
     function buildSlide(s) {
       const scope = `${esc(s.summary['Department'])} &middot; ${esc(s.summary['Academic Year'])}`;
 
-<<<<<<< HEAD
       // 1: Title / Executive Meeting Overview Slide
-=======
-      // 1: Target Summary (First Slide)
-      if (s.type === 'target_summary') {
-        const c = s.contributions;
-        const fixed = c ? c.total_target : (s.academic_targets || 0);
-        const achieved = c ? c.total_achieved : (s.targets_achieved || 0);
-        const inProg = c ? c.total_in_prog : (s.targets_in_progress || 0);
-        const total = c ? c.total_count : (achieved + inProg);
-        const achPct = fixed > 0 ? Math.round((achieved / fixed) * 100) : 0;
-        const inProgPct = fixed > 0 ? Math.round((inProg / fixed) * 100) : 0;
-
-        return `
-          <div class="ex-wrap">
-            ${renderExecutiveBanner('Summary of Target Achievements', 'Research • Innovation • Global Impact')}
-            ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
-            ${renderExecutiveSplitRow(c, 'Academic Target Achievements')}
-            ${renderExecutiveFooter()}
-          </div>`;
-      }
-
-      // 2: Title / Cover Slide
->>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
       if (s.type === 'title') {
         const c = s.contributions;
         const tot = s.totals || {};
@@ -1288,21 +1345,12 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
-<<<<<<< HEAD
             ${renderExecutiveBanner('Executive Meeting Report', `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`, 'Better Research for a Brighter Future')}
             ${renderExecutiveKpis(fixed, achieved || (tot.faculty || 0), achPct, inProg || (tot.student || 0), inProgPct, total, '(Records in Scope)')}
             <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:20px; text-align:center; min-height:0; overflow-y:auto;">
               <div class="intro-badge" style="margin-bottom:8px;"><?= icon('presentation', 13) ?> Executive Presentation Mode</div>
               <h2 style="font-size:26px; font-weight:800; color:#0B2D59;">Internal Quality Assurance Cell (IQAC)</h2>
               <p style="font-size:13.5px; color:#64748B; margin-top:4px; max-width:680px;">
-=======
-            ${renderExecutiveBanner(s.title, `${esc(s.summary['Executive Meeting'])} &middot; ${scope}`)}
-            ${renderExecutiveKpis(fixed, achieved || (s.totals ? s.totals.faculty : 0), achPct, inProg || (s.totals ? s.totals.student : 0), inProgPct, total, '(Records in Scope)')}
-            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:24px; text-align:center;">
-              <div class="intro-badge" style="margin-bottom:12px;"><?= icon('presentation', 13) ?> Executive Presentation</div>
-              <h2 style="font-size:28px; font-weight:800; color:#0B2D59;">Internal Quality Assurance Cell (IQAC)</h2>
-              <p style="font-size:14px; color:#64748B; margin-top:6px; max-width:640px;">
->>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
                 Comprehensive institutional performance review covering faculty publications, academic targets, student milestones, and department achievements for <strong>${esc(s.summary['Academic Year'])}</strong>.
               </p>
 
@@ -1668,7 +1716,6 @@ $embed      = (string) input('embed') === '1';
 
         return `
           <div class="ex-wrap">
-<<<<<<< HEAD
             ${renderExecutiveBanner(s.title || 'Department Milestones & Contributions', `${scope} &middot; Institutional Milestones`, 'Better Research for a Brighter Future')}
             ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
             ${renderExecutiveSplitRow(c, 'Department Academic Milestones & Records')}
@@ -1811,12 +1858,6 @@ $embed      = (string) input('embed') === '1';
               </div>
             </div>
             ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
-=======
-            ${renderExecutiveBanner(s.title, 'Research • Innovation • Global Impact')}
-            ${renderExecutiveKpis(fixed, achieved, achPct, inProg, inProgPct, total, '(Achieved + In Progress)')}
-            ${renderExecutiveSplitRow(c, 'Academic Records & Publications')}
-            ${renderExecutiveFooter()}
->>>>>>> fcb9a101612fa71c3664cc52b42e73f942839573
           </div>`;
       }
 
@@ -1981,9 +2022,9 @@ $embed      = (string) input('embed') === '1';
         </div>`;
     }
 
-    // EM-SPEC-09: render first slide, then start auto-play immediately.
-    // setMode() also updates the button states to reflect 'auto' is active.
-    renderSlide(0, false);   // draws slide 0, which calls startAutoTimer()
+    // EM-SPEC-09: attach keydown listener, render first slide, and start auto-play
+    attachKeydownListener();
+    renderSlide(0, false);
     wake();
   </script>
 </body>
