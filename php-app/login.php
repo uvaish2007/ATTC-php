@@ -33,7 +33,7 @@ if (is_logged_in()) {
 // Fetch available roles for the role selector
 $roles = [
     'Admin'       => ['icon' => 'shield',     'desc' => 'Full system access, manage users & departments'],
-    'Principal'   => ['icon' => 'eye',        'desc' => 'Institution-wide overview & reports'],
+    'Principal'   => ['icon' => 'eye',        'desc' => 'Institution-wide overview & reports (Principal / Director)'],
     'Dean'        => ['icon' => 'award',      'desc' => 'Academic oversight & institution-wide approvals'],
     'HoD'         => ['icon' => 'graduation', 'desc' => 'Department head, approve records'],
     'Coordinator' => ['icon' => 'target',     'desc' => 'Upload data & generate reports'],
@@ -90,14 +90,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
             $failReason = null;
             $user = attempt_login($email, $password, $selectedRole, $failReason);
 
+            // If credentials are valid but the role selected in step 1 was different
+            // (e.g. user selected Admin on UI but entered coordinator@atts.edu credentials),
+            // seamlessly log them in with their actual registered role!
+            if (!$user && $failReason && str_starts_with($failReason, 'role_mismatch:')) {
+                $user = attempt_login($email, $password, null, $failReason);
+            }
+
             if ($user) {
                 admin_year_gate_set();
                 redirect('/dashboard.php');
             } elseif ($failReason === 'deactivated') {
                 $error = 'Your account has been deactivated. Please contact an administrator.';
-            } elseif ($failReason && str_starts_with($failReason, 'role_mismatch:')) {
-                $actualRole = substr($failReason, 14);
-                $error = 'The selected role does not match your account. You are registered as "' . htmlspecialchars($actualRole) . '".';
             } else {
                 $error = 'Invalid email or password.';
             }
