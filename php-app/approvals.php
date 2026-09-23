@@ -240,7 +240,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <!-- Role-specific tab navigation -->
-  <div style="display:flex; gap:6px; background:#F1F5F9; padding:4px; border-radius:10px; border:1px solid #E2E8F0">
+  <div style="display:flex; flex-wrap:wrap; gap:6px; background:#F1F5F9; padding:4px; border-radius:10px; border:1px solid #E2E8F0; max-width:100%">
     <?php if ($user['role'] === 'HoD'): ?>
       <a href="?tab=records" class="btn btn-sm <?= $currentTab === 'records' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('file-text', 14) ?> Department Records (<?= count($records) ?>)

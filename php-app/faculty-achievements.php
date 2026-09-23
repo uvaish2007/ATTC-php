@@ -298,9 +298,9 @@ require __DIR__ . '/inc/header.php';
     color: var(--muted, #5A6785);
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* These captions are two words at most; wrapping reads better than
+       clipping "Total Students" to "Total Stud…". */
+    white-space: normal;
   }
   .stud-stat-value {
     font-size: 20px;
@@ -1137,6 +1137,7 @@ $facReportUrl = url('individual-faculty-report.php') . '?' . http_build_query($f
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="<?= e(url('assets/js/charts.js')) ?>"></script>
 <script>
 // View Switcher for Department Performance Analysis (Data View vs Analytics View)
 function switchDeptView(mode) {
@@ -1206,92 +1207,21 @@ function initStudentCharts() {
   if (studChartsInitialized) return;
   studChartsInitialized = true;
 
-  // Chart 1: Category Distribution Bar Chart
-  const catCanvas = document.getElementById('studCatChart');
-  if (catCanvas) {
-    const catLabels = <?= json_encode(array_keys($studCatBreakdown)) ?>;
-    const catData = <?= json_encode(array_values(array_map(fn($c) => $c['count'], $studCatBreakdown))) ?>;
-    const catColors = <?= json_encode(array_values(array_map(fn($c) => $c['color'], $studCatBreakdown))) ?>;
+  const catBreakdown = <?= json_encode($studCatBreakdown) ?>;
+  ATTS.charts.bar('studCatChart', {
+    labels: Object.keys(catBreakdown),
+    data:   Object.values(catBreakdown).map(c => c.count),
+    colors: Object.values(catBreakdown).map(c => c.color),
+    empty:  'No student achievements in these categories yet'
+  });
 
-    new Chart(catCanvas, {
-      type: 'bar',
-      data: {
-        labels: catLabels,
-        datasets: [{
-          data: catData,
-          backgroundColor: catColors,
-          borderRadius: 6,
-          maxBarThickness: 36,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => ` Records: ${ctx.raw}`
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { size: 11 } }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: '#E7EBF3' },
-            ticks: { stepSize: 1 }
-          }
-        }
-      }
-    });
-  }
-
-  // Chart 2: Department-wise Achievements Bar Chart
-  const deptCanvas = document.getElementById('studDeptChart');
-  if (deptCanvas) {
-    const deptLabels = <?= json_encode(array_keys($studDeptCounts)) ?>;
-    const deptData = <?= json_encode(array_values($studDeptCounts)) ?>;
-
-    new Chart(deptCanvas, {
-      type: 'bar',
-      data: {
-        labels: deptLabels.length > 0 ? deptLabels : ['No Departments'],
-        datasets: [{
-          data: deptData.length > 0 ? deptData : [0],
-          backgroundColor: '#131D3B',
-          borderRadius: 6,
-          maxBarThickness: 36,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (ctx) => ` Total Achievements: ${ctx.raw}`
-            }
-          }
-        },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: { font: { size: 11 } }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: '#E7EBF3' },
-            ticks: { stepSize: 1 }
-          }
-        }
-      }
-    });
-  }
+  ATTS.charts.bar('studDeptChart', {
+    labels: <?= json_encode(array_keys($studDeptCounts)) ?>,
+    data:   <?= json_encode(array_values($studDeptCounts)) ?>,
+    colors: '#131D3B',
+    unit:   'achievements',
+    empty:  'No departments have student achievements yet'
+  });
 }
 
 // Toggle export menu dropdown
@@ -1305,43 +1235,16 @@ document.addEventListener('click', () => {
   if (m) m.style.display = 'none';
 });
 
-// Render Department Comparison Bar Chart
-(function() {
+(function () {
   const deptData = <?= json_encode($deptComp) ?>;
-  const ctx = document.getElementById('deptCompChart');
-  if (!ctx || !deptData || deptData.length === 0) return;
+  if (!deptData || !deptData.length) return;
 
-  const labels = deptData.map(d => d.department);
-  const totals = deptData.map(d => d.total);
-
-  new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Total Achievements',
-        data: totals,
-        backgroundColor: '#FF4F01',
-        borderRadius: 6,
-        maxBarThickness: 40,
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => ` Achievements: ${ctx.raw}`
-          }
-        }
-      },
-      scales: {
-        x: { grid: { display: false } },
-        y: { beginAtZero: true, grid: { color: '#E7EBF3' }, ticks: { stepSize: 1 } }
-      }
-    }
+  ATTS.charts.bar('deptCompChart', {
+    labels: deptData.map(d => d.department),
+    data:   deptData.map(d => d.total),
+    colors: '#FF4F01',
+    unit:   'achievements',
+    empty:  'No department has recorded achievements yet'
   });
 })();
 

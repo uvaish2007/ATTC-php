@@ -241,7 +241,7 @@ if (!function_exists('dash_column_chart')) {
 
         $ceil  = dash_chart_ceil(max($values));
         $slot  = $plotW / $n;
-        $barW  = min(58.0, max(16.0, $slot * 0.56));
+        $barW  = min(40.0, max(14.0, $slot * 0.52));
         $baseY = $padT + $plotH;
 
         $svg = '<svg class="chart" viewBox="0 0 ' . $W . ' ' . $H . '" preserveAspectRatio="xMidYMid meet" role="img">';
@@ -270,12 +270,20 @@ if (!function_exists('dash_column_chart')) {
             }
 
             if ($v > 0) {
-                $svg .= '<rect class="chart-bar" x="' . round($x, 1) . '" y="' . round($y, 1)
-                      . '" width="' . round($barW, 1) . '" height="' . round($h, 1) . '" rx="4"'
-                      . ' style="fill:' . $color . '"><title>' . e($it['label'] . ': ' . $v) . '</title></rect>';
+                $r  = min(5.0, $barW / 2, $h);
+                $x2 = $x + $barW;
+                $d  = 'M' . round($x, 1) . ' ' . round($baseY, 1)
+                    . 'V' . round($y + $r, 1)
+                    . 'Q' . round($x, 1) . ' ' . round($y, 1) . ' ' . round($x + $r, 1) . ' ' . round($y, 1)
+                    . 'H' . round($x2 - $r, 1)
+                    . 'Q' . round($x2, 1) . ' ' . round($y, 1) . ' ' . round($x2, 1) . ' ' . round($y + $r, 1)
+                    . 'V' . round($baseY, 1) . 'Z';
+                $svg .= '<path class="chart-bar" d="' . $d . '" style="fill:' . $color . '">'
+                      . '<title>' . e($it['label'] . ': ' . $v) . '</title></path>';
+
+                $svg .= '<text class="chart-value" x="' . round($mid, 1) . '" y="' . round($y - 8, 1)
+                      . '" text-anchor="middle">' . $v . '</text>';
             }
-            $svg .= '<text class="chart-value" x="' . round($mid, 1) . '" y="' . round($y - 8, 1)
-                  . '" text-anchor="middle">' . $v . '</text>';
 
             $ly = $baseY + ($rotate ? 16 : 24);
             $svg .= $rotate
@@ -1133,7 +1141,7 @@ if (!function_exists('dash_column_chart')) {
           ?>
           <div class="attain-row">
             <div class="attain-info">
-              <div class="nm"><?= e($m['metric']) ?></div>
+              <div class="nm" title="<?= e($m['metric']) ?>"><?= e($m['metric']) ?></div>
               <div class="scope">
                 <span class="st" style="color:<?= $tone ?>"><?= e($attainBand($pct)) ?></span>
                 &middot; <?= (int) $m['met'] ?>/<?= (int) $m['count'] ?> dept<?= $m['count'] === 1 ? '' : 's' ?> met

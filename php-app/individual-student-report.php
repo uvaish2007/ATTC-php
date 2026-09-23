@@ -379,34 +379,17 @@ require __DIR__ . '/inc/header.php';
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="<?= e(url('assets/js/charts.js')) ?>"></script>
 <script>
-(function() {
-  const summaryData = <?= json_encode($catSummary) ?>;
-  const ctx = document.getElementById('studentDistChart');
-  if (!ctx || !summaryData || Object.keys(summaryData).length === 0) return;
+(function () {
+  const summary = <?= json_encode($summary) ?>;
+  if (!summary || !Object.keys(summary).length) return;
 
-  const labels = Object.keys(summaryData);
-  const dataVals = Object.values(summaryData);
-  const colors = ['#FF4F01', '#2563EB', '#059669', '#F59E0B', '#6B7FA8', '#DC2626', '#33456B', '#10B981'];
-
-  new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: dataVals,
-        backgroundColor: colors.slice(0, labels.length),
-        borderWidth: 2,
-        borderColor: '#ffffff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }
-      }
-    }
+  ATTS.charts.donut('studentDistChart', {
+    labels:      Object.keys(summary),
+    data:        Object.values(summary),
+    centreLabel: 'records',
+    empty:       'Nothing recorded yet'
   });
 })();
 </script>

@@ -194,7 +194,8 @@ require __DIR__ . '/inc/header.php';
       <form method="post" class="flex gap-2 items-center" style="flex-wrap:wrap">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="set_template">
-        <select class="select" name="report_template" style="min-width:420px">
+        <select class="select" name="report_template" aria-label="Report layout"
+                style="min-width:min(420px, 100%); max-width:100%">
           <?php foreach (report_templates() as $key => $label): ?>
             <option value="<?= e($key) ?>" <?= $template === $key ? 'selected' : '' ?>><?= e($label) ?></option>
           <?php endforeach; ?>
@@ -782,6 +783,9 @@ require __DIR__ . '/inc/header.php';
   @media (max-width:640px){
     .tmpl-report-row { flex-direction:column; align-items:flex-start; gap:10px; }
     .tmpl-report-links { width:100%; grid-template-columns:repeat(3, 1fr); }
+    /* flex-shrink:0 above keeps the row at its full nowrap width, which on a
+       phone is wider than the screen. Let it shrink so the buttons wrap. */
+    .hero-card-actions { flex-shrink:1; width:100%; min-width:0; justify-content:flex-start; }
     .hero-card-actions .btn { flex:1 1 auto; }
   }
 </style>

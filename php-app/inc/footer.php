@@ -115,6 +115,42 @@
     }
   })();
 
+  /* ---- Form labels -------------------------------------------------------
+     The forms are written as <div class="field"><label>Name</label><input></div>,
+     which looks right but leaves the two unconnected: clicking the caption does
+     not focus the field, and a screen reader reads the input out unnamed. Wiring
+     them up here fixes every form at once, including the ones inside dialogs
+     that are only built when they open. */
+  (function () {
+    var seq = 0;
+
+    function wire(root) {
+      root.querySelectorAll('.field, .fb-field').forEach(function (field) {
+        var label = field.querySelector(':scope > label');
+        if (!label || label.htmlFor) return;
+
+        var control = field.querySelector('input:not([type=hidden]), select, textarea');
+        if (!control || label.contains(control)) return;
+
+        if (!control.id) { control.id = 'fld-' + (++seq); }
+        label.htmlFor = control.id;
+      });
+    }
+
+    wire(document);
+
+    // Dialogs and tab panels can add fields after load.
+    if (window.MutationObserver) {
+      new MutationObserver(function (records) {
+        records.forEach(function (r) {
+          r.addedNodes.forEach(function (n) {
+            if (n.nodeType === 1) { wire(n.parentNode || document); }
+          });
+        });
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+  })();
+
   /* ---- Navigation drawer (narrow screens only) ---------------------------
      On a wide screen the sidebar is always in the layout and the toggle is
      hidden by CSS, so none of this is ever triggered. */

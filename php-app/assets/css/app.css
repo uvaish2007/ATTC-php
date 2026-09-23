@@ -303,7 +303,8 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
   border-radius:var(--radius); box-shadow:var(--shadow-card);
   transition:box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:20px 24px 14px; }
+.card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:20px 24px 14px; flex-wrap:wrap; }   /* wraps so nowrap button rows cannot push the page wider than the screen */
 .card-title { font-size:15px; font-weight:600; margin:0; letter-spacing:-.014em; }
 .card-sub { font-size:12px; color:var(--ink-faint); margin-top:3px; line-height:1.5; }
 .card-body { padding:24px; }
@@ -544,12 +545,13 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 /* The SVG has a fixed viewBox and scales like a picture, so the labels can
    never overlap however wide the card gets. */
 .chart { width:100%; height:auto; display:block; }
-.chart-grid  { stroke:var(--hairline); stroke-width:1; }
-.chart-base  { stroke:var(--navy-200); stroke-width:1; }
-.chart-axis  { fill:var(--ink-faint); font-size:12px; }
-.chart-value { fill:var(--ink-muted); font-size:12px; font-weight:600; }
-.chart-bar   { fill:var(--orange-500); transition:fill .15s; }
-.chart-bar:hover { fill:var(--orange-600); }
+.chart-grid  { stroke:var(--hairline-soft); stroke-width:1; stroke-dasharray:3 3; }
+.chart-base  { stroke:var(--hairline); stroke-width:1; }
+.chart-axis  { fill:var(--ink-faint); font-size:11px; font-weight:500; }
+.chart-axis.lbl { font-weight:600; }
+.chart-value { fill:var(--ink-muted); font-size:11px; font-weight:700; }
+.chart-bar   { fill:var(--orange-500); transition:opacity var(--dur) var(--ease); }
+.chart-bar:hover { opacity:.82; }
 
 /* ==========================================================================
    Target vs Achieved
@@ -1234,7 +1236,7 @@ dialog.modal.priority-important .modal-head {
 .fb-range.is-set .fb-date input { color:var(--orange-700); }
 .fb-date .date-picker-btn {
   position:absolute; right:0; top:50%; transform:translateY(-50%);
-  width:22px; height:22px; display:grid; place-items:center; padding:0;
+  width:24px; height:24px; display:grid; place-items:center; padding:0;
   border:0; border-radius:6px; background:none; color:var(--ink-faint); cursor:pointer;
   transition:background var(--dur) var(--ease), color var(--dur) var(--ease);
 }

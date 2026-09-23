@@ -210,7 +210,7 @@ $flashes      = take_flashes();
           <?php else: ?>
             <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS DASHBOARD</a>
             <span class="sep"><?= icon('chevron', 14) ?></span>
-            <span class="cur"><?= e($breadcrumb) ?></span>
+            <span class="cur" title="<?= e($breadcrumb) ?>"><?= e($breadcrumb) ?></span>
           <?php endif; ?>
         </nav>
       </div>
