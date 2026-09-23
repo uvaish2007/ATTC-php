@@ -1,13 +1,4 @@
 <?php
-/**
- * Export Department & Faculty Achievements Report (FEAT-04).
- *
- * Supports Excel (.xlsx), Word (.doc), CSV (.csv), and PDF formats.
- * Strictly respects active filters, role authorization (Admin, Dean, HoD),
- * and isolates HoD data exclusively to their own department.
- * Automatically uses system-wide active Academic Year from FEAT-02.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/inc/xlsx_writer.php';
@@ -20,7 +11,6 @@ require_module('reports');
 
 $role = $user['role'] ?? '';
 
-// FEAT-04: Authorization check — Admin, Dean, HoD, Coordinator (and Principal/Director if authorized)
 $allowedRoles = ['Admin', 'Dean', 'HoD', 'Coordinator', 'Principal', 'Director'];
 if (!in_array($role, $allowedRoles, true)) {
     http_response_code(403);
@@ -29,7 +19,7 @@ if (!in_array($role, $allowedRoles, true)) {
 }
 
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+
 $rawYear      = input('academic_year') ?: input('year');
 $emCtx        = em_resolve_filter_context($rawYear, input('em'));
 $academicYear = $emCtx['year'];
@@ -38,28 +28,22 @@ if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
     $format = 'excel';
 }
 
-// Department scoping:
-// Single source of truth via user_department_scope()
 $effDept = user_department_scope($user, input('department'));
 
 $category  = trim((string) input('category', '')) ?: null;
 $facultyId = (int) input('faculty_id', 0) ?: null;
 
-// Fetch faculty achievements dataset
-// FEAT-07: same Executive Meeting (EM1/EM2) window as the on-screen page.
 $emWindow  = em_filter_window(em_filter_value(input('em')), $academicYear);
 $summary   = faculty_achievements_summary($user, $effDept, $academicYear, $category, $facultyId, $emWindow);
 $deptComp  = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 $facGrid   = faculty_achievements_grid($user, $effDept, $academicYear, $category, $facultyId, null, $emWindow);
 
-// Standardized filenames matching FEAT-04 specification
 $safeYear   = preg_replace('/[^A-Za-z0-9\-]/', '-', $academicYear);
 $fileStem   = "ATTS_Faculty_Achievements_{$safeYear}";
 $title      = 'DEPARTMENT & FACULTY ACHIEVEMENTS REPORT';
 $today      = date('d.m.Y');
 $scopeLabel = $effDept ? department_full_name($effDept) : 'ALL AUTHORIZED DEPARTMENTS';
 
-// Group faculty members department-wise
 $groupedFaculty = [];
 foreach ($facGrid as $f) {
     $dName = !empty($f['department']) && $f['department'] !== '—' ? $f['department'] : 'Other / General';
@@ -67,14 +51,10 @@ foreach ($facGrid as $f) {
 }
 ksort($groupedFaculty);
 
-/* ========================================================================
-   1. EXCEL EXPORT (.xlsx)
-   ===================================================================== */
 if ($format === 'excel') {
     $headers = ['S.No', 'Faculty Name', 'Employee ID', 'Designation', 'Department', 'Journals', 'Conferences', 'Books/Chapters', 'Events', 'Training/FDP', 'Patents', 'Other', 'Total Achievements'];
     $rows = [];
 
-    // Summary Comparison Table at the top
     $rows[] = ['DEPARTMENT-WISE SUMMARY COMPARISON', '', '', '', '', '', '', '', '', '', '', '', ''];
     $rows[] = ['Department', 'Publications', 'Conferences', 'Books', 'Events', 'Training', 'Patents', 'Total Achievements', '', '', '', '', ''];
     foreach ($deptComp as $dc) {
@@ -93,7 +73,6 @@ if ($format === 'excel') {
     $rows[] = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
     $rows[] = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
 
-    // Department-wise Grouped Individual Faculty Listings
     $grandTotals = ['j' => 0, 'c' => 0, 'b' => 0, 'e' => 0, 't' => 0, 'p' => 0, 'o' => 0, 'tot' => 0];
 
     if (empty($groupedFaculty)) {
@@ -136,7 +115,6 @@ if ($format === 'excel') {
                 ];
             }
 
-            // Department Subtotal row
             $rows[] = [
                 'Subtotal',
                 count($facultyList) . ' Faculty members',
@@ -159,7 +137,6 @@ if ($format === 'excel') {
             }
         }
 
-        // Grand Total row
         $rows[] = [
             'TOTAL',
             'All Departments Total (' . count($facGrid) . ' Faculty)',
@@ -185,7 +162,7 @@ if ($format === 'excel') {
         'Report Date: ' . $today,
     ];
 
-    $rows = array_merge($rows, report_signoff_rows(null, count($headers)));   // TS-REP-03
+    $rows = array_merge($rows, report_signoff_rows(null, count($headers)));   
 
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Faculty Achievements', $metaLines);
     if ($xlsxData !== '') {
@@ -198,15 +175,12 @@ if ($format === 'excel') {
     }
 }
 
-/* ========================================================================
-   2. CSV EXPORT (.csv)
-   ===================================================================== */
 if ($format === 'csv') {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.csv"');
 
     $out = fopen('php://output', 'w');
-    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); 
 
     fputcsv($out, [REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)']);
     fputcsv($out, [$title]);
@@ -242,9 +216,6 @@ if ($format === 'csv') {
     exit;
 }
 
-/* ========================================================================
-   3. WORD (.doc) & 4. PDF (Print HTML View)
-   ===================================================================== */
 if ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');

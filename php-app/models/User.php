@@ -1,8 +1,4 @@
 <?php
-/**
- * User data access (Admin-managed). CRUD operations for the users table.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 
 function users_all(?string $roleFilter = null, ?string $deptFilter = null, ?string $search = null): array
@@ -12,7 +8,6 @@ function users_all(?string $roleFilter = null, ?string $deptFilter = null, ?stri
 
     if ($roleFilter) {
         if (in_array($roleFilter, ['Principal', 'Director'], true)) {
-            // One role under two names (see inc/auth.php): find both.
             $sql .= " AND role IN ('Principal', 'Director')";
         } else {
             $sql .= ' AND role = ?';
@@ -107,10 +102,6 @@ function user_delete(int $id): array
     return [true, 'User deleted.'];
 }
 
-/**
- * Everyone who belongs to one department, newest role first.
- * Used by faculty.php, where an HoD looks at their own department's staff.
- */
 function users_in_department(string $department, ?string $search = null): array
 {
     $sql = 'SELECT id, name, email, role, department, phone, status, created_at
@@ -123,7 +114,6 @@ function users_in_department(string $department, ?string $search = null): array
         $params[] = "%$search%";
     }
 
-    // HoD first, then Coordinators, then Faculty; alphabetical inside each.
     $sql .= " ORDER BY FIELD(role, 'HoD', 'Coordinator', 'Faculty'), name";
 
     $stmt = db()->prepare($sql);
@@ -132,11 +122,6 @@ function users_in_department(string $department, ?string $search = null): array
     return $stmt->fetchAll();
 }
 
-/**
- * A user editing their OWN details (profile.php).
- * Role, department and status are deliberately left out — only an Admin
- * changes those, on the Users page.
- */
 function user_update_profile(int $id, string $name, ?string $phone): array
 {
     $name = trim($name);
@@ -155,10 +140,6 @@ function user_update_profile(int $id, string $name, ?string $phone): array
     return [true, 'Profile updated.'];
 }
 
-/**
- * A user changing their own password. Unlike the Admin reset below, this
- * asks for the current password first. Returns [ok, message].
- */
 function user_change_password(int $id, string $current, string $new, string $confirm): array
 {
     $user = user_find($id);
@@ -202,23 +183,8 @@ function user_reset_password(int $id, string $newPassword): array
     return [true, 'Password reset.'];
 }
 
-/* ---------------------------------------------------------------------------
- *  Profile photograph (passport size)
- *
- *  One optional photo per account, for every role. Only the stored file name
- *  lives in users.photo (added by sql/user_photo.sql); the image itself sits
- *  in uploads/photos/ and is served by photo.php, never linked directly.
- * ------------------------------------------------------------------------ */
+const USER_PHOTO_MAX_BYTES = 2097152; 
 
-/** Largest photo accepted, in bytes. */
-const USER_PHOTO_MAX_BYTES = 2097152; // 2 MB
-
-/**
- * Is the photo column present?
- *
- * Checked once per request so that a site which has not yet run
- * sql/user_photo.sql keeps working exactly as before instead of erroring.
- */
 function user_photo_supported(): bool
 {
     static $has = null;
@@ -233,7 +199,6 @@ function user_photo_supported(): bool
     return $has;
 }
 
-/** Absolute path of the folder holding the photos (created on demand). */
 function user_photo_dir(): string
 {
     $dir = rtrim(defined('UPLOAD_DIR') ? UPLOAD_DIR : dirname(__DIR__) . '/uploads', '/\\') . '/photos';
@@ -243,7 +208,6 @@ function user_photo_dir(): string
     return $dir;
 }
 
-/** The stored file name for one account, or null when there is no photo. */
 function user_photo_filename(int $id): ?string
 {
     if (!user_photo_supported()) {
@@ -255,7 +219,6 @@ function user_photo_filename(int $id): ?string
     return $name !== '' ? $name : null;
 }
 
-/** Full path of a stored photo, or null when the file is missing from disk. */
 function user_photo_path(?string $filename): ?string
 {
     $filename = basename(trim((string) $filename));
@@ -266,19 +229,11 @@ function user_photo_path(?string $filename): ?string
     return (is_file($path) && is_readable($path)) ? $path : null;
 }
 
-/**
- * The URL that shows one account's photo, or null when there is none.
- * Always points at photo.php, which re-checks who is allowed to see it.
- */
 function user_photo_url(int $id): ?string
 {
     return user_photo_filename($id) !== null ? url('photo.php?user=' . $id) : null;
 }
 
-/**
- * The photo as a data: URI, for documents that must print without any
- * further HTTP request (the A4 Faculty Details PDF). Null when unavailable.
- */
 function user_photo_data_uri(?string $filename): ?string
 {
     $path = user_photo_path($filename);
@@ -291,13 +246,6 @@ function user_photo_data_uri(?string $filename): ?string
     return $raw === false ? null : 'data:' . $mime . ';base64,' . base64_encode($raw);
 }
 
-/**
- * Store a newly uploaded passport photo for one account.
- *
- * Validated on the server: a real upload, a real image, an accepted type and
- * within the size limit. The old photo is removed once the new one is safely
- * in place. Returns [ok, message].
- */
 function user_save_photo(int $id, ?array $file): array
 {
     if (!user_photo_supported()) {
@@ -326,7 +274,6 @@ function user_save_photo(int $id, ?array $file): array
         return [false, 'The photo must be a JPG, PNG or WEBP image.'];
     }
 
-    // Trust the file itself, not the name the browser sent.
     $info    = @getimagesize($file['tmp_name']);
     $allowed = [IMAGETYPE_JPEG => 'jpg', IMAGETYPE_PNG => 'png', IMAGETYPE_WEBP => 'webp'];
     if (!$info || !isset($allowed[$info[2]])) {
@@ -362,7 +309,6 @@ function user_save_photo(int $id, ?array $file): array
     return [true, 'Profile photo updated.'];
 }
 
-/** Remove one account's photo, from the database and from disk. */
 function user_delete_photo(int $id): array
 {
     if (!user_photo_supported()) {

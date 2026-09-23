@@ -1,19 +1,10 @@
 <?php
-/**
- * FEAT-07 — current Executive Meeting status, shown on the dashboards.
- *
- * Reads only from em_status() (models/ExecutiveMeeting.php); no date logic
- * lives here. Expects $user from the including page. The header has already
- * loaded the EM engine, but require it anyway so the partial stands alone.
- */
-
 require_once __DIR__ . '/../models/ExecutiveMeeting.php';
 
 $dashYear   = $data['scope']['year'] ?? ($year ?? active_academic_year());
 $emDash     = em_status($dashYear);
 $emDashFmt  = fn(string $d): string => date('d M Y', strtotime($d));
 
-// EM-SPEC-05: Check whether an active Executive Meeting is in session.
 $isEm1Active = ($emDash['configured'] ?? false)
     && ($emDash['current'] === 'em1' || ($emDash['em1']['state'] ?? '') === 'ACTIVE')
     && empty($emDash['em1_locked']);
@@ -134,7 +125,6 @@ if ($canPresent) {
     }
   }
 
-  // Handle close requested by the deck inside the iframe (Exit button or Esc)
   window.addEventListener('message', function (e) {
     if (e.origin !== window.location.origin) return;
     if (e.data && e.data.atts === 'em-present-close') {
@@ -142,7 +132,6 @@ if ($canPresent) {
     }
   });
 
-  // Forward parent window keyboard navigation to dashboard presentation iframe while modal is open
   window.addEventListener('keydown', function (e) {
     var dlg = document.getElementById('emDashboardPresentDlg');
     var frame = document.getElementById('emDashboardPresentFrame');
@@ -165,7 +154,6 @@ if ($canPresent) {
     }
   });
 
-  // Handle Esc closed by <dialog> itself
   document.addEventListener('DOMContentLoaded', function () {
     var dlg = document.getElementById('emDashboardPresentDlg');
     if (dlg) {

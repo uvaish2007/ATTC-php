@@ -1,9 +1,4 @@
 <?php
-/**
- * Edit Requests Module — Integrated with Approvals page tab.
- * Handles backward-compatible POST actions and forwards GET views to approvals.php?tab=edit_requests.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/helpers.php';
 require_once __DIR__ . '/models/EditRequest.php';

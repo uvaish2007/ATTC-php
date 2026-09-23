@@ -1,28 +1,7 @@
 <?php
-/**
- * Main dashboard for Admin, Director, HoD and Coordinator.
- *
- * Admin and Director see every department and can change the filter.
- * HoD and Coordinator are tied to their own department (the model forces this,
- * so the dropdown is replaced by a plain label for them).
- *
- * Comes from dashboard.php:  $user, $data, $pageTitle
- */
-
-$isOversight = $data['isOversight'];                             // Admin / Director / Dean
-$isReviewer  = in_array($user['role'], ['Admin', 'Dean', 'HoD', 'Coordinator'], true);  // can approve records
-$scopeLabel  = $data['scope']['department'] ?: 'All departments';
+$isOversight = $data['isOversight'];                             $isReviewer  = in_array($user['role'], ['Admin', 'Dean', 'HoD', 'Coordinator'], true);  $scopeLabel  = $data['scope']['department'] ?: 'All departments';
 $stats       = $data['stats'];
 
-/*
- * One colour per review status, used by the doughnut and its legend.
- *
- * These are status colours, not decoration: green means done, blue means it is
- * moving, red means it came back, grey means it has not been sent yet. They are
- * listed in that order so no two similar colours end up side by side on the
- * ring, and every slice is also named and counted in the legend — nobody has to
- * tell them apart by colour alone.
- */
 $statusColours = [
     'Approved'     => '#059669',
     'Dean Pending' => '#F59E0B',
@@ -43,7 +22,6 @@ $shortNames = [
     'Achievements'   => 'Achiev.',   'Participations' => 'Particip.',
 ];
 
-// ---- Headline KPIs: rates and progress, not just raw counts ----------------
 $sb          = $data['statusBreakdown'];
 $recTotal    = array_sum($sb);
 $approved    = (int) ($sb['Approved'] ?? 0);
@@ -55,7 +33,6 @@ $attain = $isOversight ? ($data['targetAttainment']['summary'] ?? null) : null;
 $attPct = ($attain && $attain['targets'] > 0) ? (int) $attain['percent'] : null;
 $rateColor = fn(int $p) => $p >= 75 ? '#059669' : ($p >= 40 ? '#FF4F01' : '#DC2626');
 
-// Each card: label, value, sub, icon, tone; optional bar (%) + barColor.
 $cards = [];
 
 if ($user['role'] === 'HoD') {
@@ -142,9 +119,6 @@ if ($user['role'] === 'HoD') {
         $cards[] = ['label' => 'Targets', 'value' => (string) $stats['targets'], 'sub' => 'Configured targets', 'icon' => 'target', 'tone' => 'navy'];
     }
 
-    // FEAT-11 — password reset requests from the login page. Only the Admin
-    // decides these, so only the Admin is shown the card; Principal / Director
-    // fall through this branch too and must not see it.
     if ($user['role'] === 'Admin') {
         require_once __DIR__ . '/../models/PasswordResetRequest.php';
         $pwPending = password_reset_requests_pending_count();
@@ -155,9 +129,6 @@ if ($user['role'] === 'HoD') {
                     'icon' => 'key', 'tone' => $pwPending ? 'brand' : 'navy',
                     'href' => url('password-requests.php?status=Pending')];
 
-        // FEAT-12 — the historical archive of expired announcements. Managing
-        // it is an Admin job, so only the Admin gets the card; Principal and
-        // Director fall through this branch too and must not see it.
         require_once __DIR__ . '/../models/Announcement.php';
         $archiveCounts = announcement_archive_counts();
         $cards[] = ['label' => 'Announcement Archive', 'value' => (string) $archiveCounts['total'],
@@ -173,8 +144,6 @@ if ($user['role'] === 'HoD') {
 $rows            = $data['matrix']['rows'];
 $showDepartments = $isOversight && count($rows) > 1;
 
-// Drill-down: an oversight user can click a department anywhere on the page to
-// scope the whole dashboard to it (keeping the year filter).
 $deptUrl = function (string $dept) use ($data) {
     $q = array_filter([
         'department'    => $dept,
@@ -184,12 +153,6 @@ $deptUrl = function (string $dept) use ($data) {
     return url('dashboard.php') . ($q ? '?' . http_build_query($q) : '');
 };
 
-/*
- * "View reports" from the Records by Category card. Passing a category opens
- * Reports narrowed to that group (Faculty / Activities / Student); passing none
- * opens the whole hub. The department and EM duration filters carry over,
- * so the reports match the figures the user is looking at.
- */
 $reportsUrl = function (?string $category = null) use ($data) {
     $q = array_filter([
         'category'      => $category,
@@ -200,28 +163,12 @@ $reportsUrl = function (?string $category = null) use ($data) {
     return url('reports.php') . ($q ? '?' . http_build_query($q) : '');
 };
 
-/*
- * The "Analytics View" side of the Data View / Analytics View toggle: a small inline-SVG column
- * chart. The SVG has a fixed viewBox so it scales like a picture and the labels
- * can never overlap however wide the card gets. It reuses the dashboard's
- * existing .chart-* classes (app.css); only the bar colour is passed in.
- */
 if (!function_exists('dash_column_chart')) {
-
-    /** Round a maximum up to a multiple of 4, so the four gridline labels are whole numbers. */
     function dash_chart_ceil(int $max): int
     {
         return max(4, (int) (ceil(max(1, $max) / 4) * 4));
     }
 
-    /**
-     * @param array<int,array{label:string,value:int|string}> $items
-     * @param string $color  CSS colour for the bars
-     * @param array<string,string> $short  optional label => short-label map
-     * @param int    $vw     viewBox width; pass a larger value for a chart that
-     *                       spans the full page so its text and bars stay a
-     *                       sensible size instead of being scaled up. 0 = auto.
-     */
     function dash_column_chart(array $items, string $color = 'var(--orange-500)', array $short = [], int $vw = 0): string
     {
         $items  = array_values(array_filter($items, static fn($it) => isset($it['label'])));
@@ -232,8 +179,7 @@ if (!function_exists('dash_column_chart')) {
             return '<div class="chart-empty">No data to chart yet.</div>';
         }
 
-        $rotate = $n > 6;                              // tilt x-labels once bars get narrow
-        $W      = $vw > 0 ? $vw : max(360, min(1160, 90 + $n * 84));
+        $rotate = $n > 6;                                      $W      = $vw > 0 ? $vw : max(360, min(1160, 90 + $n * 84));
         $H      = $rotate ? 320 : 264;
         $padL = 44; $padR = 18; $padT = 28; $padB = $rotate ? 96 : 52;
         $plotW = $W - $padL - $padR;
@@ -246,7 +192,6 @@ if (!function_exists('dash_column_chart')) {
 
         $svg = '<svg class="chart" viewBox="0 0 ' . $W . ' ' . $H . '" preserveAspectRatio="xMidYMid meet" role="img">';
 
-        // Horizontal gridlines and the y-axis scale (0 .. ceil in four steps).
         for ($i = 0; $i <= 4; $i++) {
             $y = $baseY - $plotH * $i / 4;
             $svg .= '<line class="chart-grid" x1="' . $padL . '" y1="' . round($y, 1)
@@ -296,18 +241,6 @@ if (!function_exists('dash_column_chart')) {
         return $svg . '</svg>';
     }
 
-    /**
-     * A donut chart as inline SVG — one arc per slice, a hole in the middle
-     * showing the total. Zero-value slices are dropped from the ring; the caller
-     * still lists them in the legend.
-     *
-     * Neighbouring arcs are parted by a hairline of the card background so two
-     * slices never fuse into one block. The gap is trimmed off both ends of
-     * every arc and capped against the smallest slice, so a 1-in-22 sliver
-     * still draws as a sliver rather than vanishing into the seams.
-     *
-     * @param array<int,array{label:string,value:int|string,color:string}> $slices
-     */
     function dash_donut_chart(array $slices, string $centreCap = ''): string
     {
         $slices = array_values(array_filter($slices, static fn($s) => (int) $s['value'] > 0));
@@ -319,9 +252,6 @@ if (!function_exists('dash_column_chart')) {
         $c = 80; $r = 56; $sw = 26;
         $circ = 2 * M_PI * $r;
 
-        // A single slice fills the ring, and a seam there would only look like
-        // a nick, so it gets none. Otherwise the gap is a third of the smallest
-        // arc at most, which keeps the thinnest slice clearly wider than it.
         $smallest = (int) min(array_map(static fn($s) => (int) $s['value'], $slices));
         $gap = count($slices) > 1
             ? min(2.5, ($smallest / $total) * $circ / 3)
@@ -336,8 +266,7 @@ if (!function_exists('dash_column_chart')) {
         $offset = 0.0;
         foreach ($slices as $s) {
             $len  = ((int) $s['value'] / $total) * $circ;
-            $draw = max(0.5, $len - $gap);      // half the gap comes off each end
-            $svg .= '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none"'
+            $draw = max(0.5, $len - $gap);                  $svg .= '<circle cx="' . $c . '" cy="' . $c . '" r="' . $r . '" fill="none"'
                   . ' stroke="' . $s['color'] . '" stroke-width="' . $sw . '"'
                   . ' stroke-dasharray="' . round($draw, 2) . ' ' . round($circ - $draw, 2) . '"'
                   . ' stroke-dashoffset="' . round(-($offset + $gap / 2), 2) . '"'
@@ -404,7 +333,7 @@ if (!function_exists('dash_column_chart')) {
         </select>
       </label>
 
-      <?php // EM-SPEC-03 — EM Duration filter: All, EM1 Duration, EM2 Duration ?>
+      <?php ?>
       <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
         <span class="fb-k">EM Duration</span>
         <select name="em" onchange="this.form.submit()">
@@ -420,8 +349,7 @@ if (!function_exists('dash_column_chart')) {
   </div>
 </div>
 
-<?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
-
+<?php require __DIR__ . '/em_status_card.php'; ?>
 
 <?php if ($user['role'] === 'Coordinator' && !empty($unlockedCount)): ?>
   <div style="background:#ECFDF5; border:1px solid #A7F3D0; border-left:4px solid #059669; border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px">
@@ -484,7 +412,6 @@ if (!function_exists('dash_column_chart')) {
   <?php endif; ?>
 <?php endif; ?>
 
-
 <!-- Counters -->
 <div class="stat-grid <?= $isOversight ? 'stat-kpi' : 'grid-4' ?>">
 
@@ -505,18 +432,15 @@ if (!function_exists('dash_column_chart')) {
 
 </div>
 
-
 <!-- ==========================================================================
      Departments and the records-by-category breakdown — each full width, with
      a Data View / Analytics View switch that fills the row with whichever view is picked.
      ======================================================================= -->
   <?php if ($showDepartments): ?>
     <?php
-      // Biggest department sets the length of the share bars.
       $maxTotal   = max(1, ...array_column($rows, 'total'));
       $allRecords = max(1, array_sum(array_column($rows, 'total')));
 
-      // Show the busiest department first.
       $ranked = $rows;
       usort($ranked, fn($a, $b) => $b['total'] <=> $a['total']);
 
@@ -579,7 +503,6 @@ if (!function_exists('dash_column_chart')) {
     </div>
   <?php endif; ?>
 
-
   <!-- Records by category — every metric grouped by what it measures -->
   <?php
     $groupMeta = [
@@ -591,11 +514,9 @@ if (!function_exists('dash_column_chart')) {
     foreach ($data['matrix']['metrics'] as $m) {
         $grouped[$m['group']][] = ['label' => $m['label'], 'value' => (int) ($data['totals'][$m['key']] ?? 0)];
     }
-    // One scale across every metric, so bar lengths are comparable between groups.
     $metricMax = max(1, ...array_map('intval', array_values($data['totals'])));
   ?>
   <?php
-    // One colour per category, matching the Department Breakdown legend below.
     $groupColors = ['faculty' => '#2563EB', 'activity' => '#FF4F01', 'student' => '#059669'];
     $catTotalAll = array_sum(array_map('intval', array_values($data['totals'])));
   ?>
@@ -875,7 +796,6 @@ if (!function_exists('dash_column_chart')) {
   #targetChart .attain-foot { margin-top:10px; padding-top:10px; gap:16px; }
 </style>
 
-
 <!-- ==========================================================================
      How the targets are doing (whole scope), with a compact review-status bar
      ======================================================================= -->
@@ -883,7 +803,6 @@ if (!function_exists('dash_column_chart')) {
   $ts        = $data['targetSummary'];
   $breakdown = $data['statusBreakdown'];
   $totalCount = array_sum($breakdown);
-  // Health colour for an aggregate percentage.
   $tpTone = fn (int $p) => $p >= 75 ? '#059669' : ($p >= 40 ? '#FF4F01' : '#DC2626');
 ?>
 <div class="mt-5 <?= $isOversight ? 'grid-2-1' : 'grid-1-1' ?> tp-rs-row">
@@ -949,7 +868,6 @@ if (!function_exists('dash_column_chart')) {
     </div>
   </div>
 
-
   <!-- Review status — the approval breakdown, kept small -->
   <div class="card">
     <div class="card-head">
@@ -989,7 +907,6 @@ if (!function_exists('dash_column_chart')) {
 
 </div>
 
-
 <!-- ==========================================================================
      Fixed target vs what was actually achieved  (Admin / Director only)
      ======================================================================= -->
@@ -998,11 +915,6 @@ if (!function_exists('dash_column_chart')) {
     $attainRows = $data['targetAttainment']['rows'];
     $attain     = $data['targetAttainment']['summary'];
 
-    /*
-     * The three bands the Targets page already uses — met, halfway, behind —
-     * drawn in this page's status palette so the card sits beside the pipeline
-     * doughnut without two greens fighting each other.
-     */
     $attainTone = fn (int $percent) => $percent >= 100 ? '#059669' : ($percent >= 50 ? '#FF4F01' : '#DC2626');
     $attainBand = fn (int $percent) => $percent >= 100 ? 'Met' : ($percent >= 50 ? 'Halfway or better' : 'Behind');
   ?>
@@ -1025,7 +937,6 @@ if (!function_exists('dash_column_chart')) {
     // academic year — so it never counts toward "is a filter applied?".
     $tActive  = array_filter(array_diff_key($tFilters, ['year' => null]));
 
-    // Each select is the same markup with a different list behind it.
     $chartFilters = [
         ['t_dept',   'dept',   'All departments', $tOptions['departments']],
         ['t_metric', 'metric', 'All metrics',     $tOptions['metrics']],
@@ -1172,7 +1083,6 @@ if (!function_exists('dash_column_chart')) {
 </div>
 <?php endif; ?>
 
-
 <!-- ==========================================================================
      Every department, and how many records of each kind it has
      ======================================================================= -->
@@ -1204,8 +1114,6 @@ if (!function_exists('dash_column_chart')) {
       <?php
         $metrics = $data['matrix']['metrics'];
 
-        // Fold each metric into its category so a department reads as a mix of
-        // Faculty / Activities / Student, not seventeen separate numbers.
         $metricGroup = [];
         foreach ($metrics as $m) { $metricGroup[$m['key']] = $m['group']; }
 
@@ -1228,7 +1136,6 @@ if (!function_exists('dash_column_chart')) {
         foreach ($catTotals as $g => $n) { if ($n > $leadMax) { $leadMax = $n; $leadKey = $g; } }
         $studentShare = $grand > 0 ? (int) round($catTotals['student'] / $grand * 100) : 0;
 
-        // Most-used single metric, for a third insight.
         $metricLabel = [];
         foreach ($metrics as $m) { $metricLabel[$m['key']] = $m['label']; }
         $colTot = array_fill_keys(array_keys($metricLabel), 0);
@@ -1347,7 +1254,6 @@ if (!function_exists('dash_column_chart')) {
   </div>
 </div>
 
-
 <!-- ==========================================================================
      Latest submissions, and who is on the system
      ======================================================================= -->
@@ -1390,27 +1296,18 @@ if (!function_exists('dash_column_chart')) {
     </div>
   </div>
 
-
   <?php if ($isOversight): ?>
     <?php
-      // A steady colour per role, with a fallback palette for any extra roles.
-      // Every hue here is distinct: Principal and Director used to share
-      // #33456B, and that slate sat so close to the Admin navy that the two
-      // arcs read as one shapeless block at the top of the ring.
       $roleColors = [
           'Admin'     => '#131D3B', 'Principal' => '#7C3AED', 'Director' => '#0891B2', 'Dean' => '#2563EB',
           'HoD'       => '#FF4F01', 'Coordinator' => '#059669', 'Faculty' => '#9FADCB',
       ];
-      // Spare hues for a role not named above, none of them already spoken for.
       $rolePalette = ['#DC2626', '#F59E0B', '#0F766E', '#BE185D', '#4338CA', '#65A30D'];
       $roleSlices = [];
       $roleUsed   = [];
       $rpi = 0;
       foreach ($data['usersByRole'] as $role => $count) {
           $colour = $roleColors[$role] ?? null;
-          // Walk the spares until one is free, so the fallback can never hand
-          // two roles the same colour. If they all run out, take the next one
-          // anyway rather than leaving the slice unpainted.
           if ($colour === null || in_array($colour, $roleUsed, true)) {
               for ($tries = 0; $tries < count($rolePalette); $tries++) {
                   $colour = $rolePalette[$rpi++ % count($rolePalette)];
@@ -1458,14 +1355,7 @@ if (!function_exists('dash_column_chart')) {
 
 </div>
 
-
 <script>
-  /*
-   * Data View / Analytics View switch. Each .view-toggle flips the [data-pane] blocks
-   * inside its own card and remembers the choice per card in localStorage, so a
-   * reader who prefers the table keeps it. No dependencies; the graph pane is
-   * the default when nothing is stored (and when JavaScript is off).
-   */
   (function () {
     document.querySelectorAll('.view-toggle').forEach(function (toggle) {
       var card = toggle.closest('.card');
@@ -1496,22 +1386,13 @@ if (!function_exists('dash_column_chart')) {
   })();
 </script>
 
-
 <?php if ($showDepartments): ?>
 <script>
-  /*
-   * Sort a table by one of its columns.
-   *
-   * Every cell carries a data-value attribute holding the plain value to
-   * compare, so the sort never has to read the styled contents. Clicking the
-   * same heading twice reverses the order.
-   */
   function sortTable(tableId, column) {
     var table = document.getElementById(tableId);
     var body  = table.tBodies[0];
     var rows  = Array.prototype.slice.call(body.rows);
 
-    // Remember the direction on the table itself.
     var descending = table.dataset.sortedBy == column && table.dataset.direction != 'desc';
     table.dataset.sortedBy  = column;
     table.dataset.direction = descending ? 'desc' : 'asc';
@@ -1520,7 +1401,6 @@ if (!function_exists('dash_column_chart')) {
       var x = a.cells[column].dataset.value;
       var y = b.cells[column].dataset.value;
 
-      // Numbers compare as numbers, anything else as text.
       var result = isNaN(x) || isNaN(y) ? x.localeCompare(y) : x - y;
       return descending ? -result : result;
     });

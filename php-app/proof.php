@@ -1,18 +1,4 @@
 <?php
-/**
- * Secure Proof Attachment Access Controller (FEAT-10).
- *
- * Enforces session authentication, record-level authorization, and department isolation.
- * Prevents path traversal and arbitrary file access.
- * Serves verified proof files with appropriate MIME headers (inline or download).
- * Includes dynamic attestation generation fallback for missing legacy files.
- *
- * Query Parameters:
- *   ?type=journal&id=123         (preferred: directly verifies specific record)
- *   ?file=record_...pdf          (alternative: finds matching record and verifies access)
- *   ?download=1                  (optional: forces browser download instead of inline view)
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/helpers.php';
 require_once __DIR__ . '/models/Record.php';
@@ -22,7 +8,6 @@ auth_boot();
 
 $user = current_user();
 if (!$user) {
-    // Preserve requested proof URL upon redirecting to login
     $returnUrl = url('proof.php?' . ($_SERVER['QUERY_STRING'] ?? ''));
     redirect('/login.php?return=' . urlencode($returnUrl));
     exit;
@@ -62,7 +47,6 @@ if ($type !== '' && $recordId > 0) {
         exit('Database error while locating record.');
     }
 } elseif ($recordId > 0) {
-    // Locate record by ID across all record types when category is omitted
     foreach ($types as $tKey => $tInfo) {
         $tbl = $tInfo['table'];
         try {
@@ -105,10 +89,6 @@ if ($type !== '' && $recordId > 0) {
     }
 }
 
-// ---- Authorization Enforcement -------------------------------------------
-// 1. Oversight roles (Admin, Dean, Principal, Director) can view proofs college-wide.
-// 2. Department roles (HoD, Coordinator) can only view proofs within their own department.
-// 3. Faculty can view proofs within their department or records they created.
 $userRole   = $user['role'] ?? '';
 $userDept   = trim((string) ($user['department'] ?? ''));
 
@@ -131,7 +111,6 @@ if ($record) {
         exit('Access Denied: You do not have permission to view proof attachments for this department or record.');
     }
 } else {
-    // Record not in DB by ID or filename, but file requested
     if (!in_array($userRole, ['Admin', 'Dean', 'Principal', 'Director'], true)) {
         http_response_code(403);
         exit('Access Denied.');
@@ -188,7 +167,6 @@ if (!$filePath || !is_file($filePath)) {
     exit;
 }
 
-// ---- MIME Type Detection --------------------------------------------------
 $knownMimes = [
     'pdf'  => 'application/pdf',
     'jpg'  => 'image/jpeg',
@@ -216,7 +194,6 @@ if (function_exists('finfo_open')) {
     }
 }
 
-// Clean any active output buffers to prevent notices or stray bytes from corrupting binary stream
 while (ob_get_level()) {
     ob_end_clean();
 }

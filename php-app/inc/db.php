@@ -1,11 +1,4 @@
 <?php
-/**
- * PDO database connection (singleton).
- *
- * Every query in the app goes through prepared statements on this handle, so
- * user input can never be concatenated into SQL.
- */
-
 require_once __DIR__ . '/config.php';
 
 function db(): PDO
@@ -38,7 +31,6 @@ function db(): PDO
         : (defined('PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT') ? PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT : 1013);
 
     try {
-        // For local connections (127.0.0.1 / localhost), connect directly with standard options
         $isLocal = in_array(DB_HOST, ['127.0.0.1', 'localhost', '::1'], true);
 
         if (!$isLocal) {
@@ -72,13 +64,11 @@ function db(): PDO
         }
     }
 
-    // Sync MySQL session timezone with application configured timezone
     try {
         $appTz = defined('APP_TIMEZONE') ? APP_TIMEZONE : (string) env('APP_TIMEZONE', 'Asia/Kolkata');
         $offset = (new DateTime('now', new DateTimeZone($appTz)))->format('P');
         $pdo->exec("SET time_zone = '{$offset}'");
     } catch (Throwable $e) {
-        // Fallback silently if database rejects time_zone setting
     }
 
     return $pdo;

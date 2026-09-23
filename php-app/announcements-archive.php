@@ -1,21 +1,4 @@
 <?php
-/**
- * FEAT-12 — Announcement Archive (Admin only).
- *
- * The historical database copy of every announcement that has expired, read
- * from announcements_archive rather than from announcements. Announcements
- * themselves are still managed on announcements.php; nothing on this page
- * writes to that screen's state except Restore, which brings one archived
- * notice back.
- *
- * Authorisation is server-side and unconditional: require_role(['Admin'])
- * runs before anything is read or written, so nothing here depends on a menu
- * entry or a button being hidden. The archive id in a POST is only ever an
- * integer looked up through a prepared statement, an archive record that has
- * already been restored is refused by the model whatever the browser sends,
- * and Restore is POST-only — a GET can never restore anything.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Announcement.php';
 require_once __DIR__ . '/models/Department.php';
@@ -23,9 +6,6 @@ require_once __DIR__ . '/models/Department.php';
 $user = require_role(['Admin']);
 require_module('announcements-archive');
 
-// -------------------------------------------------------------------------
-// Actions
-// -------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -50,17 +30,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect($back);
 }
 
-// -------------------------------------------------------------------------
-// Bring the archive up to date before reading it, so a notice that expired
-// since the last page view is already in here.
-// -------------------------------------------------------------------------
 announcement_sync_expired();
 
 $archiveReady = announcements_archive_ready();
 
-// -------------------------------------------------------------------------
-// Filters (all live in the address bar, so a filtered view can be shared)
-// -------------------------------------------------------------------------
 $sorts = [
     'archived_new' => 'Newest archived',
     'archived_old' => 'Oldest archived',
@@ -81,8 +54,6 @@ $filters = [
     'per_page'       => 10,
 ];
 
-// Unknown values are corrected here as well as in the model, so the form shows
-// the filter that is actually being applied.
 if (!isset($sorts[$filters['sort']]))                                 $filters['sort'] = 'archived_new';
 if (!in_array($filters['restore_status'], ['Archived', 'Restored'], true)) $filters['restore_status'] = '';
 if (!in_array($filters['category'], announcement_categories(), true))  $filters['category'] = '';
@@ -92,12 +63,8 @@ $counts      = announcement_archive_counts();
 $categories  = announcement_categories();
 $departments = $archiveReady ? departments_all() : [];
 
-// Attachments for the notices on this page, in one query. They still belong to
-// the original announcement — see announcement_archive_attachments().
 $attachments = announcement_archive_attachments(array_column($list['rows'], 'original_announcement_id'));
 
-// The query string a Restore POST returns to, so the Admin lands back on the
-// same filtered page.
 $backQuery = http_build_query(array_filter([
     'q'          => $filters['search'],
     'category'   => $filters['category'],
@@ -293,8 +260,6 @@ require __DIR__ . '/inc/header.php';
               $restored   = $row['restore_status'] === 'Restored';
               $files      = $attachments[$originalId] ?? [];
 
-              // Everything the details dialog shows, handed over as one JSON
-              // payload. htmlspecialchars keeps it inside the attribute.
               $payload = [
                   'archive_id'   => $archiveId,
                   'original_id'  => $originalId,
@@ -465,8 +430,7 @@ require __DIR__ . '/inc/header.php';
     </form>
   </dialog>
 
-  <script>
-  var ARCHIVE_DOWNLOAD = <?= json_encode(url('download.php?file=')) ?>;
+  <script>  var ARCHIVE_DOWNLOAD = <?= json_encode(url('download.php?file=')) ?>;
   var ARCHIVE_VIEW     = <?= json_encode(url('announcements.php?view=')) ?>;
 
   function archiveDetails(d) {
@@ -492,8 +456,6 @@ require __DIR__ . '/inc/header.php';
     badge.textContent = d.restored ? 'Restored' : 'Archived';
     badge.className   = 'badge badge-' + (d.restored ? 'success' : 'warning');
 
-    /* Attachments still live with the original announcement, so they are only
-       offered while that row exists. */
     var filesWrap = document.getElementById('ad-files-wrap');
     var filesBox  = document.getElementById('ad-files');
     filesBox.textContent = '';
@@ -520,10 +482,6 @@ require __DIR__ . '/inc/header.php';
       openLive.style.display = 'none';
     }
 
-    /* A restored record is read-only: the expiry input and the Restore button
-       are both taken out of the form, not merely hidden. The model refuses an
-       already-restored archive_id in any case — this only keeps the page
-       honest about what it offers. */
     var restoredBox = document.getElementById('ad-restored');
     var actions     = document.getElementById('ad-actions');
     var restoreBtn  = document.getElementById('ad-restore');
@@ -541,9 +499,6 @@ require __DIR__ . '/inc/header.php';
     } else {
       expiry.value = '';
 
-      /* Never restore an expired notice with a date already in the past: the
-         next expiry sweep would send it straight back. The date is asked for,
-         never invented. */
       var mustChoose = !!d.needs_expiry;
       expiry.required = mustChoose;
 
@@ -561,7 +516,6 @@ require __DIR__ . '/inc/header.php';
     document.getElementById('archiveDlg').showModal();
   }
 
-  /* The server checks this again — this only saves a round trip. */
   document.getElementById('restoreForm').addEventListener('submit', function (ev) {
     var expiry = document.getElementById('ad-new-expiry');
 

@@ -1,19 +1,4 @@
 <?php
-/**
- * Consolidated All-Department Academic Report (FEAT-03).
- *
- * Generates a single institutional report encompassing data from ALL departments,
- * grouped department-wise, locked to the system-wide active Academic Year (FEAT-02).
- *
- * Formats:
- *   ?format=pdf   -> Print-ready HTML view with PDF print bar & page breaks
- *   ?format=excel -> Native OpenXML spreadsheet (.xlsx) via SimpleXlsxWriter
- *   ?format=word  -> Formatted Microsoft Word document (.doc)
- *
- * Authorization:
- *   Admin, Dean, Principal, Director only. Server-side gated.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/inc/xlsx_writer.php';
@@ -33,7 +18,6 @@ if (!$isAuthorized) {
     exit;
 }
 
-// Global active academic year from FEAT-02 (no manual client override)
 $academicYear = active_academic_year();
 $format       = strtolower(trim((string) input('format', 'pdf')));
 if (!in_array($format, ['pdf', 'excel', 'word'], true)) {
@@ -45,14 +29,11 @@ $safeYear = preg_replace('/[^A-Za-z0-9\-]/', '-', $academicYear);
 $fileStem = "ATTS_Consolidated_Report_{$safeYear}";
 $title    = 'CONSOLIDATED ALL-DEPARTMENT REPORT';
 
-// 1. Fetch all departments registered in the system
 $departments = departments_all();
 
-// 2. Fetch all academic records for the active academic year (institution-wide)
 $adminScopeUser = ['id' => (int)$user['id'], 'role' => 'Admin', 'name' => 'Consolidated', 'department' => null];
 $allRecords     = report_records($adminScopeUser, null, null, null, null, null, $academicYear);
 
-// 3. Fetch targets summary per department for the active academic year
 $targetStats = [];
 try {
     $tStmt = db()->prepare(
@@ -71,10 +52,8 @@ try {
         $targetStats[$dKey] = $tRow;
     }
 } catch (\PDOException $e) {
-    // Fail-soft if targets table not ready
 }
 
-// 4. Map records department-wise
 $deptData = [];
 $normKey = fn($s) => strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$s));
 
@@ -97,7 +76,6 @@ foreach ($departments as $d) {
     ];
 }
 
-// Group records under their matching department
 $unmatchedRecords = [];
 foreach ($allRecords as $r) {
     $rDeptKey = $normKey($r['department'] ?? '');
@@ -127,7 +105,6 @@ foreach ($allRecords as $r) {
     }
 }
 
-// College-wide totals
 $totalRecordsCollege  = count($allRecords);
 $totalApprovedCollege = 0;
 $totalPendingCollege  = 0;
@@ -136,14 +113,10 @@ foreach ($deptData as $dGroup) {
     $totalPendingCollege  += $dGroup['pending'];
 }
 
-/* ========================================================================
-   1. EXCEL EXPORT (.xlsx)
-   ===================================================================== */
 if ($format === 'excel') {
     $headers = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date'];
     $rows = [];
 
-    // Part A: Institutional Summary Block
     $rows[] = ['INSTITUTIONAL SUMMARY BY DEPARTMENT', '', '', '', '', '', ''];
     $rows[] = ['S.No', 'Department Name', 'Code', 'Total Records', 'Approved', 'Pending / Under Review', 'Targets Fixed / Achieved'];
     
@@ -165,7 +138,6 @@ if ($format === 'excel') {
     $rows[] = ['', '', '', '', '', '', ''];
     $rows[] = ['', '', '', '', '', '', ''];
 
-    // Part B: Department-wise Grouped Records
     foreach ($deptData as $dGroup) {
         $rows[] = ['DEPARTMENT: ' . strtoupper($dGroup['full_name']) . ' (' . $dGroup['info']['code'] . ')', '', '', '', '', '', ''];
         
@@ -205,8 +177,6 @@ if ($format === 'excel') {
         'Report Date: ' . $today,
     ];
 
-    // TS-REP-03 — the signature block closes the spreadsheet too, not just
-    // the printed document.
     $rows = array_merge($rows, report_signoff_rows(null, count($headers)));
 
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Consolidated Report', $metaLines);
@@ -220,9 +190,6 @@ if ($format === 'excel') {
     }
 }
 
-/* ========================================================================
-   2. WORD (.doc) & 3. PDF (Print-to-PDF View)
-   ===================================================================== */
 if ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');

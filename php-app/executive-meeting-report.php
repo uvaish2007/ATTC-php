@@ -1,37 +1,23 @@
 <?php
-/**
- * FEAT-06 — Executive Meeting Report (filters + preview + Present).
- *
- * The report-style front end for the Executive Meeting presentation: pick the
- * filters here, see what they select, then Present opens the same filtered
- * dataset as a full-screen deck.
- *
- * Open to every signed-in role, exactly like reports.php. What each role may
- * actually see is decided server-side by em_resolve_filters() and
- * report_records(), never by the dropdowns.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/ExecutiveMeetingReport.php';
 
 $user = require_login();
 
-// Every filter is validated against this user's own scope.
 $filters = em_resolve_filters($user, [
     'department'     => input('department'),
     'academic_year'  => input('academic_year'),
     'faculty_id'     => input('faculty_id'),
     'student_reg'    => input('student_reg'),
-    'target_metric'  => input('target_metric'),   // one target type, or all
+    'target_metric'  => input('target_metric'),   
     'meeting_number' => input('meeting_number'),
-    'em'             => input('em'),   // FEAT-07 EM1 / EM2 / All
+    'em'             => input('em'),   
 ]);
 
 $dataset = em_dataset($user, $filters);
 $slides  = em_slides($dataset);
 $summary = $dataset['summary'];
 
-// Options for the dropdowns, in the same scope the filters were resolved in.
 $departments   = departments_all();
 $years         = academic_years();
 $facultyList   = em_faculty_options($user, $filters['department']);
@@ -371,14 +357,13 @@ require __DIR__ . '/inc/header.php';
   @media (max-width:768px) { .ts-preview-grid { grid-template-columns:1fr; } }
 </style>
 
-<?php // EM-SPEC-05: the deck runs in a full-screen modal over this page, so the
-      // filters stay exactly where they were when it closes. ?>
+<?php 
+?>
 <dialog id="presentDlg" class="em-present-modal" aria-label="Executive Meeting presentation">
   <iframe id="presentFrame" title="Executive Meeting presentation" allowfullscreen allow="fullscreen"></iframe>
 </dialog>
 
-<script>
-  const PRESENT_URL = <?= json_encode($presentUrl) ?>;
+<script>  const PRESENT_URL = <?= json_encode($presentUrl) ?>;
 
   function openPresentation(evt) {
     const dlg = document.getElementById('presentDlg');
@@ -400,13 +385,11 @@ require __DIR__ . '/inc/header.php';
     if (frame) frame.removeAttribute('src');    // stops the auto-advance timer
   }
 
-  // The deck asks to be closed (its Exit button, or Esc inside the frame).
   window.addEventListener('message', function (e) {
     if (e.origin !== window.location.origin) return;
     if (e.data && e.data.atts === 'em-present-close') closePresentation();
   });
 
-  // Forward parent window keyboard navigation to the presentation iframe while modal is open
   window.addEventListener('keydown', function (e) {
     const dlg = document.getElementById('presentDlg');
     const frame = document.getElementById('presentFrame');
@@ -429,11 +412,9 @@ require __DIR__ . '/inc/header.php';
     }
   });
 
-  // Esc handled by <dialog> itself: clear the frame so nothing keeps running.
   document.getElementById('presentDlg').addEventListener('close', function () {
     const frame = document.getElementById('presentFrame');
     if (frame) frame.removeAttribute('src');
-  });
-</script>
+  });</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

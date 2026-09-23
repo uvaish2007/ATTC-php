@@ -1,38 +1,19 @@
 <?php
-/**
- * Targets — set them, send them up for review, and freeze the agreed figure.
- *
- * Who does what:
- *   HoD       writes targets for their own department and sends them for review
- *   Director  approves what comes up, or sends it back with a note
- *   Admin     the same, plus the last word on an already-frozen target
- *
- * The page never decides permissions itself: every button is drawn from the
- * target_can_*() predicates in models/Target.php, and each POST re-checks the
- * same predicate before writing. See that file for the state machine.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
 $user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
 
-// The deadline column is part of this page, so make sure it is there before
-// anything reads or writes it. A database that never ran sql/target_deadline.sql
-// used to take the whole page down with "Unknown column 'target_deadline'".
 targets_deadline_ready();
 
-// Active academic year determines default operating year
 $activeYear  = active_academic_year();
 $years       = academic_years();
 $currentYear = $years[0] ?? '2026-27';
 
-// Selected Academic Year for target viewing and management (defaults to active year)
 $reqYear = trim((string) input('year'));
 $selectedYear = ($reqYear !== '' && is_valid_academic_year($reqYear) && in_array($reqYear, $years, true)) ? $reqYear : $activeYear;
 
-// AJAX endpoint to fetch approved faculty records for a target
 if ((isset($_GET['action']) && $_GET['action'] === 'get_target_records') || (isset($_POST['action']) && $_POST['action'] === 'get_target_records')) {
     header('Content-Type: application/json');
     $id = (int) (input('id') ?: input('target_id'));
@@ -115,8 +96,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (!target_can_edit($existing, $user)) {
             [$ok, $msg] = [false, 'You cannot edit this target.'];
         } elseif (!targets_deadline_ready()) {
-            // The column is missing and could not be added, so there is nowhere
-            // to put the date; say so rather than throwing.
             [$ok, $msg] = [false, 'Deadlines are unavailable: the targets table has no target_deadline column.'];
         } else {
             db()->prepare('UPDATE targets SET target_deadline = ?, updated_at = NOW() WHERE id = ?')->execute([$targetDeadline, $id]);
@@ -156,10 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'delete') {
         [$ok, $msg] = target_delete((int) input('id'), $user);
     } elseif ($action === 'apply_count') {
-        // Accept the "counted from approved records" figure into achieved_value.
         [$ok, $msg] = target_apply_count((int) input('id'), $user);
-
-    // ---- Timed unlock workflow ----
     } elseif ($action === 'unlock_request' && in_array($user['role'], ['HoD', 'Dean'], true)) {
         $unlockDept = $user['department'] ?? (trim((string) input('department')) ?: 'CSE');
         [$ok, $msg] = unlock_request($unlockDept, (int) $user['id'], (string) input('reason'));
@@ -185,10 +161,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect($redirectUrl);
 }
 
-// Re-freeze any window that has run out before we read state for this page.
 unlock_expire_due();
 
-// A HoD or Dean enters and manages targets for their scope; the other roles choose.
 $isHod       = $user['role'] === 'HoD';
 $isDean      = $user['role'] === 'Dean';
 $isCoord     = $user['role'] === 'Coordinator';
@@ -220,9 +194,6 @@ $departments = departments_all();
 $metrics     = metric_names();
 $awaiting    = count(array_filter($targets, fn($t) => target_can_review($t, $user)));
 
-// Unlock workflow state:
-//   HoD/Dean sees their department's lock/unlock banner and countdown.
-//   Admin sees the queue of unlock requests waiting to be granted.
 $unlockDept     = $user['department'] ?? ($deptFilter ?: 'CSE');
 $myUnlock       = $isHodOrDean ? unlock_state($unlockDept) : null;
 $pendingUnlocks = ($user['role'] === 'Admin') ? unlock_pending_all() : [];
@@ -254,9 +225,6 @@ require __DIR__ . '/inc/header.php';
     <?php $tgActive = (($selectedYear !== $activeYear) ? 1 : 0) + ((user_can_choose_department($user) && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
 
     <?php
-      // The meeting report always reflects what is on screen: same department
-      // (forced to their own for a HoD) and the same year filter. Same report,
-      // three formats — Word, Excel and a print-to-PDF view.
       $reportBase = array_filter([
           'department' => $deptFilter,
           'year'       => $selectedYear,
@@ -281,9 +249,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
-<?php // A Dean's status is pinned to "Dean Pending" by default; that is the
-      // resting state, not a filter they chose, so it is not counted.
-      $tgShown = $tgActive - (($isDean && $statFilter === 'Dean Pending') ? 1 : 0); ?>
+<?php             $tgShown = $tgActive - (($isDean && $statFilter === 'Dean Pending') ? 1 : 0); ?>
 <form method="get" class="fbar">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
 
@@ -364,7 +330,6 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-
 <?php /* ---- HoD / Dean: lock / request / countdown banner ---- */ ?>
 <?php if ($isHodOrDean && $myUnlock): ?>
   <?php if ($myUnlock['state'] === 'unlocked'): ?>
@@ -401,7 +366,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   <?php endif; ?>
 <?php endif; ?>
-
 
 <?php /* ---- Admin: queue of unlock requests to grant or deny ---- */ ?>
 <?php if ($user['role'] === 'Admin' && !empty($pendingUnlocks)): ?>
@@ -448,7 +412,6 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-
 <?php if (empty($targets)): ?>
 
   <div class="card"><div class="card-body">
@@ -464,8 +427,6 @@ require __DIR__ . '/inc/header.php';
 <?php else: ?>
 
   <?php
-    // Group every target under its department, so each department is its own
-    // card — not one long mixed list.
     $byDept = [];
     foreach ($targets as $t) {
         $key = ($t['department'] ?? '') !== '' ? $t['department'] : 'Unassigned';
@@ -1100,7 +1061,6 @@ function viewTarget(t) {
 
   document.getElementById('viewDlg').showModal();
 
-  // Fetch approved faculty records for this target
   fetch('targets.php?action=get_target_records&id=' + encodeURIComponent(t.id))
     .then(function(res) { return res.json(); })
     .then(function(data) {
@@ -1113,7 +1073,6 @@ function viewTarget(t) {
       var records = data.records || [];
       badge.textContent = records.length;
 
-      // If records count is known, dynamically refresh achieved in modal
       if (records.length > achVal) {
         achVal = records.length;
         document.getElementById('vt-achieved').textContent = achVal;
@@ -1200,8 +1159,6 @@ function delTarget(id, name) {
   document.getElementById('delDlg').showModal();
 }
 
-/* One dialog serves both decisions — only the wording and whether the note is
-   required change, so an approval and a send-back never drift apart. */
 function reviewTarget(t, decision) {
   var approve = decision === 'approve';
   document.getElementById('rv-id').value       = t.id;
@@ -1220,9 +1177,6 @@ function reviewTarget(t, decision) {
   document.getElementById('revDlg').showModal();
 }
 
-/* Live countdown for the unlock window. Counts down to the exact instant the
-   Admin's grant expires; when it hits zero the window is over, so we reload so
-   the server re-locks the targets and the edit buttons disappear. */
 (function () {
   var banner = document.querySelector('.unlock-banner.open');
   if (!banner) return;

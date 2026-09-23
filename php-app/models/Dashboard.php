@@ -1,31 +1,10 @@
 <?php
-/**
- * Dashboard data — the PHP port of the Node dashboardController.
- *
- * Roles are scoped server-side: Admin/Director see the whole institution and
- * may filter by department; HoD/Coordinator/Faculty are pinned to their own
- * department. Faculty additionally get a personal (own-records) view.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/../inc/auth.php';
-require_once __DIR__ . '/Target.php';   // academic_years()
+require_once __DIR__ . '/Target.php';   
 require_once __DIR__ . '/Record.php';
-require_once __DIR__ . '/ExecutiveMeeting.php';   // EM-SPEC-03 meeting filter
+require_once __DIR__ . '/ExecutiveMeeting.php';   
 
-/**
- * Every record type the dashboard counts, and how to count it. This is the one
- * place that lists them, so a new type shows up on the dashboard automatically.
- *
- *   group  faculty | activity | student — how the type is grouped on screen.
- *   year   the table has an academic_year column, so the year filter applies.
- *   dedup  the type stores one row per student for a *group* activity (a team
- *          event is entered once per participant). The academy counts such an
- *          activity ONCE — dedup lists the columns that identify the one event,
- *          so five team-mates are not counted as five. Each student still keeps
- *          their own row, which is their individual credit in the per-student
- *          report; only the institution tally is de-duplicated.
- */
 function all_metrics(): array
 {
     return [
@@ -49,11 +28,6 @@ function all_metrics(): array
     ];
 }
 
-/**
- * How a metric is counted. A plain type counts every row; a group activity
- * counts each distinct event once, so a team entered as many student rows is
- * one activity in the institution tally.
- */
 function metric_count_expr(array $m): string
 {
     if (!empty($m['dedup'])) {
@@ -63,14 +37,9 @@ function metric_count_expr(array $m): string
     return 'COUNT(*)';
 }
 
-/** Back-compat: every table now carries a department, so all metrics are here. */
 function dept_metrics(): array  { return all_metrics(); }
 function other_metrics(): array { return []; }
 
-/**
- * Build the full dashboard payload for a user, honouring the department/status
- * filters (which are ignored/forced for department-scoped roles).
- */
 function dashboard_data(array $user): array
 {
     journal_process_approval_expiry();
@@ -84,8 +53,6 @@ function dashboard_data(array $user): array
     $valid  = ['Draft', 'Submitted', 'Approved', 'Rejected'];
     $status = in_array(($_GET['status'] ?? ''), $valid, true) ? $_GET['status'] : null;
 
-    // EM-SPEC-03 — Centralized Academic Year and EM Duration filter resolution.
-    // Defaults to system active academic year, validating against academic_years().
     $rawYear  = $_GET['academic_year'] ?? ($_GET['year'] ?? null);
     $emCtx    = em_resolve_filter_context($rawYear, $_GET['em'] ?? null);
     $year     = $emCtx['year'];
@@ -94,10 +61,7 @@ function dashboard_data(array $user): array
 
     $metrics = all_metrics();
 
-    // ---- per-department counts, one grouped query per metric ----
-    // Group activities are de-duplicated here (metric_count_expr), so the
-    // institution tally counts a team event once, not once per participant.
-    $deptCounts = [];   // [department][metricKey] = n
+    $deptCounts = [];   
     $seen = [];
 
     foreach ($metrics as $key => $m) {
@@ -128,7 +92,6 @@ function dashboard_data(array $user): array
         }
     }
 
-    // ---- department list: admin-managed if any, else derived from data ----
     require_once __DIR__ . '/Department.php';
     $configured      = array_map(fn($d) => $d['name'], departments_all());
     $usingConfigured = count($configured) > 0;
@@ -155,7 +118,6 @@ function dashboard_data(array $user): array
         $matrixRows[] = ['department' => $dept, 'counts' => $counts, 'total' => $total];
     }
 
-    // ---- scoped totals ----
     $totals = [];
     foreach ($metrics as $key => $m) {
         if ($departmentFilter !== null) {
@@ -174,7 +136,6 @@ function dashboard_data(array $user): array
         $grandTotal += (int) $v;
     }
 
-    // ---- status pipeline (respects department + year, ignores status filter) ----
     $statusBreakdown = [
         'Approved'     => 0,
         'Dean Pending' => 0,
@@ -210,7 +171,6 @@ function dashboard_data(array $user): array
         }
     }
 
-    // ---- top-line stats (targets count scoped to active year and department if set) ----
     $targetWhere = [];
     $targetParams = [];
     if ($departmentFilter !== null) {
@@ -240,7 +200,6 @@ function dashboard_data(array $user): array
         'pendingApprovals' => (int) (($statusBreakdown['Dean Pending'] ?? 0) + ($statusBreakdown['HOD Pending'] ?? 0) + ($statusBreakdown['Submitted'] ?? 0)),
     ];
 
-    // ---- users by role ----
     $usersByRole = ['Admin' => 0, 'Principal' => 0, 'Dean' => 0, 'HoD' => 0, 'Coordinator' => 0, 'Faculty' => 0];
     $usersByRoleSql = 'SELECT role, COUNT(*) AS n FROM users' . ($departmentFilter !== null ? ' WHERE department = ?' : '') . ' GROUP BY role';
     $usersByRoleStmt = $pdo->prepare($usersByRoleSql);
@@ -252,19 +211,9 @@ function dashboard_data(array $user): array
         }
     }
 
-    // ---- recent submissions + how the targets are doing ----
     $recent  = recent_activity($departmentFilter, $status, null, $year, $emWindow);
     $targets = target_progress($departmentFilter, 6, $year);
 
-    /*
-     * Target-vs-achieved is an oversight-only card, and it costs one COUNT per
-     * target, so only Admin/Director pay for it.
-     *
-     * Its four filters ride on their own `t_` query parameters. They have to be
-     * separate from the page's `department`/`status`: those two scope the whole
-     * dashboard and `status` there means a record's review state, which is a
-     * different vocabulary from a target's.
-     */
     $attainment       = null;
     $attainFilters    = [];
     $attainOptions    = [];
@@ -311,8 +260,7 @@ function dashboard_data(array $user): array
         ],
         'statusBreakdown'=> $statusBreakdown,
         'usersByRole'    => $usersByRole,
-        // labels + values are both re-indexed 0..n so the page can zip them by
-        // position (array_map over an assoc array would keep string keys).
+
         'chartData'      => [
             'labels' => array_values(array_map(fn($m) => $m['label'], $metrics)),
             'values' => array_values(array_map(fn($k) => (int) ($totals[$k] ?? 0), array_keys($metrics))),
@@ -326,12 +274,6 @@ function dashboard_data(array $user): array
     ];
 }
 
-/**
- * Targets in the current scope, with how far each one has been achieved.
- *
- * The percentage is capped at 100 so a target that was beaten does not draw a
- * bar wider than its track; the raw numbers are still shown beside it.
- */
 function target_progress(?string $department, int $limit = 6, ?string $year = null): array
 {
     $sql    = 'SELECT department, academic_year, metric, target_value, achieved_value FROM targets';
@@ -350,7 +292,6 @@ function target_progress(?string $department, int $limit = 6, ?string $year = nu
         $sql .= ' WHERE ' . implode(' AND ', $where);
     }
 
-    // LIMIT can't be a placeholder in MySQL, so it is cast to an int instead.
     $sql .= ' ORDER BY created_at DESC LIMIT ' . (int) $limit;
 
     $stmt = db()->prepare($sql);
@@ -374,12 +315,6 @@ function target_progress(?string $department, int $limit = 6, ?string $year = nu
     return $rows;
 }
 
-/**
- * A whole-scope summary of the targets — so the dashboard can show how ALL
- * targets are doing at a glance, not just a handful. Returns the overall
- * achieved/target figure, a Met / On-track / Behind distribution, and a
- * per-department rollup (each department's aggregate progress).
- */
 function target_summary(?string $department, ?string $year = null): array
 {
     $sql    = 'SELECT department, target_value, achieved_value FROM targets';
@@ -441,16 +376,6 @@ function target_summary(?string $department, ?string $year = null): array
     ];
 }
 
-/**
- * Where the records behind each target metric live.
- *
- * The keys are the metric names the Targets page offers (the `metrics` table).
- * `dept` and `year` say whether that table can actually honour those two parts
- * of a target's scope: three tables keep no academic_year, and two keep no
- * department at all, so a target written against them is counted more broadly
- * than it reads. target_attainment() marks those rows so the page can say so
- * rather than quietly overstating the number.
- */
 function target_metric_sources(): array
 {
     return [
@@ -466,31 +391,11 @@ function target_metric_sources(): array
     ];
 }
 
-/**
- * Each fixed target beside what has actually been achieved against it.
- *
- * "Achieved" is counted live from Approved records, not read from
- * targets.achieved_value — that column is only ever filled in by hand on the
- * Targets page, so it drifts the moment somebody forgets. Counting the records
- * cannot drift.
- *
- * Rows come back furthest-behind first: a target that is already met is not
- * what an oversight dashboard is for. Percent is deliberately NOT capped at
- * 100, so a target that was beaten still shows its overshoot.
- *
- * Returns ['rows' => [...], 'summary' => [...]].
- */
 function target_attainment(?string $department, array $filters = [], int $limit = 8): array
 {
     $pdo     = db();
     $sources = target_metric_sources();
 
-    /*
-     * The chart carries its own filters, so a Director can narrow to one year
-     * or one metric without disturbing the rest of the dashboard. A department
-     * chosen on the card wins over the page-wide one — it can only ever narrow
-     * the view, since the page filter has already scoped everything else.
-     */
     $where  = [];
     $params = [];
 
@@ -523,9 +428,6 @@ function target_attainment(?string $department, array $filters = [], int $limit 
     foreach ($stmt as $row) {
         $source = $sources[$row['metric']] ?? null;
 
-        // A free-text target (e.g. the Executive-Meeting proforma rows) has no
-        // record table to count against, so its progress is the achieved figure
-        // the HoD entered. Record-backed metrics are still counted live below.
         if ($source === null) {
             $achieved = (int) $row['achieved_value'];
             $target   = (int) $row['target_value'];
@@ -548,7 +450,7 @@ function target_attainment(?string $department, array $filters = [], int $limit 
 
         $where = ['status = ?'];
         $args  = ['Approved'];
-        $exact = true;   // could every part of this target's scope be honoured?
+        $exact = true;   
 
         if ($row['department']) {
             if ($source['dept']) {
@@ -592,15 +494,11 @@ function target_attainment(?string $department, array $filters = [], int $limit 
             'percent'    => $target > 0 ? (int) round($achieved / $target * 100) : 0,
             'exact'      => $exact,
             'status'     => (string) ($row['status'] ?? 'Draft'),
-            // A frozen target is an agreed commitment; anything else is still
-            // provisional, and the chart draws the two differently.
+
             'frozen'     => ($row['status'] ?? '') === 'Approved',
         ];
     }
 
-    // Institution-wide attainment per target type: the same target set folded by
-    // its name, so the chart can show "how are we doing on each target" across
-    // every department rather than a handful of single-department rows.
     $byMetricAgg = [];
     foreach ($rows as $r) {
         $m = $r['metric'];
@@ -617,7 +515,7 @@ function target_attainment(?string $department, array $filters = [], int $limit 
         $v['percent'] = $v['target'] > 0 ? (int) round($v['achieved'] / $v['target'] * 100) : 0;
         $byMetric[] = $v;
     }
-    usort($byMetric, fn($a, $b) => $a['percent'] <=> $b['percent']);   // worst first
+    usort($byMetric, fn($a, $b) => $a['percent'] <=> $b['percent']);   
 
     usort($rows, fn($a, $b) => $a['percent'] <=> $b['percent']);
 
@@ -636,13 +534,6 @@ function target_attainment(?string $department, array $filters = [], int $limit 
     ];
 }
 
-/**
- * The values actually present in the targets table, for the chart's filters.
- *
- * Read from the data rather than from the master lists so the selects only ever
- * offer a choice that returns something — an empty chart is a dead end for the
- * person using it.
- */
 function target_filter_options(): array
 {
     $pdo = db();
@@ -661,10 +552,8 @@ function target_filter_options(): array
     ];
 }
 
-/** Recent submissions across every record type. */
 function recent_activity(?string $department, ?string $status, ?int $createdBy = null, ?string $year = null, ?array $emWindow = null): array
 {
-    // table, label, its title column, and whether it keeps an academic_year.
     $sources = [
         ['table' => 'journal_publications',    'label' => 'Journal',        'title' => 'paper_title',   'year' => true],
         ['table' => 'book_publications',       'label' => 'Book',           'title' => 'title',         'year' => true],
@@ -723,16 +612,11 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
     return array_slice($rows, 0, 8);
 }
 
-/** Faculty personal view: only the signed-in user's own submissions, scoped
- *  to the system's active academic year (tables that carry no academic_year
- *  column — see all_metrics()'s 'year' flag — are shown regardless of year,
- *  same convention the rest of the dashboard already uses). */
 function my_dashboard_data(array $user): array
 {
     $pdo  = db();
     $uid  = (int) $user['id'];
 
-    // EM-SPEC-03 — Centralized Academic Year and EM Duration filter resolution.
     $rawYear  = $_GET['academic_year'] ?? ($_GET['year'] ?? null);
     $emCtx    = em_resolve_filter_context($rawYear, $_GET['em'] ?? null);
     $year     = $emCtx['year'];

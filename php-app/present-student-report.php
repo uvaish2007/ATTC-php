@@ -1,10 +1,4 @@
 <?php
-/**
- * Student Achievement Presentation Mode — Fullscreen Academic Review Presentation Engine.
- * Allows Admin, Principal, Director, Dean, HoD, Coordinator, and Faculty to present a student's achievements in a clean slide format.
- * Strictly enforced backend authorization via can_user_view_student_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/icons.php';
 require_once __DIR__ . '/inc/report_layout.php';
@@ -16,14 +10,12 @@ if (!defined('REPORT_INSTITUTION')) {
 
 $user = require_login();
 
-// Read query parameters
 $studentKey   = trim((string) input('key', ''));
 $regNoHint    = trim((string) input('reg_no', ''));
 $nameHint     = trim((string) input('name', ''));
 $deptHint     = trim((string) input('dept', ''));
 $academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
 
-// If key is empty, compute key
 if ($studentKey === '') {
     if ($regNoHint !== '' && $regNoHint !== '—') {
         $studentKey = student_make_key($regNoHint, $nameHint, $deptHint);
@@ -47,17 +39,14 @@ if (!$student) {
     exit;
 }
 
-// Strict backend role authorization gate
 if (!can_user_view_student_report($user, $student['department'])) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
     exit;
 }
 
-// Build slides array if not already formatted
 $slides = $presentation['slides'];
 
-// Ensure we also have an overall summary slide if there are achievements
 if (!empty($presentation['summary']['total']) && count($slides) > 1) {
     $overallSlide = [
         'type'         => 'overall_summary',
@@ -65,7 +54,6 @@ if (!empty($presentation['summary']['total']) && count($slides) > 1) {
         'academic_year'=> $academicYear,
         'summary'      => $presentation['summary'],
     ];
-    // Insert overall summary right after title slide
     array_splice($slides, 1, 0, [$overallSlide]);
 }
 
@@ -664,8 +652,7 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
     </div>
   </footer>
 
-  <script>
-    const slides = <?= $slidesJson ?: '[]' ?>;
+  <script>    const slides = <?= $slidesJson ?: '[]' ?>;
     let currentIndex = 0;
     let presentationMode = 'manual';
     let autoTimer = null;
@@ -757,8 +744,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
     }
 
     window.addEventListener('pagehide', clearAutoTimer);
-
-    /* ---- Executive Chart & SVG Helpers ---- */
 
     function esc(str) {
       return String(str === null || str === undefined ? '' : str)
@@ -1216,7 +1201,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
         content.innerHTML = html;
         card.classList.add('active');
 
-        // Update Counter and Buttons
         document.getElementById('slideCounter').textContent = `Slide ${currentIndex + 1} of ${slides.length}`;
         document.getElementById('btnPrev').disabled = (currentIndex === 0);
         document.getElementById('btnNext').disabled = (currentIndex === slides.length - 1);
@@ -1247,7 +1231,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       }
     }
 
-    // Keyboard Shortcuts
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
         e.preventDefault();
@@ -1260,7 +1243,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       }
     });
 
-    // Initialize First Slide
     if (slides.length > 0) {
       renderSlide(0);
     } else {

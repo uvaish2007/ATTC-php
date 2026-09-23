@@ -3,10 +3,10 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/record_specs.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
-require_once __DIR__ . '/models/Target.php';   // academic_years()
-require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM1 lock
-require_once __DIR__ . '/models/UploadFlow.php';         // Academic Year → Data Type entry flow
-require_once __DIR__ . '/inc/compression.php';        // FEAT-13: Automatic File Storage Compression
+require_once __DIR__ . '/models/Target.php';   
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   
+require_once __DIR__ . '/models/UploadFlow.php';         
+require_once __DIR__ . '/inc/compression.php';        
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
@@ -18,15 +18,9 @@ $activeYear  = active_academic_year();
 journal_process_approval_expiry();
 
 if (!defined('PROOF_MAX_BYTES')) {
-    define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   // 2 MB
+    define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   
 }
 
-/**
- * Save one uploaded proof file. Only a PDF or image (up to 2 MB) is accepted.
- * Files are compressed server-side (FEAT-13) and stored safely in UPLOAD_DIR
- * with pattern record_<unique-id>_<timestamp>.<ext>.
- * Returns [storedName|null, error|null].
- */
 if (!function_exists('save_upload_proof')) {
 function save_upload_proof(?array $file, bool $required = false): array
 {
@@ -53,7 +47,6 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof could not be uploaded (invalid temporary file).'];
     }
 
-    // Supported proof formats: PDF documents and images (JPG, JPEG, PNG)
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
     $allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
     if (!in_array($ext, $allowedExts, true)) {
@@ -64,7 +57,6 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof attachment is larger than 2 MB. Please upload a smaller one.'];
     }
 
-    // Validate MIME type and binary header magic bytes
     $finfo = @finfo_open(FILEINFO_MIME_TYPE);
     $mime = $finfo ? (string) @finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
     if ($finfo && PHP_VERSION_ID < 80500) {
@@ -131,22 +123,14 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof could not be saved to the upload directory.'];
     }
 
-    // Keep mirrored copy in proofs/ for backward compatibility with older links
     @copy($destPath, $proofsFolder . '/' . $stored);
 
     return [$stored, null];
 }
 }
 
-// ---- Upload Data entry flow: Academic Year → Data Type → this form ---------
-// Faculty and Coordinator pick both before the form opens (models/UploadFlow.php).
-// The choice is kept in the session and re-checked on every request here, so
-// neither screen can be skipped by editing the URL or posting directly. HoD
-// and Admin skip this block and use the page exactly as before.
-$uploadFlow = null;   // the validated choice once the form may open
+$uploadFlow = null;   
 if (upload_flow_applies($user)) {
-    // If opening or submitting an existing record for revision (edit_id), automatically
-    // initialize flow state from the record's existing academic year and category.
     $flowEditId   = (int) ($_GET['edit_id'] ?? $_POST['edit_id'] ?? 0);
     $flowEditType = (string) ($_GET['type'] ?? $_POST['record_type'] ?? '');
     if ($flowEditId > 0 && $flowEditType !== '') {
@@ -171,7 +155,6 @@ if (upload_flow_applies($user)) {
     }
     $flowState = upload_flow_state($user);
 
-    // The two selection screens post back here.
     if ($isPost && isset($_POST['upload_flow_step'])) {
         if ($_POST['upload_flow_step'] === 'year') {
             [$ok, $error] = upload_flow_choose_year($user, $_POST['academic_year'] ?? '');
@@ -193,7 +176,6 @@ if (upload_flow_applies($user)) {
         redirect('/upload.php');
     }
 
-    // Show selection screen if visiting entry point, requested step, or reset requested
     if (!$isPost && (!isset($_GET['type']) || isset($_GET['reset']) || isset($_GET['step']))) {
         if (($_GET['step'] ?? '') === 'data-type' && $flowState['year'] !== null) {
             $uploadFlowStep = 'data_type';
@@ -209,7 +191,6 @@ if (upload_flow_applies($user)) {
         exit;
     }
 
-    // Direct access with explicit ?type= or POST record_type when flow not yet set in session
     $directType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
     if ($directType !== '' && isset($types[$directType])) {
         if ($flowState['year'] === null) {
@@ -252,11 +233,10 @@ if (upload_flow_applies($user)) {
     }
 }
 
-// Handle form submissions for new records
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     csrf_check();
     $type = (string) input('record_type');
-    $nav  = (string) input('nav', 'add');   // add | next | submit
+    $nav  = (string) input('nav', 'add');   
 
     $targetYear = $uploadFlow ? $uploadFlow['year'] : trim((string) input('academic_year', $activeYear));
     if ($user['role'] !== 'Admin' && academic_year_is_locked($targetYear)) {
@@ -264,7 +244,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
 
-    // EM-SPEC-02: Check EM schedule and meeting lock
     $meetingParam = trim((string) input('meeting', input('em', '')));
     if ($emBlock = em_submission_block_reason($user['role'], $targetYear, null, $meetingParam ?: null)) {
         flash('error', $emBlock);
@@ -276,9 +255,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         redirect('/upload.php');
     }
 
-    // A dropdown set to "Others" is replaced by the text the user typed in the
-    // matching "<field>_other" box, so the real value is stored, not the word
-    // "Others". Works for journal type, event type, category — any such pair.
     foreach ($_POST as $k => $v) {
         if (substr($k, -6) === '_other') {
             $base = substr($k, 0, -6);
@@ -492,7 +468,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         ],
     ];
 
-    // Faculty members always submit records for their assigned department
     if ($user['role'] === 'Faculty' && !empty($user['department'])) {
         $_POST['department'] = $user['department'];
     }
@@ -502,7 +477,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
     foreach ($expectedFields as $fKey => $fLabel) {
         if ($fKey === 'academic_year') {
-            continue; // Server-owned; automatically populated with $activeYear
+            continue; 
         }
         $val = trim((string) ($_POST[$fKey] ?? ''));
         if ($val === '') {
@@ -510,19 +485,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             continue;
         }
 
-        // Validate URL fields
         if (in_array($fKey, ['doi', 'journal_link', 'document_link', 'certificate_link', 'report_link', 'appointment_order_link'], true)) {
             if (!preg_match('/^https?:\/\/.+/i', $val)) {
                 $validationErrors[] = "{$fLabel} must be a valid URL starting with http:// or https://.";
             }
         }
-        // Validate Date fields
+
         if (in_array($fKey, ['conference_date', 'publication_date', 'from_date', 'to_date', 'signed_date', 'valid_upto', 'event_date', 'activity_date'], true)) {
             if (strtotime($val) === false) {
                 $validationErrors[] = "{$fLabel} must be a valid date.";
             }
         }
-        // Validate Numeric fields
+
         if (in_array($fKey, ['participants', 'days'], true)) {
             if (!is_numeric($val) || (int)$val < 1) {
                 $validationErrors[] = "{$fLabel} must be a number greater than 0.";
@@ -530,7 +504,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 
-    // Check Proof file upload (optional)
     [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, false);
     if ($proofError !== null) {
         $validationErrors[] = $proofError;
@@ -549,10 +522,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $pdo   = db();
 
     try {
-        // Columns the submitter is NEVER allowed to set from the form (server-owned).
-        // academic_year is server-owned too: every record is stamped with the
-        // system's active academic year, never whatever a visitor picked in the
-        // form (section 12 — never trust a client-supplied year).
         $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at', 'academic_year'];
         $tableColumns = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_COLUMN);
         $allowed      = array_diff($tableColumns, $protected);
@@ -630,10 +599,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 
-    // Review chain: Faculty -> Coordinator verifies & approves -> HoD reviews only.
-    // Faculty submissions land in 'Submitted' (pending Coordinator verification).
-    // Coordinator, HoD, and Admin uploads are already verified and land 'Approved'.
-    // If the record type does NOT require approval (e.g. Book / Chapter), status is always Submitted.
     if (!record_requires_approval($type)) {
         $initialStatus = 'Submitted';
     } elseif (in_array($user['role'], ['Coordinator', 'HoD', 'Admin'], true)) {
@@ -660,7 +625,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $placeholders[] = '?';
     }
 
-        // Faculty members always submit records for their assigned department
         if ($user['role'] === 'Faculty' && !empty($user['department'])) {
             $_POST['department'] = $user['department'];
         }
@@ -672,14 +636,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $placeholders[] = '?';
         }
 
-        // Ensure department is populated if the table has the column
         if (in_array('department', $allowed, true) && !in_array('department', $fields, true) && !empty($user['department'])) {
             $fields[] = 'department';
             $values[] = $user['department'];
             $placeholders[] = '?';
         }
 
-        // Attach the proof if one was uploaded and this table can hold it.
         if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
             $fields[] = 'proof_file'; $values[] = $proofStored; $placeholders[] = '?';
         }
@@ -691,7 +653,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $pdo->prepare($sql)->execute($values);
         $newRecordId = (int)$pdo->lastInsertId();
 
-        // Audit log for faculty submission
         if ($initialStatus === 'Submitted') {
             record_workflow_audit(
                 $type,
@@ -707,7 +668,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             );
         }
 
-        // An upload that lands Approved refreshes any target it feeds.
         if ($initialStatus === 'Approved' || !record_requires_approval($type)) {
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
@@ -746,17 +706,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         redirect('/upload.php?type=' . $type);
     }
 
-    // Where to land next: add another of the same type, move to the next metric,
-    // or finish on the last one.
     if ($nav === 'next') {
         $idx  = array_search($type, $typeKeys, true);
         $dest = $typeKeys[$idx + 1] ?? $type;
         redirect('/upload.php?type=' . $dest);
     }
-    redirect('/upload.php?type=' . $type);   // add / submit both return here
+    redirect('/upload.php?type=' . $type);   
 }
 
-// Current user's records
 $effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
 $myRecords = my_records($user['id']);
 $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
@@ -814,10 +771,6 @@ if ($editId > 0 && isset($types[$selectedType])) {
     }
 }
 
-/**
- * Render department input: locked readonly for Faculty (preserving their department),
- * and selectable for other authorized roles (Admin, etc.).
- */
 if (!function_exists('render_dept_field')) {
 function render_dept_field(array $user, array $departments, string $label = 'Department', bool $required = false): void
 {
@@ -896,10 +849,6 @@ require __DIR__ . '/inc/header.php';
            container.querySelector('.js-category-tab');
   }
 
-  /**
-   * Dynamically position the sliding indicator directly underneath the active tab.
-   * Uses DOM measurements: active tab position, container position, and current scrollLeft.
-   */
   function updateIndicator(activeElement, smooth) {
     if (!activeElement || !container || !indicator) return;
 
@@ -907,7 +856,6 @@ require __DIR__ . '/inc/header.php';
     var tabRect = activeElement.getBoundingClientRect();
     var currentScroll = container.scrollLeft;
 
-    // Dynamic calculation based on active tab position, container position, and current scrollLeft
     var targetLeft = (tabRect.left - containerRect.left - (container.clientLeft || 0)) + currentScroll;
     var targetWidth = tabRect.width || activeElement.offsetWidth;
 
@@ -921,9 +869,6 @@ require __DIR__ . '/inc/header.php';
     indicator.style.transform = 'translateX(' + Math.round(targetLeft) + 'px)';
   }
 
-  /**
-   * Automatically scroll the tab container so that the active tab is comfortably in view.
-   */
   function ensureActiveCategoryVisible(activeElement, smooth) {
     if (!activeElement || !container) return;
 
@@ -937,7 +882,6 @@ require __DIR__ . '/inc/header.php';
     var currentScroll = container.scrollLeft;
     var targetScroll = currentScroll;
 
-    // Center the active tab in view if it is near or beyond visible edges
     if (itemLeft < padding || itemRight > (container.clientWidth - padding)) {
       var itemCenter = activeElement.offsetLeft + (activeElement.offsetWidth / 2);
       targetScroll = itemCenter - (container.clientWidth / 2);
@@ -957,7 +901,6 @@ require __DIR__ . '/inc/header.php';
     }
   }
 
-  // Handle tab clicks: smoothly slide indicator and scroll to clicked tab
   var tabs = container.querySelectorAll('.js-category-tab');
   tabs.forEach(function (tab) {
     tab.addEventListener('click', function (e) {
@@ -975,7 +918,6 @@ require __DIR__ . '/inc/header.php';
     });
   });
 
-  // Keep indicator aligned during horizontal scrolling
   container.addEventListener('scroll', function () {
     var activeTab = getActiveTab();
     if (activeTab) {
@@ -983,7 +925,6 @@ require __DIR__ . '/inc/header.php';
     }
   }, { passive: true });
 
-  // Initialise on load and after initial rendering
   function initNav() {
     var activeTab = getActiveTab();
     if (activeTab) {
@@ -1005,7 +946,6 @@ require __DIR__ . '/inc/header.php';
     initNav();
   }
 
-  // Window resize handler
   window.addEventListener('resize', function () {
     var activeTab = getActiveTab();
     if (activeTab) {
@@ -1455,8 +1395,6 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
 
     <script>
-      /* A dropdown with an "Others" option reveals a text box to type the real
-         value; the box is required only while "Others" is the choice. */
       document.querySelectorAll('.js-other').forEach(function (sel) {
         var box = sel.parentElement.querySelector('.js-other-text');
         if (!box) return;
@@ -1470,7 +1408,6 @@ require __DIR__ . '/inc/header.php';
         sync();
       });
 
-      /* Immediate strict 2MB check: file cannot even be selected if > 2 MB */
       var proofInput = document.getElementById('proofInput');
       if (proofInput) {
         var MAX_PROOF_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -1491,7 +1428,6 @@ require __DIR__ . '/inc/header.php';
             return false;
           }
 
-          // PDF format check
           var name = file.name.toLowerCase();
           if (!name.endsWith('.pdf')) {
             alert('Only PDF files (.pdf) are allowed as proof attachments.');
@@ -1509,19 +1445,14 @@ require __DIR__ . '/inc/header.php';
         });
       }
 
-      /* Per-category Draft State Persistence */
       (function () {
         var form = document.querySelector('.card-body form');
         if (!form) return;
-
         var isEditing = <?= !empty($editRecord) ? 'true' : 'false' ?>;
         if (isEditing) return; // Do not overwrite active record edit with unrelated draft!
-
         var activeYear = <?= json_encode($activeYear) ?>;
         var recordType = <?= json_encode($selectedType) ?>;
         var storageKey = 'atts_upload_draft_' + activeYear + '_' + recordType;
-
-        // Clear submitted category draft if server indicated successful insert
         var submittedDraftType = <?= json_encode($submittedDraftType) ?>;
         if (submittedDraftType) {
           try {
@@ -1605,7 +1536,6 @@ require __DIR__ . '/inc/header.php';
             isRestoring = true;
             var restoredAny = false;
 
-            // Phase 1: Restore selects first and trigger change event so dynamic boxes ("Others") reveal
             Object.keys(draft).forEach(function (name) {
               var el = form.elements[name];
               if (!el) return;
@@ -1616,7 +1546,6 @@ require __DIR__ . '/inc/header.php';
               }
             });
 
-            // Phase 2: Restore text, number, date, URL, textarea, checkbox, radio
             Object.keys(draft).forEach(function (name) {
               var el = form.elements[name];
               if (!el) return;
@@ -1640,7 +1569,6 @@ require __DIR__ . '/inc/header.php';
               });
             });
 
-            // Phase 3: Resync any .js-other boxes specifically
             document.querySelectorAll('.js-other').forEach(function (sel) {
               var otherName = sel.getAttribute('data-other');
               var box = otherName ? form.elements[otherName] : null;
@@ -1716,7 +1644,6 @@ require __DIR__ . '/inc/header.php';
           form.dataset.submitting = '1';
         });
 
-        // Immediately save draft upon clicking any category tab before navigation unloads the DOM
         document.querySelectorAll('.js-category-tab').forEach(function (tab) {
           tab.addEventListener('click', function () {
             clearTimeout(saveTimeout);
@@ -1724,7 +1651,6 @@ require __DIR__ . '/inc/header.php';
           });
         });
 
-        // Flush on beforeunload and pagehide
         window.addEventListener('beforeunload', function () {
           clearTimeout(saveTimeout);
           saveDraft();
@@ -1733,7 +1659,6 @@ require __DIR__ . '/inc/header.php';
           clearTimeout(saveTimeout);
           saveDraft();
         });
-
         var serverDraft = <?= json_encode($editRecord ?? null) ?>;
         function restoreServerDraft() {
           if (!serverDraft || typeof serverDraft !== 'object') return false;
@@ -1784,7 +1709,7 @@ require __DIR__ . '/inc/header.php';
 
 <!-- My recent records -->
 <?php
-  // Filters for the submissions list: default to active category tab unless explicitly specified.
+
   $mTypeRaw = isset($_GET['mtype']) ? (string) $_GET['mtype'] : null;
   if ($mTypeRaw === null) {
       $mType = $selectedType;

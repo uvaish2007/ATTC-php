@@ -1,20 +1,4 @@
 <?php
-/**
- * Record report templates — the exact column layout of each IQAC report, taken
- * from the official Excel/Word templates.
- *
- * For each record type: the report title, an optional subtitle, and the columns
- * in order as [label, field]. `field` is the DB column to print, or '#' for the
- * auto S.No. The `department` column is the consolidated "Dept" column — it is
- * shown only in an all-departments report; a single-department report drops it
- * and puts DEPARTMENT OF <name> in the heading (this is exactly how the Excel
- * template — which spans departments — differs from the Word one, which is per
- * department).
- *
- * record-report.php renders any of these; adding a new report type is just a new
- * entry here plus its upload-form fields.
- */
-
 function record_report_specs(): array
 {
     return [
@@ -307,7 +291,6 @@ function record_report_specs(): array
     ];
 }
 
-/** One report's spec, or null for a type that has no template yet. */
 function record_report_spec(string $type): ?array
 {
     return record_report_specs()[$type] ?? null;

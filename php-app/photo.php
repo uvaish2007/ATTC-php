@@ -1,22 +1,4 @@
 <?php
-/**
- * Secure profile-photo access controller.
- *
- * Serves one account's passport photograph from uploads/photos/. The file is
- * never linked directly, so every request is checked here first:
- *
- *   - you must be signed in;
- *   - you may always see your own photo;
- *   - otherwise the same rule as the Faculty Details document applies —
- *     Admin / Principal / Director / Dean see anyone, an HoD or Coordinator
- *     sees their own department only.
- *
- * Changing ?user=123 to another id therefore gains nothing that the Faculty
- * Details PDF would not already show.
- *
- *   photo.php?user=12
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';

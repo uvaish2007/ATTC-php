@@ -1,42 +1,12 @@
 <?php
-/**
- * Faculty Details — one A4 document holding everything ATTS stores about a
- * single faculty member, opened from the Faculty Achievements page.
- *
- * Nothing here is a new data source. It reuses, unchanged:
- *   - can_user_view_faculty_report()  — the same IDOR gate the individual
- *     report uses, so a HoD/Coordinator can only open their own department
- *     and a Faculty member only their own record.
- *   - faculty_profile_details()       — the existing `users` row.
- *   - faculty_achievement_details()   — the existing FEAT-04 achievement query.
- *   - active_academic_year()          — FEAT-02's one global year.
- *   - em_filter_window() / em_meeting_for_datetime() — FEAT-07's EM1/EM2.
- *   - inc/report_layout.php           — the same A4 letterhead, grid and
- *     sign-off every other ATTS report download is built from, and the same
- *     "print the page, save as PDF" route (ATTS bundles no PDF library).
- *
- * What ATTS does NOT store, and is therefore reported as such rather than
- * invented: faculty photo, faculty signature, education records, experience
- * records, and personal fields (date of birth, gender, nationality, address).
- * The only document evidence ATTS holds is the proof file attached to each
- * achievement record, which the Document Status section reports.
- */
-
 require_once __DIR__ . '/inc/auth.php';
-require_once __DIR__ . '/inc/report_layout.php';          // A4 letterhead + grid + sign-off
-require_once __DIR__ . '/models/FacultyAchievement.php';
+require_once __DIR__ . '/inc/report_layout.php';          require_once __DIR__ . '/models/FacultyAchievement.php';
 require_once __DIR__ . '/models/User.php';
-require_once __DIR__ . '/models/ExecutiveMeeting.php';    // FEAT-07 EM1/EM2
-
+require_once __DIR__ . '/models/ExecutiveMeeting.php';    
 $user = require_login();
 
-// Subject of the document. Defaults to the signed-in user, exactly as
-// individual-faculty-report.php does.
 $facultyId = (int) input('id', 0) ?: (int) $user['id'];
 
-// ---- IDOR gate: the existing rule, before a single row is read ------------
-// Self, or Admin/Principal/Director/Dean, or a HoD/Coordinator of the same
-// department. Anything else lands on the standard denied page.
 if (!can_user_view_faculty_report($user, $facultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
@@ -53,15 +23,12 @@ if (!in_array($format, ['pdf', 'word'], true)) {
 $askedYear    = trim((string) input('academic_year', ''));
 $academicYear = is_valid_academic_year($askedYear) ? $askedYear : active_academic_year();
 
-// FEAT-07: the same All / EM1 / EM2 filter the achievements page passes on.
 $em       = em_filter_value(input('em'));
 $emWindow = em_filter_window($em, $academicYear);
 $emSchedule = em_schedule_for_year($academicYear);
 
 $profile = faculty_profile_details($facultyId);
 
-// The document describes a member of teaching staff; those are the same roles
-// the Faculty Achievements grid lists.
 if (!$profile || !in_array($profile['role'], ['Faculty', 'Coordinator', 'HoD'], true)) {
     http_response_code(404);
     $pageTitle  = 'Faculty Details';
@@ -73,20 +40,14 @@ if (!$profile || !in_array($profile['role'], ['Faculty', 'Coordinator', 'HoD'], 
     exit;
 }
 
-// The faculty member's own passport photograph, uploaded on their Profile
-// page. Embedded as a data: URI so that printing never depends on a second
-// HTTP request, and so a missing or unreadable file simply falls back to the
-// "Photo Not Available" box instead of a broken image.
 $photoData = user_photo_data_uri(user_photo_filename($facultyId));
 
 $data    = faculty_achievement_details($facultyId, $academicYear, null, $emWindow);
 $records = $data['records'];
 $summary = $data['summary'];
 
-// ---- Document Status: the proof file attached to each achievement ---------
 $proofUploaded = 0;
-$proofMissing  = 0;   // a filename is recorded but the file is not on disk
-$proofNone     = 0;
+$proofMissing  = 0;   $proofNone     = 0;
 $statusCounts  = [];
 
 foreach ($records as $r) {

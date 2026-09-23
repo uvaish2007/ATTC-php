@@ -1,17 +1,7 @@
 <?php
-/**
- * Faculty dashboard.
- * Shows only the records this user submitted - nothing from other people.
- *
- * Comes from dashboard.php:  $user, $data
- */
-
 $firstName = explode(' ', trim($user['name']))[0] ?: 'there';
 $stats     = $data['stats'];
 
-// One colour per status, shared with the doughnut and its legend below.
-// Same order and same colours as the master dashboard, so the two pages
-// never disagree about what "Approved" looks like.
 $statusColours = [
     'Approved'     => '#059669',
     'Dean Pending' => '#F59E0B',
@@ -21,7 +11,6 @@ $statusColours = [
     'Draft'        => '#6B7FA8',
 ];
 
-// label, value, icon, icon colour, small caption
 $cards = [
     ['My Submissions', $stats['totalRecords'], 'file-stack', 'brand', "Records you've filed"],
     ['Approved',       $stats['approved'],     'check',      'navy',  'Accepted records'],
@@ -48,7 +37,7 @@ $cards = [
         </select>
       </label>
 
-      <?php // EM-SPEC-03 — EM Duration filter: All, EM1 Duration, EM2 Duration ?>
+      <?php ?>
       <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
         <span class="fb-k">EM Duration</span>
         <select name="em" onchange="this.form.submit()">
@@ -67,8 +56,7 @@ $cards = [
   </div>
 </div>
 
-<?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
-
+<?php require __DIR__ . '/em_status_card.php'; ?>
 
 <!-- Four counters across the top -->
 <div class="stat-grid grid-4">
@@ -85,7 +73,6 @@ $cards = [
   <?php endforeach; ?>
 
 </div>
-
 
 <div class="mt-5 grid-2-1">
 
@@ -126,7 +113,6 @@ $cards = [
     </div>
   </div>
 
-
   <!-- How many of each kind -->
   <div class="card">
     <div class="card-head">
@@ -163,7 +149,6 @@ $cards = [
 
 </div>
 
-
 <!-- Where your records stand, and what to do next -->
 <div class="mt-5 grid-1-1">
 
@@ -193,8 +178,7 @@ $cards = [
 
         <div class="donut-wrap">
           <?php
-            // Each status is one dash on the ring: its length is that status's
-            // share of the circle, pushed round by however much came before it.
+
             $radius        = 60;
             $circumference = 2 * M_PI * $radius;
             $drawn         = 0;
@@ -240,7 +224,6 @@ $cards = [
       <?php endif; ?>
     </div>
   </div>
-
 
   <div class="card">
     <div class="card-head">

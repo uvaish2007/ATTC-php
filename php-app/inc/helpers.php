@@ -1,23 +1,16 @@
 <?php
-/**
- * Small shared helpers: output escaping, URLs, redirects, and flash messages.
- */
-
 require_once __DIR__ . '/config.php';
 
-/** Escape a value for safe HTML output. Use on EVERYTHING echoed into a page. */
 function e($value): string
 {
     return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-/** Build an app URL from a path, e.g. url('/dashboard.php'). */
 function url(string $path = ''): string
 {
     return BASE_URL . '/' . ltrim($path, '/');
 }
 
-/** Build a URL for a proof file, served through the resilient proof viewer endpoint. */
 function proof_url(?string $filename): string
 {
     $filename = trim((string) $filename);
@@ -30,7 +23,6 @@ function proof_url(?string $filename): string
     return url('proof.php?file=' . rawurlencode(basename($filename)));
 }
 
-/** Redirect to an app path and stop. */
 function redirect(string $path): void
 {
     if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
@@ -45,23 +37,18 @@ function redirect(string $path): void
     exit;
 }
 
-/** Read a request value (GET or POST) with a default. */
 function input(string $key, $default = '')
 {
     return $_POST[$key] ?? $_GET[$key] ?? $default;
 }
 
-/**
- * Normalise a user-entered date string (DD-MM-YYYY or YYYY-MM-DD) to ISO YYYY-MM-DD for SQL.
- * Returns null if invalid or empty.
- */
 function parse_date_input(?string $input): ?string
 {
     $input = trim((string) $input);
     if ($input === '') {
         return null;
     }
-    // DD-MM-YYYY or DD/MM/YYYY
+
     if (preg_match('/^(\d{1,2})[-|\/](\d{1,2})[-|\/](\d{4})$/', $input, $m)) {
         $day   = (int) $m[1];
         $month = (int) $m[2];
@@ -70,7 +57,7 @@ function parse_date_input(?string $input): ?string
             return sprintf('%04d-%02d-%02d', $year, $month, $day);
         }
     }
-    // YYYY-MM-DD
+
     if (preg_match('/^(\d{4})[-|\/](\d{1,2})[-|\/](\d{1,2})$/', $input, $m)) {
         $year  = (int) $m[1];
         $month = (int) $m[2];
@@ -83,9 +70,6 @@ function parse_date_input(?string $input): ?string
     return $ts ? date('Y-m-d', $ts) : null;
 }
 
-/**
- * Format ISO YYYY-MM-DD or date input string into display format DD-MM-YYYY.
- */
 function format_date_display(?string $dateStr): string
 {
     $dateStr = trim((string) $dateStr);
@@ -99,7 +83,6 @@ function format_date_display(?string $dateStr): string
     return date('d-m-Y', strtotime($iso));
 }
 
-/** Queue a one-shot flash message shown on the next page load. */
 function flash(string $type, string $message): void
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -108,7 +91,6 @@ function flash(string $type, string $message): void
     $_SESSION['flash'][] = ['type' => $type, 'message' => $message];
 }
 
-/** Pull and clear all queued flash messages. */
 function take_flashes(): array
 {
     $messages = $_SESSION['flash'] ?? [];
@@ -116,7 +98,6 @@ function take_flashes(): array
     return $messages;
 }
 
-/** Format an ISO/DB datetime as a short relative time ("3m ago"). */
 function time_ago($datetime): string
 {
     if (!$datetime) {
@@ -138,10 +119,6 @@ function time_ago($datetime): string
     return date('d M Y', $ts);
 }
 
-/**
- * Colour class for a record status.
- * Draft = grey, Submitted = blue, Approved = green, Rejected = red.
- */
 function status_class(string $status): string
 {
     $map = [
@@ -162,28 +139,13 @@ function status_class(string $status): string
     return $map[$status] ?? 'neutral';
 }
 
-/**
- * Turn a plain-text message into safe HTML for the announcement body.
- *
- * The text is escaped FIRST, so nothing a user types can become real markup.
- * Only three touches of formatting are then added back:
- *
- *   a blank line          starts a new paragraph
- *   a line beginning "- " becomes a bullet
- *   **words like this**   become bold
- */
 function format_text(string $text): string
 {
     $text = str_replace(["\r\n", "\r"], "\n", trim($text));
 
     $html = '';
 
-    // A blank line separates one block from the next.
     foreach (preg_split('/\n{2,}/', $text) as $block) {
-
-        // Lines are collected as we go and written out when the kind of line
-        // changes, so an intro sentence followed by bullets comes out as a
-        // paragraph AND a list, not one run-on paragraph.
         $sentences = [];
         $bullets   = [];
 
@@ -221,10 +183,6 @@ function format_text(string $text): string
     return preg_replace('/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $html);
 }
 
-/**
- * The opening words of a long message, for a card preview.
- * Cuts on a space so the last word is never chopped in half.
- */
 function excerpt(string $text, int $limit = 160): string
 {
     $text = trim(preg_replace('/\s+/', ' ', strip_tags($text)));
@@ -239,7 +197,6 @@ function excerpt(string $text, int $limit = 160): string
     return rtrim($space ? substr($cut, 0, $space) : $cut, ' ,.;:-') . '…';
 }
 
-/** A file size people can read, e.g. "1.4 MB". */
 function human_size(int $bytes): string
 {
     if ($bytes >= 1048576) {
@@ -252,9 +209,6 @@ function human_size(int $bytes): string
     return $bytes . ' B';
 }
 
-/**
- * How long until a deadline, in words: "in 3 days", "today", "overdue".
- */
 function time_until($datetime): string
 {
     if (!$datetime) {
@@ -275,37 +229,24 @@ function time_until($datetime): string
     return "in $days days";
 }
 
-/**
- * The outline of one chart bar, for the <path d="..."> of an SVG column.
- *
- * A plain rectangle with rx="4" would round all four corners, including the
- * two sitting on the baseline. This draws the same box but curves only the
- * top two, so every bar rests flat on the axis:
- *
- *      ,--------.   <- rounded top (the end that carries the value)
- *      |        |
- *      |________|   <- square bottom, on the baseline
- */
 function bar_path(float $x, float $top, float $width, float $baseline, float $radius = 4): string
 {
     $height = $baseline - $top;
 
-    // A very short bar can't fit the curve, so shrink the radius to suit.
     $r = min($radius, $height, $width / 2);
 
     return sprintf(
         'M %1$.1f %2$.1f V %3$.1f Q %1$.1f %4$.1f %5$.1f %4$.1f H %6$.1f Q %7$.1f %4$.1f %7$.1f %3$.1f V %2$.1f Z',
-        $x,                    // 1 left edge
-        $baseline,             // 2 bottom
-        $top + $r,             // 3 where the curve starts
-        $top,                  // 4 the very top
-        $x + $r,               // 5 end of the top-left curve
-        $x + $width - $r,      // 6 start of the top-right curve
-        $x + $width            // 7 right edge
+        $x,                    
+        $baseline,             
+        $top + $r,             
+        $top,                  
+        $x + $r,               
+        $x + $width - $r,      
+        $x + $width            
     );
 }
 
-/** Initials from a name, e.g. "Mohamed Uvaish" -> "MU". */
 function initials(string $name): string
 {
     $parts = preg_split('/\s+/', trim($name));
@@ -318,7 +259,6 @@ function initials(string $name): string
     return $out !== '' ? $out : 'U';
 }
 
-// Fallbacks for mbstring functions if the extension is not enabled in PHP
 if (!function_exists('mb_strtolower')) {
     function mb_strtolower(string $string, ?string $encoding = null): string {
         return strtolower($string);
@@ -340,31 +280,23 @@ if (!function_exists('mb_strlen')) {
     }
 }
 
-/**
- * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
- * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
- */
 function academic_year_variants(?string $year): array
 {
     $year = trim((string) $year);
     if ($year === '') return [];
     $variants = [$year];
-    // If format like 2025-26 -> add 2025-2026
+
     if (preg_match('/^(\d{4})-(\d{2})$/', $year, $m)) {
         $century = substr($m[1], 0, 2);
         $variants[] = $m[1] . '-' . $century . $m[2];
     }
-    // If format like 2025-2026 -> add 2025-26
+
     elseif (preg_match('/^(\d{4})-(\d{4})$/', $year, $m)) {
         $variants[] = $m[1] . '-' . substr($m[2], 2, 2);
     }
     return array_values(array_unique($variants));
 }
 
-/**
- * Compare two department names robustly, ignoring spacing, case, and standard abbreviations.
- * E.g. 'AI & DS' matches 'AI&DS', 'AIDS', and 'CSE' matches 'Computer Science and Engineering'.
- */
 function department_names_match(?string $deptA, ?string $deptB): bool
 {
     if ($deptA === null || $deptB === null) return false;
@@ -414,12 +346,6 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
-/**
- * Return all known name variations and aliases for a department name for SQL IN queries.
- * E.g. 'CSE' -> ['CSE', 'cse', 'Computer Science and Engineering', 'computer science and engineering', 'Computer Science & Engineering', 'computer science & engineering']
- *
- * @return string[]
- */
 function department_variants(?string $dept): array
 {
     if ($dept === null) {
@@ -480,10 +406,6 @@ function department_variants(?string $dept): array
     return array_values(array_unique($variants));
 }
 
-/**
- * Build a secure URL for accessing a record proof attachment.
- * When $absolute is true, includes scheme and host (essential for exported Word/Excel/PDF).
- */
 function record_proof_url(string $type, int $id, ?string $filename = null, bool $download = false, bool $absolute = true): string
 {
     $params = [
@@ -511,9 +433,6 @@ function record_proof_url(string $type, int $id, ?string $filename = null, bool 
     return $scheme . '://' . $host . $rel;
 }
 
-/**
- * Inspect a record's proof file on disk and return metadata.
- */
 function record_proof_meta(string $type, int $id, ?string $filename): ?array
 {
     $filename = basename(trim((string) $filename));
@@ -545,7 +464,7 @@ function record_proof_meta(string $type, int $id, ?string $filename): ?array
     $downUrl = record_proof_url($type, $id, $filename, true, true);
 
     $base64Data = null;
-    if ($isImage && $filePath && filesize($filePath) <= 2097152) { // up to 2MB for base64 thumbnail
+    if ($isImage && $filePath && filesize($filePath) <= 2097152) { 
         $mime = ($ext === 'png') ? 'image/png' : (($ext === 'webp') ? 'image/webp' : (($ext === 'gif') ? 'image/gif' : 'image/jpeg'));
         $base64Data = 'data:' . $mime . ';base64,' . base64_encode((string) @file_get_contents($filePath));
     }
@@ -561,10 +480,6 @@ function record_proof_meta(string $type, int $id, ?string $filename): ?array
     ];
 }
 
-/**
- * Resolve the physical filesystem path of a stored proof file.
- * Returns null if the file does not exist.
- */
 function proof_file_path(?string $filename): ?string
 {
     if (!$filename) {
@@ -584,18 +499,11 @@ function proof_file_path(?string $filename): ?string
     return null;
 }
 
-/** Check if a proof file exists physically on the server. */
 function proof_file_exists(?string $filename): bool
 {
     return proof_file_path($filename) !== null;
 }
 
-/**
- * Render the Proof table cell:
- * - If no proof: "No proof attached"
- * - If physical file is missing: "Proof unavailable"
- * - If file exists: [ View Proof ] and [ Download ] actions
- */
 function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $recordId = null): string
 {
     require_once __DIR__ . '/icons.php';
@@ -665,4 +573,3 @@ if (!function_exists('user_department_scope')) {
         return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
     }
 }
-

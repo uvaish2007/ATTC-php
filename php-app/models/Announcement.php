@@ -1,19 +1,6 @@
 <?php
-/**
- * Announcement Centre — notices published by the Director / Admin.
- *
- * Everything a page needs lives here: reading the list with its filters,
- * writing a notice, attaching files, and the read receipts that make the
- * "who has seen this?" analytics possible.
- *
- * The tables come from sql/announcements.sql. If that file has not been run
- * yet, announcements_ready() returns false and every page degrades quietly
- * instead of crashing.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 
-/** The kinds of notice the college publishes. */
 function announcement_categories(): array
 {
     return ['Academic', 'Examination', 'IQAC', 'Placement', 'Administration', 'Events', 'Circular', 'Research'];
@@ -24,16 +11,11 @@ function announcement_priorities(): array
     return ['Normal', 'Important', 'Urgent'];
 }
 
-/** Who is allowed to publish, edit, pin, archive and see the analytics. */
 function announcement_can_manage(array $user): bool
 {
     return in_array($user['role'], ['Admin', 'Director', 'Principal'], true);
 }
 
-/**
- * Have the announcement tables been created yet?
- * Checked once per request, then remembered.
- */
 function announcements_ready(): bool
 {
     static $ready = null;
@@ -49,19 +31,6 @@ function announcements_ready(): bool
     return $ready;
 }
 
-/**
- * Automatically update database state for any published announcement whose expiry date
- * has passed. Expired announcements are kept safely in the database forever as
- * historical institutional records (never deleted).
- *
- * FEAT-12: before the original row is marked Expired, a complete copy of it is
- * written to announcements_archive — see announcement_archive_expired(), which
- * does the whole job in one transaction per announcement. The original row is
- * still only ever updated, never deleted, so announcement_files and
- * announcement_reads keep pointing at it.
- *
- * Returns the number of announcements that moved from Published to Expired.
- */
 function announcement_sync_expired(): int
 {
     if (!announcements_ready()) {
@@ -77,18 +46,6 @@ function announcement_sync_expired(): int
     return announcement_archive_expired()['expired'];
 }
 
-/* ==========================================================================
-   FEAT-12 — Expired announcement archival
-   ======================================================================= */
-
-/**
- * Has sql/announcements_archive.sql been run yet?
- *
- * Everything below checks this first and degrades quietly when it is false,
- * exactly as announcements_ready() does for the main tables — so a database
- * that has not had the migration applied keeps working, just without the
- * archive.
- */
 function announcements_archive_ready(): bool
 {
     static $ready = null;
@@ -104,10 +61,6 @@ function announcements_archive_ready(): bool
     return $ready;
 }
 
-/**
- * The announcement columns the archive copies, in the order the INSERT below
- * uses them. Named once so the copy and the restore cannot drift apart.
- */
 function announcement_archive_fields(): array
 {
     return ['title', 'body', 'category', 'priority', 'audience', 'department',
@@ -115,21 +68,6 @@ function announcement_archive_fields(): array
             'created_by', 'created_at', 'updated_at'];
 }
 
-/**
- * Copy ONE announcement into announcements_archive.
- *
- * Idempotent in both directions: the row is looked up first, and the UNIQUE
- * key on original_announcement_id is the backstop if two requests race, in
- * which case the duplicate is reported as "already archived" rather than
- * raised. Returns [ok, message, alreadyArchived].
- *
- * A notice that was archived, then restored, and has now expired again is
- * re-archived in place: the snapshot is refreshed and the restore metadata
- * cleared, because those columns describe the state of THIS archive record,
- * and it is archived once more. It is never a second row.
- *
- * The original announcement is not touched here — the caller decides that.
- */
 function announcement_archive_one(int $announcementId): array
 {
     if ($announcementId <= 0) {
@@ -140,8 +78,6 @@ function announcement_archive_one(int $announcementId): array
     }
 
     try {
-        // The author's name is snapshotted so the archive still reads properly
-        // after the account is deleted (announcements.created_by goes NULL).
         $stmt = db()->prepare(
             'SELECT a.*, u.name AS author_name
                FROM announcements a
@@ -187,8 +123,6 @@ function announcement_archive_one(int $announcementId): array
                 return [true, 'Already archived.', true];
             }
 
-            // Restored, and now expired again: refresh the snapshot and put the
-            // record back into the Archived state so it can be restored again.
             $upd = db()->prepare(
                 'UPDATE announcements_archive
                     SET title = ?, body = ?, category = ?, priority = ?, audience = ?, department = ?,
@@ -214,11 +148,7 @@ function announcement_archive_one(int $announcementId): array
         $ins->execute(array_merge([$announcementId], $values));
 
         return [true, 'Announcement archived.', false];
-
     } catch (\PDOException $e) {
-        // 23000 is the duplicate-key class: another request archived the same
-        // announcement between the SELECT above and the INSERT. That is the
-        // outcome we wanted anyway, so it is success, not an error.
         if ($e->getCode() === '23000') {
             return [true, 'Already archived.', true];
         }
@@ -228,29 +158,6 @@ function announcement_archive_one(int $announcementId): array
     }
 }
 
-/**
- * The archival sweep behind announcement_sync_expired().
- *
- * Two groups are picked up:
- *
- *   1. Published notices whose expires_at has passed — these are archived and
- *      then marked Expired.
- *   2. Notices already sitting at Expired with no archive row — notices that
- *      expired before this feature existed. They are archived where they are;
- *      their status is already correct, so it is not touched.
- *
- * Manually Archived notices (status = 'Archived') and Drafts are deliberately
- * left alone. Manual archiving is a different thing from expiry and stays that
- * way.
- *
- * Each announcement gets its own transaction: the archive copy is written
- * first and the original is only updated once that succeeded, so a failure
- * rolls that one announcement back and leaves it Published to be retried on
- * the next sweep. One bad row cannot stop the rest, and no announcement is
- * ever lost because archival failed.
- *
- * Returns ['expired' => n, 'archived' => n, 'failed' => n].
- */
 function announcement_archive_expired(): array
 {
     $result = ['expired' => 0, 'archived' => 0, 'failed' => 0];
@@ -259,8 +166,6 @@ function announcement_archive_expired(): array
         return $result;
     }
 
-    // Without the archive table the old behaviour is kept exactly as it was,
-    // so the portal still expires notices correctly before the migration runs.
     if (!announcements_archive_ready()) {
         try {
             $result['expired'] = (int) db()->exec(
@@ -323,7 +228,6 @@ function announcement_archive_expired(): array
             }
 
             $pdo->commit();
-
         } catch (\PDOException $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
@@ -336,7 +240,6 @@ function announcement_archive_expired(): array
     return $result;
 }
 
-/** How many announcements are held in the archive. */
 function announcement_archive_count(): int
 {
     if (!announcements_archive_ready()) {
@@ -350,7 +253,6 @@ function announcement_archive_count(): int
     }
 }
 
-/** Archive totals for the summary cards: total, still archived, restored. */
 function announcement_archive_counts(): array
 {
     $counts = ['total' => 0, 'archived' => 0, 'restored' => 0];
@@ -376,20 +278,6 @@ function announcement_archive_counts(): array
     return $counts;
 }
 
-/**
- * The archive list, with search / category / department / archived-date range
- * / sort / paging applied.
- *
- * $filters keys (all optional):
- *   search, category, department, archived_from, archived_to,
- *   restore_status, sort, page, per_page
- *
- * Every value is bound as a parameter. `sort` never reaches SQL as text: it
- * only ever picks one of the fixed ORDER BY clauses below, so an unknown value
- * falls back to the default instead of being interpolated.
- *
- * Returns ['rows' => [...], 'total' => n, 'page' => n, 'pages' => n].
- */
 function announcements_archive_list(array $filters = []): array
 {
     $empty = ['rows' => [], 'total' => 0, 'page' => 1, 'pages' => 1];
@@ -426,7 +314,6 @@ function announcements_archive_list(array $filters = []): array
         $params[] = $restore;
     }
 
-    // Date range over archived_at. A bad date is dropped rather than guessed at.
     $from = announcement_clean_datetime((string) ($filters['archived_from'] ?? ''));
     if ($from !== null) {
         $where[]  = 'ar.archived_at >= ?';
@@ -477,14 +364,12 @@ function announcements_archive_list(array $filters = []): array
         $stmt->execute($params);
 
         return ['rows' => $stmt->fetchAll(), 'total' => $total, 'page' => $page, 'pages' => $pages];
-
     } catch (\PDOException $e) {
         error_log('announcements_archive_list failed: ' . $e->getMessage());
         return $empty;
     }
 }
 
-/** One archive record by its archive_id, or null. Always a prepared lookup. */
 function announcement_archive_find(int $archiveId): ?array
 {
     if ($archiveId <= 0 || !announcements_archive_ready()) {
@@ -503,24 +388,12 @@ function announcement_archive_find(int $archiveId): ?array
         $stmt->execute([$archiveId]);
 
         return $stmt->fetch() ?: null;
-
     } catch (\PDOException $e) {
         error_log('announcement_archive_find failed: ' . $e->getMessage());
         return null;
     }
 }
 
-/**
- * The attachments belonging to the archived announcements on one page.
- *
- * Attachments were never copied: announcement_files rows point at
- * announcements.id, and the original announcement is kept precisely so that
- * relationship survives. When the original row is gone its files went with it
- * (ON DELETE CASCADE), and this simply returns nothing for that id rather than
- * inventing a record of what used to be there.
- *
- * Returns [originalAnnouncementId => [fileRow, ...]].
- */
 function announcement_archive_attachments(array $originalIds): array
 {
     $ids = array_values(array_unique(array_filter(array_map('intval', $originalIds))));
@@ -546,50 +419,17 @@ function announcement_archive_attachments(array $originalIds): array
         }
 
         return $out;
-
     } catch (\PDOException $e) {
         error_log('announcement_archive_attachments failed: ' . $e->getMessage());
         return [];
     }
 }
 
-/**
- * Does this archive record need the Admin to choose a new expiry date before
- * it can be restored? True when it carried an expiry date that has passed.
- *
- * A record with no expiry at all does not: the announcements table allows a
- * published notice with expires_at NULL, and that is the existing convention
- * this follows rather than inventing a date for it.
- */
 function announcement_archive_needs_expiry(array $archive): bool
 {
     return !empty($archive['expires_at']) && strtotime((string) $archive['expires_at']) < time();
 }
 
-/**
- * Restore an archived announcement. Returns [ok, message].
- *
- * $newExpiresAt is the date the Admin chose in the restore dialog. It is
- * required, and must be in the future, whenever the archived expiry has
- * already passed — otherwise the notice would be published in the past and
- * the very next expiry sweep would put it straight back to Expired. The
- * archived date is never silently changed: either it is still valid and is
- * reused as it is, or the Admin supplies a new one.
- *
- * Two cases, both handled:
- *
- *   A. The original announcement row still exists — it is brought back to
- *      Published with the agreed expiry. No duplicate is created, and the
- *      live title/body are left as they are so an edit made since expiry is
- *      not silently overwritten by the snapshot.
- *
- *   B. The original row was deleted — a new announcement is created from the
- *      archived data and receives a new AUTO_INCREMENT id. The old id is not
- *      forced; it stays recorded in original_announcement_id.
- *
- * The archive record itself is NEVER deleted. It is marked Restored, which is
- * what refuses a second restore.
- */
 function announcement_restore_from_archive(int $archiveId, int $adminId, string $newExpiresAt = ''): array
 {
     if ($archiveId <= 0) {
@@ -621,10 +461,7 @@ function announcement_restore_from_archive(int $archiveId, int $adminId, string 
         }
 
         $expiresAt = $chosen;
-
     } elseif (trim($newExpiresAt) !== '') {
-        // The archived date is still valid, but the Admin supplied one anyway.
-        // Honour it, as long as it is a real future date.
         $chosen = announcement_clean_datetime($newExpiresAt);
 
         if ($chosen === null || strtotime($chosen) <= time()) {
@@ -640,9 +477,6 @@ function announcement_restore_from_archive(int $archiveId, int $adminId, string 
     try {
         $pdo->beginTransaction();
 
-        // Claim the archive record FIRST. If two Admins press Restore at the
-        // same moment, only one of these updates matches a row, so only one
-        // goes on to touch the announcements table.
         $claim = $pdo->prepare(
             "UPDATE announcements_archive
                 SET restore_status = 'Restored', restored_at = NOW(), restored_by = ?
@@ -662,7 +496,6 @@ function announcement_restore_from_archive(int $archiveId, int $adminId, string 
         $liveId = (int) $exists->fetchColumn() > 0 ? $originalId : 0;
 
         if ($liveId > 0) {
-            // --- CASE A: bring the existing row back to life -------------
             $pdo->prepare(
                 "UPDATE announcements
                     SET status = 'Published', expires_at = ?, pinned = 0
@@ -671,13 +504,7 @@ function announcement_restore_from_archive(int $archiveId, int $adminId, string 
 
             $restoredId = $liveId;
             $note       = 'Announcement #' . $restoredId . ' restored and published again.';
-
         } else {
-            // --- CASE B: rebuild it from the archived data ---------------
-            // A new AUTO_INCREMENT id is issued; the old one stays recorded in
-            // original_announcement_id. pinned is deliberately not restored —
-            // a notice coming back out of the archive should not silently take
-            // the pin from whatever is pinned today.
             $insert = $pdo->prepare(
                 "INSERT INTO announcements
                     (title, body, category, priority, audience, department, status, pinned,
@@ -707,7 +534,6 @@ function announcement_restore_from_archive(int $archiveId, int $adminId, string 
             ->execute([$restoredId, $archiveId]);
 
         $pdo->commit();
-
     } catch (\PDOException $e) {
         if ($pdo->inTransaction()) {
             $pdo->rollBack();
@@ -721,16 +547,6 @@ function announcement_restore_from_archive(int $archiveId, int $adminId, string 
     return [true, $note . $when . ' The archive record has been kept.'];
 }
 
-/**
- * The WHERE clause that decides what this person may see.
- *
- * Admin and Director see everything, including drafts and archived notices.
- * Everybody else only sees a notice that is published, inside its publish /
- * expiry window, aimed at their role, and either college-wide or addressed to
- * their own department.
- *
- * Returns [sqlFragment, params].
- */
 function announcement_visibility(array $user): array
 {
     if (announcement_can_manage($user)) {
@@ -747,10 +563,6 @@ function announcement_visibility(array $user): array
     return [$sql, [$user['role'], (int)$user['id'], $dept, $dept]];
 }
 
-/**
- * A short word for the state a notice is in, used for the little grey badge:
- * Draft, Scheduled, Expired, Archived or Active.
- */
 function announcement_state(array $row): string
 {
     if ($row['status'] === 'Draft')    return 'Draft';
@@ -763,22 +575,12 @@ function announcement_state(array $row): string
     return 'Active';
 }
 
-/**
- * The list, with search / category / sort / paging applied.
- *
- * $filters keys (all optional):
- *   search, category, sort (newest|oldest|viewed|unread), scope
- *   (all|bookmarked|archived|mine), page, per_page
- *
- * Returns ['rows' => [...], 'total' => n, 'page' => n, 'pages' => n].
- */
 function announcements_list(array $user, array $filters = []): array
 {
     if (!announcements_ready()) {
         return ['rows' => [], 'total' => 0, 'page' => 1, 'pages' => 1];
     }
 
-    // Automatically synchronize any expired announcements and save state in database
     announcement_sync_expired();
 
     [$visible, $params] = announcement_visibility($user);
@@ -786,7 +588,6 @@ function announcements_list(array $user, array $filters = []): array
     $where  = [$visible];
     $userId = (int) $user['id'];
 
-    // --- the filters the page offers ---
     $search = trim((string) ($filters['search'] ?? ''));
     if ($search !== '') {
         $where[]  = '(a.title LIKE ? OR a.body LIKE ?)';
@@ -800,7 +601,6 @@ function announcements_list(array $user, array $filters = []): array
         $params[] = $category;
     }
 
-    // --- Calendar month & date filtering ---
     $curYear  = (int) date('Y');
     $curMonth = (int) date('n');
 
@@ -820,26 +620,17 @@ function announcements_list(array $user, array $filters = []): array
     $scope = (string) ($filters['scope'] ?? 'all');
     if ($scope === 'archived') {
         $where[] = "a.status = 'Archived'";
-
     } elseif ($scope === 'expired') {
-        // Past expired notices safely stored and preserved in database
         $where[] = "(a.status = 'Expired' OR (a.expires_at IS NOT NULL AND a.expires_at < NOW()))";
-
     } elseif ($scope === 'mine') {
         $where[]  = 'a.created_by = ?';
         $params[] = $userId;
-
     } elseif ($scope === 'bookmarked') {
-        // "Has this person bookmarked it?" asked as a condition, so the count
-        // query below can reuse exactly the same WHERE clause.
         $where[]  = 'EXISTS (SELECT 1 FROM announcement_reads rb
                              WHERE rb.announcement_id = a.id AND rb.user_id = ? AND rb.bookmarked = 1)';
         $params[] = $userId;
-
     } else {
-        // The normal list based on calendar month & date:
         if ($targetDay > 0) {
-            // Specific day in the month:
             $targetDate = sprintf('%04d-%02d-%02d', $targetYear, $targetMonth, $targetDay);
             $where[] = "a.status NOT IN ('Archived', 'Draft') AND (
                 (DATE(a.created_at) = ?)
@@ -850,7 +641,6 @@ function announcements_list(array $user, array $filters = []): array
             $params[] = $targetDate;
             $params[] = $targetDate;
         } elseif ($isCurrentMonth) {
-            // Present month: show published/active notices that belong to this month or are active
             $where[] = "a.status NOT IN ('Archived') AND (
                 (YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?)
                 OR (a.expires_at IS NOT NULL AND YEAR(a.expires_at) = ? AND MONTH(a.expires_at) = ?)
@@ -861,7 +651,6 @@ function announcements_list(array $user, array $filters = []): array
             $params[] = $targetYear;
             $params[] = $targetMonth;
         } else {
-            // Past month: show notices created, published, or with deadlines in that past month (both Published & Expired)
             $where[] = "a.status NOT IN ('Archived', 'Draft') AND (
                 (YEAR(a.created_at) = ? AND MONTH(a.created_at) = ?)
                 OR (a.expires_at IS NOT NULL AND YEAR(a.expires_at) = ? AND MONTH(a.expires_at) = ?)
@@ -878,8 +667,6 @@ function announcements_list(array $user, array $filters = []): array
 
     $whereSql = implode(' AND ', $where);
 
-    // The three per-person numbers each row carries. They go in as parameters
-    // ahead of the WHERE ones, because they appear earlier in the statement.
     $rowParams = [$userId, $userId];
 
     $select = "SELECT a.*,
@@ -896,18 +683,15 @@ function announcements_list(array $user, array $filters = []): array
                LEFT JOIN users u ON u.id = a.created_by
                WHERE $whereSql";
 
-    // --- how to order them ---
     $order = [
         'oldest' => 'a.pinned DESC, a.created_at ASC',
         'viewed' => 'a.pinned DESC, a.views DESC, a.created_at DESC',
         'unread' => 'a.pinned DESC, is_read ASC, a.created_at DESC',
     ][$filters['sort'] ?? 'newest'] ?? 'a.pinned DESC, a.created_at DESC';
 
-    // --- paging ---
     $perPage = max(1, (int) ($filters['per_page'] ?? 8));
     $page    = max(1, (int) ($filters['page'] ?? 1));
 
-    // Count first, so we know how many pages there are.
     $countStmt = db()->prepare("SELECT COUNT(*) FROM announcements a WHERE $whereSql");
     $countStmt->execute($params);
 
@@ -916,7 +700,6 @@ function announcements_list(array $user, array $filters = []): array
     $page  = min($page, $pages);
     $offset = ($page - 1) * $perPage;
 
-    // LIMIT / OFFSET are cast to int rather than bound, which MySQL prefers.
     $stmt = db()->prepare("$select ORDER BY $order LIMIT $perPage OFFSET $offset");
     $stmt->execute(array_merge($rowParams, $params));
 
@@ -928,7 +711,6 @@ function announcements_list(array $user, array $filters = []): array
     return ['rows' => $rows, 'total' => $total, 'page' => $page, 'pages' => $pages];
 }
 
-/** One announcement the user is allowed to see, or null. */
 function announcement_find(int $id, array $user): ?array
 {
     if (!announcements_ready()) {
@@ -955,7 +737,6 @@ function announcement_find(int $id, array $user): ?array
     return $row;
 }
 
-/** The documents attached to a notice. */
 function announcement_files(int $id): array
 {
     if (!announcements_ready()) {
@@ -968,7 +749,6 @@ function announcement_files(int $id): array
     return $stmt->fetchAll();
 }
 
-/** The newest attachments across all notices (for the sidebar). */
 function announcement_recent_files(int $limit = 4): array
 {
     if (!announcements_ready()) {
@@ -986,10 +766,6 @@ function announcement_recent_files(int $limit = 4): array
     )->fetchAll();
 }
 
-/**
- * How many people a notice is addressed to. Used as the denominator of the
- * read percentage. Only active accounts count.
- */
 function announcement_audience_size(array $announcement): int
 {
     $sql    = 'SELECT COUNT(*) FROM users WHERE status = 1';
@@ -1011,15 +787,10 @@ function announcement_audience_size(array $announcement): int
     return (int) $stmt->fetchColumn();
 }
 
-/**
- * Read analytics for one notice: how many of its audience have opened it,
- * the split by department, and who still has not.
- */
 function announcement_analytics(int $id, array $announcement): array
 {
     $audience = announcement_audience_size($announcement);
 
-    // Everyone the notice is aimed at, with their read time if they have one.
     $sql = "SELECT u.id, u.name, u.department, r.read_at
             FROM users u
             LEFT JOIN announcement_reads r
@@ -1073,7 +844,6 @@ function announcement_analytics(int $id, array $announcement): array
     ];
 }
 
-/** The four numbers on the summary cards. */
 function announcement_stats(array $user): array
 {
     $blank = ['total' => 0, 'active' => 0, 'expiring' => 0, 'unread' => 0];
@@ -1096,7 +866,6 @@ function announcement_stats(array $user): array
     $stmt->execute($params);
     $active = (int) $stmt->fetchColumn();
 
-    // Closing within the next seven days.
     $stmt = db()->prepare(
         "SELECT COUNT(*) FROM announcements a
          WHERE ($visible) AND $live
@@ -1106,7 +875,6 @@ function announcement_stats(array $user): array
     $stmt->execute($params);
     $expiring = (int) $stmt->fetchColumn();
 
-    // Expired notices safely preserved in database
     $stmt = db()->prepare(
         "SELECT COUNT(*) FROM announcements a
          WHERE ($visible)
@@ -1126,10 +894,6 @@ function announcement_stats(array $user): array
     ];
 }
 
-/**
- * How many faculty × notice pairs are still unread. This is the number the
- * Director cares about: every faculty member who has not opened a live notice.
- */
 function unread_receipts_count(): int
 {
     if (!announcements_ready()) {
@@ -1153,14 +917,12 @@ function unread_receipts_count(): int
     return (int) db()->query($sql)->fetchColumn();
 }
 
-/** How many live notices this person has not opened yet (the sidebar badge). */
 function unread_announcements_count(array $user): int
 {
     if (!announcements_ready()) {
         return 0;
     }
 
-    // Managers see their own unread count the same way everyone else does.
     $sql = "SELECT COUNT(*)
             FROM announcements a
             LEFT JOIN announcement_reads r
@@ -1178,7 +940,6 @@ function unread_announcements_count(array $user): int
     return (int) $stmt->fetchColumn();
 }
 
-/** Notices with a deadline still to come (the sidebar list). */
 function announcement_deadlines(array $user, int $limit = 5): array
 {
     if (!announcements_ready()) {
@@ -1203,7 +964,6 @@ function announcement_deadlines(array $user, int $limit = 5): array
     return $stmt->fetchAll();
 }
 
-/** Every deadline day in one month, for the little calendar. */
 function announcement_calendar(array $user, int $year, int $month): array
 {
     if (!announcements_ready()) {
@@ -1214,7 +974,6 @@ function announcement_calendar(array $user, int $year, int $month): array
 
     $days = [];
 
-    // Deadlines in this month
     $stmt = db()->prepare(
         "SELECT DAY(a.expires_at) AS day, COUNT(*) AS n
          FROM announcements a
@@ -1229,7 +988,6 @@ function announcement_calendar(array $user, int $year, int $month): array
         $days[(int) $row['day']] = (int) $row['n'];
     }
 
-    // Also mark announcements created in this month
     $stmt2 = db()->prepare(
         "SELECT DAY(a.created_at) AS day, COUNT(*) AS n
          FROM announcements a
@@ -1247,15 +1005,6 @@ function announcement_calendar(array $user, int $year, int $month): array
     return $days;
 }
 
-
-/* ==========================================================================
-   Writing
-   ======================================================================= */
-
-/**
- * Create a notice. $fields uses the same names as the form.
- * Returns [ok, message, newId].
- */
 function announcement_create(array $fields, int $authorId): array
 {
     $title = trim((string) ($fields['title'] ?? ''));
@@ -1297,7 +1046,6 @@ function announcement_create(array $fields, int $authorId): array
     return [true, 'Announcement published.', $id];
 }
 
-/** Edit a notice. Returns [ok, message]. */
 function announcement_update(int $id, array $fields): array
 {
     $title = trim((string) ($fields['title'] ?? ''));
@@ -1336,7 +1084,6 @@ function announcement_update(int $id, array $fields): array
     return [true, 'Announcement updated.'];
 }
 
-/** Make this the pinned notice, and unpin whatever was pinned before. */
 function announcement_pin(int $id): void
 {
     db()->prepare('UPDATE announcements SET pinned = 0 WHERE id <> ?')->execute([$id]);
@@ -1348,7 +1095,6 @@ function announcement_unpin(int $id): void
     db()->prepare('UPDATE announcements SET pinned = 0 WHERE id = ?')->execute([$id]);
 }
 
-/** Move a notice to Draft / Published / Archived. */
 function announcement_set_status(int $id, string $status): array
 {
     if (!in_array($status, ['Draft', 'Published', 'Archived', 'Expired'], true)) {
@@ -1360,10 +1106,8 @@ function announcement_set_status(int $id, string $status): array
     return [true, "Announcement moved to $status."];
 }
 
-/** Delete a notice. Its files and read receipts go with it. */
 function announcement_delete(int $id): array
 {
-    // Take the uploaded files off the disk too, not just out of the table.
     foreach (announcement_files($id) as $file) {
         $path = UPLOAD_DIR . '/announcements/' . $file['stored_name'];
         if (is_file($path)) {
@@ -1376,7 +1120,6 @@ function announcement_delete(int $id): array
     return [true, 'Announcement deleted.'];
 }
 
-/** Count one more view of a notice. */
 function announcement_count_view(int $id): void
 {
     if (announcements_ready()) {
@@ -1384,7 +1127,6 @@ function announcement_count_view(int $id): void
     }
 }
 
-/** Record that someone has read a notice (once only). */
 function announcement_mark_read(int $id, int $userId): void
 {
     db()->prepare(
@@ -1394,7 +1136,6 @@ function announcement_mark_read(int $id, int $userId): void
     )->execute([$id, $userId]);
 }
 
-/** Turn a bookmark on or off. */
 function announcement_toggle_bookmark(int $id, int $userId): void
 {
     db()->prepare(
@@ -1404,26 +1145,11 @@ function announcement_toggle_bookmark(int $id, int $userId): void
     )->execute([$id, $userId]);
 }
 
-
-/* ==========================================================================
-   Attachments
-   ======================================================================= */
-
-/** Only these file types may be attached. */
 function announcement_allowed_types(): array
 {
     return ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'png', 'jpg', 'jpeg'];
 }
 
-/**
- * Save the files that came with the form.
- *
- * The name on disk is random, so a file called "../evil.php" cannot escape the
- * uploads folder or be executed. The original name is kept in the table and
- * used when the file is downloaded again.
- *
- * Returns a list of problems (empty when everything saved).
- */
 function announcement_save_files(int $announcementId, array $upload): array
 {
     $problems = [];
@@ -1433,7 +1159,7 @@ function announcement_save_files(int $announcementId, array $upload): array
         @mkdir($folder, 0775, true);
     }
 
-    $maxBytes = 5 * 1024 * 1024;   // 5 MB per file
+    $maxBytes = 5 * 1024 * 1024;   
     $allowed  = announcement_allowed_types();
 
     foreach ($upload['name'] as $i => $originalName) {
@@ -1474,7 +1200,6 @@ function announcement_save_files(int $announcementId, array $upload): array
     return $problems;
 }
 
-/** One attachment row by id, or null. */
 function announcement_file_find(int $fileId): ?array
 {
     $stmt = db()->prepare('SELECT * FROM announcement_files WHERE id = ?');
@@ -1483,11 +1208,6 @@ function announcement_file_find(int $fileId): ?array
 
     return $row ?: null;
 }
-
-
-/* ==========================================================================
-   Small tidying helpers, so bad form input never reaches the database
-   ======================================================================= */
 
 function announcement_clean_category(string $value): string
 {
@@ -1504,7 +1224,6 @@ function announcement_clean_audience(string $value): string
     return in_array($value, ['Everyone', 'HoD', 'Coordinator', 'Faculty'], true) ? $value : 'Everyone';
 }
 
-/** Turn a browser datetime-local value into something MySQL accepts, or null. */
 function announcement_clean_datetime(string $value): ?string
 {
     $value = trim($value);

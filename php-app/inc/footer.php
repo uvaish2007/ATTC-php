@@ -23,11 +23,6 @@
     if (dlg.showModal) { dlg.showModal(); } else { alert(label + ' is coming soon.'); }
   }
 
-  /* ---- Sidebar menu ------------------------------------------------------
-     The menu has no scrollbar. It is sized to fit, but on a very short window
-     it still scrolls, so: fade whichever edge has more items past it, keep
-     the scroll position from page to page, and make sure the current page's
-     item is on screen. */
   (function () {
     var nav = document.querySelector('.sidebar-nav');
     if (!nav) return;
@@ -60,14 +55,7 @@
     updateFade();
   })();
 
-  /* ---- Filter bars: a pill that is narrowing the results turns orange ----
-     A select is "set" when it is off its default: the first option, unless
-     the select names another with data-default. A text/date pill is set when
-     any of its inputs has a value. */
   (function () {
-    // A native <select> is as wide as its longest option, which leaves
-    // "Type · All" as a long pill of empty space. Size each one to the option
-    // actually showing instead.
     var meter = document.createElement('span');
     meter.setAttribute('aria-hidden', 'true');
     meter.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre';
@@ -115,12 +103,6 @@
     }
   })();
 
-  /* ---- Form labels -------------------------------------------------------
-     The forms are written as <div class="field"><label>Name</label><input></div>,
-     which looks right but leaves the two unconnected: clicking the caption does
-     not focus the field, and a screen reader reads the input out unnamed. Wiring
-     them up here fixes every form at once, including the ones inside dialogs
-     that are only built when they open. */
   (function () {
     var seq = 0;
 
@@ -139,7 +121,6 @@
 
     wire(document);
 
-    // Dialogs and tab panels can add fields after load.
     if (window.MutationObserver) {
       new MutationObserver(function (records) {
         records.forEach(function (r) {
@@ -151,9 +132,6 @@
     }
   })();
 
-  /* ---- Navigation drawer (narrow screens only) ---------------------------
-     On a wide screen the sidebar is always in the layout and the toggle is
-     hidden by CSS, so none of this is ever triggered. */
   (function () {
     var toggle = document.getElementById('navToggle');
     var scrim  = document.getElementById('navScrim');
@@ -178,8 +156,6 @@
       a.addEventListener('click', function () { setNav(false); });
     });
 
-    // Back on a wide layout the drawer state means nothing; drop it, or the
-    // page stays scroll-locked.
     var wide = window.matchMedia('(min-width: 1025px)');
     var onWide = function (m) { if (m.matches) setNav(false); };
     if (wide.addEventListener) wide.addEventListener('change', onWide);

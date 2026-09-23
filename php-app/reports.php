@@ -1,21 +1,4 @@
 <?php
-/**
- * Reports — the hub for every downloadable report, role-aware.
- *
- *   Admin     sets the report template all departments follow, and may filter
- *             by department, year, period and type across every report.
- *   HoD       generates their own department's reports (proforma + metrics),
- *             filterable by year, period and type.
- *   Director  sees the whole institution only — the full academic report,
- *             view and export, with no narrowing.
- *   Faculty/Coordinator keep the plain records list (their own scope).
- *
- * Three reports feed off the same filters:
- *   Executive Meeting Report  meeting-report.php   (Fixed vs Achieved proforma)
- *   Academic Records Report   export.php           (every uploaded record)
- *   Metrics Report            metrics-report.php   (per-metric counts)
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/record_specs.php';
 require_once __DIR__ . '/inc/report_layout.php';
@@ -24,8 +7,7 @@ require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Setting.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
-require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM filter
-
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   
 $user = require_login();
 require_module('reports');
 
@@ -50,20 +32,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isAdmin) {
     redirect('/reports.php');
 }
 
-// ---- Filters -------------------------------------------------------------
-// Director cannot narrow anything; a HoD/Coordinator/Faculty cannot choose a department;
-// Oversight roles can choose a department.
 $department = user_department_scope($user, input('department'));
 $status     = !$isDirector ? (trim((string) input('status')) ?: null) : null;
 $type       = !$isDirector ? (trim((string) input('type'))   ?: null) : null;
-// Category narrows to one of the three groups the dashboard charts — the
-// "View reports" buttons on the dashboard's Records by Category card link here.
 $categories = record_categories();
 $category   = !$isDirector ? (trim((string) input('category')) ?: null) : null;
 if ($category !== null && !isset($categories[$category])) {
     $category = null;
 }
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
 $rawYear     = input('academic_year') ?: input('year');
 $emCtx       = em_resolve_filter_context($rawYear, input('em'));
 $year        = $emCtx['year'];
@@ -107,16 +83,13 @@ foreach ($records as $r) {
 }
 $total = count($records);
 
-// The scope label reflects what the role can actually see.
 if ($isHod) {
     $scopeName = $user['department'] ?: 'All departments';
 } else {
     $scopeName = $department ?: 'All departments';
 }
 
-// ---- Query strings each report link carries ------------------------------
-$emQ      = $em !== 'all' ? $em : null;   // carried so every download matches the screen
-$recordsQ = array_filter([
+$emQ      = $em !== 'all' ? $em : null;   $recordsQ = array_filter([
     'department'    => $department,
     'academic_year' => $year,
     'status'        => $status,
@@ -129,14 +102,12 @@ $recordsQ = array_filter([
 $meetingQ = array_filter(['department' => $department, 'academic_year' => $year, 'year' => $year, 'em' => $emQ]);
 $metricsQ = array_filter(['department' => $department, 'academic_year' => $year, 'year' => $year, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ]);
 
-// EM-SPEC-04: Carry active Academic Year, EM Duration, and Department to the Executive Meeting Report.
 $emReportParams = array_filter([
     'academic_year' => $year,
     'em'            => ($em !== 'all' ? $em : null),
     'department'    => $department,
 ], fn($v) => $v !== null && $v !== '');
 $emReportUrl = url('executive-meeting-report.php') . ($emReportParams ? '?' . http_build_query($emReportParams) : '');
-
 
 $link = fn(string $file, array $q, string $fmt) =>
     e(url($file) . '?' . http_build_query($q + ['format' => $fmt]));
@@ -154,8 +125,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-<?php // $year isn't counted — it's always the active system year, not a chosen filter.
-  $activeCount = count(array_filter([$department, $type, $status, $category])) + (($fromDisplay || $toDisplay) ? 1 : 0) + ($em !== 'all' ? 1 : 0); ?>
+<?php   $activeCount = count(array_filter([$department, $type, $status, $category])) + (($fromDisplay || $toDisplay) ? 1 : 0) + ($em !== 'all' ? 1 : 0); ?>
 <div class="page-head">
   <div>
     <h1><?= $category ? e($categories[$category]['label']) : 'Reports' ?></h1>
@@ -165,8 +135,7 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 
-  <?php // EM-SPEC-04: the Executive Meeting Report is reached from the page
-        // header, above the filter bar — not from a control inside it. ?>
+  <?php         ?>
   <div class="actions">
     <a id="header_em_report_btn" class="btn btn-primary btn-sm" href="<?= e($emReportUrl) ?>"
        title="Filter and present the Executive Meeting Report">
@@ -174,7 +143,6 @@ require __DIR__ . '/inc/header.php';
     </a>
   </div>
 </div>
-
 
 <?php if ($isAdmin): ?>
   <!-- Admin: the format every department's report follows -->
@@ -205,7 +173,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 <?php endif; ?>
-
 
 <?php if (!$isDirector): ?>
   <!-- One filter bar for everything below it: the counters, the report hub
@@ -263,7 +230,7 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
 
-    <?php // EM-SPEC-03: EM Duration filter ?>
+    <?php ?>
     <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
       <span class="fb-k">EM Duration</span>
       <select name="em" onchange="this.form.submit()">
@@ -339,7 +306,6 @@ require __DIR__ . '/inc/header.php';
   </form>
 <?php endif; ?>
 
-
 <!-- Counters -->
 <div class="mt-5 stat-grid grid-4">
   <?php
@@ -361,12 +327,10 @@ require __DIR__ . '/inc/header.php';
   <?php endforeach; ?>
 </div>
 
-
 <!-- ==========================================================================
      Report Hub — one place to download every report, from live data
      ======================================================================= -->
 <?php
-  // The per-metric template reports, narrowed by the "type" filter.
   $allSpecs   = record_report_specs();
   if ($type !== null && isset($allSpecs[$type])) {
       $shownSpecs = [$type => $allSpecs[$type]];
@@ -380,24 +344,18 @@ require __DIR__ . '/inc/header.php';
       'from' => $fromIso, 'to' => $toIso, 'em' => $emQ,
   ]);
 
-  // Live figures: records in scope per type (dept/status/period + year), so
-  // every row shows how many records the download will contain. $records is
-  // already scoped to the active year at the database level (report_records()).
   $scoped = $records;
   $typeCounts = [];
   foreach ($scoped as $r) { $typeCounts[$r['_type_key']] = ($typeCounts[$r['_type_key']] ?? 0) + 1; }
   $totalScoped = count($scoped);
 
-  // The target proforma + metrics summary scope to the effective department.
   $effDept = $department;
   $tStmt   = db()->prepare('SELECT COUNT(*) FROM targets' . ($effDept ? ' WHERE department = ?' : ''));
   $tStmt->execute($effDept ? [$effDept] : []);
   $targetCount = (int) $tStmt->fetchColumn();
 
-  $canSummary = $role !== 'Coordinator' && $role !== 'Faculty';   // meeting + metrics
-  $meetingQ2  = array_filter(['department' => $department, 'year' => $year]);
+  $canSummary = $role !== 'Coordinator' && $role !== 'Faculty';     $meetingQ2  = array_filter(['department' => $department, 'year' => $year]);
 
-  // Active-filter chips under the heading.
   $activeBits = array_filter([
       $department ? 'Dept: ' . $department : null,
       $category   ? 'Category: ' . $categories[$category]['label'] : null,
@@ -452,29 +410,21 @@ require __DIR__ . '/inc/header.php';
 
 <?php if ($canFacultyAchievementsBox): ?>
   <?php
-    // FEAT-04: Department & Faculty Achievements Report data
-    // HoD/Coordinator/Faculty is strictly locked server-side to their own assigned department.
-    // Admin, Principal, Director, Dean can view all departments or filter by the selected department.
     $effDeptForFaculty = $department;
-    $feat4FacultyGrid  = faculty_achievements_grid($user, $effDeptForFaculty, $year, null, null, null, em_filter_window($em, $year));   // FEAT-07 Meeting filter
-
-    // Group faculty members under their respective departments
+    $feat4FacultyGrid  = faculty_achievements_grid($user, $effDeptForFaculty, $year, null, null, null, em_filter_window($em, $year));   
     $feat4Grouped = [];
     foreach ($feat4FacultyGrid as $f) {
         $deptName = !empty($f['department']) && $f['department'] !== '—' ? $f['department'] : 'Other Department';
         $feat4Grouped[$deptName][] = $f;
     }
 
-    // Determine the list of departments to display
     if ($effDeptForFaculty) {
         $feat4Depts = [$effDeptForFaculty];
     } else {
-        // Collect all official departments
         $feat4Depts = [];
         foreach ($departments as $d) {
             $feat4Depts[] = $d['name'];
         }
-        // In case any faculty member belongs to a department not in $departments list
         foreach (array_keys($feat4Grouped) as $dName) {
             if (!in_array($dName, $feat4Depts, true)) {
                 $feat4Depts[] = $dName;
@@ -482,7 +432,6 @@ require __DIR__ . '/inc/header.php';
         }
     }
 
-    // Prioritize departments with faculty so they appear first when viewed
     $activeDepts = [];
     $emptyDepts  = [];
     foreach ($feat4Depts as $dName) {
@@ -496,7 +445,6 @@ require __DIR__ . '/inc/header.php';
     sort($emptyDepts);
     $feat4DeptsOrdered = array_merge($activeDepts, $emptyDepts);
 
-    // Summary counts for the card badge
     $feat4TotalFaculty = count($feat4FacultyGrid);
     $feat4TotalAchievements = array_sum(array_column($feat4FacultyGrid, 'total'));
   ?>
@@ -661,7 +609,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-<?php // EM-SPEC-04: Obsolete duplicate hero card removed. The primary Executive Meeting Report action is in the top header. ?>
+<?php ?>
 
 <div class="mt-5 card">
   <div class="card-head">
@@ -790,22 +738,13 @@ require __DIR__ . '/inc/header.php';
   }
 </style>
 
-
 <!-- The records themselves, grouped by category -->
 <?php
-  // Group every in-scope record under its type, keeping the record_types order.
   $byType = [];
   foreach ($records as $r) { $byType[$r['_type_key']][] = $r; }
-  // Every record is rendered; the ones past $perGroup start hidden and the
-  // "Show all" button reveals them, so the full list is one click away without
-  // a round trip. $maxInline caps a single group so a type with thousands of
-  // records can't bloat the page — the download still holds everything.
   $perGroup  = 6;
   $maxInline = 400;
 
-  // Lay the types out under their category, in the order record_types() lists
-  // them. Anything a category doesn't claim (a newly added type) still shows,
-  // under "Other records", so nothing silently disappears from this page.
   $shownCats = $category !== null ? [$category => $categories[$category]] : $categories;
   $catTypeMap = [];
   foreach ($shownCats as $ckey => $cat) {
@@ -873,8 +812,7 @@ require __DIR__ . '/inc/header.php';
               $t      = $types[$key];
               $group  = $byType[$key];
               $shown  = array_slice($group, 0, $maxInline);
-              $hidden = max(0, count($shown) - $perGroup);   // rendered, but collapsed
-              $tq     = ['type' => $key] + $reportScopeQ;
+              $hidden = max(0, count($shown) - $perGroup);                 $tq     = ['type' => $key] + $reportScopeQ;
             ?>
             <div class="rec-group" data-group="<?= e($key) ?>">
               <div class="rec-group-head">
@@ -963,12 +901,10 @@ require __DIR__ . '/inc/header.php';
 </style>
 
 <script>
-/* Interactive controls for Template Reports and Records by Category */
 (function () {
   const label = (btn, text) => { const s = btn.querySelector('span'); if (s) s.textContent = text; };
 
   document.addEventListener('click', function (e) {
-    // 1. Template Reports toggle in Report Hub
     const tmplBtn = e.target.closest('#toggleTmplBtn');
     if (tmplBtn) {
       const open = tmplBtn.dataset.open === '1';
@@ -980,7 +916,6 @@ require __DIR__ . '/inc/header.php';
       return;
     }
 
-    // 2. Individual Category collapse/expand
     const catHead = e.target.closest('.js-toggle-cat');
     if (catHead && !e.target.closest('a')) {
       const ckey = catHead.dataset.cat;
@@ -1001,7 +936,6 @@ require __DIR__ . '/inc/header.php';
       return;
     }
 
-    // 3. Collapse/Expand ALL Categories
     const allCatsBtn = e.target.closest('#toggleCatsAllBtn');
     if (allCatsBtn) {
       const open = allCatsBtn.dataset.open === '1'; // currently open, so collapse
@@ -1013,7 +947,6 @@ require __DIR__ . '/inc/header.php';
       return;
     }
 
-    // 4. Show all records in group
     const btn = e.target.closest('.js-show-all');
     if (btn) {
       const group = btn.closest('.rec-group');
@@ -1021,7 +954,6 @@ require __DIR__ . '/inc/header.php';
       return;
     }
 
-    // 5. Expand all records
     const all = e.target.closest('#expandAllBtn');
     if (!all) return;
     const open = all.dataset.on !== '1';
@@ -1081,8 +1013,7 @@ function toggleFacultyAchievementsReport() {
   if (window.location.hash === '#faculty-achievements-report' || window.location.search.includes('view=faculty_report')) {
     toggleFacultyAchievementsReport();
   }
-})();
-</script>
+})();</script>
 
 <style>
 /* Date picker used by the Period pill. Brand palette; selection in navy, the
@@ -1247,8 +1178,6 @@ function selectCalDay(d) {
   periodChanged();
 }
 
-/* Apply the period as soon as it is complete and valid — the other pills
-   apply on change too. A half-typed date just waits. */
 function periodChanged() {
   const f = document.getElementById('from_date_input');
   const t = document.getElementById('to_date_input');
@@ -1307,7 +1236,6 @@ function validatePeriodRange() {
   }
 }
 
-// EM-SPEC-04: Keep the top-header Executive Meeting Report link in sync with any client-side filter changes.
 (function() {
   function syncEmReportLink() {
     var btn = document.getElementById('header_em_report_btn');

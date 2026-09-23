@@ -1,8 +1,4 @@
 <?php
-/**
- * Mark all notifications as read for the current user.
- */
-
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/../models/Announcement.php';
@@ -13,7 +9,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $userId = (int) $user['id'];
 
-    // 1. Record read receipt for all unread announcements visible to user
     if (function_exists('announcements_ready') && announcements_ready()) {
         try {
             [$visible, $params] = announcement_visibility($user);
@@ -31,7 +26,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } catch (\Throwable $e) {}
     }
 
-    // 2. Set mark all timestamp in session
     $_SESSION['notifications_read_' . $userId] = time();
 
     if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) || !empty($_REQUEST['ajax'])) {

@@ -1,24 +1,15 @@
 <?php
-/**
- * Individual Faculty Achievement Report — Staff-only self-service report & oversight inspection view.
- * Displays faculty details, achievement summary, category breakdown chart, and category-wise record tables.
- * Backend authorization strictly enforced via can_user_view_faculty_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
 require_once __DIR__ . '/models/User.php';
 
 $user = require_login();
 
-// Target faculty ID defaults to logged-in user if not supplied
 $targetFacultyId = (int) input('id', 0);
 if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
-// ---- STRICT BACKEND AUTHORIZATION CHECK ----
-// Verifies self-access or authorized oversight (Admin/Principal/Director/Dean/HoD of department)
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
@@ -26,7 +17,6 @@ if (!can_user_view_faculty_report($user, $targetFacultyId)) {
 }
 
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
 $rawYear      = input('academic_year') ?: input('year');
 $emCtx        = em_resolve_filter_context($rawYear, input('em'));
 $academicYear = $emCtx['year'];
@@ -36,7 +26,6 @@ $category     = trim((string) input('category', '')) ?: null;
 
 $activeYear = active_academic_year();
 
-// Fetch data
 $data    = faculty_achievement_details($targetFacultyId, $academicYear, $category, $emWindow);
 $faculty = $data['faculty'];
 $records = $data['records'];
@@ -55,7 +44,6 @@ if (!$faculty) {
 $years = academic_years();
 $isSelf = (int) $user['id'] === $targetFacultyId;
 
-// Export query links
 $exportQ = array_filter([
     'id'            => $targetFacultyId,
     'academic_year' => $academicYear,
@@ -405,7 +393,6 @@ document.addEventListener('click', () => {
     centreLabel: 'records',
     empty:       'Nothing recorded yet'
   });
-})();
-</script>
+})();</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

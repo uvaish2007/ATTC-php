@@ -1,27 +1,18 @@
 <?php
-/**
- * Consolidated Faculty Achievements — Enterprise reporting and detailed performance analysis.
- * Supports Admin, Principal, Director, Dean, HoD, Coordinator, and Faculty roles with strict DB authorization.
- * Features Data View vs Analytics View toggles across Department Performance Analysis & Category Metrics.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
 require_once __DIR__ . '/models/StudentAchievement.php';
 require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/User.php';
-require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 EM filter
-
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   
 $user = require_login();
 
-// Handle AJAX detail request for drill-down modal
 if (input('ajax') === 'faculty_detail') {
     header('Content-Type: application/json');
     $facId = (int) input('faculty_id');
     $year  = trim((string) input('year')) ?: null;
     $cat   = trim((string) input('category')) ?: null;
 
-    // Verify department authorization for HoD and Coordinator
     if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
         $targetUser = user_find($facId);
         if (!$targetUser || !department_names_match($targetUser['department'] ?? '', $user['department'] ?? '')) {
@@ -30,13 +21,11 @@ if (input('ajax') === 'faculty_detail') {
         }
     }
 
-    // FEAT-07: the drill-down honours the same EM1/EM2 filter as the page.
     $data = faculty_achievement_details($facId, $year, $cat, em_filter_window(em_filter_value(input('em')), $year));
     echo json_encode($data);
     exit;
 }
 
-// ---- Filters & Scope -------------------------------------------------------------
 $role        = $user['role'];
 $isAdmin     = $role === 'Admin';
 $isHod       = $role === 'HoD';
@@ -44,7 +33,6 @@ $isDirector  = in_array($role, ['Director', 'Principal'], true);
 $isDean      = $role === 'Dean';
 $isOversight = $isAdmin || $isDirector || $isDean;
 
-// Resolve effective department filter (HoD is locked to their own department)
 $rawDept       = trim((string) input('department', ''));
 $department    = resolve_faculty_achievement_scope($user, $rawDept);
 $academicYear  = trim((string) input('academic_year', '')) ?: active_academic_year();
@@ -53,17 +41,13 @@ $facultyId     = (int) input('faculty_id', 0) ?: null;
 $searchQuery   = trim((string) input('q', ''));
 $studentSearch = trim((string) input('student_search', '')) ?: trim((string) input('q_student', ''));
 
-// FEAT-07: Executive Meeting filter. The EM engine turns it into a date window
-// that every query below applies in SQL; "all" leaves them unchanged.
 $em       = em_filter_value(input('em'));
 $emWindow = em_filter_window($em, $academicYear ?: null);
 
-// Fetch departments and years
 $departments   = departments_all();
 $years         = academic_years();
 $allCategories = faculty_achievement_categories();
 
-// Fetch faculty list for filter dropdown (scoped to chosen department if any)
 $facParams = [];
 $facSql = "SELECT id, name, department FROM users WHERE role = 'Faculty'";
 if ($department) {
@@ -82,17 +66,14 @@ $facStmt = db()->prepare($facSql);
 $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
-// ---- Fetch Data ---------------------------------------------------------
 $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
 $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
 
-// Student Achievements Data
 $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
 $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
 
-// Compute student analytics aggregations (100% consistent with Data View)
 $studDeptCounts = [];
 foreach ($studGrid as $s) {
     $d = $s['department'] ?: 'Other Department';
@@ -161,14 +142,12 @@ foreach ($studCatBreakdown as $k => $c) {
 }
 $activeDeptsCount = count($studDeptCounts);
 
-// Query string for exports
 $exportQ = array_filter([
     'department'    => $department,
     'academic_year' => $academicYear,
     'category'      => $category,
     'faculty_id'    => $facultyId,
-    'em'            => $em !== 'all' ? $em : null,   // FEAT-07
-]);
+    'em'            => $em !== 'all' ? $em : null,   ]);
 $exportLink = fn(string $fmt) => e(url('export-faculty-achievements.php') . '?' . http_build_query($exportQ + ['format' => $fmt]));
 
 $pageTitle  = 'Consolidated Faculty Achievements';
@@ -1064,10 +1043,6 @@ require __DIR__ . '/inc/header.php';
 </div>
 
 <?php
-/* TS-FAC-01 — the page used to stop dead after the student matrix, with no way
-   through to the single-page view. This closing band routes there directly,
-   carrying the filters that are on screen so the report opens on the same
-   scope the reader was just looking at. */
 $facReportQs = ['academic_year' => $academicYear];
 if ($em !== 'all') { $facReportQs['em'] = $em; }
 $facReportUrl = url('individual-faculty-report.php') . '?' . http_build_query($facReportQs);
@@ -1139,7 +1114,6 @@ $facReportUrl = url('individual-faculty-report.php') . '?' . http_build_query($f
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
 <script src="<?= e(url('assets/js/charts.js')) ?>"></script>
 <script>
-// View Switcher for Department Performance Analysis (Data View vs Analytics View)
 function switchDeptView(mode) {
   const btnData = document.getElementById('btnDeptData');
   const btnAnalytics = document.getElementById('btnDeptAnalytics');
@@ -1159,7 +1133,6 @@ function switchDeptView(mode) {
   }
 }
 
-// View Switcher for Records by Category (Data View vs Analytics View)
 function switchCatView(mode) {
   const btnData = document.getElementById('btnCatData');
   const btnAnalytics = document.getElementById('btnCatAnalytics');
@@ -1179,7 +1152,6 @@ function switchCatView(mode) {
   }
 }
 
-// Student Matrix View Switcher (Data View vs Analytics View)
 function switchStudView(mode) {
   const btnData = document.getElementById('btnStudData');
   const btnAnalytics = document.getElementById('btnStudAnalytics');
@@ -1206,7 +1178,6 @@ let studChartsInitialized = false;
 function initStudentCharts() {
   if (studChartsInitialized) return;
   studChartsInitialized = true;
-
   const catBreakdown = <?= json_encode($studCatBreakdown) ?>;
   ATTS.charts.bar('studCatChart', {
     labels: Object.keys(catBreakdown),
@@ -1224,7 +1195,6 @@ function initStudentCharts() {
   });
 }
 
-// Toggle export menu dropdown
 function toggleExportMenu(evt) {
   evt.stopPropagation();
   const m = document.getElementById('exportMenu');
@@ -1248,7 +1218,6 @@ document.addEventListener('click', () => {
   });
 })();
 
-// Faculty Detail Modal Logic
 function openFacultyModal(facId) {
   const modal = document.getElementById('facultyModal');
   const body = document.getElementById('modalBody');
@@ -1259,7 +1228,6 @@ function openFacultyModal(facId) {
   if (!modal || !body) return;
   modal.style.display = 'flex';
   body.innerHTML = '<div class="empty"><div class="ic"><?= icon('refresh', 20) ?></div><p>Loading faculty achievements...</p></div>';
-
   fetch('<?= e(url('faculty-achievements.php')) ?>?ajax=faculty_detail&faculty_id=' + facId + '&year=<?= e($academicYear) ?>&em=<?= e($em) ?>')
     .then(res => res.json())
     .then(data => {
@@ -1319,7 +1287,6 @@ function openFacultyModal(facId) {
 function closeFacultyModal() {
   const modal = document.getElementById('facultyModal');
   if (modal) modal.style.display = 'none';
-}
-</script>
+}</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

@@ -1,6 +1,3 @@
-/* ATTS chart theme — one look for every graph in the portal.
-   Colours are read from the CSS custom properties in app.css, so the charts
-   follow the design system rather than keeping their own copy of it. */
 (function (window, document) {
   'use strict';
 
@@ -26,8 +23,6 @@
   var reduceMotion = window.matchMedia &&
     window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* The palette charts cycle through when a caller gives no colours. Brand
-     first, then hues that stay distinct for someone with colour blindness. */
   var PALETTE = [
     ORANGE, '#2563EB', '#059669', '#B45309',
     token('--navy-400', '#6B7FA8'), '#DC2626',
@@ -41,8 +36,6 @@
   Chart.defaults.animation.easing = 'easeOutQuart';
   Chart.defaults.plugins.legend.display = false;
 
-  /* Chart.js ships a black tooltip that belongs to no design system. This is
-     the app's own card: white, hairline border, navy text. */
   Chart.defaults.plugins.tooltip = Object.assign({}, Chart.defaults.plugins.tooltip, {
     backgroundColor: SURFACE,
     titleColor: INK,
@@ -57,9 +50,6 @@
     caretSize: 5
   });
 
-  /* Prints each bar's value above it. Chart.js has no built-in for this and
-     the figures are the point of these charts, so reading them off the axis
-     is not good enough. */
   var barValues = {
     id: 'attsBarValues',
     afterDatasetsDraw: function (chart) {
@@ -86,8 +76,6 @@
     }
   };
 
-  /* The total in the hole of a doughnut, so the chart answers "how many"
-     without the reader adding the legend up. */
   var donutCentre = {
     id: 'attsDonutCentre',
     afterDraw: function (chart) {
@@ -116,9 +104,6 @@
 
   Chart.register(barValues, donutCentre);
 
-  /* Accepts one colour, a short list or nothing, and always returns exactly
-     one colour per bar or slice — a two-colour list across nine bars repeats
-     rather than leaving seven of them undrawn. */
   function colours(count, given) {
     var source = PALETTE;
     if (typeof given === 'string' && given) { source = [given]; }
@@ -129,8 +114,6 @@
     return out;
   }
 
-  /* Draws the "nothing to show" state onto the canvas itself, so a chart with
-     no data reads as empty on purpose rather than as a failed render. */
   function drawEmpty(canvas, message) {
     var ctx = canvas.getContext('2d');
     var w = canvas.clientWidth || canvas.width;
@@ -185,7 +168,6 @@
           indexAxis: horizontal ? 'y' : 'x',
           responsive: true,
           maintainAspectRatio: false,
-          /* Room above the tallest bar for its printed value. */
           layout: { padding: { top: 18 } },
           attsHideValues: opts.hideValues === true,
           plugins: {
@@ -200,15 +182,12 @@
           },
           scales: {
             x: {
-              /* Chart.js 3.x keeps the axis line under grid.* — not border.*,
-                 which is the v4 spelling. */
               grid: { display: false, drawBorder: true, borderColor: HAIRLINE },
               ticks: {
                 color: INK_FAINT,
                 font: { size: 11, weight: '600' },
                 maxRotation: 0,
                 autoSkip: false,
-                /* Long department names would otherwise overlap. */
                 callback: function (value) {
                   var text = this.getLabelForValue(value);
                   return text.length > 14 ? text.slice(0, 13) + '…' : text;

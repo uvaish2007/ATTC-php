@@ -1,18 +1,9 @@
 <?php
-/**
- * Session-based authentication and authorisation.
- *
- * Replaces the React/Express JWT flow: instead of a token in localStorage,
- * the signed-in user lives in a server session. Pages call require_login()
- * (and optionally require_role()) at the top to gate access.
- */
-
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/feature_flags.php';
 
-/** Start the session with a stable name and hardened cookie flags. */
 function auth_boot(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -36,9 +27,6 @@ function auth_boot(): void
     session_start();
 }
 
-/**
- * Resolve a user record by email, username, or login alias.
- */
 function auth_find_user(string $login): ?array
 {
     $login = trim($login);
@@ -116,9 +104,6 @@ function auth_find_user(string $login): ?array
     return $user ?: null;
 }
 
-/** Attempt login. Returns the user row on success, or null on failure.
- *  If $role is provided, verifies that user's role matches before setting session.
- */
 function attempt_login(string $email, string $password, ?string $role = null, ?string &$failReason = null): ?array
 {
     $email    = trim($email);
@@ -194,14 +179,12 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     $user = $stmt->fetch();
 
     if (!$user) {
-        // Search by email prefix: e.g. 'cse_hod' matching 'cse_hod@atts.local'
         $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(SUBSTRING_INDEX(email, '@', 1)) = ? LIMIT 1");
         $stmt->execute([$lowerEmail]);
         $user = $stmt->fetch();
     }
 
     if (!$user) {
-        // Fallback: search by role or name if username shortcut was used (e.g., 'admin', 'principal', 'dean')
         $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(role) = ? OR LOWER(name) = ? LIMIT 1");
         $stmt->execute([$lowerEmail, $lowerEmail]);
         $user = $stmt->fetch();
@@ -237,7 +220,6 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
         return null;
     }
 
-    // Treat 'Principal' and 'Director' as equivalent roles for login matching
     $roleMatches = ($role === null)
         || ($user['role'] === $role)
         || (in_array($role, ['Principal', 'Director'], true) && in_array($user['role'], ['Principal', 'Director'], true));
@@ -251,7 +233,6 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     // Preserve CSRF token across regeneration
     $csrf = $_SESSION['csrf'] ?? null;
 
-    // Regenerate the id on privilege change to prevent session fixation.
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_regenerate_id(true);
     }
@@ -260,7 +241,6 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
         $_SESSION['csrf'] = $csrf;
     }
 
-    // Display role and name as Principal for institutional consistency
     $sessionRole = in_array($user['role'], ['Principal', 'Director'], true) ? 'Principal' : $user['role'];
     $sessionName = in_array($user['name'], ['Principal', 'Director'], true) ? 'Principal' : $user['name'];
 
@@ -274,7 +254,6 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
 
     return $_SESSION['user'];
 }
-
 
 function logout(): void
 {
@@ -296,27 +275,17 @@ function is_logged_in(): bool
     return isset($_SESSION['user']);
 }
 
-/**
- * Login-flow gate: has THIS Admin session already stepped through Academic
- * Year Selection? This is purely a per-login UX gate — it does not carry the
- * active year itself. The active year is a system-wide value (see
- * active_academic_year() / activate_academic_year() in models/Target.php),
- * stored in app_settings so every role/session sees the same one; the gate
- * just decides whether *this* Admin login still needs to see the picker.
- */
 function admin_year_gate_passed(): bool
 {
     return true;
 }
 
-/** Mark this Admin session as having activated (or confirmed) a year. */
 function admin_year_gate_set(): void
 {
     auth_boot();
     $_SESSION['admin_year_gate'] = true;
 }
 
-/** Gate a page to signed-in users; bounce to login otherwise. */
 function require_login(): array
 {
     auth_boot();
@@ -326,7 +295,6 @@ function require_login(): array
     return current_user();
 }
 
-/** Gate a page to specific roles; bounce to an "access denied" page otherwise. */
 function require_role(array $roles): array
 {
     $user = require_login();
@@ -345,10 +313,6 @@ function require_role(array $roles): array
     return $user;
 }
 
-/* --------------------------------------------------------------------------
- *  CSRF protection for state-changing forms.
- * ------------------------------------------------------------------------ */
-
 function csrf_token(): string
 {
     auth_boot();
@@ -358,13 +322,11 @@ function csrf_token(): string
     return $_SESSION['csrf'];
 }
 
-/** Hidden input for forms. */
 function csrf_field(): string
 {
     return '<input type="hidden" name="csrf" value="' . e(csrf_token()) . '">';
 }
 
-/** Verify whether the submitted CSRF token matches the session. */
 function csrf_verify(?string $token = null): bool
 {
     auth_boot();
@@ -375,12 +337,10 @@ function csrf_verify(?string $token = null): bool
     return hash_equals($_SESSION['csrf'], $token);
 }
 
-/** Verify the token on a POST; abort with friendly 419 page on mismatch. */
 function csrf_check(): void
 {
     if (!csrf_verify()) {
         http_response_code(419);
-        // Refresh token so subsequent retry requests have a clean token
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
 
         $loginUrl = url('/login.php');
@@ -422,11 +382,6 @@ function csrf_check(): void
 }
 
 if (!function_exists('user_can_choose_department')) {
-    /**
-     * Whether the user role is authorized to choose/filter by department across the system.
-     * Institutional leadership roles (Admin, Principal, Director, Dean) can select departments or view all.
-     * Departmental roles (HoD, Coordinator, Faculty) are strictly pinned to their authenticated department.
-     */
     function user_can_choose_department(?array $user = null): bool
     {
         if ($user === null) {
@@ -440,13 +395,6 @@ if (!function_exists('user_can_choose_department')) {
 }
 
 if (!function_exists('user_department_scope')) {
-    /**
-     * Single source of truth for resolving effective department scope.
-     * For department-scoped users (HoD, Coordinator, Faculty), this ALWAYS returns their own department,
-     * ignoring any requested department in $_GET or $_POST.
-     * For oversight users (Admin, Principal, Director, Dean), this returns the requested department filter,
-     * or null if viewing all departments.
-     */
     function user_department_scope(?array $user = null, ?string $requestedDepartment = null): ?string
     {
         if ($user === null) {
@@ -465,4 +413,3 @@ if (!function_exists('user_department_scope')) {
         return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
     }
 }
-

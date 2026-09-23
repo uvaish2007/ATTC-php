@@ -1,74 +1,27 @@
 <?php
-/**
- * FEAT-07 — Executive Meeting schedule engine.
- *
- * The ONE source of truth for the EM1/EM2 schedule and everything derived from
- * it: which meeting is current, whether EM1 is locked, whether EM2 is active,
- * which records belong to which meeting, and whether a write is still allowed.
- * Pages, reports, dashboards and the FEAT-06 presentation all ask this file —
- * none of them compare dates on their own.
- *
- * Storage
- *   One app_settings row per academic year, key "em_schedule_{year}", holding
- *   the four dates as JSON. That is the store this project already uses for
- *   Admin choices made once for everyone, including per-year ones such as
- *   ay_locked_{year}; app_settings also carries updated_by / updated_at. No new
- *   table, no second configuration system.
- *
- * Which records belong to a meeting
- *   There is no meeting column on any record table, and executive_meetings
- *   rows are free-text meeting events, not EM1/EM2 periods. Every record,
- *   though, carries created_at, stamped by the database and protected from the
- *   submission form (see upload.php's $protected list). A record therefore
- *   belongs to EM1 or EM2 when it was submitted inside that meeting's
- *   configured window. Nothing historical is rewritten to make this work.
- *
- * Dates
- *   All four dates are whole days in the app timezone (APP_TIMEZONE). A window
- *   runs from 00:00:00 on its start date to 23:59:59 on its end date — the
- *   same inclusive convention records_list() uses for its period filter.
- *
- * Independence from FEAT-02
- *   The EM1 lock is computed from the schedule alone. It never reads or sets
- *   the academic-year lock (ay_locked_{year}); the year can stay open while
- *   EM1 is locked, and both checks apply independently.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/Setting.php';
-require_once __DIR__ . '/Target.php';   // active_academic_year(), academic_years(), is_valid_academic_year()
+require_once __DIR__ . '/Target.php';   
 
-/** The two meetings the schedule configures, keyed by their filter value. */
 const EM_MEETINGS = ['em1' => 'EM1', 'em2' => 'EM2'];
 
 /* States a year's schedule can be in at a given moment. */
 const EM_STATE_NOT_CONFIGURED = 'NOT_CONFIGURED';
 const EM_STATE_BEFORE_EM1     = 'BEFORE_EM1';
 const EM_STATE_EM1_ACTIVE     = 'EM1_ACTIVE';
-const EM_STATE_BETWEEN        = 'BETWEEN_EM1_EM2';   // EM1 locked, EM2 upcoming
+const EM_STATE_BETWEEN        = 'BETWEEN_EM1_EM2';   
 const EM_STATE_EM2_ACTIVE     = 'EM2_ACTIVE';
 const EM_STATE_EM2_ENDED      = 'EM2_ENDED';
 
-/** Shown wherever the active year has no schedule. */
 const EM_NOT_CONFIGURED_MESSAGE = 'Executive Meeting schedule is not configured for the active Academic Year.';
 
-/** Shown when a write touches locked EM1 data. */
 const EM1_LOCKED_MESSAGE = 'EM1 is locked. Changes are no longer permitted.';
-
-/* --------------------------------------------------------------------------
- *  Schedule storage
- * ------------------------------------------------------------------------ */
 
 function em_schedule_setting_key(string $year): string
 {
     return 'em_schedule_' . $year;
 }
 
-/**
- * The academic year's June–May span, matching current_academic_year_start()
- * in models/Target.php ("Academic year runs June–May"). "2026-27" is
- * 2026-06-01 .. 2027-05-31.
- */
 function em_academic_year_span(string $year): ?array
 {
     if (!preg_match('/^(\d{4})-\d{2}$/', $year, $m)) {
@@ -78,18 +31,12 @@ function em_academic_year_span(string $year): ?array
     return ['from' => sprintf('%04d-06-01', $start), 'to' => sprintf('%04d-05-31', $start + 1)];
 }
 
-/**
- * Per-request cache of parsed schedules. Status is read by the header, the
- * dashboard and every filter on a page, so the row is parsed once; a save
- * clears its year so the same request never sees the old dates.
- */
 function &em_schedule_cache(): array
 {
     static $cache = [];
     return $cache;
 }
 
-/** Strict Y-m-d check: a real calendar date, nothing else. */
 function em_parse_date(?string $value): ?string
 {
     $value = trim((string) $value);
@@ -100,14 +47,6 @@ function em_parse_date(?string $value): ?string
     return ($d && $d->format('Y-m-d') === $value) ? $value : null;
 }
 
-/**
- * The saved schedule for a year, or null when none is configured.
- *
- * Returns ['year', 'em1_start', 'em1_end', 'em2_start', 'em2_end',
- *          'updated_by', 'updated_by_name', 'updated_at'].
- * A stored value that is unreadable or no longer valid counts as not
- * configured, so a damaged row can never produce invented dates.
- */
 function em_schedule_for_year(?string $year = null): ?array
 {
     $year = $year ?: active_academic_year();
@@ -132,7 +71,6 @@ function em_schedule_for_year(?string $year = null): ?array
         return $cache[$year] = null;
     }
 
-    // Who last saved it, from the columns app_settings already keeps.
     $meta = ['updated_by' => null, 'updated_by_name' => null, 'updated_at' => null];
     try {
         $stmt = db()->prepare(
@@ -149,7 +87,6 @@ function em_schedule_for_year(?string $year = null): ?array
             ];
         }
     } catch (\PDOException $e) {
-        // The dates are what matter; missing audit details are not fatal.
     }
 
     $dates = [
@@ -162,13 +99,6 @@ function em_schedule_for_year(?string $year = null): ?array
     return $cache[$year] = array_merge(['year' => $year], $dates, $meta);
 }
 
-/**
- * Validate a schedule. Returns [ok, errors[], clean-dates].
- *
- * Rules: valid format (Y-m-d); if a meeting has start, end is required (and vice-versa);
- * start <= end (end date cannot be before start date); EM2 starts after EM1 ends;
- * all dates inside the academic year June-May span.
- */
 function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, ?string $em2Start, ?string $em2End): array
 {
     $errors = [];
@@ -184,7 +114,6 @@ function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, 
     $given = ['em1_start' => $em1Start, 'em1_end' => $em1End, 'em2_start' => $em2Start, 'em2_end' => $em2End];
     $clean = [];
 
-    // Parse and validate syntax for any non-empty date string
     foreach ($given as $key => $value) {
         $trimmed = trim((string) $value);
         if ($trimmed !== '') {
@@ -197,7 +126,6 @@ function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, 
         }
     }
 
-    // Pair checks: if start is present, end is required; if end is present, start is required
     $hasEm1Start = trim((string) $em1Start) !== '';
     $hasEm1End   = trim((string) $em1End) !== '';
     if ($hasEm1Start && !$hasEm1End) {
@@ -254,20 +182,12 @@ function em_schedule_validate(string $year, ?string $em1Start, ?string $em1End, 
     return [empty($errors), $errors, $clean];
 }
 
-/**
- * Admin saves the schedule for a year. Callers must already have gated the
- * request to the Admin role and verified CSRF; this validates and stores.
- * Supports saving EM1 separately, EM2 separately, or both together.
- * Merges submitted dates with existing saved dates for that year.
- * Returns [ok, message].
- */
 function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?string $em2Start, ?string $em2End, int $adminId, ?string $targetMeeting = null): array
 {
     $year = trim($year);
     $existing = em_schedule_for_year($year);
 
     if ($targetMeeting === 'em1') {
-        // Save EM1 independently
         if (trim((string) $em1Start) === '') {
             return [false, 'EM1 start date is required.'];
         }
@@ -286,12 +206,10 @@ function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?str
             'em2_end'   => $existing['em2_end'] ?? null,
         ];
 
-        // Sequence check against existing EM2 if present
         if (!empty($merged['em2_start']) && $merged['em2_start'] <= $merged['em1_end']) {
             return [false, 'EM1 end date cannot be on or after EM2 start date (' . date('d-m-Y', strtotime($merged['em2_start'])) . ').'];
         }
 
-        // Clean nulls
         $toStore = array_filter($merged, fn($v) => $v !== null && $v !== '');
         setting_set(em_schedule_setting_key($year), json_encode($toStore), $adminId);
 
@@ -302,7 +220,6 @@ function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?str
     }
 
     if ($targetMeeting === 'em2') {
-        // Save EM2 independently
         if (trim((string) $em2Start) === '') {
             return [false, 'EM2 start date is required.'];
         }
@@ -321,12 +238,10 @@ function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?str
             'em2_end'   => $inputClean['em2_end'],
         ];
 
-        // Sequence check against existing EM1 if present
         if (!empty($merged['em1_end']) && $merged['em2_start'] <= $merged['em1_end']) {
             return [false, 'EM2 cannot start before EM1 ends — choose an EM2 start date after ' . date('d-m-Y', strtotime($merged['em1_end'])) . '.'];
         }
 
-        // Clean nulls
         $toStore = array_filter($merged, fn($v) => $v !== null && $v !== '');
         setting_set(em_schedule_setting_key($year), json_encode($toStore), $adminId);
 
@@ -336,7 +251,6 @@ function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?str
         return [true, "Executive Meeting 2 (EM2) schedule saved for {$year}."];
     }
 
-    // Default: Validate submitted inputs directly
     [$inputOk, $inputErrors, $inputClean] = em_schedule_validate($year, $em1Start, $em1End, $em2Start, $em2End);
     if (!$inputOk) {
         return [false, implode(' ', $inputErrors)];
@@ -347,7 +261,6 @@ function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?str
     $mergedEm2Start = array_key_exists('em2_start', $inputClean) ? $inputClean['em2_start'] : ($existing['em2_start'] ?? null);
     $mergedEm2End   = array_key_exists('em2_end', $inputClean)   ? $inputClean['em2_end']   : ($existing['em2_end'] ?? null);
 
-    // Validate the merged schedule
     [$ok, $errors, $clean] = em_schedule_validate($year, $mergedEm1Start, $mergedEm1End, $mergedEm2Start, $mergedEm2End);
     if (!$ok) {
         return [false, implode(' ', $errors)];
@@ -361,17 +274,11 @@ function em_schedule_save(string $year, ?string $em1Start, ?string $em1End, ?str
     return [true, "Executive Meeting schedule saved for {$year}."];
 }
 
-/* --------------------------------------------------------------------------
- *  Status — computed from the schedule and the clock, never stored
- * ------------------------------------------------------------------------ */
-
-/** Now, in the app timezone. Tests may pass a fixed moment instead. */
 function em_now(?DateTimeInterface $now = null): DateTimeImmutable
 {
     return $now ? DateTimeImmutable::createFromInterface($now) : new DateTimeImmutable('now');
 }
 
-/** A meeting's window as full timestamps: start 00:00:00 to end 23:59:59. */
 function em_window_bounds(array $schedule, string $meeting): array
 {
     $start = $schedule[$meeting . '_start'] ?? null;
@@ -388,20 +295,6 @@ function em_window_bounds(array $schedule, string $meeting): array
     ];
 }
 
-/**
- * The full status of a year's meetings at a moment.
- *
- * Returns:
- *   configured, year, schedule, state,
- *   current      'em1' | 'em2' | null   — the meeting in session right now
- *   em1_locked   true once EM1's end date has passed
- *   em2_active   true while EM2 is in session
- *   em2_upcoming true after EM1 locks and before EM2 opens
- *   label        short text for badges, e.g. "EM1 · LOCKED"
- *   detail       one sentence for status strips
- *   em1          per-meeting status array (configured, label, state, pill, detail)
- *   em2          per-meeting status array (configured, label, state, pill, detail)
- */
 function em_status(?string $year = null, ?DateTimeInterface $now = null): array
 {
     $year     = $year ?: active_academic_year();
@@ -434,7 +327,6 @@ function em_status(?string $year = null, ?DateTimeInterface $now = null): array
 
     $s = array_merge($base, ['configured' => true]);
 
-    // Calculate individual EM1 status
     if ($hasEm1) {
         if ($t < $em1['from']) {
             $s['em1'] = ['configured' => true, 'label' => 'EM1 · UPCOMING', 'state' => 'UPCOMING', 'pill' => 'newer', 'pill_text' => 'Upcoming', 'detail' => 'EM1 opens on ' . $fmt($schedule['em1_start']) . '.'];
@@ -445,7 +337,6 @@ function em_status(?string $year = null, ?DateTimeInterface $now = null): array
         }
     }
 
-    // Calculate individual EM2 status
     if ($hasEm2) {
         if ($t < $em2['from']) {
             $s['em2'] = ['configured' => true, 'label' => 'EM2 · UPCOMING', 'state' => 'UPCOMING', 'pill' => 'newer', 'pill_text' => 'Upcoming', 'detail' => 'EM2 opens on ' . $fmt($schedule['em2_start']) . '.'];
@@ -456,7 +347,6 @@ function em_status(?string $year = null, ?DateTimeInterface $now = null): array
         }
     }
 
-    // Overall state determination
     if ($hasEm1 && $hasEm2) {
         if ($t < $em1['from']) {
             $s['state']  = EM_STATE_BEFORE_EM1;
@@ -539,36 +429,27 @@ function em_status(?string $year = null, ?DateTimeInterface $now = null): array
     return $s;
 }
 
-/** 'em1', 'em2', or null when neither meeting is in session. */
 function em_current_meeting(?string $year = null, ?DateTimeInterface $now = null): ?string
 {
     return em_status($year, $now)['current'];
 }
 
-/** True once EM1's end date has passed. False when no schedule exists. */
 function em1_is_locked(?string $year = null, ?DateTimeInterface $now = null): bool
 {
     return em_status($year, $now)['em1_locked'];
 }
 
-/** True while EM2 is in session. */
 function em2_is_active(?string $year = null, ?DateTimeInterface $now = null): bool
 {
     return em_status($year, $now)['em2_active'];
 }
 
-/* --------------------------------------------------------------------------
- *  Filtering — All / EM1 / EM2
- * ------------------------------------------------------------------------ */
-
-/** Normalise a filter value from the request: 'all', 'em1' or 'em2'. */
 function em_filter_value($raw): string
 {
     $raw = strtolower(trim((string) $raw));
     return isset(EM_MEETINGS[$raw]) ? $raw : 'all';
 }
 
-/** The filter's display name, e.g. "EM1 Duration (01 Sep 2026 – 30 Sep 2026)". */
 function em_filter_label(string $em, ?string $year = null): string
 {
     if (!isset(EM_MEETINGS[$em])) {
@@ -584,13 +465,6 @@ function em_filter_label(string $em, ?string $year = null): string
         . ' – ' . date('d M Y', strtotime($schedule[$em . '_end'])) . ')';
 }
 
-/**
- * The date window (Y-m-d, inclusive) a filter value selects, or null for "all".
- *
- * A meeting filter on a year with no schedule selects NOTHING (an empty
- * window), rather than silently falling back to everything — "EM1" must never
- * show data that is not EM1.
- */
 function em_filter_window(string $em, ?string $year = null): ?array
 {
     if (!isset(EM_MEETINGS[$em])) {
@@ -604,12 +478,6 @@ function em_filter_window(string $em, ?string $year = null): ?array
     return ['from' => $schedule[$em . '_start'], 'to' => $schedule[$em . '_end'], 'empty' => false];
 }
 
-/**
- * Centralized resolution of Academic Year and EM Duration filter state.
- * Validates year against academic_years(), defaulting to active_academic_year().
- * Normalizes em ('all', 'em1', 'em2').
- * Computes window and label for the resolved academic year.
- */
 function em_resolve_filter_context(?string $rawYear = null, ?string $rawEm = null): array
 {
     $activeYear = active_academic_year();
@@ -641,11 +509,6 @@ function em_resolve_filter_context(?string $rawYear = null, ?string $rawEm = nul
     ];
 }
 
-/**
- * Combine the EM filter with a period the page already has (from/to, Y-m-d or
- * null). Returns [from, to] for report_records() / records_list(), which then
- * do the actual filtering in SQL. With "all" the period is returned unchanged.
- */
 function em_intersect_period(string $em, ?string $from, ?string $to, ?string $year = null): array
 {
     $w = em_filter_window($em, $year);
@@ -657,20 +520,11 @@ function em_intersect_period(string $em, ?string $from, ?string $to, ?string $ye
     return [$from, $to];
 }
 
-/**
- * The academic year an EM-filtered query must also be restricted to.
- *
- * An EM1/EM2 window belongs to ONE year's schedule, so a record filed under a
- * different academic year is not that meeting's data even if it happened to be
- * submitted on dates inside the window. Returns null for "all", so a caller
- * that never filtered by year keeps exactly its existing behaviour.
- */
 function em_filter_year(string $em, ?string $year = null): ?string
 {
     return isset(EM_MEETINGS[$em]) ? ($year ?: active_academic_year()) : null;
 }
 
-/** An SQL fragment restricting $column to a window; appends its params. */
 function em_window_sql(?array $window, array &$params, string $column = 'created_at'): string
 {
     if ($window === null) {
@@ -681,7 +535,6 @@ function em_window_sql(?array $window, array &$params, string $column = 'created
     return " AND `{$column}` >= ? AND `{$column}` <= ?";
 }
 
-/** Which meeting a submission time belongs to: 'em1', 'em2' or null. */
 function em_meeting_for_datetime(?string $datetime, ?string $year = null): ?string
 {
     $schedule = em_schedule_for_year($year);
@@ -698,15 +551,6 @@ function em_meeting_for_datetime(?string $datetime, ?string $year = null): ?stri
     return null;
 }
 
-/* --------------------------------------------------------------------------
- *  Write enforcement — called from the server-side write paths
- * ------------------------------------------------------------------------ */
-
-/**
- * Windows whose data is read-only right now. Per FEAT-07 only EM1 locks, once
- * its end date has passed. Returned as a list so every caller enforces the
- * same set.
- */
 function em_locked_windows(?string $year = null, ?DateTimeInterface $now = null): array
 {
     $status = em_status($year, $now);
@@ -716,10 +560,6 @@ function em_locked_windows(?string $year = null, ?DateTimeInterface $now = null)
     return [em_window_bounds($status['schedule'], 'em1')];
 }
 
-/**
- * SQL that excludes locked-meeting records from an UPDATE, appending params.
- * Admin is exempt, exactly as with the FEAT-02 academic-year lock.
- */
 function em_locked_exclusion_sql(string $role, ?string $year, array &$params, string $column = 'created_at'): string
 {
     if ($role === 'Admin') {
@@ -734,7 +574,6 @@ function em_locked_exclusion_sql(string $role, ?string $year, array &$params, st
     return $sql;
 }
 
-/** Whether a record submitted at $createdAt is locked for this role. */
 function em_record_is_locked(string $role, ?string $createdAt, ?string $year = null): bool
 {
     if ($role === 'Admin' || !$createdAt || ($ts = strtotime($createdAt)) === false) {
@@ -749,23 +588,12 @@ function em_record_is_locked(string $role, ?string $createdAt, ?string $year = n
     return false;
 }
 
-/**
- * Clear user-facing message describing the current EM switchover state.
- */
 function em_transition_message(?string $year = null, ?DateTimeInterface $now = null): ?string
 {
     $status = em_status($year, $now);
     return $status['switchover_message'] ?? null;
 }
 
-/**
- * Why a submission would be refused right now, or null when allowed.
- *
- * Checks meeting schedule validity for the specified active academic year.
- * If $targetMeeting is provided ('em1' or 'em2'), validates that meeting's specific
- * availability. If null, verifies that the current moment falls within an active meeting window.
- * Admin is exempt.
- */
 function em_submission_block_reason(string $role, ?string $year = null, ?DateTimeInterface $now = null, ?string $targetMeeting = null): ?string
 {
     if ($role === 'Admin') {
@@ -798,7 +626,6 @@ function em_submission_block_reason(string $role, ?string $year = null, ?DateTim
         return null;
     }
 
-    // General submission attempt (no explicit meeting target chosen):
     if ($status['current'] === null) {
         if ($status['state'] === EM_STATE_BEFORE_EM1 && !empty($status['schedule']['em1_start'])) {
             return 'Executive Meeting schedule has not opened yet. Submissions open with EM1 on '

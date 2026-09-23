@@ -1,25 +1,13 @@
 <?php
-/**
- * Role-based sidebar navigation — the PHP mirror of the React navigation.js.
- * Grouped into sections; each item names an icon and target page. Pages that
- * aren't built yet resolve to coming-soon.php automatically (see nav_href).
- */
-
 require_once __DIR__ . '/db.php';
 
 function navigation_for(string $role): array
 {
-    // Sections are consistent across roles — Overview, Workspace, Manage,
-    // Account — and render in that order (group_navigation keeps first-seen
-    // order). Each role only lists the pages it can actually reach.
     $items = [
         'Admin' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
-            // FEAT-12 — the historical archive of expired notices, kept beside
-            // the Announcements entry it belongs to. Admin only: no other
-            // role's list has it, and announcements-archive.php gates on the
-            // role itself regardless of what the menu shows.
+
             ['section' => 'Overview',  'label' => 'Announcement Archive', 'path' => 'announcements-archive.php', 'icon' => 'archive'],
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Academic Year',        'path' => 'academic-years.php',       'icon' => 'calendar'],
@@ -30,9 +18,7 @@ function navigation_for(string $role): array
             ['section' => 'Manage',    'label' => 'Users',                'path' => 'users.php',                'icon' => 'users'],
             ['section' => 'Manage',    'label' => 'Departments',          'path' => 'departments.php',          'icon' => 'building'],
             ['section' => 'Manage',    'label' => 'Report Template',      'path' => 'report-template.php',      'icon' => 'reports'],
-            // FEAT-11 lives inside Settings (its last tab), so the pending count
-            // rides on Settings. Admin only — no other role's list has this entry,
-            // and password-requests.php gates on the role itself regardless.
+
             ['section' => 'Account',   'label' => 'Settings',             'path' => 'settings.php',             'icon' => 'settings', 'badge' => 'password_requests'],
         ],
         'Principal' => [
@@ -92,10 +78,6 @@ function navigation_for(string $role): array
         ],
     ];
 
-    // The staff directory is open to every role that may already open another
-    // person's Faculty Details document (see can_user_view_faculty_report):
-    // oversight roles browse all departments, a Coordinator their own only.
-    // The HoD menu lists it above already, so it is not repeated here.
     if (in_array($role, ['Admin', 'Principal', 'Director', 'Dean', 'Coordinator'], true)) {
         $items[$role][] = [
             'section' => $role === 'Admin' ? 'Manage' : 'Workspace',
@@ -108,7 +90,6 @@ function navigation_for(string $role): array
     return $items[$role] ?? [];
 }
 
-/** Group a role's flat item list into ordered sections (default "Menu"). */
 function group_navigation(array $items): array
 {
     $groups = [];
@@ -119,7 +100,6 @@ function group_navigation(array $items): array
     return $groups;
 }
 
-/** Link target: the real page if it exists, else the coming-soon placeholder. */
 function nav_href(string $path): string
 {
     $file   = strtok($path, '?');
@@ -127,26 +107,19 @@ function nav_href(string $path): string
     return $exists ? url($path) : url('coming-soon.php?page=' . urlencode($path));
 }
 
-/** Total pending records a reviewer should act on, for the badge. */
 function pending_approvals_count(array $user): int
 {
-    // Coordinator/HoD/Dean/Admin review; Coordinator and HoD are scoped to
-    // their own department.
     if (!in_array($user['role'], ['Admin', 'Dean', 'HoD', 'Coordinator'], true)) {
         return 0;
     }
 
-    // The header badge and the notification bell both ask for this in the same
-    // request, and it fans out to one COUNT(*) per record table. Memoise per
-    // request (keyed by the only inputs that matter) so that fan-out happens
-    // once, not once per caller.
     static $memo = [];
     $memoKey = $user['role'] . '|' . ($user['department'] ?? '');
     if (array_key_exists($memoKey, $memo)) {
         return $memo[$memoKey];
     }
 
-    require_once __DIR__ . '/../models/Record.php';   // record_types(), target_record_table_columns()
+    require_once __DIR__ . '/../models/Record.php';   
 
     $role = $user['role'];
     $scopeDept = in_array($role, ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
@@ -161,7 +134,7 @@ function pending_approvals_count(array $user): int
         $targetStatuses = ['Submitted', 'Unlocked for Edit'];
     } elseif ($role === 'Dean') {
         $targetStatuses = ['Edit Requested', 'Dean Pending'];
-    } else {   // Admin — everything still awaiting a decision
+    } else {   
         $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Unlocked for Edit'];
     }
 
@@ -192,7 +165,6 @@ function pending_approvals_count(array $user): int
         }
     }
 
-    // Dean and Admin also count pending edit requests awaiting decision
     if (in_array($role, ['Dean', 'Admin'], true)) {
         try {
             $total += (int) db()->query("SELECT COUNT(*) FROM edit_requests WHERE status = 'Pending'")->fetchColumn();

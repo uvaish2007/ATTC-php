@@ -1,15 +1,4 @@
 <?php
-/**
- * EM-SPEC-01 — Admin EM Schedule Manager.
- *
- * Dedicated interface for the Admin to configure Start Date and End Date for:
- *   - Executive Meeting 1 (EM1)
- *   - Executive Meeting 2 (EM2)
- *
- * Stored in the database (app_settings) and strictly linked to the active Academic Year.
- * Allows saving EM1 separately, EM2 separately, or both together.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
@@ -22,7 +11,6 @@ $activeYear = active_academic_year();
 $isLocked   = academic_year_is_locked($activeYear);
 $lockInfo   = academic_year_lock_info($activeYear);
 
-// Handle schedule save
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -57,7 +45,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/em-schedule.php');
 }
 
-// Current schedule and status for the active academic year
 $emStatus   = em_status($activeYear);
 $emSchedule = $emStatus['schedule'];
 $emSpan     = em_academic_year_span($activeYear);

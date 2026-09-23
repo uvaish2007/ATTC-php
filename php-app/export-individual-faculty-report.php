@@ -1,10 +1,4 @@
 <?php
-/**
- * Multi-Format Exporter for Individual Faculty Achievement Report.
- * Exports PDF, Excel (.xlsx), Word (.doc), and CSV formats.
- * Strictly enforces backend permission checking via can_user_view_faculty_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/inc/xlsx_writer.php';
@@ -12,13 +6,11 @@ require_once __DIR__ . '/models/FacultyAchievement.php';
 
 $user = require_login();
 
-// Target faculty ID defaults to current logged-in user if unspecified
 $targetFacultyId = (int) input('id', 0);
 if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
-// Backend Authorization Verification
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
@@ -26,7 +18,7 @@ if (!can_user_view_faculty_report($user, $targetFacultyId)) {
 }
 
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+
 $rawYear      = input('academic_year') ?: input('year');
 $emCtx        = em_resolve_filter_context($rawYear, input('em'));
 $academicYear = $emCtx['year'];
@@ -39,7 +31,6 @@ if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
     $format = 'excel';
 }
 
-// Fetch faculty details and records
 $data = faculty_achievement_details($targetFacultyId, $academicYear, $category, $emWindow);
 $faculty = $data['faculty'];
 $records = $data['records'];
@@ -56,9 +47,6 @@ $today    = date('d.m.Y');
 $fileStem = 'individual-faculty-achievement-report-' . preg_replace('/[^a-z0-9]/i', '-', $faculty['name']) . '-' . date('Y-m-d');
 $title    = 'INDIVIDUAL FACULTY ACHIEVEMENT REPORT';
 
-/* ========================================================================
-   1. EXCEL (.xlsx)
-   ===================================================================== */
 if ($format === 'excel') {
     $headers = ['S.No', 'Category', 'Title / Paper / Activity', 'Department', 'Status', 'Academic Year', 'Submission Date', 'Proof'];
     
@@ -83,7 +71,6 @@ if ($format === 'excel') {
         ];
     }
 
-    // TS-REP-03 — this report is countersigned like every other export.
     $rows = array_merge($rows, report_signoff_rows(
         report_signoff_columns(department_full_name($faculty['department'] ?? null)), count($headers)));
 
@@ -104,15 +91,12 @@ if ($format === 'excel') {
     }
 }
 
-/* ========================================================================
-   2. CSV (.csv)
-   ===================================================================== */
 if ($format === 'csv') {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.csv"');
 
     $out = fopen('php://output', 'w');
-    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); 
 
     fputcsv($out, [REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)']);
     fputcsv($out, [$title]);
@@ -148,9 +132,6 @@ if ($format === 'csv') {
     exit;
 }
 
-/* ========================================================================
-   3. WORD (.doc) & 4. PDF (Print HTML View)
-   ===================================================================== */
 if ($format === 'word') {
     header('Content-Type: application/msword');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');

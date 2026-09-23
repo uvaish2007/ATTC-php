@@ -1,23 +1,15 @@
 <?php
-/**
- * Individual Student Achievement Report — Consolidated student report and inspection view.
- * Displays student details, achievement summary, category breakdown chart, and category-wise record tables.
- * Backend authorization strictly enforced via can_user_view_student_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/icons.php';
 require_once __DIR__ . '/models/StudentAchievement.php';
 
 $user = require_login();
 
-// Read query parameters
 $studentKey   = trim((string) input('key', ''));
 $regNoHint    = trim((string) input('reg_no', ''));
 $nameHint     = trim((string) input('name', ''));
 $deptHint     = trim((string) input('dept', ''));
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
 $rawYear      = input('academic_year') ?: input('year');
 $emCtx        = em_resolve_filter_context($rawYear, input('em'));
 $academicYear = $emCtx['year'];
@@ -25,7 +17,6 @@ $em           = $emCtx['em'];
 $emWindow     = $emCtx['window'];
 $category     = trim((string) input('category', '')) ?: null;
 
-// If key is empty but we have reg_no or name+dept, compute key
 if ($studentKey === '') {
     if ($regNoHint !== '' && $regNoHint !== '—') {
         $studentKey = student_make_key($regNoHint, $nameHint, $deptHint);
@@ -44,7 +35,6 @@ if ($studentKey === '') {
     exit;
 }
 
-// Fetch detailed student data
 $data    = student_achievement_details($studentKey, $academicYear, $category, $emWindow, $regNoHint, $nameHint, $deptHint);
 $student = $data['student'];
 $records = $data['records'];
@@ -61,7 +51,6 @@ if (!$student) {
     exit;
 }
 
-// ---- STRICT BACKEND AUTHORIZATION CHECK ----
 if (!can_user_view_student_report($user, $student['department'])) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
@@ -71,7 +60,6 @@ if (!can_user_view_student_report($user, $student['department'])) {
 $years = academic_years();
 $activeYear = active_academic_year();
 
-// Build query string for navigation links
 $navParams = [
     'key'           => $student['key'],
     'reg_no'        => $student['reg_no'],
@@ -82,7 +70,6 @@ $navParams = [
 $presentUrl = url('present-student-report.php') . '?' . http_build_query($navParams);
 $refreshUrl = url('individual-student-report.php') . '?' . http_build_query($navParams);
 
-// Summary counts per category for the table & chart
 $catSummary = [];
 foreach ($byCat as $cLabel => $cRecords) {
     $catSummary[$cLabel] = count($cRecords);
@@ -391,7 +378,6 @@ require __DIR__ . '/inc/header.php';
     centreLabel: 'records',
     empty:       'Nothing recorded yet'
   });
-})();
-</script>
+})();</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

@@ -15,11 +15,9 @@ $isHod = $user['role'] === 'HoD';
 $canProcess = in_array($user['role'], ['Admin', 'Dean'], true);
 journal_process_approval_expiry();
 
-// Handle all review, edit request, and approval actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
-    // Handle ticket processing from Dean/Admin
     if (input('process_action') !== '') {
         if (!$canProcess) {
             flash('error', 'Unauthorized: Only Dean and Administrator can process edit requests.');
@@ -113,16 +111,13 @@ $types       = array_filter(record_types(), fn($k) => record_requires_approval($
 $departments = departments_all();
 $allYears    = academic_years();
 
-// Filters
 $filterDept = in_array($user['role'], ['Admin', 'Dean'], true) ? (trim((string) input('department')) ?: null) : null;
 $filterType = (string) input('type');
 if (!isset($types[$filterType])) { $filterType = ''; }
 $search = trim((string) input('q'));
 
-// Department scope
 $effectiveDept = $scopeDept ?? $filterDept;
 
-// Determine active tab
 $currentTab = (string) input('tab');
 $defaultTab = match ($user['role']) {
     'Dean'        => 'requests',
@@ -137,10 +132,8 @@ if ($user['role'] === 'HoD' && $currentTab === 'pending') {
     $currentTab = 'records';
 }
 
-// Fetch records and edit requests
 $records = pending_records($effectiveDept, null, $user['role'], $activeYear);
 
-// For HoD, Dean, or Admin viewing 'records' tab: fetch all records in scope
 if ($user['role'] === 'HoD' || ($user['role'] === 'Dean' && $currentTab === 'records') || ($user['role'] === 'Admin' && $currentTab === 'records')) {
     $allDeptRecords = [];
     $targetDept = ($user['role'] === 'HoD') ? $scopeDept : $filterDept;
@@ -157,22 +150,18 @@ if ($user['role'] === 'HoD' || ($user['role'] === 'Dean' && $currentTab === 'rec
     $records = $allDeptRecords;
 }
 
-// Edit Requests list
 if ($user['role'] === 'HoD') {
     $editRequests = edit_requests_list($scopeDept, null, null, (int)$user['id']);
 } elseif ($user['role'] === 'Coordinator') {
     $editRequests = edit_requests_list($scopeDept, 'Approved', null);
 } elseif ($user['role'] === 'Dean') {
     $editRequests = edit_requests_list($filterDept, null, null);
-} else { // Admin
-    $editRequests = edit_requests_list($filterDept, null, null);
+} else {     $editRequests = edit_requests_list($filterDept, null, null);
 }
 
-// Split pending requests and history for Dean/Admin
 $pendingRequests = array_values(array_filter($editRequests, fn($er) => $er['status'] === 'Pending'));
 $historyRequests = array_values(array_filter($editRequests, fn($er) => in_array($er['status'], ['Approved', 'Rejected', 'Completed'], true)));
 
-// Coordinator & Admin Authorized Corrections list (Records approved by Dean)
 $authorizedCorrections = [];
 if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
     foreach ($types as $key => $t) {
@@ -182,7 +171,6 @@ if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
             $cr['_type_label'] = $t['label'];
             $cr['_title']      = $cr[$t['title_col']] ?? '(untitled)';
             
-            // Fetch linked edit request for complete Dean authorization details
             try {
                 $erStmt = db()->prepare("SELECT * FROM edit_requests WHERE record_id = ? AND record_type = ? ORDER BY id DESC LIMIT 1");
                 $erStmt->execute([(int)$cr['id'], $key]);
@@ -197,7 +185,6 @@ if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
     usort($authorizedCorrections, fn($a, $b) => strtotime($b['updated_at'] ?? $b['created_at']) <=> strtotime($a['updated_at'] ?? $a['created_at']));
 }
 
-// Filter records
 if ($filterType !== '') {
     $records = array_values(array_filter($records, fn($r) => $r['_type_key'] === $filterType));
 }
@@ -210,7 +197,6 @@ if ($search !== '') {
 }
 $hasFilter = $filterDept || $filterType !== '' || $search !== '';
 
-// Page Titles & Breadcrumbs
 $isHod = $user['role'] === 'HoD';
 $pageTitle = match ($user['role']) {
     'HoD'         => 'Review Records',
@@ -268,7 +254,7 @@ require __DIR__ . '/inc/header.php';
       <a href="?tab=history" class="btn btn-sm <?= $currentTab === 'history' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('clock', 14) ?> Decision History (<?= count($historyRequests) ?>)
       </a>
-    <?php else: // Admin ?>
+    <?php else: ?>
       <a href="?tab=pending" class="btn btn-sm <?= $currentTab === 'pending' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('check-circle', 14) ?> Pending Records
       </a>
@@ -314,8 +300,7 @@ require __DIR__ . '/inc/header.php';
         $reqList = $editRequests;
         $tabTitle = 'Dean-Approved Edit Requests';
         $tabSub   = 'Modification requests approved by Dean. You are authorized to correct and resubmit these records.';
-    } else { // Dean or Admin
-        $tabTitle = ($user['role'] === 'Dean') ? 'Edit Requests & Decisions' : 'Edit Requests Oversight';
+    } else {         $tabTitle = ($user['role'] === 'Dean') ? 'Edit Requests & Decisions' : 'Edit Requests Oversight';
         $tabSub   = 'Review requests submitted by HoDs to unlock approved records for Coordinator correction.';
         if ($reqStatusFilter === 'Pending') {
             $reqList = $pendingRequests;
@@ -903,7 +888,7 @@ require __DIR__ . '/inc/header.php';
                           <?= icon('check-circle', 13) ?> Review Only
                         </span>
                       <?php endif; ?>
-                    <?php else: // Admin ?>
+                    <?php else: ?>
                       <?php if ($r['status'] === 'Unlocked for Edit'): ?>
                         <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
                           <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px" title="Approved by Dean; unlocked for Coordinator correction">
@@ -1123,11 +1108,9 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 </dialog>
-<script>
-const currentRole = <?= json_encode($user['role']) ?>;
+<script>const currentRole = <?= json_encode($user['role']) ?>;
 const canProcess = <?= json_encode($canProcess) ?>;
 
-// Open HoD Edit Request dialog with auto-populated metadata
 function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
   document.getElementById('her-type').value = type;
   document.getElementById('her-id').value = id;
@@ -1142,7 +1125,6 @@ function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
   }
 }
 
-// Open Dean Decision dialog for Edit Requests
 function openDecisionModal(decision, reqId, reqLabel, faculty, title) {
   document.getElementById('dec-action').value = decision === 'approve' ? 'approve_edit_request' : 'reject_edit_request';
   document.getElementById('dec-req-id').value = reqId;
@@ -1177,7 +1159,6 @@ function openDecisionModal(decision, reqId, reqLabel, faculty, title) {
   }
 }
 
-// Coordinator / Admin standard review record dialog
 function reviewRecord(type, id, action) {
   document.getElementById('rv-type').value = type;
   document.getElementById('rv-id').value = id;
@@ -1207,7 +1188,6 @@ function reviewRecord(type, id, action) {
   }
 }
 
-// HoD acknowledge review of resubmitted record
 function acknowledgeReview(type, id) {
   if (!confirm('Acknowledge review for this corrected record and confirm as Approved in the database?')) return;
   var form = document.createElement('form');
@@ -1220,7 +1200,6 @@ function acknowledgeReview(type, id) {
   form.submit();
 }
 
-// Bulk approve for Coordinator / Admin
 function approveAll(ev, dept, n) {
   ev.preventDefault();
   ev.stopPropagation();
@@ -1230,7 +1209,6 @@ function approveAll(ev, dept, n) {
   document.getElementById('bulkForm').submit();
 }
 
-// Proof Viewer functions
 function openProofViewer(url, title, who, dept, typeLabel) {
   if (!url || url.indexOf('upload.php') !== -1) return;
   document.getElementById('pv-title').textContent = title || 'Proof Attachment';
@@ -1279,7 +1257,6 @@ function closeProofViewer() {
   }
 }
 
-// Dialog backdrop click-to-close handlers
 ['proofDlg', 'reviewDlg', 'decisionDlg', 'hodEditDlg'].forEach(function(id) {
   var d = document.getElementById(id);
   if (d) {
@@ -1302,7 +1279,6 @@ if (proofDlgEl) {
     var frame = document.getElementById('pv-frame');
     if (frame) frame.src = '';
   });
-}
-</script>
+}</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

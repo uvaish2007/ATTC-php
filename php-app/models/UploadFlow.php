@@ -1,52 +1,18 @@
 <?php
-/**
- * Upload Data entry flow — Academic Year → Data Type → the existing upload form.
- *
- * Faculty and Coordinator users no longer land straight on upload.php's form.
- * They first pick the academic year, then the kind of data (Faculty or
- * Student), and upload.php opens its form only once both are chosen. HoD and
- * Admin keep opening the form directly.
- *
- * This is not a second academic-year system. The years offered are the
- * existing academic_years() narrowed to the one the Admin activated (FEAT-02,
- * active_academic_year()), because upload.php stamps every new record with
- * that year and never with a client-supplied one.
- *
- * The two data types are built from the existing record grouping,
- * record_categories(), so no record type is added, removed or duplicated:
- *     Faculty Data → "faculty" + "activity" categories — the side FEAT-06
- *                    attributes to faculty (by created_by)
- *     Student Data → "student" category
- *
- * The choice lives in the server-side session, never in the URL, and is
- * re-validated on every request: it must belong to the signed-in user and to
- * this login (session id), and its year must still be open.
- */
-
-require_once __DIR__ . '/Record.php';   // record_types(), record_categories(); loads Target.php
+require_once __DIR__ . '/Record.php';   
 
 const UPLOAD_FLOW_SESSION_KEY = 'upload_flow';
 
-/** Does this user go through the selection screens before the form? */
 function upload_flow_applies(array $user): bool
 {
     return in_array($user['role'] ?? '', ['Faculty', 'Coordinator'], true);
 }
 
-/**
- * Academic years a record can be uploaded for: all valid academic years from FEAT-02.
- * Taken from academic_years() so the list is the existing one, not a new one.
- */
 function upload_flow_years(): array
 {
     return academic_years();
 }
 
-/**
- * The two data types, each with the record types (upload.php tab keys) it
- * opens, in upload.php's existing tab order. A type that no category claims
- * falls under Faculty Data, as FEAT-06 files it with the faculty side.
- */
 function upload_flow_data_types(): array
 {
     static $defs = null;
@@ -70,7 +36,6 @@ function upload_flow_data_types(): array
     return $defs;
 }
 
-/** Which data type a record type belongs to, or null for an unknown type. */
 function upload_flow_data_type_of(string $recordType): ?string
 {
     foreach (upload_flow_data_types() as $key => $def) {
@@ -81,19 +46,11 @@ function upload_flow_data_type_of(string $recordType): ?string
     return null;
 }
 
-/**
- * The user's current choice, validated. Keys:
- *   year       — chosen year, only while it is still open (else null)
- *   data_type  — chosen data type, only alongside a valid year (else null)
- *   return_to  — the in-app page the flow was entered from (else null)
- *   stale_year — a year chosen earlier that is no longer open (else null)
- */
 function upload_flow_state(array $user): array
 {
     $state = ['year' => null, 'data_type' => null, 'return_to' => null, 'stale_year' => null];
     $raw   = $_SESSION[UPLOAD_FLOW_SESSION_KEY] ?? null;
 
-    // Nothing chosen yet by THIS user in THIS login.
     if (!is_array($raw)
         || (int) ($raw['user_id'] ?? 0) !== (int) $user['id']
         || ($raw['sid'] ?? '') !== session_id()) {
@@ -121,7 +78,6 @@ function upload_flow_state(array $user): array
     return $state;
 }
 
-/** Merge changes into this user's stored choice (starting fresh if it isn't theirs). */
 function upload_flow_store(array $user, array $changes): void
 {
     $raw = $_SESSION[UPLOAD_FLOW_SESSION_KEY] ?? null;
@@ -139,7 +95,6 @@ function upload_flow_store(array $user, array $changes): void
     );
 }
 
-/** Step 1 — choose the academic year. Returns [ok, errorMessage]. */
 function upload_flow_choose_year(array $user, $year): array
 {
     $year = is_string($year) ? trim($year) : '';
@@ -162,7 +117,6 @@ function upload_flow_choose_year(array $user, $year): array
     return [true, null];
 }
 
-/** Step 2 — choose the data type. Needs a valid year first. Returns [ok, errorMessage]. */
 function upload_flow_choose_data_type(array $user, $dataType): array
 {
     if (upload_flow_state($user)['year'] === null) {
@@ -186,12 +140,6 @@ function upload_flow_choose_data_type(array $user, $dataType): array
     return [true, null];
 }
 
-/**
- * Remember the in-app page the flow was entered from, so Back on the
- * Academic Year screen returns there. Only a page of this app on this host
- * is kept — it is rebuilt from a known file name, so it can never point
- * off-site — and upload.php itself is ignored so Back never loops.
- */
 function upload_flow_remember_return(array $user): void
 {
     $referer = (string) ($_SERVER['HTTP_REFERER'] ?? '');

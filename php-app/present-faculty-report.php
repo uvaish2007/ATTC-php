@@ -1,10 +1,4 @@
 <?php
-/**
- * Faculty Achievement Presentation Mode — Fullscreen Academic Review Presentation Engine.
- * Allows Admin, Principal, Director, Dean, HoD, and Faculty to present achievements in a clean slide format.
- * Strictly enforced backend authorization via can_user_view_faculty_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/icons.php';
 require_once __DIR__ . '/inc/report_layout.php';
@@ -22,7 +16,6 @@ if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
-// Strict backend role authorization gate
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
@@ -46,7 +39,6 @@ $from     = trim((string) input('from', ''));
 $referer  = (string) ($_SERVER['HTTP_REFERER'] ?? '');
 $userRole = $user['role'] ?? '';
 
-// Build return query parameters for faculty-achievements
 $faParams = [];
 if (!empty($academicYear)) {
     $faParams['academic_year'] = $academicYear;
@@ -66,7 +58,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
 } elseif ($from === 'individual' || $from === 'individual-faculty-report' || strpos($referer, 'individual-faculty-report.php') !== false) {
     $exitUrl = url('individual-faculty-report.php?id=' . $targetFacultyId . (!empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : ''));
 } else {
-    // Principal/Director manage primarily from Faculty Achievements, so exit returns there
     if (in_array($userRole, ['Principal', 'Director'], true)) {
         $exitUrl = $faUrl;
     } else {
@@ -786,17 +777,8 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
     </div>
   </footer>
 
-  <script>
-    const slides = <?= $slidesJson ?>;
+  <script>    const slides = <?= $slidesJson ?>;
     let currentIndex = 0;
-
-    /* ---- Auto / Manual presentation mode --------------------------------
-       Manual is the default: nothing moves until the user asks for Auto.
-       renderSlide() stays the one place a slide changes, so every path —
-       Previous/Next, the dots, the arrow keys, and the timer itself — clears
-       the countdown and restarts it for whichever slide ends up on screen.
-       There is exactly ONE timer handle, and it is always cleared before
-       another is started, so slides can never skip or double-advance. */
 
     const AUTO_ADVANCE_SECONDS = 10;   // 10 seconds per slide — not 3, 5 or 15
     let presentationMode = 'manual';   // default on open
@@ -811,7 +793,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
         : '';
     }
 
-    /** Stop any running countdown and reset its progress bar. Safe to call twice. */
     function clearAutoTimer() {
       if (autoTimer !== null) {
         clearInterval(autoTimer);
@@ -826,12 +807,10 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       renderCountdown();
     }
 
-    /** Start the 10-second countdown for the slide currently on screen. */
     function startAutoTimer() {
       clearAutoTimer();                            // never two timers at once
       if (presentationMode !== 'auto') return;
 
-      // Auto stops at the final slide rather than looping or stacking timers.
       if (currentIndex >= slides.length - 1) {
         setPresentationMode('manual');
         return;
@@ -847,7 +826,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
         bar.classList.add('running');
       }
 
-      // One interval, ten one-second ticks, then advance.
       autoTimer = setInterval(() => {
         autoRemaining -= 1;
         renderCountdown();
@@ -858,7 +836,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       }, 1000);
     }
 
-    /** Switch mode, keeping whichever slide is on screen. */
     function setPresentationMode(next) {
       presentationMode = (next === 'auto') ? 'auto' : 'manual';
 
@@ -872,7 +849,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       }
     }
 
-    /** Leave the deck, making sure no timer outlives the page. */
     function exitPresentation() {
       clearAutoTimer();
       if (document.fullscreenElement && document.exitFullscreen) {
@@ -883,8 +859,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
 
     // Belt and braces: whatever tears the page down, the timer goes with it.
     window.addEventListener('pagehide', clearAutoTimer);
-
-    /* ---- Executive Chart & SVG Helpers ---- */
 
     function renderGroupedBarChart(top3) {
       if (!top3 || !top3.length) {
@@ -1423,12 +1397,10 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
         content.innerHTML = html;
         card.classList.add('active');
 
-        // Update Counter & Buttons
         document.getElementById('slideCounter').textContent = `Slide ${currentIndex + 1} of ${slides.length}`;
         document.getElementById('btnPrev').disabled = (currentIndex === 0);
         document.getElementById('btnNext').disabled = (currentIndex === slides.length - 1);
 
-        // Update Dots
         const dotsContainer = document.getElementById('dotsContainer');
         dotsContainer.innerHTML = '';
         slides.forEach((_, i) => {
@@ -1438,8 +1410,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
           dotsContainer.appendChild(dot);
         });
 
-        // Restart the countdown for the slide now on screen. A no-op unless
-        // Auto is on, so Manual stays completely still.
         startAutoTimer();
       }, 100);
     }
@@ -1456,7 +1426,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
-    // Keyboard Navigation
     document.addEventListener('keydown', (e) => {
       if (e.key === 'ArrowRight' || e.key === ' ') {
         e.preventDefault();
@@ -1469,7 +1438,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       }
     });
 
-    // Fullscreen Toggle
     function toggleFullscreen() {
       if (!document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(err => {});
@@ -1480,7 +1448,6 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
       }
     }
 
-    // Initialize slide deck
     renderSlide(0);
   </script>
 </body>

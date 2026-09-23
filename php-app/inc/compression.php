@@ -1,42 +1,20 @@
 <?php
-/**
- * FEAT-13: Automatic File Storage Compression.
- *
- * Provides server-side compression and optimization for proof attachments:
- * - JPEG/JPG: Orientation correction, proportional resizing (if exceeding max dimensions),
- *             and controlled re-encoding (quality ~82) via GD.
- * - PNG: Full alpha transparency preservation, proportional resizing, and high-ratio
- *        lossless compression (level 8) via GD.
- * - PDF: Dual-engine optimization:
- *        1. External CLI optimizer (qpdf, gs/gswin64c, pdfcpu) if installed/configured.
- *        2. Native PHP stream flate compressor (using active zlib extension) for uncompressed
- *           streams with compliant xref reconstruction.
- * - Non-destructive: If compression fails or produces a larger file, the validated original
- *   is safely retained without bloat or corruption.
- */
-
 require_once __DIR__ . '/config.php';
 
 if (!defined('PROOF_MAX_BYTES')) {
-    define('PROOF_MAX_BYTES', 2 * 1024 * 1024); // 2 MB
+    define('PROOF_MAX_BYTES', 2 * 1024 * 1024); 
 }
 
 if (!defined('COMPRESSION_MAX_DIMENSION')) {
-    define('COMPRESSION_MAX_DIMENSION', 2048); // Maximum width/height in pixels
+    define('COMPRESSION_MAX_DIMENSION', 2048); 
 }
 if (!defined('COMPRESSION_JPEG_QUALITY')) {
-    define('COMPRESSION_JPEG_QUALITY', 82);   // JPEG compression quality (0-100)
+    define('COMPRESSION_JPEG_QUALITY', 82);   
 }
 if (!defined('COMPRESSION_PNG_LEVEL')) {
-    define('COMPRESSION_PNG_LEVEL', 8);       // PNG zlib compression level (0-9)
+    define('COMPRESSION_PNG_LEVEL', 8);       
 }
 
-/**
- * Save one uploaded proof file. Only a PDF or image (up to 2 MB) is accepted.
- * Files are compressed server-side (FEAT-13) and stored safely in UPLOAD_DIR
- * with pattern record_<unique-id>_<timestamp>.<ext>.
- * Returns [storedName|null, error|null].
- */
 if (!function_exists('save_upload_proof')) {
 function save_upload_proof(?array $file, bool $required = false): array
 {
@@ -59,12 +37,10 @@ function save_upload_proof(?array $file, bool $required = false): array
         };
     }
 
-    // In CLI or tests, is_uploaded_file may be false; check is_file fallback if not uploaded
     if (!is_uploaded_file($file['tmp_name']) && !is_file($file['tmp_name'])) {
         return [null, 'The proof could not be uploaded (invalid temporary file).'];
     }
 
-    // Supported proof formats: PDF documents and images (JPG, JPEG, PNG)
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
     $allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
     if (!in_array($ext, $allowedExts, true)) {
@@ -75,7 +51,6 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof attachment is larger than 2 MB. Please upload a smaller one.'];
     }
 
-    // Validate MIME type and binary header magic bytes
     $finfo = @finfo_open(FILEINFO_MIME_TYPE);
     $mime = $finfo ? (string) @finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
     if ($finfo && PHP_VERSION_ID < 80500) {
@@ -146,17 +121,12 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof could not be saved to the upload directory.'];
     }
 
-    // Keep mirrored copy in proofs/ for backward compatibility with older links
     @copy($destPath, $proofsFolder . '/' . $stored);
 
     return [$stored, null];
 }
 }
 
-/**
- * Detect available external CLI PDF optimization tools.
- * Returns array [tool_name, executable_path] or null if none found.
- */
 function compression_detect_pdf_cli(): ?array
 {
     static $detected = false;
@@ -167,7 +137,6 @@ function compression_detect_pdf_cli(): ?array
     }
     $detected = true;
 
-    // Check custom path from environment or constant if provided
     $custom = defined('PDF_OPTIMIZER_PATH') ? PDF_OPTIMIZER_PATH : (getenv('PDF_OPTIMIZER_PATH') ?: '');
     if ($custom !== '' && is_executable($custom)) {
         $base = strtolower(basename($custom));
@@ -196,11 +165,6 @@ function compression_detect_pdf_cli(): ?array
     return $result = null;
 }
 
-/**
- * Compress an image file (JPEG or PNG) using the GD library.
- * Returns the path to the compressed temporary file, or null if compression was
- * not possible, failed, or did not reduce the file size.
- */
 function compress_image_file(
     string $sourcePath,
     string $ext,
@@ -219,14 +183,12 @@ function compress_image_file(
     $ext = strtolower($ext);
     $img = null;
 
-    // 1. Load image
     if ($ext === 'jpg' || $ext === 'jpeg') {
         if (!function_exists('imagecreatefromjpeg')) {
             return null;
         }
         $img = @imagecreatefromjpeg($sourcePath);
 
-        // Correct orientation from EXIF if available
         if ($img && function_exists('exif_read_data')) {
             try {
                 $exif = @exif_read_data($sourcePath);
@@ -242,7 +204,6 @@ function compress_image_file(
                     if ($rotated) { imagedestroy($img); $img = $rotated; }
                 }
             } catch (\Throwable $e) {
-                // Ignore EXIF read errors
             }
         }
     } elseif ($ext === 'png') {
@@ -289,7 +250,6 @@ function compress_image_file(
         }
     }
 
-    // 3. Re-encode to temporary file
     $tempFile = tempnam(sys_get_temp_dir(), 'atts_img_') . '.' . $ext;
     $saved = false;
 
@@ -317,11 +277,6 @@ function compress_image_file(
     return $tempFile;
 }
 
-/**
- * Optimize a PDF file using available CLI tool or native PHP stream flate compressor.
- * Returns the path to the compressed temporary file, or null if optimization was
- * not possible, failed, or did not reduce the file size.
- */
 function compress_pdf_file(string $sourcePath): ?string
 {
     if (!is_file($sourcePath)) {
@@ -333,7 +288,6 @@ function compress_pdf_file(string $sourcePath): ?string
         return null;
     }
 
-    // 1. Try external CLI tool if detected
     $cli = compression_detect_pdf_cli();
     if ($cli !== null) {
         [$tool, $bin] = $cli;
@@ -367,7 +321,6 @@ function compress_pdf_file(string $sourcePath): ?string
         }
     }
 
-    // 2. Native PHP PDF stream optimizer (handles uncompressed streams via zlib)
     if (extension_loaded('zlib')) {
         $tempOut = tempnam(sys_get_temp_dir(), 'atts_pdf_flate_') . '.pdf';
         $optimized = compression_native_pdf_flate($sourcePath, $tempOut);
@@ -383,11 +336,6 @@ function compress_pdf_file(string $sourcePath): ?string
     return null;
 }
 
-/**
- * Native pure-PHP PDF Stream Flate Compressor.
- * Identifies uncompressed streams, applies zlib compression (/Filter /FlateDecode),
- * and reconstructs the cross-reference table (xref) to maintain 100% PDF compliance.
- */
 function compression_native_pdf_flate(string $inputPath, string $outputPath): bool
 {
     $content = @file_get_contents($inputPath);
@@ -397,7 +345,6 @@ function compression_native_pdf_flate(string $inputPath, string $outputPath): bo
 
     $origLen = strlen($content);
 
-    // Locate trailer dictionary
     $trailerPos = strrpos($content, 'trailer');
     $trailerDict = '';
     if ($trailerPos !== false) {
@@ -406,7 +353,6 @@ function compression_native_pdf_flate(string $inputPath, string $outputPath): bo
         }
     }
 
-    // Match all PDF objects: (id) (gen) obj ... endobj
     $objPattern = '/(\d+)\s+(\d+)\s+obj\s*(.*?)\s*endobj/s';
     if (!preg_match_all($objPattern, $content, $matches, PREG_SET_ORDER)) {
         return false;
@@ -422,7 +368,6 @@ function compression_native_pdf_flate(string $inputPath, string $outputPath): bo
         $body = $m[3];
         if ($id > $maxId) $maxId = $id;
 
-        // Check if object contains stream ... endstream
         if (preg_match('/^(.*?<<)(.*?)(>>\s*stream\r?\n)(.*?)(\r?\nendstream)$/s', $body, $sm)) {
             $dictPrefix  = $sm[1];
             $dictContent = $sm[2];
@@ -430,12 +375,11 @@ function compression_native_pdf_flate(string $inputPath, string $outputPath): bo
             $streamData  = $sm[4];
             $streamEnd   = $sm[5];
 
-            // If stream is uncompressed (no /Filter)
             if (stripos($dictContent, '/Filter') === false) {
                 $compressed = @gzcompress($streamData, 9);
                 if ($compressed !== false && strlen($compressed) < strlen($streamData)) {
                     $modified = true;
-                    // Update /Length and add /Filter /FlateDecode
+
                     $newDict = preg_replace('/\/Length\s+\d+/', '/Length ' . strlen($compressed), $dictContent);
                     if (stripos($newDict, '/Length') === false) {
                         $newDict = '/Length ' . strlen($compressed) . ' ' . $newDict;
@@ -456,7 +400,6 @@ function compression_native_pdf_flate(string $inputPath, string $outputPath): bo
         return false;
     }
 
-    // Rebuild PDF with compliant xref table
     preg_match('/^(%PDF-\d+\.\d+[\r\n]+%[^\r\n]*[\r\n]+)/', $content, $hm);
     $header = !empty($hm[1]) ? $hm[1] : "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
 
@@ -501,21 +444,6 @@ function compression_native_pdf_flate(string $inputPath, string $outputPath): bo
     return (@file_put_contents($outputPath, $out) !== false);
 }
 
-/**
- * Main entrance: compress an uploaded proof attachment.
- *
- * Dispatches to image or PDF compression pipelines.
- * Returns an array with metadata:
- *   [
- *     'path'          => string (path to final file to store: either compressed temp or original),
- *     'compressed'    => bool,
- *     'orig_size'     => int,
- *     'final_size'    => int,
- *     'reduction_pct' => float,
- *     'engine'        => string ('gd', 'cli_pdf', 'php_flate', 'none'),
- *     'is_temp'       => bool (whether 'path' is a temporary working file that should be removed once stored)
- *   ]
- */
 function compress_uploaded_proof(string $sourcePath, string $ext): array
 {
     $ext = strtolower($ext);
@@ -570,9 +498,6 @@ function compress_uploaded_proof(string $sourcePath, string $ext): array
     return $default;
 }
 
-/**
- * Clean up temporary compression artifact if created.
- */
 function compression_cleanup(array $compressionResult): void
 {
     if (!empty($compressionResult['is_temp']) && !empty($compressionResult['path']) && is_file($compressionResult['path'])) {

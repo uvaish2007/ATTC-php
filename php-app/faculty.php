@@ -1,19 +1,4 @@
 <?php
-/**
- * Faculty — the staff directory.
- *
- * Who sees whom is decided here, on the server, and matches the rule used by
- * the Faculty Details document (can_user_view_faculty_report):
- *
- *   - Admin, Principal, Director and Dean see every department;
- *   - an HoD or Coordinator sees their own department only.
- *
- * The department shown is taken from the signed-in account, never from the
- * URL, so a Coordinator cannot list another department by editing ?dept=.
- * It is read-only: adding or removing an account is the Admin's job, on
- * users.php.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/Record.php';
@@ -21,7 +6,6 @@ require_once __DIR__ . '/models/Record.php';
 $user = require_role(['HoD', 'Coordinator', 'Admin', 'Principal', 'Director', 'Dean']);
 require_module('faculty');
 
-// Oversight roles are not tied to one department.
 $seesEveryone = in_array($user['role'], ['Admin', 'Principal', 'Director', 'Dean'], true);
 
 $department = (string) ($user['department'] ?? '');
@@ -41,19 +25,14 @@ if ($seesEveryone) {
         static fn(array $p): bool => in_array($p['role'], $teachingRoles, true)
     ));
 
-    // Department, then HoD → Coordinator → Faculty, then name.
     usort($people, static function (array $a, array $b) use ($teachingRoles): int {
         return [$a['department'] ?? '', array_search($a['role'], $teachingRoles, true), $a['name']]
            <=> [$b['department'] ?? '', array_search($b['role'], $teachingRoles, true), $b['name']];
     });
 } else {
-    // An HoD with no department set can't be scoped to anything, so show
-    // nothing rather than the whole institution.
     $people = $department !== '' ? users_in_department($department, $search ?: null) : [];
 }
 
-// The departments an oversight role can pick from, taken from the accounts
-// that actually exist rather than a second list to keep in step.
 $deptChoices = [];
 if ($seesEveryone) {
     $deptChoices = db()
@@ -64,10 +43,8 @@ if ($seesEveryone) {
         ->fetchAll(PDO::FETCH_COLUMN);
 }
 
-// One trip to the database for everybody's submission counts.
 $counts = record_counts_for_users(array_column($people, 'id'));
 
-// ---- Totals for the cards at the top ------------------------------------
 $totals = ['records' => 0, 'Approved' => 0, 'Submitted' => 0];
 
 foreach ($counts as $row) {
@@ -133,7 +110,6 @@ require __DIR__ . '/inc/header.php';
     </span>
 </form>
 
-
 <?php if (!$seesEveryone && $department === ''): ?>
 
   <div class="alert alert-warning">
@@ -155,7 +131,6 @@ require __DIR__ . '/inc/header.php';
       </div>
     <?php endforeach; ?>
   </div>
-
 
   <!-- The people themselves -->
   <div class="mt-5 card">
@@ -205,7 +180,6 @@ require __DIR__ . '/inc/header.php';
                   $ok       = $mine['Approved']  ?? 0;
                   $waiting  = $mine['Submitted'] ?? 0;
 
-                  // Passport photo, when this person has uploaded one.
                   $photoFile = user_photo_filename($personId);
                   $photoUrl  = $photoFile !== null
                       ? url('photo.php?user=' . $personId . '&v=' . substr(md5($photoFile), 0, 8))
@@ -263,7 +237,6 @@ require __DIR__ . '/inc/header.php';
       <?php endif; ?>
     </div>
   </div>
-
 
   <!-- Where to go next -->
   <?php if (!$seesEveryone): ?>

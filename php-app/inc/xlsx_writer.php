@@ -1,25 +1,6 @@
 <?php
-/**
- * Lightweight, native XLSX file generator using OpenXML.
- * Generates valid .xlsx files compatible with Microsoft Excel, Google Sheets, LibreOffice.
- *
- * TS-REP-01 — the ZIP container is written here in plain PHP rather than through
- * ext/zip. ZipArchive is not compiled into every PHP build (it is absent from
- * this project's own runtime), and when it was missing createXlsx() returned an
- * empty string; every caller then fell through to its HTML branch and served a
- * Word-flavoured page under an .xlsx name, which is what made Excel complain
- * about a "linked image" and render a broken table. Deflate comes from zlib,
- * which PHP has built in, so this path has no optional dependency at all.
- */
-
-/**
- * The minimum of the ZIP format needed for an OpenXML package: local headers,
- * a central directory and an end-of-central-directory record. No Zip64 — a
- * spreadsheet of report rows is nowhere near 4 GB, and no entry is a directory.
- */
 class SimpleZipWriter
 {
-    /** @var array<int, array<string, mixed>> */
     private array $entries = [];
     private string $data   = '';
 
@@ -28,7 +9,6 @@ class SimpleZipWriter
         $crc     = crc32($content);
         $rawSize = strlen($content);
 
-        // Deflate when zlib gives us something smaller; otherwise store as-is.
         $method     = 0;
         $compressed = $content;
         $deflated   = @gzdeflate($content, 6);
@@ -51,21 +31,16 @@ class SimpleZipWriter
         ];
 
         $this->data .= pack('VvvvvvVVVvv',
-            0x04034b50,            // local file header signature
-            20,                    // version needed to extract (2.0)
-            0,                     // general purpose flags
-            $method,
+            0x04034b50,                        20,                                0,                                 $method,
             $dosTime,
             $dosDate,
             $crc,
             strlen($compressed),
             $rawSize,
             strlen($name),
-            0                      // extra field length
-        ) . $name . $compressed;
+            0                              ) . $name . $compressed;
     }
 
-    /** The finished archive as a byte string. */
     public function getContents(): string
     {
         $central      = '';
@@ -73,41 +48,25 @@ class SimpleZipWriter
 
         foreach ($this->entries as $e) {
             $central .= pack('VvvvvvvVVVvvvvvVV',
-                0x02014b50,        // central directory header signature
-                20,                // version made by
-                20,                // version needed to extract
-                0,                 // general purpose flags
-                $e['method'],
+                0x02014b50,                        20,                                20,                                0,                                 $e['method'],
                 $e['time'],
                 $e['date'],
                 $e['crc'],
                 $e['compSize'],
                 $e['rawSize'],
                 strlen($e['name']),
-                0,                 // extra field length
-                0,                 // file comment length
-                0,                 // disk number start
-                0,                 // internal file attributes
-                0x20,              // external file attributes (archive)
-                $e['offset']
+                0,                                 0,                                 0,                                 0,                                 0x20,                              $e['offset']
             ) . $e['name'];
         }
 
         $count = count($this->entries);
 
         return $this->data . $central . pack('VvvvvVVv',
-            0x06054b50,            // end of central directory signature
-            0,                     // this disk number
-            0,                     // disk where central directory starts
-            $count,                // entries on this disk
-            $count,                // entries in total
-            strlen($central),
+            0x06054b50,                        0,                                 0,                                 $count,                            $count,                            strlen($central),
             $centralStart,
-            0                      // archive comment length
-        );
+            0                              );
     }
 
-    /** Now, in the MS-DOS date/time fields the ZIP format still uses. */
     private static function dosTimestamp(): array
     {
         $t    = getdate();
@@ -126,7 +85,6 @@ class SimpleXlsxWriter
     {
         $zip = new SimpleZipWriter();
 
-        // Calculate column widths
         $colWidths = [];
         $cCount = count($headers);
         foreach ($rows as $r) {
@@ -153,7 +111,6 @@ class SimpleXlsxWriter
             $colWidths[$i] = min(60, max(10, $maxLen + 3));
         }
 
-        // 1. [Content_Types].xml
         $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -164,14 +121,12 @@ class SimpleXlsxWriter
 </Types>';
         $zip->addFromString('[Content_Types].xml', $contentTypes);
 
-        // 2. _rels/.rels
         $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>';
         $zip->addFromString('_rels/.rels', $rels);
 
-        // 3. xl/_rels/workbook.xml.rels
         $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
@@ -179,7 +134,6 @@ class SimpleXlsxWriter
 </Relationships>';
         $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
 
-        // 4. xl/workbook.xml
         $sheetNameClean = self::sanitizeXml(mb_substr($sheetTitle, 0, 31));
         $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -189,7 +143,6 @@ class SimpleXlsxWriter
 </workbook>';
         $zip->addFromString('xl/workbook.xml', $workbook);
 
-        // 5. xl/styles.xml
         $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="5">
@@ -231,7 +184,6 @@ class SimpleXlsxWriter
 </styleSheet>';
         $zip->addFromString('xl/styles.xml', $styles);
 
-        // 6. xl/worksheets/sheet1.xml
         $colsXml = '<cols>';
         foreach ($colWidths as $ci => $w) {
             $colsXml .= '<col min="' . ($ci + 1) . '" max="' . ($ci + 1) . '" width="' . $w . '" customWidth="1"/>';
@@ -258,7 +210,6 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
-        // Header Row
         if (!empty($headers)) {
             $sheetData .= '<row r="' . $rIdx . '" ht="24" customHeight="1">';
             $cIdx = 0;
@@ -271,7 +222,6 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
-        // Data Rows
         foreach ($rows as $row) {
             $sheetData .= '<row r="' . $rIdx . '">';
             $cIdx = 0;
@@ -314,7 +264,6 @@ class SimpleXlsxWriter
             }
             $hyperlinksXml .= '</hyperlinks>';
 
-            // Build xl/worksheets/_rels/sheet1.xml.rels
             $sheet1Rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . "\n";
             foreach ($hyperlinks as $h) {

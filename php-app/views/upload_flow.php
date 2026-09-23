@@ -1,14 +1,4 @@
 <?php
-/**
- * Upload Data entry flow — the two selection screens Faculty and Coordinator
- * users see before upload.php's form: Academic Year, then Data Type.
- *
- * Included by upload.php (between the header and footer) with $user,
- * $uploadFlowStep ('year' | 'data_type') and $flowState (upload_flow_state()).
- * This file only renders; every choice is validated server-side in upload.php
- * through models/UploadFlow.php.
- */
-
 $ufYears     = upload_flow_years();
 $ufDataTypes = upload_flow_data_types();
 $ufTypes     = record_types();

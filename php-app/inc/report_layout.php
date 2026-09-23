@@ -1,29 +1,7 @@
 <?php
-/**
- * Shared presentation for every downloadable report.
- *
- * One letterhead, one table style, one signature block — so a records export
- * and a target meeting report come out looking like the same institution's
- * paperwork. Both export.php and meeting-report.php build their Word/Excel
- * output through these helpers; only the columns and the rows differ.
- *
- * The output is plain HTML sent with a Word or Excel content type (set by the
- * caller). Word and Excel both open an HTML table and keep the layout, so no
- * library is needed.
- */
-
-require_once __DIR__ . '/helpers.php';   // for e()
-
-/**
- * The institution name — used as the image alt text and as a text fallback if
- * the banner image is ever missing.
- */
+require_once __DIR__ . '/helpers.php';   
 const REPORT_INSTITUTION = 'Mohamed Sathak Engineering College';
 
-/**
- * The college letterhead banner as a base64 data URI, so the downloaded Word /
- * PDF is self-contained (no external image to fetch). Read once per request.
- */
 function report_banner_datauri(): string
 {
     static $uri = null;
@@ -31,8 +9,6 @@ function report_banner_datauri(): string
         return $uri;
     }
     $dir = dirname(__DIR__) . '/assets/img/';
-    // Prefer the compact JPEG (small base64 loads reliably in Word); fall back
-    // to PNG if that is what is present.
     foreach (['letterhead.jpg' => 'image/jpeg', 'letterhead.png' => 'image/png'] as $file => $mime) {
         if (is_file($dir . $file)) {
             $uri = 'data:' . $mime . ';base64,' . base64_encode((string) file_get_contents($dir . $file));
@@ -43,14 +19,6 @@ function report_banner_datauri(): string
     return $uri;
 }
 
-/**
- * Expand a department code/short name to its full name, for every report
- * heading, meta line, "Dept" column and sign-off across the PDF/Excel/Word
- * downloads. Matches regardless of spacing/punctuation/case, so "AI&ML",
- * "AI & ML" and "aiml" all resolve the same way, and falls back to whatever
- * an Admin has set up in Manage Departments before giving up and returning
- * the value unchanged.
- */
 function department_full_name(?string $dept): string
 {
     $dept = trim((string) $dept);
@@ -84,9 +52,6 @@ function department_full_name(?string $dept): string
         return $map[$key];
     }
 
-    // Not a known abbreviation — check the Admin-managed department list, in
-    // case it already carries a fuller name than either the code or what was
-    // stored on the record.
     require_once __DIR__ . '/../models/Department.php';
     foreach (departments_all() as $d) {
         if (strcasecmp($d['code'], $dept) === 0 || strcasecmp($d['name'], $dept) === 0) {
@@ -97,10 +62,6 @@ function department_full_name(?string $dept): string
     return $dept;
 }
 
-/**
- * The duration an academic year spans, as ['01.07.YYYY', '30.06.YYYY'].
- * "2025-26" -> ['01.07.2025', '30.06.2026'].
- */
 function report_year_duration(?string $year): array
 {
     if ($year && preg_match('/^(\d{4})-\d{2}$/', $year, $m)) {
@@ -110,12 +71,6 @@ function report_year_duration(?string $year): array
     return ['', ''];
 }
 
-/**
- * Open the report document: <html><head> with the shared style, then <body>.
- *
- * $orientation is 'portrait' (a plain record list) or 'landscape' (wide tables
- * with long remarks, e.g. the meeting report).
- */
 function report_document_head(string $docTitle, string $orientation = 'portrait'): void
 {
     $GLOBALS['REPORT_ORIENTATION'] = $orientation;
@@ -173,14 +128,6 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
 <?php
 }
 
-/**
- * The letterhead: institution, IQAC line, the report's own title, then a
- * two-column strip of meta facts.
- *
- * $meta is a list of [label, value] pairs; they are laid out two per row, the
- * left one left-aligned and the right one right-aligned, so an odd number ends
- * with a single left-aligned fact.
- */
 function report_letterhead(string $title, array $meta = [], array $headingLines = []): void
 {
     $banner = report_banner_datauri();
@@ -221,15 +168,6 @@ function report_letterhead(string $title, array $meta = [], array $headingLines 
 <?php
 }
 
-/**
- * The standard sign-off columns, in order of authority.
- *
- * TS-REP-03 — Dean / Academics countersigns every IQAC export, so the column
- * belongs in the shared default rather than in the handful of reports that
- * happened to name it. $hodScope appends the department to the HOD column
- * ("HOD / Computer Science and Business Systems") when a report covers one
- * department; pass null for an all-department report.
- */
 function report_signoff_columns(?string $hodScope = null, string $hodLabel = 'HOD'): array
 {
     $hod = $hodLabel;
@@ -240,7 +178,6 @@ function report_signoff_columns(?string $hodScope = null, string $hodLabel = 'HO
     return [$hod, 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
 }
 
-/** The signature line. Defaults to the standard IQAC sign-off. */
 function report_signoff(?array $columns = null): void
 {
     $columns = $columns ?? report_signoff_columns();
@@ -255,13 +192,6 @@ function report_signoff(?array $columns = null): void
 <?php
 }
 
-/**
- * The same sign-off, as spreadsheet rows to append after the data.
- *
- * TS-REP-03 asks for the block on Excel exports too, where there is no table
- * markup to hang it on — so it becomes a blank spacer row followed by the
- * signature captions, padded to the sheet's column count.
- */
 function report_signoff_rows(?array $columns = null, int $width = 0): array
 {
     $columns = $columns ?? report_signoff_columns();
@@ -276,7 +206,6 @@ function report_signoff_rows(?array $columns = null, int $width = 0): array
     return [$blank, $blank, $line];
 }
 
-/** Close the document. */
 function report_document_foot(): void
 {
     echo "\n</div>\n</body>\n</html>";

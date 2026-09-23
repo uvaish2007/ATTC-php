@@ -1,21 +1,4 @@
 <?php
-/**
- * Template Report — the Admin-designed template (report_columns / report_rows)
- * rendered for one department, in the shared ATTS letterhead.
- *
- * The Admin builds only the STRUCTURE: the columns, and the label cells of each
- * row (S.No, Target / Details). The DATA columns (Fixed, Achieved, Coordinator,
- * Remarks) are filled here from what that department uploaded — each template
- * row is matched to the department's target with the same Target / Details, and
- * every data column pulls the target field it is mapped to.
- *
- *   ?department=CSE   which department's uploaded data fills the report
- *   ?format=word|excel|pdf
- *
- * Scope: a HoD only ever gets their own department; Admin and Director may pass
- * any department (omit it to preview the empty structure).
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
@@ -28,15 +11,11 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
     $format = 'pdf';
 }
 
-/*
- * Scope by role: oversight roles (Admin, Director, Dean) may pick any department or
- * see all; everyone else is pinned to their own department.
- */
 $isOversight = user_can_choose_department($user);
 $department  = user_department_scope($user, input('department'));
 
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
+
 $rawYear  = input('academic_year') ?: input('year');
 $emCtx    = em_resolve_filter_context($rawYear, input('em'));
 $year     = $emCtx['year'];
@@ -48,12 +27,6 @@ $rows    = template_rows();
 $today   = date('d.m.Y');
 $span    = max(1, count($columns));
 
-/*
- * The label column whose value identifies a row (its Target / Details). Data
- * rows are matched to a department's target by comparing this against the
- * target's metric. Prefer the 'target' column; fall back to the first label
- * column that is not the serial number.
- */
 $matchKey = null;
 foreach ($columns as $c) {
     if (($c['source'] ?? 'label') !== 'label') {
@@ -63,21 +36,14 @@ foreach ($columns as $c) {
     if ($matchKey === null && $c['col_key'] !== 'sno') { $matchKey = $c['col_key']; }
 }
 
-/*
- * Normalise a title for matching a template row to a department's target:
- * lower-cased, a leading "a. " sub-letter dropped, spacing around slashes and
- * runs of whitespace collapsed. So "a. BOOKS PUBLICATION" matches "BOOKS
- * PUBLICATION", and "SCOPUS / SCI" matches "SCOPUS/SCI".
- */
 $norm = function ($s): string {
     $s = mb_strtolower(trim((string) $s));
-    $s = preg_replace('/^[a-z]\.\s*/', '', $s);   // drop a leading sub-letter
-    $s = preg_replace('/[^a-z0-9]+/', ' ', $s);    // any punctuation (/ & , -) -> space
-    $s = preg_replace('/\s+/', ' ', $s);           // collapse whitespace
+    $s = preg_replace('/^[a-z]\.\s*/', '', $s);   
+    $s = preg_replace('/[^a-z0-9]+/', ' ', $s);    
+    $s = preg_replace('/\s+/', ' ', $s);           
     return trim($s);
 };
 
-// Index one department's uploaded targets by their normalised metric text for the scoped academic year.
 $buildByMetric = function (?string $dept) use ($norm, $year): array {
     $index = [];
     if ($dept !== null) {
@@ -91,15 +57,12 @@ $buildByMetric = function (?string $dept) use ($norm, $year): array {
     return $index;
 };
 
-// Which departments to render. The chosen one, or EVERY department when none is
-// chosen — so an "All departments" report prints real data for each department
-// instead of an empty template shell (the cause of "only the labels print").
 require_once __DIR__ . '/models/Department.php';
 $deptsToRender = $department !== null
     ? [$department]
     : array_map(fn($d) => $d['name'], departments_all());
 if (empty($deptsToRender)) {
-    $deptsToRender = [null];   // no departments configured — show the template once
+    $deptsToRender = [null];   
 }
 
 $deptLabel = $department ?: '—';
@@ -174,7 +137,7 @@ report_document_head($reportDocTitle, 'landscape');
 <?php endif; ?>
 
 <?php
-require_once __DIR__ . '/models/Target.php';   // academic_years()
+require_once __DIR__ . '/models/Target.php';   
 if ($em !== 'all' && $emWindow !== null && empty($emWindow['empty'])) {
     $durFrom = date('d-m-Y', strtotime($emWindow['from']));
     $durTo   = date('d-m-Y', strtotime($emWindow['to']));
@@ -182,7 +145,6 @@ if ($em !== 'all' && $emWindow !== null && empty($emWindow['empty'])) {
     [$durFrom, $durTo] = report_year_duration($year);
 }
 
-// One proforma per department to render (all of them when none was chosen).
 foreach ($deptsToRender as $dIndex => $dept):
     $byMetric    = $buildByMetric($dept);
     $deptHeading = $dept !== null
@@ -193,7 +155,7 @@ foreach ($deptsToRender as $dIndex => $dept):
         $headingLines[] = 'DETAILS OF TARGETS FIXED & ACHIEVED FOR THE DURATION FROM ' . $durFrom . ' TO ' . $durTo;
         $headingLines[] = '(Target Achieved Status – from ' . $durFrom . ' to ' . $today . ')';
     }
-    // Start each department (after the first) on a fresh page.
+
     if ($dIndex > 0) {
         echo '<div style="page-break-before:always"></div>';
     }
@@ -209,9 +171,7 @@ foreach ($deptsToRender as $dIndex => $dept):
     </colgroup>
     <thead>
       <?php
-        // Columns like "Achieved (From ...)" and "Achieved (During ...)" are
-        // grouped under a single "Achieved" heading spanning them, with their
-        // "(From ...)" part shown on a second header row — exactly the proforma.
+
         $grp = [];
         foreach ($columns as $c) {
             $grp[] = preg_match('/^\s*(Achieved)\s*\((.+)\)\s*$/i', (string) $c['label'], $m)
@@ -246,10 +206,7 @@ foreach ($deptsToRender as $dIndex => $dept):
         <tr><td colspan="<?= $span ?>" class="c">This template has no rows yet — add them in the Report Template builder.</td></tr>
       <?php else: ?>
         <?php
-          // 1. Build the value matrix: label cells from the template, data cells
-          //    auto-filled from the matching department target. A row is "met"
-          //    when its target was reached (achieved >= a non-zero fixed target),
-          //    which shades its cells green like the proforma.
+
           $matrix = [];
           $rowMet = [];
           foreach ($rows as $ri => $r) {
@@ -267,8 +224,6 @@ foreach ($deptsToRender as $dIndex => $dept):
               }
           }
 
-          // 2. Group rows under one S.No: a numbered item plus its a./b./c.
-          //    sub-rows. A new group begins wherever the S.No cell is non-empty.
           $rowCount = count($rows);
           $groups   = [];
           $g = 0;
@@ -279,9 +234,6 @@ foreach ($deptsToRender as $dIndex => $dept):
               $g = $h;
           }
 
-          // 3. Within each group, merge each column downward: a value's cell spans
-          //    over the blank cells that follow it, so "5" covers its two sub-rows
-          //    and a lone "-" in Remarks covers its group — exactly the proforma.
           $cellRender = [];
           $cellSpan   = [];
           foreach ($groups as [$gs, $ge]) {

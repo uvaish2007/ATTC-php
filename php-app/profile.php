@@ -1,24 +1,11 @@
 <?php
-/**
- * Profile — your own account.
- *
- * Anyone who is signed in can open this page. It shows who you are, lets you
- * fix your own name / phone / password, and summarises what you have
- * submitted. Role and department are set by the Admin, so they are read-only.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/User.php';
 require_once __DIR__ . '/models/Record.php';
 
 $user = require_login();
 
-// ---- Handle the two forms ------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // A body larger than php.ini's post_max_size is thrown away before PHP
-    // fills $_POST and $_FILES, which would otherwise look like a CSRF
-    // failure. Say what actually happened instead. Phone photos are often
-    // several megabytes, so this is easy to hit.
     if ($_POST === [] && $_FILES === [] && (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
         flash('error', 'That file was too large for the server to accept. A profile photo must be no more than 2 MB.');
         redirect('/profile.php');
@@ -31,11 +18,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = user_update_profile($user['id'], (string) input('name'), (string) input('phone'));
         flash($ok ? 'success' : 'error', $msg);
 
-        // Keep the sidebar and topbar showing the new name straight away.
         if ($ok) {
             $_SESSION['user']['name'] = trim((string) input('name'));
         }
-
     } elseif ($action === 'change_password') {
         [$ok, $msg] = user_change_password(
             $user['id'],
@@ -47,7 +32,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'upload_photo') {
         [$ok, $msg] = user_save_photo($user['id'], $_FILES['photo'] ?? null);
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'remove_photo') {
         [$ok, $msg] = user_delete_photo($user['id']);
         flash($ok ? 'success' : 'error', $msg);
@@ -56,7 +40,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/profile.php');
 }
 
-// ---- Everything the page shows -------------------------------------------
 $me      = user_find($user['id']);
 
 // The passport photo, if this account has one. The ?v= part changes whenever
@@ -89,7 +72,6 @@ require __DIR__ . '/inc/header.php';
     <div class="sub">Your account details and your submissions</div>
   </div>
 </div>
-
 
 <!-- Who you are -->
 <div class="card">
@@ -174,7 +156,6 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
-
 <!-- What you have submitted -->
 <div class="stat-grid grid-4 mt-5">
   <?php foreach ($cards as [$label, $value, $iconName, $tone]): ?>
@@ -187,7 +168,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   <?php endforeach; ?>
 </div>
-
 
 <div class="mt-5 grid-1-1">
 
@@ -257,7 +237,6 @@ require __DIR__ . '/inc/header.php';
   </div>
 
 </div>
-
 
 <!-- Recent submissions -->
 <div class="mt-5 card">

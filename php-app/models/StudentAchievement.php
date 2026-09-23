@@ -1,16 +1,8 @@
 <?php
-/**
- * Student Achievement Data Access Model — aggregated helpers across student record types.
- * Connects directly to persisted MySQL achievement tables and respects role-based scoping.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/Record.php';
 require_once __DIR__ . '/Target.php';
 
-/**
- * Returns all active record categories and metric types for student achievement reporting.
- */
 function student_achievement_categories(): array
 {
     return [
@@ -96,9 +88,6 @@ function student_achievement_categories(): array
     ];
 }
 
-/**
- * Validates and resolves the effective department filter based on user role.
- */
 function resolve_student_achievement_scope(array $currentUser, ?string $requestedDept): ?string
 {
     $role = $currentUser['role'] ?? 'Faculty';
@@ -108,9 +97,6 @@ function resolve_student_achievement_scope(array $currentUser, ?string $requeste
     return trim((string) $requestedDept) ?: null;
 }
 
-/**
- * Builds a consistent unique student identifier key for merging and routing.
- */
 function student_make_key(?string $regNo, ?string $name, ?string $dept): string
 {
     $cleanReg = strtoupper(trim((string) $regNo));
@@ -122,18 +108,11 @@ function student_make_key(?string $regNo, ?string $name, ?string $dept): string
     return 'NAME_' . md5($cleanName . '::' . $cleanDept);
 }
 
-/**
- * Returns SQL condition to strictly enforce student-only records at the database level,
- * ensuring no Faculty, Coordinator, HoD, Dean, Director, or Admin users are included.
- */
 function student_role_exclusion_sql(string $studentCol): string
 {
     return " AND TRIM(r.`{$studentCol}`) NOT IN (SELECT TRIM(name) FROM users WHERE role IN ('Admin', 'Principal', 'Director', 'Dean', 'HoD', 'Coordinator', 'Faculty'))";
 }
 
-/**
- * Returns aggregated per-student achievement counts for the main data matrix.
- */
 function student_achievements_grid(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?string $search = null, ?array $window = null): array
 {
     $effDept = resolve_student_achievement_scope($currentUser, $deptFilter);
@@ -206,7 +185,6 @@ function student_achievements_grid(array $currentUser, ?string $deptFilter = nul
                 $key = student_make_key($regNo, $name, $dept);
                 $nameKey = strtolower($name) . '::' . strtolower($dept);
 
-                // If no reg_no on this record, but we already have a registered student with same name and dept, link it
                 if (($regNo === '' || $regNo === '—') && isset($nameIndex[$nameKey])) {
                     $key = $nameIndex[$nameKey];
                 }
@@ -251,11 +229,9 @@ function student_achievements_grid(array $currentUser, ?string $deptFilter = nul
                 }
             }
         } catch (\PDOException $e) {
-            // Ignore missing table/columns
         }
     }
 
-    // Sort by Department ASC, Student Name ASC
     uasort($students, function ($a, $b) {
         $dc = strcasecmp($a['department'], $b['department']);
         if ($dc !== 0) return $dc;
@@ -265,9 +241,6 @@ function student_achievements_grid(array $currentUser, ?string $deptFilter = nul
     return array_values($students);
 }
 
-/**
- * Calculates summary KPI metrics across the scoped student database.
- */
 function student_achievements_summary(array $currentUser, ?string $deptFilter = null, ?string $yearFilter = null, ?string $catFilter = null, ?string $search = null, ?array $window = null): array
 {
     $grid = student_achievements_grid($currentUser, $deptFilter, $yearFilter, $catFilter, $search, $window);
@@ -323,9 +296,6 @@ function student_achievements_summary(array $currentUser, ?string $deptFilter = 
     ];
 }
 
-/**
- * Aggregates department-wise student achievements for comparison view.
- */
 function department_student_achievements_comparison(array $currentUser, ?string $yearFilter = null, ?string $catFilter = null, ?array $window = null): array
 {
     $effDept = resolve_student_achievement_scope($currentUser, null);
@@ -410,9 +380,6 @@ function department_student_achievements_comparison(array $currentUser, ?string 
     return array_values($result);
 }
 
-/**
- * Retrieves full detailed achievement records for a specific student.
- */
 function student_achievement_details(
     string $studentKey,
     ?string $yearFilter = null,
@@ -543,9 +510,6 @@ function student_achievement_details(
     ];
 }
 
-/**
- * Prepares presentation slide deck payload for a student.
- */
 function student_achievement_presentation_data(
     string $studentKey,
     ?string $academicYear = null,
@@ -653,7 +617,6 @@ function student_achievement_presentation_data(
         'total_count'    => $totalCount,
     ];
 
-    // Title Slide
     $slides[] = [
         'type'          => 'title',
         'title'         => $student['name'],
@@ -665,7 +628,6 @@ function student_achievement_presentation_data(
         'contributions' => $studentContrib,
     ];
 
-    // Category Slides
     foreach ($categoriesMeta as $catKey => $meta) {
         $label = $meta['label'];
         $recs = $byCategory[$label] ?? [];
@@ -688,19 +650,14 @@ function student_achievement_presentation_data(
     ];
 }
 
-/**
- * Backend permission check verifying if the current logged-in user is authorized
- * to view the individual report of a student.
- */
 function can_user_view_student_report(array $currentUser, ?string $studentDept): bool
 {
     $role = $currentUser['role'] ?? '';
-    // 1. Admin, Principal, Director, Dean can view any student report
+
     if (in_array($role, ['Admin', 'Principal', 'Director', 'Dean'], true)) {
         return true;
     }
 
-    // 2. Department-scoped users (HoD, Coordinator, Faculty) can view reports of students in their department
     if (in_array($role, ['HoD', 'Coordinator', 'Faculty'], true)) {
         $userDept = trim((string)($currentUser['department'] ?? ''));
         if ($userDept === '') {
@@ -712,4 +669,3 @@ function can_user_view_student_report(array $currentUser, ?string $studentDept):
 
     return false;
 }
-

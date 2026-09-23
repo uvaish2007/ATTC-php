@@ -1,14 +1,4 @@
 <?php
-/**
- * View / Download submitted proof document attachment.
- *
- * Checks:
- * 1. User is authenticated.
- * 2. User has appropriate role / department authorization to access the record.
- * 3. File exists physically on server (otherwise displays safe "Proof unavailable" page).
- * 4. Renders inline for PDF viewing or streams as attachment when download is requested.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/config.php';
 require_once __DIR__ . '/inc/helpers.php';
@@ -29,7 +19,6 @@ $userRole = $user['role'] ?? 'Faculty';
 $userDept = $user['department'] ?? '';
 $userId   = (int) ($user['id'] ?? 0);
 
-// Oversight roles (Admin, Dean, Director, Principal) have full institution-wide view permissions
 $isOversight = in_array($userRole, ['Admin', 'Dean', 'Director', 'Principal'], true);
 $notFoundReason = null;
 
@@ -51,7 +40,6 @@ if (!$isOversight) {
     }
 
     if (!$record) {
-        // Search all record tables to locate the record by proof_file
         foreach ($types as $k => $t) {
             try {
                 $stmt = db()->prepare("SELECT * FROM `{$t['table']}` WHERE proof_file = ? LIMIT 1");
@@ -70,13 +58,11 @@ if (!$isOversight) {
         $recordCreated = (int) ($record['created_by'] ?? 0);
 
         if (in_array($userRole, ['HoD', 'Coordinator'], true)) {
-            // HoD / Coordinator can access submissions in their department or filed by themselves
             if ($userDept !== '' && $recordDept !== '' && !department_names_match($userDept, $recordDept) && $recordCreated !== $userId) {
                 http_response_code(403);
                 exit('You do not have access to view this document.');
             }
         } elseif ($userRole === 'Faculty') {
-            // Faculty can access their own submissions or approved department records
             $isOwner = ($recordCreated === $userId);
             $isSameDeptApproved = ($userDept !== '' && department_names_match($userDept, $recordDept) && ($record['status'] ?? '') === 'Approved');
             if (!$isOwner && !$isSameDeptApproved) {
@@ -85,7 +71,6 @@ if (!$isOversight) {
             }
         }
     } else {
-        // Record not found in any record table
         $notFoundReason = 'The requested proof record could not be found.';
     }
 }

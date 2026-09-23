@@ -1,9 +1,7 @@
 <?php
 require_once __DIR__ . '/inc/auth.php';
-require_once __DIR__ . '/inc/icons.php';   // the role cards draw icons
-require_once __DIR__ . '/models/Target.php';
-require_once __DIR__ . '/models/PasswordResetRequest.php';   // FEAT-11
-
+require_once __DIR__ . '/inc/icons.php';   require_once __DIR__ . '/models/Target.php';
+require_once __DIR__ . '/models/PasswordResetRequest.php';   
 auth_boot();
 
 $error = '';
@@ -15,11 +13,7 @@ $showStep3 = false;
 // login form's $error so one never appears under the other's heading.
 $prError  = '';
 $prNotice = '';
-$prOpen   = false;   // reopen the panel after a submission, so the reply is seen
-
-// If already logged in, check if Admin still needs to step through Academic
-// Year Selection this login (the active year itself is a system-wide value,
-// not a session one — see active_academic_year() in models/Target.php).
+$prOpen   = false;   
 if (is_logged_in()) {
     $currUser = current_user();
     if ($currUser && $currUser['role'] === 'Admin' && !admin_year_gate_passed()) {
@@ -30,7 +24,6 @@ if (is_logged_in()) {
     }
 }
 
-// Fetch available roles for the role selector
 $roles = [
     'Admin'       => ['icon' => 'shield',     'desc' => 'Full system access, manage users & departments'],
     'Principal'   => ['icon' => 'eye',        'desc' => 'Institution-wide overview & reports (Principal / Director)'],
@@ -40,18 +33,6 @@ $roles = [
     'Faculty'     => ['icon' => 'user',       'desc' => 'Submit academic records & track status'],
 ];
 
-/* ---------------------------------------------------------------------------
- *  FEAT-11 — "Request Admin to Change Password".
- *
- *  This raises a Pending ticket for the Administrator. It never changes a
- *  password and never signs anyone in, so it is handled before (and entirely
- *  apart from) the login branch below.
- *
- *  Whatever happens — the identifier matched, it did not, a ticket was already
- *  waiting, or the session hit its cap — the page says the same sentence. An
- *  unauthenticated visitor must not be able to tell an account exists from
- *  this form, so no branch below varies the wording.
- * ------------------------------------------------------------------------ */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'password_reset_request') {
     $prOpen = true;
 
@@ -62,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
         $identifier = trim((string) input('identifier'));
 
         if ($identifier === '') {
-            // Not enumeration: nothing was submitted to look up.
             $prError = 'Enter the username or email you sign in with.';
         } elseif (!password_reset_request_session_allowed()) {
             $prNotice = PASSWORD_RESET_GENERIC_REPLY;
@@ -90,9 +70,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
             $failReason = null;
             $user = attempt_login($email, $password, $selectedRole, $failReason);
 
-            // If credentials are valid but the role selected in step 1 was different
-            // (e.g. user selected Admin on UI but entered coordinator@atts.edu credentials),
-            // seamlessly log them in with their actual registered role!
             if (!$user && $failReason && str_starts_with($failReason, 'role_mismatch:')) {
                 $user = attempt_login($email, $password, null, $failReason);
             }
@@ -267,9 +244,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
         <div class="alert alert-error"><?= icon('alert-triangle', 16) ?><span><?= e($error) ?></span></div>
       <?php endif; ?>
 
-      <?php /* FEAT-11: the reply to a password request. The success wording is
-               the same whether or not an account matched — see login.php's
-               handler above. */ ?>
+      <?php  ?>
       <?php if ($prNotice): ?>
         <div class="alert alert-success"><?= icon('check', 16) ?><span><?= e($prNotice) ?></span></div>
       <?php endif; ?>
@@ -334,9 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
         </div>
       </form>
 
-      <?php /* FEAT-11. Outside the login form (a form cannot be nested) and
-               outside both steps, so somebody who is stuck at the role picker
-               can still reach it. */ ?>
+      <?php  ?>
       <div class="login-help">
         <span class="login-help-k">Forgot your password?</span>
         <button type="button" class="btn btn-ghost btn-sm login-help-btn" id="pwReqOpen">
@@ -405,7 +378,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
   const eyeShow = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-show') : null;
   const eyeHide = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-hide') : null;
 
-  // Auto-trim input fields on blur (BUG-LOGIN-01 fix)
   if (emailInput) {
     emailInput.addEventListener('blur', () => {
       emailInput.value = emailInput.value.trim();
@@ -446,7 +418,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
     step1.style.animation = 'fadeInUp .3s ease';
     step2Bar.classList.remove('active');
 
-    // Reset password toggle to masked when returning to role selection
     if (passwordInput.type === 'text') {
       passwordInput.type = 'password';
       if (eyeShow && eyeHide) {
@@ -458,7 +429,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
     }
   });
 
-  // Show / hide password toggle
   if (togglePasswordBtn && passwordInput) {
     togglePasswordBtn.addEventListener('click', () => {
       const isCurrentlyPassword = passwordInput.type === 'password';
@@ -476,7 +446,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
     });
   }
 
-  // Handle form submissions (Auto-trim before posting)
   loginForm.addEventListener('submit', (e) => {
     if (emailInput) emailInput.value = emailInput.value.trim();
     if (passwordInput) passwordInput.value = passwordInput.value.trim();
@@ -498,10 +467,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
     }
   });
 
-  /* ---- FEAT-11: the password-request dialog ------------------------------
-     A plain <dialog>, the same one the rest of the portal uses. Without
-     JavaScript the button does nothing, but the form still posts and the
-     reply still renders on the card, so no check depends on this running. */
   (function () {
     var open = document.getElementById('pwReqOpen');
     var dlg  = document.getElementById('pwReqDlg');
@@ -513,7 +478,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
       if (id) id.focus();
     });
 
-    // Trim before posting, so " admin " resolves the same as "admin".
     var form = document.getElementById('pwReqForm');
     if (form) {
       form.addEventListener('submit', function () {
@@ -521,23 +485,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
         if (id) id.value = id.value.trim();
       });
     }
-
-    // Something was wrong with the last submission: bring the form back with
-    // what was typed still in it. A successful request does NOT reopen it —
-    // its reply is on the card.
     <?php if ($prOpen && $prError): ?>
       dlg.showModal();
     <?php endif; ?>
   })();
-
-  // If there's an error and a role was selected, show step 2
   <?php if ($error && $selectedRole): ?>
     step1.style.display = 'none';
     step2.style.display = 'block';
     step2Bar.classList.add('active');
     roleBadge.textContent = '<?= e($selectedRole) ?>';
     emailInput.focus();
-  <?php endif; ?>
-</script>
+  <?php endif; ?></script>
 </body>
 </html>

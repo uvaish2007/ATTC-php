@@ -1,15 +1,4 @@
 <?php
-
-/**
- * Command line migration runner.
- *
- *   php migrate.php           what is applied and what is outstanding
- *   php migrate.php up        apply everything outstanding
- *
- * Refuses to run over the web: this applies DDL, and nothing on a page should
- * be able to trigger it by being requested.
- */
-
 if (PHP_SAPI !== 'cli') {
     http_response_code(404);
     exit;

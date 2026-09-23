@@ -1,38 +1,22 @@
 <?php
-/**
- * App shell: <head>, sidebar, topbar. A page sets $pageTitle (and optionally
- * $pageSubtitle / $breadcrumb) then require()s this, renders its content, and
- * ends with footer.php.
- *
- * Assumes require_login() has already run and $user is available.
- */
-
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/icons.php';
 require_once __DIR__ . '/nav.php';
 require_once __DIR__ . '/../models/Announcement.php';
 require_once __DIR__ . '/../models/Target.php';
-require_once __DIR__ . '/../models/ExecutiveMeeting.php';   // FEAT-07 status pill
-require_once __DIR__ . '/notifications.php';
-require_once __DIR__ . '/../models/User.php';        // profile photograph
-
+require_once __DIR__ . '/../models/ExecutiveMeeting.php';   require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/../models/User.php';        
 $user   = $user ?? current_user();
 $active = basename($_SERVER['SCRIPT_NAME']);
 
-// The one system-wide active academic year — read once per page load and
-// reused everywhere below (the badge counts and the topbar indicator).
 $atts_activeYear = active_academic_year();
 
-// FEAT-07: the active year's Executive Meeting status, from the one EM engine.
 $atts_emStatus = em_status($atts_activeYear);
 
 $headerNotifications = fetch_header_notifications($user);
 $unreadNotifCount    = count(array_filter($headerNotifications, fn($n) => !empty($n['unread'])));
 
-// The signed-in person's own passport photo, shown instead of their initials
-// in the sidebar and topbar. Null when there is none, or when the photo
-// column has not been added yet, so the initials keep working as before.
 $myPhotoFile = !empty($user['id']) ? user_photo_filename((int) $user['id']) : null;
 $myPhotoUrl  = $myPhotoFile !== null
     ? url('photo.php?user=' . (int) $user['id'] . '&v=' . substr(md5($myPhotoFile), 0, 8))
@@ -42,15 +26,10 @@ $navItems = navigation_for($user['role']);
 $groups   = group_navigation($navItems);
 
 require_once __DIR__ . '/../models/EditRequest.php';
-require_once __DIR__ . '/../models/PasswordResetRequest.php';   // FEAT-11 badge
-
+require_once __DIR__ . '/../models/PasswordResetRequest.php';   
 $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
     'announcements' => unread_announcements_count($user),
-    // Targets waiting on a decision. Only the two roles that can decide are
-    // told about them; for anyone else the count is noise. For an Admin the
-    // badge also counts unlock requests, since those are actioned on the same
-    // Targets page.
     'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
     'edit_requests' => edit_requests_pending_count($user),
@@ -146,7 +125,6 @@ $flashes      = take_flashes();
               if ($active === 'approvals.php' || $active === 'edit-requests.php') {
                 $isActive = (strtok($item['path'], '?') === 'approvals.php');
               } elseif ($active === 'password-requests.php') {
-                // FEAT-11 is a tab of Settings, so Settings stays lit while it is open.
                 $isActive = (strtok($item['path'], '?') === 'settings.php');
               } else {
                 $isActive = (strtok($item['path'], '?') === $active);

@@ -1,14 +1,4 @@
 <?php
-/**
- * Announcement Centre.
- *
- * Everyone reads notices here. The Director and Admin also write, pin,
- * schedule, archive and delete them, and can see who has read what.
- *
- * The whole page is one form-driven screen: filters go in the address bar,
- * actions are POSTed back to this same file.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Announcement.php';
 require_once __DIR__ . '/models/Department.php';
@@ -17,18 +7,12 @@ $user      = require_login();
 require_module('announcements');
 $canManage = announcement_can_manage($user);
 
-// -------------------------------------------------------------------------
-// Actions
-// -------------------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
     $action = (string) input('action');
     $id     = (int) input('id');
 
-    // Where to go afterwards: back to the same filtered view. The query string
-    // is only trusted if it holds nothing but ordinary query characters, so it
-    // can never smuggle anything into the Location header.
     $back      = '/announcements.php';
     $backInput = (string) input('back', '');
 
@@ -36,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $back .= '?' . $backInput;
     }
 
-    // --- anybody signed in ---
     if ($action === 'mark_read') {
         announcement_mark_read($id, (int) $user['id']);
         flash('success', 'Marked as read.');
@@ -48,7 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect($back);
     }
 
-    // --- Faculty & Coordinator contact their own Department HoD ---
     if ($action === 'contact_hod') {
         if (!in_array($user['role'], ['Faculty', 'Coordinator'], true)) {
             flash('error', 'Only Faculty or Coordinator can send a departmental message to HoD.');
@@ -60,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect($back);
         }
         $postData = $_POST;
-        // Strictly lock audience and department to their own department HoD
+
         $postData['audience']   = 'HoD';
         $postData['department'] = $dept;
         $postData['category']   = 'Academic';
@@ -97,7 +79,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'update') {
         [$ok, $msg] = announcement_update($id, $_POST);
 
@@ -108,23 +89,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'pin') {
         announcement_pin($id);
         flash('success', 'Announcement pinned to the top.');
-
     } elseif ($action === 'unpin') {
         announcement_unpin($id);
         flash('success', 'Announcement unpinned.');
-
     } elseif ($action === 'archive') {
         [$ok, $msg] = announcement_set_status($id, 'Archived');
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'restore') {
         [$ok, $msg] = announcement_set_status($id, 'Published');
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'delete') {
         [$ok, $msg] = announcement_delete($id);
         flash($ok ? 'success' : 'error', $msg);
@@ -133,12 +109,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect($back);
 }
 
-// -------------------------------------------------------------------------
-// Filters (all live in the address bar, so a filtered view can be shared)
-// -------------------------------------------------------------------------
-// -------------------------------------------------------------------------
-// Calendar Anchors & Future Guard
-// -------------------------------------------------------------------------
 $curYear  = (int) date('Y');
 $curMonth = (int) date('n');
 $curDay   = (int) date('j');
@@ -168,7 +138,6 @@ if ($calYear === $curYear && $calMonth === $curMonth && $calDay > $curDay) {
 
 $isCurrentMonth = ($calYear === $curYear && $calMonth === $curMonth);
 
-// Previous Month (Down arrow)
 $prevMonth = $calMonth - 1;
 $prevYear  = $calYear;
 if ($prevMonth < 1) {
@@ -176,7 +145,6 @@ if ($prevMonth < 1) {
     $prevYear  = $calYear - 1;
 }
 
-// Next Month (Upper arrow)
 $nextMonth = $calMonth + 1;
 $nextYear  = $calYear;
 if ($nextMonth > 12) {
@@ -185,16 +153,12 @@ if ($nextMonth > 12) {
 }
 $hasNextMonth = !($nextYear > $curYear || ($nextYear === $curYear && $nextMonth > $curMonth));
 
-// Date navigation:
 $maxDayAllowed = $isCurrentMonth ? $curDay : $daysInMonth;
 $prevDay = $calDay > 1 ? $calDay - 1 : 0;
 $hasPrevDay = ($calDay > 1);
 $nextDay = ($calDay > 0 && $calDay < $maxDayAllowed) ? $calDay + 1 : ($calDay === 0 ? 1 : $calDay);
 $hasNextDay = ($calDay > 0 && $calDay < $maxDayAllowed);
 
-// -------------------------------------------------------------------------
-// Filters
-// -------------------------------------------------------------------------
 $filters = [
     'search'   => trim((string) input('q', '')),
     'category' => trim((string) input('category', '')),
@@ -206,7 +170,6 @@ $filters = [
     'day'      => $calDay,
 ];
 
-// Helper to build URL preserving filters
 if (!function_exists('ann_cal_url')) {
     function ann_cal_url(array $overrides = [], ?array $activeFilters = null): string {
         global $filters, $calYear, $calMonth, $calDay, $curYear, $curMonth;
@@ -251,18 +214,12 @@ $backQuery = http_build_query(array_filter([
     'page'      => $filters['page'] > 1 ? $filters['page'] : null,
 ]));
 
-// -------------------------------------------------------------------------
-// Opening one notice: announcements.php?view=12
-// -------------------------------------------------------------------------
 $openId = (int) (input('view') ?: input('id', 0));
 
 if ($openId > 0 && announcement_find($openId, $user)) {
     announcement_count_view($openId);
 }
 
-// -------------------------------------------------------------------------
-// Everything the page draws
-// -------------------------------------------------------------------------
 $ready       = announcements_ready();
 $list        = announcements_list($user, $filters);
 $stats       = announcement_stats($user);
@@ -282,12 +239,10 @@ foreach ($list['rows'] as $index => $row) {
     }
 }
 
-// Calendar grid setup for the sidebar
 $calDays  = announcement_calendar($user, $calYear, $calMonth);
-$firstDay = (int) date('w', mktime(0, 0, 0, $calMonth, 1, $calYear));  // 0 = Sunday
+$firstDay = (int) date('w', mktime(0, 0, 0, $calMonth, 1, $calYear));  
 $today    = ($isCurrentMonth) ? $curDay : 0;
 
-// Colour of the priority badge.
 $priorityClass = [
     'Urgent'    => 'urgent',
     'Important' => 'important',
@@ -482,7 +437,6 @@ a.cal-day:hover {
   <?php endif; ?>
 </div>
 
-
 <?php if (!$ready): ?>
 
   <!-- The tables have not been created yet -->
@@ -528,7 +482,6 @@ a.cal-day:hover {
       </div>
     <?php endforeach; ?>
   </div>
-
 
   <!-- ======================= Search and filters ======================= -->
   <?php $aActive = ($filters['search'] !== '' ? 1 : 0) + ($filters['category'] !== '' ? 1 : 0)
@@ -583,7 +536,6 @@ a.cal-day:hover {
       <?php endif; ?>
     </span>
   </form>
-
 
   <div class="mt-5 grid-2-1">
 
@@ -706,7 +658,6 @@ a.cal-day:hover {
         </div>
       <?php endif; ?>
 
-
       <?php if (empty($list['rows']) && !$pinned): ?>
 
         <div class="card">
@@ -795,7 +746,6 @@ a.cal-day:hover {
           </div>
         <?php endforeach; ?>
 
-
         <?php if ($list['pages'] > 1): ?>
           <div class="pager">
             <?php for ($p = 1; $p <= $list['pages']; $p++): ?>
@@ -816,7 +766,6 @@ a.cal-day:hover {
 
       <?php endif; ?>
     </div>
-
 
     <!-- ======================= Right sidebar ======================= -->
     <div class="side-col">
@@ -1024,7 +973,6 @@ a.cal-day:hover {
     </div>
   </div>
 
-
   <!-- ==========================================================================
        One dialog per notice on this page — the "full announcement" view
        ======================================================================= -->
@@ -1034,7 +982,6 @@ a.cal-day:hover {
         array_unshift($openRows, $pinned);
     }
 
-    // If ?view= points at something not on this page, load it on its own.
     $openIds = array_column($openRows, 'id');
     if ($openId > 0 && !in_array($openId, array_map('intval', $openIds), true)) {
         $extra = announcement_find($openId, $user);
@@ -1106,7 +1053,6 @@ a.cal-day:hover {
             <?php endforeach; ?>
           </div>
         <?php endif; ?>
-
 
         <?php if ($canManage): ?>
           <!-- Who has read it -->
@@ -1218,7 +1164,6 @@ a.cal-day:hover {
     </dialog>
   <?php endforeach; ?>
   </div>
-
 
   <?php if ($canManage): ?>
     <!-- ======================= Write / edit ======================= -->
@@ -1364,9 +1309,7 @@ a.cal-day:hover {
     </dialog>
   <?php endif; ?>
 
-
   <script>
-    /* Search as you type: wait until typing stops, then submit the filter form. */
     (function () {
       var box = document.getElementById('searchBox');
       if (!box) return;
@@ -1379,9 +1322,7 @@ a.cal-day:hover {
         }, 600);
       });
     })();
-
     <?php if ($canManage): ?>
-    /* Open the editor empty, ready for a new notice. */
     function newAnnouncement() {
       document.getElementById('f-action').value  = 'create';
       document.getElementById('f-heading').textContent = 'New Announcement';
@@ -1399,7 +1340,6 @@ a.cal-day:hover {
       document.getElementById('editor').showModal();
     }
 
-    /* Open the editor filled in with an existing notice. */
     function editAnnouncement(row) {
       document.getElementById('f-action').value  = 'update';
       document.getElementById('f-heading').textContent = 'Edit Announcement';
@@ -1411,14 +1351,12 @@ a.cal-day:hover {
       document.getElementById('f-audience').value = row.audience;
       document.getElementById('f-department').value = row.department || '';
 
-      // The date inputs want "YYYY-MM-DDTHH:MM"; MySQL gives a space instead of a T.
       document.getElementById('f-publish').value = row.publish_at ? row.publish_at.replace(' ', 'T').slice(0, 16) : '';
       document.getElementById('f-expires').value = row.expires_at ? row.expires_at.replace(' ', 'T').slice(0, 16) : '';
 
       document.getElementById('f-pinned').checked  = row.pinned == 1;
       document.getElementById('f-require').checked = row.require_read == 1;
 
-      // Close whichever detail dialog is open, then show the editor.
       document.querySelectorAll('dialog[open]').forEach(function (d) { d.close(); });
       document.getElementById('editor').showModal();
     }
@@ -1431,7 +1369,6 @@ a.cal-day:hover {
     }
     <?php endif; ?>
 
-    /* Open announcement modal without full page reload */
     function openAnnModal(id) {
       var d = document.getElementById('ann-' + id);
       if (d && typeof d.showModal === 'function') {
@@ -1442,7 +1379,6 @@ a.cal-day:hover {
       return false;
     }
 
-    /* Asynchronous Calendar Navigation (Smooth update without full page refresh) */
     function loadCalendarAsync(url, pushHistory) {
       var noticesCol = document.getElementById('announcements_notices_col');
       var calendarCard = document.getElementById('announcements_calendar_card');
@@ -1454,10 +1390,8 @@ a.cal-day:hover {
         return;
       }
 
-      // Close open modals when switching calendar view
       document.querySelectorAll('dialog[open]').forEach(function (d) { d.close(); });
 
-      // Visual smooth loading indicator
       noticesCol.classList.add('cal-loading');
       calendarCard.classList.add('cal-loading');
 
@@ -1496,7 +1430,6 @@ a.cal-day:hover {
       });
     }
 
-    // Intercept clicks on calendar and calendar-filter links
     document.addEventListener('click', function (e) {
       var link = e.target.closest('#announcements_calendar_card a, .cal-async-link, a[data-cal-nav]');
       if (!link) return;
@@ -1519,19 +1452,15 @@ a.cal-day:hover {
       loadCalendarAsync(targetUrl, false);
     });
 
-    // Record initial history state
     if (window.history && window.history.replaceState && !window.history.state) {
       window.history.replaceState({ calUrl: window.location.href }, '', window.location.href);
     }
-
     <?php if ($openId > 0): ?>
-    /* ?view=<id> in the address bar opens that announcement straight away. */
     (function () {
       var dialog = document.getElementById('ann-<?= (int) $openId ?>');
       if (dialog) dialog.showModal();
     })();
-    <?php endif; ?>
-  </script>
+    <?php endif; ?></script>
 
 <?php endif; ?>
 

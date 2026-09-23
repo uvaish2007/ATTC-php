@@ -1,18 +1,4 @@
 <?php
-/**
- * FEAT-06 — Executive Meeting Report, full-screen presentation mode.
- *
- * The visual layer only: the slides come from em_slides() over the same
- * filtered dataset executive-meeting-report.php previews, so the deck can never
- * show something the report page did not. Filters arrive on the query string
- * and are re-validated here against this user's own scope — the URL is never
- * trusted.
- *
- * Auto mode advances every 5 seconds (EM_AUTO_ADVANCE_MS); manual mode stops
- * the timer entirely. One timer handle exists, and it is always cleared before
- * another is started.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/icons.php';
 require_once __DIR__ . '/models/ExecutiveMeetingReport.php';
@@ -21,7 +7,6 @@ if (!defined('REPORT_INSTITUTION')) {
     define('REPORT_INSTITUTION', 'Mohamed Sathak Engineering College');
 }
 
-/** Auto mode dwell time per slide: 5 seconds (EM-SPEC-09). */
 if (!defined('EM_AUTO_ADVANCE_MS')) {
     define('EM_AUTO_ADVANCE_MS', 5000);
 }
@@ -34,13 +19,9 @@ $filters = em_resolve_filters($user, [
     'academic_year'  => input('academic_year'),
     'faculty_id'     => input('faculty_id'),
     'student_reg'    => input('student_reg'),
-    'target_metric'  => input('target_metric'),   // one target type, or all
-    'meeting_number' => input('meeting_number'),
-    'em'             => input('em'),   // FEAT-07 EM1 / EM2 / All
-]);
+    'target_metric'  => input('target_metric'),       'meeting_number' => input('meeting_number'),
+    'em'             => input('em'),   ]);
 
-// EM-SPEC-05: Server-side validation for active session presentation.
-// When launched as an active session, verify that the meeting is currently in session and not closed/locked.
 if ((string) input('active_session') === '1') {
     $emStatus = em_status($filters['year']);
     $emReq = $filters['em'] ?? 'em1';
@@ -63,7 +44,6 @@ $slidesJson = json_encode($slides, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS |
 $exitUrl    = ((string) input('active_session') === '1')
     ? url('dashboard.php')
     : url('executive-meeting-report.php') . '?' . http_build_query(em_filter_query($filters));
-// EM-SPEC-05: shown inside the full-screen modal. Leaving then closes that modal.
 $embed      = (string) input('embed') === '1';
 ?>
 <!DOCTYPE html>
@@ -602,14 +582,9 @@ $embed      = (string) input('embed') === '1';
     <div class="slide-counter" id="slideCounter">Slide <b>1</b> / <?= count($slides) ?></div>
   </footer>
 
-  <script>
-    const slides = <?= $slidesJson ?>;
+  <script>    const slides = <?= $slidesJson ?>;
     const EMBEDDED = <?= $embed ? 'true' : 'false' ?>;
-
-    /* Auto mode dwell: 5 seconds per slide (EM-SPEC-09). */
     const AUTO_ADVANCE_MS = <?= EM_AUTO_ADVANCE_MS ?>;
-
-    /* Rows per table slide, so continued pages keep numbering in sequence. */
     const SLIDE_ROWS = <?= EM_SLIDE_ROWS ?>;
 
     let currentIndex = 0;
@@ -617,8 +592,6 @@ $embed      = (string) input('embed') === '1';
     let autoTimer = null;        // the ONLY auto-play timer handle; never more than one
     let renderTimer = null;      // the transition render timer handle
     let keyListenerAttached = false;
-
-    /* ---- Timer control -------------------------------------------------- */
 
     function clearAutoTimer() {
       if (autoTimer !== null) {
@@ -633,8 +606,6 @@ $embed      = (string) input('embed') === '1';
       }
     }
 
-    /* Starts the 5000ms auto timer. Clears any existing timer first, guaranteeing
-       only one active auto-play timer at all times. */
     function startAutoTimer() {
       clearAutoTimer();
       if (mode !== 'auto') return;
@@ -666,8 +637,6 @@ $embed      = (string) input('embed') === '1';
         clearAutoTimer();        // manual stops the clock immediately
       }
     }
-
-    /* ---- Navigation ----------------------------------------------------- */
 
     function updateSlideIndicator() {
       const counter = document.getElementById('slideCounter');
@@ -703,10 +672,8 @@ $embed      = (string) input('embed') === '1';
       if (index < 0 || index >= slides.length) return;
       currentIndex = index;
 
-      // Cancel any active auto timer immediately so manual navigation overrides
       clearAutoTimer();
 
-      // Clear any pending render transition timeout so rapid navigation doesn't stack
       if (renderTimer !== null) {
         clearTimeout(renderTimer);
         renderTimer = null;
@@ -728,12 +695,10 @@ $embed      = (string) input('embed') === '1';
         updateNavButtons();
         updateDots();
 
-        // Resets the 5-second auto timer so newly selected slide remains visible for ~5s
         startAutoTimer();
       }, 120);
     }
 
-    // EM-SPEC-09: boundary behavior — stops at first/last (no unexpected loop).
     function prevSlide(userDriven = true) {
       if (currentIndex > 0) renderSlide(currentIndex - 1, userDriven);
     }
@@ -755,14 +720,12 @@ $embed      = (string) input('embed') === '1';
         document.exitFullscreen().catch(() => {});
       }
       if (EMBEDDED) {
-        // Ask the report page to close the modal this is running in.
         window.parent.postMessage({ atts: 'em-present-close' }, window.location.origin);
         return;
       }
       location.href = '<?= e($exitUrl) ?>';
     }
 
-    /* ---- Keyboard ------------------------------------------------------- */
     // EM-SPEC-09: Input-field safety: do NOT navigate slides when the user is
     // typing in an input, textarea, or select element.
     function handleKeydown(e) {
@@ -800,7 +763,6 @@ $embed      = (string) input('embed') === '1';
       }
     }
 
-    // Support navigation forwarded from parent window (when embedded in an iframe modal)
     window.addEventListener('message', function (e) {
       if (e.origin !== window.location.origin) return;
       if (e.data && e.data.atts === 'em-nav') {
@@ -813,8 +775,6 @@ $embed      = (string) input('embed') === '1';
         }
       }
     });
-
-    /* ---- Fullscreen (API where available, full viewport regardless) ------ */
 
     function toggleFullscreen() {
       const label = document.getElementById('fsText');
@@ -833,8 +793,6 @@ $embed      = (string) input('embed') === '1';
         document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
     });
 
-    /* ---- Let the chrome fade while presenting ---------------------------- */
-
     let idleTimer = null;
     function wake() {
       document.body.classList.remove('idle');
@@ -843,8 +801,6 @@ $embed      = (string) input('embed') === '1';
     }
     ['mousemove', 'keydown', 'click', 'touchstart'].forEach(ev =>
       document.addEventListener(ev, wake, { passive: true }));
-
-    /* ---- Rendering ------------------------------------------------------- */
 
     function esc(str) {
       return String(str === null || str === undefined ? '' : str)
@@ -870,8 +826,6 @@ $embed      = (string) input('embed') === '1';
       const cls = pct >= 100 ? 'pill-ok' : (pct >= 50 ? 'pill-warn' : 'pill-bad');
       return `<span class="pill ${cls}">${esc(pct)}%</span>`;
     }
-
-    /* ---- Executive Chart & SVG Helpers ---- */
 
     function renderIconSvg(name) {
       switch (name) {
@@ -1277,7 +1231,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // Safe progress percentage: (achieved / target) * 100
       const rawPct = (av / tv) * 100;
       const pct = Math.round(rawPct * 10) / 10;
       // Visual bar capped at 100% so it never overflows or breaks layout
@@ -1288,7 +1241,6 @@ $embed      = (string) input('embed') === '1';
       let pillText = `${pct}%`;
 
       if (av > tv) {
-        // Target exceeded: keep actual achieved value, cap bar at 100%, show exceeded indicator
         colorClass = 'green';
         pillStyle = 'background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:800;';
         pillText = `${pct}% &middot; Exceeded (+${av - tv})`;
@@ -1317,7 +1269,6 @@ $embed      = (string) input('embed') === '1';
     function buildSlide(s) {
       const scope = `${esc(s.summary['Department'])} &middot; ${esc(s.summary['Academic Year'])}`;
 
-      // 1: Title / Executive Meeting Overview Slide
       if (s.type === 'title') {
         const c = s.contributions;
         const tot = s.totals || {};
@@ -1390,7 +1341,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 2: Overall College Development & Improvement (EM-SPEC-07)
       if (s.type === 'college_development') {
         const o = s.overview || {};
         const tot = s.totals || {};
@@ -1406,7 +1356,6 @@ $embed      = (string) input('embed') === '1';
         const pending = tot.pending || 0;
         const draft = tot.draft || 0;
 
-        // Historical Year-over-Year Trajectory
         let yoyHtml = '';
         if (o.has_prev_year_data) {
           const diffSign = o.yoy_diff >= 0 ? '+' : '';
@@ -1536,7 +1485,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 3: Overall Institutional Performance / Key Metrics (EM-SPEC-07)
       if (s.type === 'institutional_performance') {
         const o = s.overview || {};
         const tot = s.totals || {};
@@ -1659,7 +1607,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 4: Faculty Achievements Summary (Dynamic matching /faculty-achievements.php)
       if (s.type === 'faculty_summary') {
         const m = s.metrics || {};
         const tot = s.totals || {};
@@ -1705,7 +1652,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 3: Department Milestones & Performance
       if (s.type === 'department_milestones' || s.type === 'college') {
         const c = s.contributions;
         const fixed = c ? c.total_target : (s.rollup ? s.rollup.target : 0);
@@ -1724,7 +1670,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 4: Target vs Achieved Summary
       if (s.type === 'target_summary') {
         const c = s.contributions;
         const r = s.rollup || {};
@@ -1816,7 +1761,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 5: Student Achievements Performance Matrix Slide
       if (s.type === 'student_summary') {
         const m = s.metrics || {};
         const tot = s.totals || {};
@@ -1862,7 +1806,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 4: Records Slides
       if (s.type === 'records') {
         const isStudent = s.kind === 'student';
         const pageInfo = s.total_pages > 1
@@ -1910,7 +1853,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 5: Targets Breakdown Slides
       if (s.type === 'targets') {
         const r = s.rollup;
         const pageInfo = s.total_pages > 1 ? `Page ${esc(s.page)} of ${esc(s.total_pages)}` : '';
@@ -1951,7 +1893,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 6: Meetings Slide
       if (s.type === 'meetings') {
         const rows = s.rows.map(m => `
           <tr>
@@ -1988,7 +1929,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // 7: Closing Summary Slide
       if (s.type === 'closing') {
         const r = s.rollup;
         return `
@@ -2010,7 +1950,6 @@ $embed      = (string) input('embed') === '1';
           </div>`;
       }
 
-      // Empty state
       return `
         <div class="ex-wrap">
           ${renderExecutiveBanner('Executive Meeting Presentation', scope)}
@@ -2023,7 +1962,6 @@ $embed      = (string) input('embed') === '1';
         </div>`;
     }
 
-    // EM-SPEC-09: attach keydown listener, render first slide, and start auto-play
     attachKeydownListener();
     renderSlide(0, false);
     wake();

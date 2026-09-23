@@ -1,23 +1,7 @@
 <?php
-
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 
-/**
- * Migrations run in this order.
- *
- * Only additive, idempotent schema files belong here. Deliberately excluded:
- *
- *   schema.sql        DROPs and recreates every table — it is the first-install
- *                     bootstrap, not a migration. Running it over a populated
- *                     database destroys the contents.
- *   database.sql      a mysqldump snapshot.
- *   seed.sql, dummy_data.sql, reset_real_data.sql, meeting_report_cse.sql
- *                     data, not structure.
- *
- * migration_guard() re-checks this at run time, so adding a destructive file to
- * this list is refused rather than executed.
- */
 const MIGRATION_FILES = [
     'app_settings.sql',
     'feature_flags.sql',
@@ -45,15 +29,6 @@ const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (
   duration_ms INT          NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
-/**
- * Refuses a statement that destroys data.
- *
- * A migration adds structure. Anything that drops a table or database, empties
- * one, or deletes rows is either a bootstrap script or a seed reset, and must
- * be run deliberately by a person who knows what is in the database — never by
- * a runner walking a directory. DROP INDEX and DROP FOREIGN KEY are allowed:
- * those are schema changes that keep the rows.
- */
 function migration_guard(string $statement): ?string
 {
     $probe = strtoupper(preg_replace('/\s+/', ' ', $statement));
@@ -79,14 +54,12 @@ function migrations_dir(): string
     return dirname(__DIR__) . '/sql';
 }
 
-/** Where the "nothing to do" marker lives, so a normal request never queries. */
 function migrations_marker_path(): string
 {
     $dir = defined('UPLOAD_DIR') ? rtrim(UPLOAD_DIR, '/\\') : dirname(__DIR__) . '/uploads';
     return $dir . '/.schema-version';
 }
 
-/** A fingerprint of every migration file, so editing one re-arms the runner. */
 function migrations_fingerprint(): string
 {
     $parts = [];
@@ -112,7 +85,6 @@ function migrations_table_ready(): bool
     }
 }
 
-/** filename => ['checksum' => ..., 'applied_at' => ...] for everything applied. */
 function migrations_applied(): array
 {
     if (!migrations_table_ready()) {
@@ -132,13 +104,6 @@ function migrations_applied(): array
     return $out;
 }
 
-/**
- * Split a migration into statements.
- *
- * These files hold plain DDL plus the PREPARE/EXECUTE trick that makes an
- * ALTER idempotent, so splitting on a semicolon at end of line is enough —
- * there are no routine bodies with their own semicolons inside.
- */
 function migration_statements(string $sql): array
 {
     $sql = preg_replace('/^\s*--.*$/m', '', $sql);
@@ -153,7 +118,6 @@ function migration_statements(string $sql): array
     return $out;
 }
 
-/** The migrations not yet recorded as applied, in manifest order. */
 function migrations_pending(): array
 {
     $applied = migrations_applied();
@@ -170,16 +134,6 @@ function migrations_pending(): array
     return $pending;
 }
 
-/**
- * Apply one migration and record it.
- *
- * Each statement is idempotent by construction (CREATE TABLE IF NOT EXISTS, or
- * an ALTER guarded by information_schema), so a file that is half-applied
- * already — which is exactly the state this project was in — completes rather
- * than failing. MySQL commits DDL implicitly, so there is no transaction to
- * wrap this in; the record is written last, and a file that throws stays
- * pending and will be retried.
- */
 function migration_apply(string $file): array
 {
     $path = migrations_dir() . '/' . $file;
@@ -227,7 +181,6 @@ function migration_apply(string $file): array
     return [true, "{$file}: applied in {$ms}ms"];
 }
 
-/** Apply everything outstanding. Returns [appliedFiles, errors]. */
 function migrations_run(): array
 {
     $done = [];
@@ -245,19 +198,6 @@ function migrations_run(): array
     return [$done, $errs];
 }
 
-/**
- * The boot hook.
- *
- * A marker file records the fingerprint of the migration set that was last
- * found to be fully applied. While it matches, this costs one file read and no
- * database work at all, so the check is safe to leave in the request path.
- * Editing or adding a migration changes the fingerprint and re-arms it.
- *
- * Applying is opt-in: without MIGRATE_ON_BOOT=true the runner only records that
- * something is outstanding and leaves it alone. Schema changes against a
- * database with data in it should be a decision, not a side effect of someone
- * loading a page.
- */
 function migrations_boot(): void
 {
     static $done = false;
@@ -309,7 +249,6 @@ function migrations_marker_write(string $fingerprint): void
     @file_put_contents($marker, $fingerprint);
 }
 
-/** What the CLI and any status screen report. */
 function migrations_status(): array
 {
     $applied = migrations_applied();

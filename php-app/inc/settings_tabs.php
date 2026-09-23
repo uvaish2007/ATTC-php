@@ -1,16 +1,4 @@
 <?php
-/**
- * The Settings tab strip, shared by settings.php and password-requests.php.
- *
- * Password Requests keeps its own page — it has its own POST handler and its
- * own feature module — but as far as the Admin is concerned it belongs to
- * Settings, so both pages render this one strip. Set $settingsTab to the key
- * that should show as active before requiring this file.
- *
- * Every page that uses this is already behind require_role(['Admin']); the
- * strip decides nothing about access, it only draws links.
- */
-
 require_once __DIR__ . '/../models/PasswordResetRequest.php';
 
 $settingsTab = $settingsTab ?? 'metrics';

@@ -1,20 +1,4 @@
 <?php
-/**
- * Metrics Report — a per-metric summary of the academic records.
- *
- * One row per record type (Journals, Patents, FDP …) with how many have been
- * submitted and where they sit in review (Approved / Pending / Rejected / Draft),
- * for the chosen scope and period. Built for a HoD's "metrics report" and for
- * the Director's clear, institution-wide academic overview.
- *
- * Same three outputs as the meeting report — ?format=word|excel|pdf — from one
- * HTML body, with the shared letterhead and sign-off, so it matches every other
- * report. Scope is role-enforced inside report_records():
- *     Admin    → any department (or all)
- *     HoD      → own department
- *     Director → whole institution (overall only)
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Record.php';
@@ -30,23 +14,19 @@ $department = user_department_scope($user, input('department'));
 $from       = parse_date_input((string) input('from'));
 $to         = parse_date_input((string) input('to'));
 
-// EM-SPEC-03: Centralized Academic Year and EM Duration filter resolution.
 $rawYear  = input('academic_year') ?: input('year');
 $emCtx    = em_resolve_filter_context($rawYear, input('em'));
 $year     = $emCtx['year'];
 $emFilter = $emCtx['em'];
 [$from, $to] = em_intersect_period($emFilter, $from, $to, $year);
 
-// report_records applies the role scope (Director → all, HoD → own dept).
 $records = report_records($user, $department, null, null, $from, $to, $year);
 
-// The label shown on the report reflects the scope actually applied.
 $deptLabel = $department ?: 'ALL DEPARTMENTS';
 // The full department name shown in the report itself; $deptLabel (raw code)
 // is kept only for building the download filename below.
 $deptDisplay = department_full_name($deptLabel);
 
-// ---- Aggregate: one row per record type, counted by review status ----------
 $statuses = ['Approved', 'Submitted', 'Rejected', 'Draft'];
 $rows     = [];
 foreach (record_types() as $t) {

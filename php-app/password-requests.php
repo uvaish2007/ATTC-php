@@ -1,20 +1,4 @@
 <?php
-/**
- * FEAT-11 — Password Requests (Admin only).
- *
- * The queue of "Request Admin to Change Password" tickets raised from the
- * login page. It is the last tab of Settings — it keeps its own page because
- * it has its own POST handler and feature module, but it draws the Settings
- * tab strip (inc/settings_tabs.php) so it reads as part of that screen. The Admin reviews one, then either completes it (setting a new
- * password on the existing users row) or rejects it with a reason.
- *
- * Authorisation is server-side and unconditional: require_role(['Admin'])
- * runs before anything is read or written, so nothing here depends on a
- * button being hidden. The ticket id in a POST is only ever an integer
- * looked up through a prepared statement, and a ticket that is no longer
- * Pending is refused by the model whatever the browser sends.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/PasswordResetRequest.php';
 
@@ -35,7 +19,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($ok ? 'success' : 'error', $msg);
     }
 
-    // Back to the view the decision was made from.
     $back = array_filter(
         ['status' => $_GET['status'] ?? '', 'q' => $_GET['q'] ?? ''],
         fn($v) => is_string($v) && trim($v) !== ''
@@ -43,7 +26,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/password-requests.php' . ($back ? '?' . http_build_query($back) : ''));
 }
 
-// Default view is Pending — the tickets that still need a decision.
 $statusFilter = trim((string) ($_GET['status'] ?? 'Pending'));
 if ($statusFilter !== 'All' && !in_array($statusFilter, password_reset_statuses(), true)) {
     $statusFilter = 'Pending';
@@ -283,9 +265,6 @@ function reviewRequest(d) {
 
   var pending = (d.status === 'Pending');
 
-  // A decided ticket is read-only: the inputs and the two decision buttons are
-  // removed from the form, not merely hidden. The model refuses a non-Pending
-  // id in any case, so this only keeps the page honest about what it offers.
   document.getElementById('rv-actions').style.display = pending ? 'block' : 'none';
   document.getElementById('rv-complete').style.display = pending ? 'inline-flex' : 'none';
   document.getElementById('rv-reject').style.display = pending ? 'inline-flex' : 'none';
@@ -308,8 +287,6 @@ function reviewRequest(d) {
   document.getElementById('reviewDlg').showModal();
 }
 
-/* Completing needs a password; rejecting needs a reason. Both are enforced
-   again on the server — this only saves a round trip. */
 document.getElementById('reviewForm').addEventListener('submit', function (ev) {
   var decision = ev.submitter ? ev.submitter.value : '';
   var pw    = document.getElementById('rv-password');

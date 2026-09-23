@@ -1,33 +1,16 @@
 <?php
-/**
- * The Admin-designed report template: the columns and rows an Admin builds by
- * hand, which every department's report then follows.
- *
- * Columns live in report_columns (ordered); rows in report_rows, each holding
- * one value per column as JSON keyed by the column's stable col_key. Because
- * values are keyed by col_key (not position), renaming or reordering a column
- * never scrambles the data already typed into its cells.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 
-/** All columns, in display order. */
 function template_columns(): array
 {
     return db()->query('SELECT * FROM report_columns ORDER BY sort_order, id')->fetchAll();
 }
 
-/** Only the label columns — the ones an Admin types (the report's structure). */
 function template_label_columns(): array
 {
     return array_values(array_filter(template_columns(), fn($c) => ($c['source'] ?? 'label') === 'label'));
 }
 
-/**
- * The department-target fields a "data" column can be filled from. The key is
- * the actual column name on the `targets` table, so filling a cell is just
- * $target[$field].
- */
 function target_data_fields(): array
 {
     return [
@@ -41,7 +24,6 @@ function target_data_fields(): array
     ];
 }
 
-/** All rows, in order, with `cells` decoded to an array keyed by col_key. */
 function template_rows(): array
 {
     $rows = db()->query('SELECT * FROM report_rows ORDER BY sort_order, id')->fetchAll();
@@ -52,7 +34,6 @@ function template_rows(): array
     return $rows;
 }
 
-/** Turn a label into a stable, unique col_key ("Sponsored Research" → "sponsored_research"). */
 function template_make_key(string $label): string
 {
     $base = preg_replace('/[^a-z0-9]+/', '_', strtolower(trim($label)));
@@ -67,8 +48,6 @@ function template_make_key(string $label): string
     return $key;
 }
 
-/** Normalise a source/field pair: a data column keeps a real field, a label
- *  column keeps none. */
 function template_norm_source(string $source, ?string $field): array
 {
     $source = $source === 'data' ? 'data' : 'label';
@@ -120,7 +99,6 @@ function template_column_delete(int $id): array
     return [true, 'Column removed.'];
 }
 
-/** Move a column (or row) one step left/up or right/down by swapping sort_order. */
 function template_move(string $table, int $id, string $dir): array
 {
     $pdo = db();
@@ -137,7 +115,7 @@ function template_move(string $table, int $id, string $dir): array
     $find->execute([$cur['sort_order']]);
     $swap = $find->fetch();
     if (!$swap) {
-        return [true, ''];   // already at the end; nothing to do
+        return [true, ''];   
     }
 
     $upd = $pdo->prepare("UPDATE `$table` SET sort_order=? WHERE id=?");
@@ -146,7 +124,6 @@ function template_move(string $table, int $id, string $dir): array
     return [true, ''];
 }
 
-/** Reorder an entire table of columns or rows given an array of IDs in new order. */
 function template_reorder(string $table, array $ids): array
 {
     if (empty($ids)) {
@@ -174,7 +151,6 @@ function template_reorder(string $table, array $ids): array
     }
 }
 
-
 function template_row_add(array $cells): array
 {
     $next = (int) db()->query('SELECT COALESCE(MAX(sort_order),0)+1 FROM report_rows')->fetchColumn();
@@ -196,11 +172,6 @@ function template_row_delete(int $id): array
     return [true, 'Row removed.'];
 }
 
-/**
- * Keep only cells that belong to a LABEL column. Data columns are filled from
- * each department's uploaded targets when the report is generated, never typed
- * into the template — so a stray posted value for a data column is dropped here.
- */
 function template_clean_cells(array $cells): array
 {
     $clean = [];

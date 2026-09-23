@@ -1,8 +1,4 @@
 <?php
-/**
- * Notifications helper for the header notification bell.
- */
-
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/../models/Announcement.php';
@@ -14,8 +10,6 @@ function fetch_header_notifications(array $user): array
     $userId = (int) ($user['id'] ?? 0);
     $markAllTime = $_SESSION['notifications_read_' . $userId] ?? 0;
 
-    // 1. Pending Approvals — something new is waiting for this reviewer.
-    //    (Faculty submit -> Coordinator -> HoD; Dean/Admin see the wider queue.)
     if (in_array($user['role'], ['Dean', 'Admin', 'HoD', 'Coordinator'], true)) {
         try {
             $pendingCount = pending_approvals_count($user);
@@ -38,8 +32,6 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 1b. Recently approved — tell the Coordinator and HoD when records they
-    //     shepherded have been fully approved (and have fed the targets).
     if (in_array($user['role'], ['HoD', 'Coordinator'], true) && !empty($user['department'])) {
         try {
             require_once __DIR__ . '/../models/Record.php';
@@ -72,7 +64,6 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 2. Unread Announcements
     if (function_exists('announcements_ready') && announcements_ready()) {
         try {
             [$visible, $params] = announcement_visibility($user);
@@ -108,7 +99,6 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 3. Upcoming Deadlines
     if (function_exists('announcement_deadlines')) {
         try {
             $deadlines = announcement_deadlines($user, 3);
@@ -128,7 +118,6 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 4. Important Target Updates (for Dean / Admin / Director / Principal)
     if (in_array($user['role'], ['Dean', 'Admin', 'Director', 'Principal'], true)) {
         try {
             $targetCount = targets_pending_count();
@@ -147,13 +136,11 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 5. Target Decision Notifications for HoD
     if ($user['role'] === 'HoD') {
         try {
             $dept = $user['department'] ?? '';
             $uid  = (int) $user['id'];
 
-            // 5a. Changes Requested by Dean/Admin
             $stmt = db()->prepare(
                 "SELECT id, metric, department, review_remark, updated_at
                  FROM targets
@@ -179,7 +166,6 @@ function fetch_header_notifications(array $user): array
                 ];
             }
 
-            // 5b. Targets Approved by Dean/Admin
             $stmt = db()->prepare(
                 "SELECT id, metric, department, approved_at, updated_at
                  FROM targets
@@ -208,7 +194,6 @@ function fetch_header_notifications(array $user): array
         } catch (\Throwable $e) {}
     }
 
-    // 6. Executive Meeting Schedule & Switchover Notifications
     try {
         require_once __DIR__ . '/../models/ExecutiveMeeting.php';
         $activeYear = active_academic_year();

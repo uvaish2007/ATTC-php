@@ -1,14 +1,4 @@
 <?php
-/**
- * Executive Meeting Report.
- *
- * Every report in the system now shares ONE format — the Admin-designed
- * template — so this simply forwards to template-report.php, preserving the
- * department and the chosen format. That keeps old links working while giving a
- * single, consistent report (banner, grouped Achieved header, merged S.No,
- * green completed targets).
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Target.php';
