@@ -149,11 +149,18 @@ if (upload_flow_applies($user)) {
         upload_flow_store($user, ['data_type' => null]);
     }
 
-    $isPost = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+    $isPost        = ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST';
+    $isFacultyHome = upload_flow_is_faculty($user);
     if ($isPost && isset($_POST['upload_flow_step'])) {
         csrf_check();
     }
     $flowState = upload_flow_state($user);
+
+    // Faculty only ever upload Faculty Data, so that choice is made for them.
+    if ($isFacultyHome && $flowState['year'] !== null && $flowState['data_type'] !== 'faculty') {
+        upload_flow_store($user, ['data_type' => 'faculty']);
+        $flowState['data_type'] = 'faculty';
+    }
 
     if ($isPost && isset($_POST['upload_flow_step'])) {
         if ($_POST['upload_flow_step'] === 'year') {
@@ -162,7 +169,16 @@ if (upload_flow_applies($user)) {
                 flash('error', $error);
                 redirect('/upload.php');
             }
+            if ($isFacultyHome) {
+                upload_flow_store($user, ['data_type' => 'faculty']);
+                $backType = (string) ($_POST['return_type'] ?? '');
+                redirect('/upload.php?type=' . urlencode(in_array($backType, upload_flow_faculty_types(), true)
+                    ? $backType : upload_flow_faculty_types()[0]));
+            }
             redirect('/upload.php?step=data-type');
+        }
+        if ($isFacultyHome) {
+            redirect('/upload.php');
         }
         if ($_POST['upload_flow_step'] === 'data_type') {
             [$ok, $error] = upload_flow_choose_data_type($user, $_POST['data_type'] ?? '');
@@ -177,6 +193,17 @@ if (upload_flow_applies($user)) {
     }
 
     if (!$isPost && (!isset($_GET['type']) || isset($_GET['reset']) || isset($_GET['step']))) {
+        // Faculty go straight to the upload form, opened on the first record type.
+        if ($isFacultyHome) {
+            if ($flowState['year'] === null) {
+                if ($flowState['stale_year'] !== null) {
+                    flash('error', "Academic year {$flowState['stale_year']} is no longer open for uploads. Switched to the current academic year.");
+                }
+                $homeYear = in_array($activeYear, upload_flow_years(), true) ? $activeYear : (upload_flow_years()[0] ?? $activeYear);
+                upload_flow_store($user, ['year' => $homeYear, 'data_type' => 'faculty']);
+            }
+            redirect('/upload.php?type=' . urlencode(upload_flow_faculty_types()[0]));
+        }
         if (($_GET['step'] ?? '') === 'data-type' && $flowState['year'] !== null) {
             $uploadFlowStep = 'data_type';
         } else {
@@ -223,6 +250,19 @@ if (upload_flow_applies($user)) {
     // Only the chosen data type's record types can be opened or submitted.
     $typeKeys  = $flowDefs[$flowState['data_type']]['types'];
     $askedType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
+    if ($isFacultyHome) {
+        $typeKeys = upload_flow_faculty_types();
+        // A record uploaded before student types left the faculty list stays editable.
+        if ($flowEditId > 0 && $askedType === $flowEditType && isset($types[$askedType]) && !in_array($askedType, $typeKeys, true)) {
+            $typeKeys[] = $askedType;
+        }
+        if (!in_array($askedType, $typeKeys, true)) {
+            flash('error', isset($types[$askedType])
+                ? $types[$askedType]['label'] . ' is not part of faculty uploads.'
+                : 'Invalid record type.');
+            redirect('/upload.php');
+        }
+    }
     if (!in_array($askedType, $typeKeys, true)) {
         $belongsTo = upload_flow_data_type_of($askedType);
         flash('error', $belongsTo !== null
@@ -502,6 +542,10 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
                 $validationErrors[] = "{$fLabel} must be a number greater than 0.";
             }
         }
+    }
+
+    if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
+        $validationErrors[] = 'Exam Session is required: choose ' . implode(' or ', exam_sessions()) . '.';
     }
 
     [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, false);
@@ -791,6 +835,17 @@ function render_dept_field(array $user, array $departments, string $label = 'Dep
 }
 }
 
+function render_exam_session_field(string $academicYear): void
+{
+    echo '<div class="field"><label>Exam Session <span class="req">*</span></label>';
+    echo '<select class="select" name="exam_session" required>';
+    foreach (exam_sessions() as $s) {
+        $sel = $s === exam_session_current() ? ' selected' : '';
+        echo '<option value="' . e($s) . '"' . $sel . '>' . e(exam_session_label($s, $academicYear)) . '</option>';
+    }
+    echo '</select></div>';
+}
+
 $pageTitle = 'Upload Data'; $breadcrumb = 'Upload Data';
 require __DIR__ . '/inc/header.php';
 ?>
@@ -811,12 +866,28 @@ require __DIR__ . '/inc/header.php';
         </span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <a href="<?= e(url('upload.php?step=data-type')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
-          <?= icon('arrow-left', 14) ?> Change Data Type
-        </a>
-        <a href="<?= e(url('upload.php?reset=1')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
-          Change Academic Year
-        </a>
+        <?php if (upload_flow_is_faculty($user)): ?>
+          <form method="post" action="<?= e(url('upload.php')) ?>" style="display:flex;align-items:center;gap:8px;margin:0">
+            <?= csrf_field() ?>
+            <input type="hidden" name="upload_flow_step" value="year">
+            <input type="hidden" name="return_type" value="<?= e($selectedType) ?>">
+            <label for="facultyYear" style="font-size:12px;font-weight:600;color:var(--ink-muted,#64748b)">Change year</label>
+            <select class="select" id="facultyYear" name="academic_year" onchange="this.form.submit()" style="height:32px;font-size:12px;padding:0 28px 0 10px;border-radius:8px;width:auto">
+              <?php foreach (upload_flow_years() as $y): ?>
+                <option value="<?= e($y) ?>" <?= $uploadFlow['year'] === $y ? 'selected' : '' ?>>
+                  <?= e($y . ($y === $activeYear ? ' (Active)' : '') . (academic_year_is_locked($y) ? ' — Locked' : '')) ?>
+                </option>
+              <?php endforeach; ?>
+            </select>
+          </form>
+        <?php else: ?>
+          <a href="<?= e(url('upload.php?step=data-type')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
+            <?= icon('arrow-left', 14) ?> Change Data Type
+          </a>
+          <a href="<?= e(url('upload.php?reset=1')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
+            Change Academic Year
+          </a>
+        <?php endif; ?>
       </div>
     </div>
   </div>
@@ -1093,6 +1164,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Academic Year</label>
           <input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
         </div>
+        <?php render_exam_session_field($effectiveYear); ?>
       <?php endif; ?>
 
       <?php if ($selectedType === 'journal'): ?>
@@ -1146,6 +1218,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'mou'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
         <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" required></div>
@@ -1154,6 +1227,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'event'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label>
@@ -1167,6 +1241,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'nptel'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category <span class="req">*</span></label>
           <select class="select js-other" name="category" data-other="category_other" required><option>Faculty</option><option>Student</option><option>Others</option></select>
@@ -1180,6 +1255,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field" style="grid-column:span 2"><label>Title of Internship <span class="req">*</span></label><input class="input" name="title" required></div>
         <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" required></div>
         <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 1 month" required></div>
@@ -1190,6 +1266,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Job Name <span class="req">*</span></label><input class="input" name="job_title" required></div>
         <div class="field"><label>Mode <span class="req">*</span> <span class="card-sub">(On Campus / Off Campus)</span></label><select class="select" name="mode" required><option>On Campus</option><option>Off Campus</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Company Name &amp; Address <span class="req">*</span> <span class="card-sub">(with Contact Details)</span></label><input class="input" name="company" required></div>
@@ -1199,6 +1276,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'nss'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" required></div>
         <div class="field"><label>Activity Type <span class="req">*</span></label><select class="select" name="activity_type" required><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Name of the Activity <span class="req">*</span></label><input class="input" name="activity_name" required></div>
@@ -1210,6 +1288,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'online_course'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category <span class="req">*</span></label><select class="select" name="category" required><option>Faculty</option><option>Student</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
@@ -1221,6 +1300,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'student_achievement' || $selectedType === 'student_participation'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
         <?php if ($selectedType === 'student_participation'): ?>
         <div class="field"><label>Activity Category <span class="req">*</span></label><select class="select" name="activity_category" required><option>Co-curricular</option><option>Extra-curricular</option></select></div>
         <?php endif; ?>
@@ -1239,6 +1319,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'summer_training'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <div class="field" style="grid-column:span 2"><label>Title of Training <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -1250,6 +1331,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'value_added'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
         <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
@@ -1261,6 +1343,7 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'training'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>Career Guidance</option><option>Counselling</option><option>ICT</option><option>Life Skills</option><option>Soft Skills</option></select></div>

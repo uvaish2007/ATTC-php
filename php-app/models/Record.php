@@ -69,6 +69,27 @@ function record_categories(): array
     return $cats;
 }
 
+// The two exam sessions the college runs each academic year, stored as-is in exam_session.
+function exam_sessions(): array
+{
+    return ['Nov-Dec', 'Apr-May'];
+}
+
+// Nov-Dec falls in the first calendar year of an academic year, Apr-May in the second.
+function exam_session_label(string $session, string $academicYear): string
+{
+    if (!preg_match('/^(\d{4})/', $academicYear, $m)) {
+        return $session;
+    }
+    return $session . ' ' . ((int) $m[1] + ($session === 'Apr-May' ? 1 : 0));
+}
+
+// June to December leads up to the Nov-Dec exams; January to May to Apr-May.
+function exam_session_current(?int $timestamp = null): string
+{
+    return (int) date('n', $timestamp ?? time()) >= 6 ? 'Nov-Dec' : 'Apr-May';
+}
+
 function record_category_types(?string $category): array
 {
     $cats = record_categories();

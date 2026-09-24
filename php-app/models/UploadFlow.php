@@ -8,6 +8,28 @@ function upload_flow_applies(array $user): bool
     return in_array($user['role'] ?? '', ['Faculty', 'Coordinator'], true);
 }
 
+// Faculty skip the Faculty/Student choice and land on one upload home page.
+function upload_flow_is_faculty(array $user): bool
+{
+    return ($user['role'] ?? '') === 'Faculty';
+}
+
+// The record types a Faculty member uploads, grouped the way the home page shows them.
+function upload_flow_faculty_groups(): array
+{
+    $groups = array_intersect_key(record_categories(), array_flip(['faculty', 'activity']));
+    return array_filter($groups, fn($g) => !empty($g['types']));
+}
+
+function upload_flow_faculty_types(): array
+{
+    $types = [];
+    foreach (upload_flow_faculty_groups() as $group) {
+        $types = array_merge($types, $group['types']);
+    }
+    return array_values(array_unique($types));
+}
+
 function upload_flow_years(): array
 {
     return academic_years();
@@ -134,6 +156,9 @@ function upload_flow_choose_data_type(array $user, $dataType): array
     }
     if (empty($defs[$dataType]['types'])) {
         return [false, $defs[$dataType]['label'] . ' is not available yet.'];
+    }
+    if (upload_flow_is_faculty($user) && $dataType !== 'faculty') {
+        return [false, 'Faculty accounts upload Faculty Data only.'];
     }
 
     upload_flow_store($user, ['data_type' => $dataType]);
