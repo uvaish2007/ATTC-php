@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login · ATTS IQAC</title>
+  <meta name="theme-color" content="#131D3B">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/php-app/assets/css/app.css">
+  <style>
+    /* ---- Role picker (step 1) -------------------------------------------
+       Cards two-up; the last one spans the row when the count is odd, so the
+       grid never ends on a ragged half-row. Descriptions wrap rather than
+       truncate, so nothing about a role is hidden. */
+    .role-selector { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .role-card {
+      position:relative; display:flex; align-items:center; gap:11px;
+      padding:12px 26px 12px 13px; border:1px solid var(--hairline); border-radius:var(--r-lg);
+      cursor:pointer; background:var(--surface);
+      transition:border-color var(--dur) var(--ease), background var(--dur) var(--ease),
+                 box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease-out);
+    }
+    .role-card:hover { border-color:var(--navy-200); box-shadow:var(--shadow-card); transform:translateY(-1px); }
+    .role-card.selected { border-color:var(--orange-500); background:var(--orange-50); box-shadow:var(--ring); transform:none; }
+    .role-card.selected .role-icon { background:var(--orange-500); color:#fff; box-shadow:var(--shadow-brand); }
+    .role-card input { position:absolute; opacity:0; pointer-events:none; }
+    .role-icon {
+      width:34px; height:34px; border-radius:var(--r-md); flex-shrink:0;
+      display:grid; place-items:center; background:var(--navy-50); color:var(--navy-600);
+      transition:background var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+    }
+    .role-card .role-txt  { display:block; min-width:0; }
+    .role-card .role-name { display:block; font-size:13px; font-weight:600; color:var(--ink); line-height:1.2; }
+    .role-card .role-desc { display:block; font-size:10.5px; color:var(--ink-faint); line-height:1.35; margin-top:2px; }
+    .role-card:last-child:nth-child(odd) { grid-column:span 2; }
+    /* A tick in the corner, so the choice is not carried by colour alone. */
+    .role-tick {
+      position:absolute; top:8px; right:8px; width:16px; height:16px; border-radius:var(--r-pill);
+      background:var(--orange-500); color:#fff; display:grid; place-items:center;
+      opacity:0; transform:scale(.6);
+      transition:opacity var(--dur) var(--ease), transform var(--dur) var(--ease-out);
+    }
+    .role-card.selected .role-tick { opacity:1; transform:scale(1); }
+
+    /* ---- Step indicator -------------------------------------------------- */
+    .login-steps { display:flex; gap:6px; margin:18px 0 22px; }
+    .login-step { flex:1; height:3px; border-radius:var(--r-pill); background:var(--navy-100);
+      overflow:hidden; position:relative; }
+    .login-step::after {
+      content:""; position:absolute; inset:0; border-radius:inherit; background:var(--orange-500);
+      transform:scaleX(0); transform-origin:left; transition:transform var(--dur-slow) var(--ease-out);
+    }
+    .login-step.active::after { transform:scaleX(1); }
+
+    .step-label { font-size:12.5px; font-weight:500; color:var(--ink-muted); margin-bottom:10px; }
+    .step-content { animation:fadeInUp .34s var(--ease-out); }
+    @keyframes fadeInUp {
+      from { opacity:0; transform:translateY(8px); }
+      to   { opacity:1; transform:translateY(0); }
+    }
+    .login-back { display:flex; align-items:center; gap:10px; margin-bottom:18px; }
+    .btn-block { width:100%; }
+
+    @media (max-width:420px) {
+      .role-selector { grid-template-columns:1fr; }
+      .role-card:last-child:nth-child(odd) { grid-column:auto; }
+    }
+
+    /* Password field with show/hide toggle */
+    .password-field-wrap {
+      position:relative;
+      display:flex;
+      align-items:center;
+      width:100%;
+    }
+    .password-field-wrap .input {
+      padding-right:44px;
+    }
+    .password-toggle-btn {
+      position:absolute;
+      right:8px;
+      top:50%;
+      transform:translateY(-50%);
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      width:32px;
+      height:32px;
+      background:none;
+      border:none;
+      border-radius:8px;
+      color:var(--ink-muted);
+      cursor:pointer;
+      transition:color .15s ease, background-color .15s ease;
+      padding:0;
+    }
+    .password-toggle-btn:hover {
+      color:var(--orange-500);
+      background:var(--orange-50);
+    }
+    .password-toggle-btn:focus-visible { outline:none; box-shadow:var(--ring); }
+    .password-toggle-btn svg {
+      display:block;
+    }
+  </style>
+</head>
+<body>
+<div class="login-wrap">
+
+  <div class="login-brand">
+    <div class="flex items-center gap-3">
+      <div class="brand-logo">A</div>
+      <div>
+        <div class="brand-title">ATTS</div>
+        <div class="brand-sub">IQAC Portal</div>
+      </div>
+    </div>
+    <div>
+      <h2>Academic Target<br>Tracking System</h2>
+      <p>Configure targets, record achievements, and generate IQAC reports across the institution.</p>
+      <ul class="login-points">
+        <li><span class="pt-ic"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> Set and track departmental targets</li>
+        <li><span class="pt-ic"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span> Review and approve faculty records</li>
+        <li><span class="pt-ic"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Generate IQAC proformas on demand</li>
+      </ul>
+    </div>
+    <div class="foot">Internal Quality Assurance Cell</div>
+  </div>
+
+  <div class="login-form-side">
+    <div class="login-card">
+      <h1 id="loginTitle">Login</h1>
+      <p class="lead" id="loginSubtitle">Select your role and enter credentials to access the portal.</p>
+
+      <!-- Step indicators -->
+      <div class="login-steps">
+        <div class="login-step active" id="step1-bar"></div>
+        <div class="login-step" id="step2-bar"></div>
+      </div>
+
+      
+      <form method="post" id="loginForm">
+        <input type="hidden" name="csrf" value="c9cb740042a6aa27a618615c7b582fbb6f23010ecd1504c00e407192de29ca5e">        <input type="hidden" name="role" id="roleInput" value="">
+
+        <!-- Step 1: Role selector -->
+        <div id="step1" class="step-content">
+          <div class="step-label">Select your role</div>
+          <div class="role-selector">
+                          <label class="role-card " data-role="Admin">
+                <input type="radio" name="role_select" value="Admin" >
+                <span class="role-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
+                <span class="role-txt">
+                  <span class="role-name">Admin</span>
+                  <span class="role-desc">Full system access, manage users &amp; departments</span>
+                </span>
+                <span class="role-tick"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              </label>
+                          <label class="role-card " data-role="Principal">
+                <input type="radio" name="role_select" value="Principal" >
+                <span class="role-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                <span class="role-txt">
+                  <span class="role-name">Principal</span>
+                  <span class="role-desc">Institution-wide overview &amp; reports</span>
+                </span>
+                <span class="role-tick"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              </label>
+                          <label class="role-card " data-role="Dean">
+                <input type="radio" name="role_select" value="Dean" >
+                <span class="role-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg></span>
+                <span class="role-txt">
+                  <span class="role-name">Dean</span>
+                  <span class="role-desc">Academic oversight &amp; institution-wide approvals</span>
+                </span>
+                <span class="role-tick"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              </label>
+                          <label class="role-card " data-role="HoD">
+                <input type="radio" name="role_select" value="HoD" >
+                <span class="role-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></span>
+                <span class="role-txt">
+                  <span class="role-name">HoD</span>
+                  <span class="role-desc">Department head, approve records</span>
+                </span>
+                <span class="role-tick"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              </label>
+                          <label class="role-card " data-role="Coordinator">
+                <input type="radio" name="role_select" value="Coordinator" >
+                <span class="role-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>
+                <span class="role-txt">
+                  <span class="role-name">Coordinator</span>
+                  <span class="role-desc">Upload data &amp; generate reports</span>
+                </span>
+                <span class="role-tick"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              </label>
+                          <label class="role-card " data-role="Faculty">
+                <input type="radio" name="role_select" value="Faculty" >
+                <span class="role-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+                <span class="role-txt">
+                  <span class="role-name">Faculty</span>
+                  <span class="role-desc">Submit academic records &amp; track status</span>
+                </span>
+                <span class="role-tick"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+              </label>
+                      </div>
+          <button type="button" class="btn btn-primary btn-block" id="nextBtn" style="margin-top:14px" disabled>
+            Continue <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>          </button>
+        </div>
+
+        <!-- Step 2: Credentials -->
+        <div id="step2" class="step-content" style="display:none">
+          <div class="login-back">
+            <button type="button" class="btn btn-ghost btn-sm" id="backBtn" style="padding:0 10px">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back
+            </button>
+            <span class="badge badge-brand" id="selectedRoleBadge"></span>
+          </div>
+
+          <div class="field">
+            <label for="email">Email or Username</label>
+            <input class="input" type="text" id="email" name="email" placeholder="you@college.edu or username (e.g. admin)"
+                   autocomplete="username" value="" required>
+          </div>
+
+          <div class="field">
+            <label for="password">Password</label>
+            <div class="password-field-wrap">
+              <input class="input" type="password" id="password" name="password" placeholder="••••••••" required autocomplete="current-password">
+              <button type="button" class="password-toggle-btn" id="togglePasswordBtn" aria-label="Show password" title="Show password">
+                <span class="eye-show"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                <span class="eye-hide" style="display:none;"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></span>
+              </button>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block" id="step2SubmitBtn" style="height:46px; margin-top:8px">
+            Login
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  const roleCards = document.querySelectorAll('.role-card');
+  const roleInput = document.getElementById('roleInput');
+  const nextBtn = document.getElementById('nextBtn');
+  const backBtn = document.getElementById('backBtn');
+  const step2SubmitBtn = document.getElementById('step2SubmitBtn');
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step1Bar = document.getElementById('step1-bar');
+  const step2Bar = document.getElementById('step2-bar');
+  const roleBadge = document.getElementById('selectedRoleBadge');
+  const emailInput = document.getElementById('email');
+  const passwordInput = document.getElementById('password');
+  const loginForm = document.getElementById('loginForm');
+  const togglePasswordBtn = document.getElementById('togglePasswordBtn');
+  const eyeShow = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-show') : null;
+  const eyeHide = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-hide') : null;
+
+  // Auto-trim input fields on blur (BUG-LOGIN-01 fix)
+  if (emailInput) {
+    emailInput.addEventListener('blur', () => {
+      emailInput.value = emailInput.value.trim();
+    });
+  }
+  if (passwordInput) {
+    passwordInput.addEventListener('blur', () => {
+      passwordInput.value = passwordInput.value.trim();
+    });
+  }
+
+  roleCards.forEach(card => {
+    card.addEventListener('click', () => {
+      roleCards.forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input').checked = true;
+      roleInput.value = card.dataset.role;
+      nextBtn.disabled = false;
+    });
+  });
+
+  nextBtn.addEventListener('click', () => {
+    step1.style.display = 'none';
+    step2.style.display = 'block';
+    step2.style.animation = 'none';
+    step2.offsetHeight; // trigger reflow
+    step2.style.animation = 'fadeInUp .3s ease';
+    step2Bar.classList.add('active');
+    roleBadge.textContent = roleInput.value;
+    emailInput.focus();
+  });
+
+  backBtn.addEventListener('click', () => {
+    step2.style.display = 'none';
+    step1.style.display = 'block';
+    step1.style.animation = 'none';
+    step1.offsetHeight;
+    step1.style.animation = 'fadeInUp .3s ease';
+    step2Bar.classList.remove('active');
+
+    // Reset password toggle to masked when returning to role selection
+    if (passwordInput.type === 'text') {
+      passwordInput.type = 'password';
+      if (eyeShow && eyeHide) {
+        eyeShow.style.display = 'inline-flex';
+        eyeHide.style.display = 'none';
+      }
+      togglePasswordBtn.setAttribute('aria-label', 'Show password');
+      togglePasswordBtn.title = 'Show password';
+    }
+  });
+
+  // Show / hide password toggle
+  if (togglePasswordBtn && passwordInput) {
+    togglePasswordBtn.addEventListener('click', () => {
+      const isCurrentlyPassword = passwordInput.type === 'password';
+      passwordInput.type = isCurrentlyPassword ? 'text' : 'password';
+
+      if (eyeShow && eyeHide) {
+        eyeShow.style.display = isCurrentlyPassword ? 'none' : 'inline-flex';
+        eyeHide.style.display = isCurrentlyPassword ? 'inline-flex' : 'none';
+      }
+
+      const newLabel = isCurrentlyPassword ? 'Hide password' : 'Show password';
+      togglePasswordBtn.setAttribute('aria-label', newLabel);
+      togglePasswordBtn.title = newLabel;
+      passwordInput.focus();
+    });
+  }
+
+  // Handle form submissions (Auto-trim before posting)
+  loginForm.addEventListener('submit', (e) => {
+    if (emailInput) emailInput.value = emailInput.value.trim();
+    if (passwordInput) passwordInput.value = passwordInput.value.trim();
+
+    if (step2SubmitBtn && step2SubmitBtn.disabled) {
+      e.preventDefault();
+      return;
+    }
+    if (step2SubmitBtn) {
+      step2SubmitBtn.disabled = true;
+      step2SubmitBtn.textContent = 'Logging In...';
+    }
+  });
+
+  // Refresh page if restored from browser back-forward cache (bfcache)
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      window.location.reload();
+    }
+  });
+
+  // If there's an error and a role was selected, show step 2
+  </script>
+</body>
+</html>

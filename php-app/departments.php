@@ -5,7 +5,6 @@ require_once __DIR__ . '/models/Department.php';
 $user = require_role(['Admin']);
 require_module('departments');
 
-// -- handle create / update / delete --------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
@@ -13,11 +12,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         [$ok, $msg] = department_create((string) input('name'), (string) input('code'));
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'update') {
         [$ok, $msg] = department_update((int) input('id'), (string) input('name'), (string) input('code'));
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'delete') {
         [$ok, $msg] = department_delete((int) input('id'));
         flash($ok ? 'success' : 'error', $msg);

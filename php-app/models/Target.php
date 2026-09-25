@@ -1,69 +1,25 @@
 <?php
-/**
- * Target data access, and the review workflow a target moves through.
- *
- * A HoD writes a target and sends it up. A Director or Admin either approves
- * it — which freezes it — or sends it back with a remark for the HoD to revise
- * and resubmit. A frozen target is the agreed number: from then on only an
- * Admin can change it.
- *
- *     Draft ──submit──▶ Pending Review ──approve──▶ Approved  (frozen)
- *       ▲                     │
- *       │                  send back
- *       │                     ▼
- *       └───edit──── Changes Requested
- *
- * An Admin's own target skips the queue: they are the final authority, so it is
- * approved and frozen the moment it is created.
- *
- * Every rule lives in the four target_can_*() predicates below, and each write
- * re-checks the one that guards it. The page uses the same predicates to decide
- * which buttons to draw, so what you can see is exactly what you can do — and a
- * forged POST still cannot move a target its sender is not allowed to move.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 require_once __DIR__ . '/Setting.php';
 
-/* ==========================================================================
-   Timed unlock permits
-   Once a department's targets are locked (Approved), a HoD asks for an unlock
-   with a reason; the Admin grants it, opening a timed edit window. There is no
-   background job — the window is simply "unlocked_until > now", checked on
-   every request, and the dashboard counts down to that same instant.
-   ========================================================================= */
-
-/**
- * Request-scoped memo for unlock_active(), keyed by department.
- *
- * target_can_edit() calls unlock_active() once for every Approved target drawn
- * on the Targets page, and each call is the same query for the same department.
- * Without this, a department with dozens of approved targets fires dozens of
- * identical round-trips to the (remote) database and the page can exceed the
- * PHP time limit. Any write that could change the answer clears this.
- */
 $GLOBALS['_unlock_active_cache'] = [];
 
-/** Forget the memoised unlock_active() answers (call after an unlock write). */
 function unlock_active_cache_clear(): void
 {
     $GLOBALS['_unlock_active_cache'] = [];
 }
 
-/** The default edit-window length in hours (Admin-configurable). */
 function unlock_default_hours(): int
 {
     return max(1, (int) setting_get('unlock_hours', '12'));
 }
 
-/** Mark any window whose time has run out as Expired (lazy, cosmetic). */
 function unlock_expire_due(): void
 {
     db()->exec("UPDATE unlock_requests SET status='Expired' WHERE status='Granted' AND unlocked_until <= NOW()");
     unlock_active_cache_clear();
 }
 
-/** The department's live unlock window, if one is open right now. */
 function unlock_active(?string $department): ?array
 {
     if (!$department) {
@@ -81,7 +37,6 @@ function unlock_active(?string $department): ?array
     return $GLOBALS['_unlock_active_cache'][$department] = ($stmt->fetch() ?: null);
 }
 
-/** A pending (awaiting-Admin) request for a department, if any. */
 function unlock_pending_for(?string $department): ?array
 {
     if (!$department) {
@@ -92,11 +47,6 @@ function unlock_pending_for(?string $department): ?array
     return $stmt->fetch() ?: null;
 }
 
-/**
- * A department's unlock state for the UI.
- *   state: 'locked' | 'requested' | 'unlocked'
- *   until: epoch seconds the window closes (when unlocked)
- */
 function unlock_state(?string $department): array
 {
     $active = unlock_active($department);
@@ -119,7 +69,6 @@ function unlock_state(?string $department): array
     ];
 }
 
-/** HoD asks to unlock their department's locked targets. */
 function unlock_request(?string $department, int $userId, string $reason): array
 {
     if (!$department) {
@@ -142,7 +91,6 @@ function unlock_request(?string $department, int $userId, string $reason): array
     return [true, 'Unlock request sent to the Admin.'];
 }
 
-/** Admin grants a request, opening the timed window. */
 function unlock_grant(int $id, int $adminId, int $hours): array
 {
     $stmt = db()->prepare("SELECT * FROM unlock_requests WHERE id = ? AND status = 'Requested'");
@@ -152,8 +100,7 @@ function unlock_grant(int $id, int $adminId, int $hours): array
     }
 
     $hours = max(1, min(720, $hours));
-    setting_set('unlock_hours', (string) $hours, $adminId);   // remember as the new default
-
+    setting_set('unlock_hours', (string) $hours, $adminId);   
     $upd = db()->prepare(
         "UPDATE unlock_requests
             SET status='Granted', hours=?, granted_by=?, granted_at=NOW(),
@@ -165,7 +112,6 @@ function unlock_grant(int $id, int $adminId, int $hours): array
     return [true, "Unlocked for {$hours}h — the HoD can edit until the timer ends."];
 }
 
-/** Admin denies a request. */
 function unlock_deny(int $id, int $adminId, string $note = ''): array
 {
     $stmt = db()->prepare("UPDATE unlock_requests SET status='Denied', granted_by=?, admin_note=? WHERE id = ? AND status='Requested'");
@@ -174,7 +120,6 @@ function unlock_deny(int $id, int $adminId, string $note = ''): array
     return [true, 'Unlock request denied.'];
 }
 
-/** All pending requests, for the Admin's queue. */
 function unlock_pending_all(): array
 {
     return db()->query(
@@ -184,24 +129,16 @@ function unlock_pending_all(): array
     )->fetchAll();
 }
 
-/** How many requests are waiting, for the nav badge. */
 function unlock_pending_count(): int
 {
     return (int) db()->query("SELECT COUNT(*) FROM unlock_requests WHERE status='Requested'")->fetchColumn();
 }
 
-/** The states a target can be in, in the order it travels through them. */
 function target_statuses(): array
 {
     return ['Draft', 'Dean Pending', 'Changes Requested', 'Approved'];
 }
 
-/**
- * Badge colour for a workflow state. Deliberately not status_class(): those are
- * record-review colours (Submitted/Rejected), and these are different words for
- * a different flow — reusing that map would have "Changes Requested" fall
- * through to grey.
- */
 function target_status_class(string $status): string
 {
     $map = [
@@ -215,13 +152,11 @@ function target_status_class(string $status): string
     return $map[$status] ?? 'neutral';
 }
 
-/** A frozen target is settled: the numbers are the institution's commitment. */
 function target_is_frozen(array $target): bool
 {
     return ($target['status'] ?? '') === 'Approved';
 }
 
-/** The HoD's own department, or null for anyone not scoped to one. */
 function target_owns(array $target, array $user): bool
 {
     if (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true)) {
@@ -231,78 +166,43 @@ function target_owns(array $target, array $user): bool
         && ($target['department'] ?? null) === $user['department'];
 }
 
-/**
- * May this user change the target's numbers?
- *
- * Admin always, including after it is frozen — that is the escape hatch when a
- * settled figure genuinely has to move. A HoD only while it is still theirs to
- * write: their own department, and not currently under review or frozen.
- */
 function target_can_edit(array $target, array $user): bool
 {
     if ($user['role'] === 'Admin') {
         return true;
     }
-    // If the academic year cycle is locked by Admin, non-admins cannot edit
-    $ay = $target['academic_year'] ?? null;
-    if ($ay && academic_year_is_locked($ay)) {
-        return false;
-    }
+    // Academic Year lock does NOT prevent target editing
     if (!in_array($user['role'], ['HoD', 'Dean'], true) || !target_owns($target, $user)) {
         return false;
     }
 
     $status = $target['status'] ?? 'Draft';
 
-    // Still theirs to write before it is locked...
     if (in_array($status, ['Draft', 'Changes Requested'], true)) {
         return true;
     }
 
-    // ...or a locked target while an unlock window is open and unexpired.
     $dept = $target['department'] ?? ($user['department'] ?? null);
     return $status === 'Approved' && unlock_active($dept) !== null;
 }
 
-/** May this user send it up for review? Only the HoD who owns it. */
 function target_can_submit(array $target, array $user): bool
 {
-    if ($user['role'] !== 'Admin') {
-        $ay = $target['academic_year'] ?? null;
-        if ($ay && academic_year_is_locked($ay)) {
-            return false;
-        }
-    }
-
     return in_array($user['role'], ['HoD', 'Dean'], true)
         && target_owns($target, $user)
         && in_array($target['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true);
 }
 
-/** May this user approve it or send it back? Only while it is waiting. */
 function target_can_review(array $target, array $user): bool
 {
-    if ($user['role'] !== 'Admin') {
-        $ay = $target['academic_year'] ?? null;
-        if ($ay && academic_year_is_locked($ay)) {
-            return false;
-        }
-    }
-
     return in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true)
         && in_array($target['status'] ?? '', ['Dean Pending', 'Pending Review'], true);
 }
 
-/** May this user delete it? A frozen target is Admin-only. */
 function target_can_delete(array $target, array $user): bool
 {
     if ($user['role'] === 'Admin') {
         return true;
-    }
-
-    $ay = $target['academic_year'] ?? null;
-    if ($ay && academic_year_is_locked($ay)) {
-        return false;
     }
 
     return in_array($user['role'], ['HoD', 'Dean'], true)
@@ -310,9 +210,6 @@ function target_can_delete(array $target, array $user): bool
         && !target_is_frozen($target);
 }
 
-/**
- * Targets, newest first, optionally narrowed by department, year, status or metric.
- */
 function targets_all(?string $department = null, ?string $year = null, ?string $status = null, ?string $metric = null, bool $excludeDrafts = false): array
 {
     $sql = 'SELECT t.*, u.name AS creator_name, a.name AS approver_name
@@ -323,8 +220,15 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
     $params = [];
 
     if ($department) {
-        $sql .= ' AND t.department = ?';
-        $params[] = $department;
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $sql .= " AND t.department IN ($inPh)";
+            $params = array_merge($params, $deptVars);
+        } else {
+            $sql .= ' AND t.department = ?';
+            $params[] = $department;
+        }
     }
     if ($year) {
         $sql .= ' AND t.academic_year = ?';
@@ -352,21 +256,21 @@ function targets_all(?string $department = null, ?string $year = null, ?string $
     return $stmt->fetchAll();
 }
 
-/**
- * Targets for the Executive Meeting Report, in proforma order.
- *
- * Ordered by sort_order (the hand-set sequence of the printed proforma, with
- * its lettered sub-items) and then id, so seeded rows keep their exact order
- * and any form-added target falls in after them.
- */
 function target_report_items(?string $department = null, ?string $year = null): array
 {
     $sql    = 'SELECT * FROM targets WHERE 1=1';
     $params = [];
 
     if ($department) {
-        $sql .= ' AND department = ?';
-        $params[] = $department;
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $sql .= " AND department IN ($inPh)";
+            $params = array_merge($params, $deptVars);
+        } else {
+            $sql .= ' AND department = ?';
+            $params[] = $department;
+        }
     }
     if ($year) {
         $sql .= ' AND academic_year = ?';
@@ -387,11 +291,6 @@ function target_find(int $id): ?array
     return $row ?: null;
 }
 
-/**
- * How many targets are sitting in the review queue, for the nav badge.
- * Scoped to a year (the active one, from every caller) so the badge never
- * counts a different year's leftover pending targets.
- */
 function targets_pending_count(?string $year = null): int
 {
     if ($year !== null) {
@@ -403,30 +302,24 @@ function targets_pending_count(?string $year = null): int
     return (int) $stmt->fetchColumn();
 }
 
-/**
- * Create a target.
- *
- * An Admin's target is frozen straight away; a HoD's starts as a Draft they
- * still have to send up. A HoD's department is taken from their account, never
- * from the form.
- */
 function target_create(array $user, string $department, string $academicYear, string $metric, int $targetValue, ?string $remarks, ?string $coordinator = null, string $status = 'Draft', ?string $targetDeadline = null): array
 {
-    if (!in_array($user['role'], ['HoD', 'Dean'], true)) {
-        return [false, 'Only a HoD or Dean enters targets.'];
+    if (!in_array($user['role'], ['HoD', 'Dean', 'Admin'], true)) {
+        return [false, 'Only a HoD, Dean, or Admin enters targets.'];
     }
 
     $targetYear = trim($academicYear) ?: active_academic_year();
-    $activeAy   = active_academic_year();
-
-    if ($user['role'] !== 'Admin' && (academic_year_is_locked($targetYear) || academic_year_is_locked($activeAy))) {
-        return [false, "Academic year {$targetYear} cycle is locked by Administrator. Target submissions are frozen."];
+    if (!is_valid_academic_year($targetYear) || !in_array($targetYear, academic_years(), true)) {
+        return [false, 'Invalid academic year specified for target.'];
     }
 
     $academicYear = $targetYear;
 
     if ($user['role'] === 'HoD') {
         $department = (string) ($user['department'] ?? '');
+        if ($department === '') {
+            return [false, 'Department is required for HoD target creation.'];
+        }
     } else {
         $department = trim($department) ?: ((string) ($user['department'] ?? '') ?: 'CSE');
     }
@@ -452,14 +345,24 @@ function target_create(array $user, string $department, string $academicYear, st
         }
     }
 
+    // The deadline column is only named when it exists (targets_deadline_ready
+    // adds it if the migration never ran); without it the target still saves.
+    $hasDeadline = targets_deadline_ready();
+
+    $cols = ['department', 'academic_year', 'metric', 'target_value'];
+    $vals = [$department, $academicYear, $metric, $targetValue];
+    if ($hasDeadline) {
+        $cols[] = 'target_deadline';
+        $vals[] = $targetDeadline;
+    }
+    array_push($cols, 'remarks', 'coordinator', 'status', 'submitted_at', 'created_by');
+    array_push($vals, $remarks ?: null, $coordinator ?: null, $statusVal, $submittedAt, $user['id']);
+
     $stmt = db()->prepare(
-        'INSERT INTO targets (department, academic_year, metric, target_value, target_deadline, remarks, coordinator, status, submitted_at, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        'INSERT INTO targets (' . implode(', ', $cols) . ')
+         VALUES (' . implode(', ', array_fill(0, count($cols), '?')) . ')'
     );
-    $stmt->execute([
-        $department, $academicYear, $metric, $targetValue, $targetDeadline, $remarks ?: null, $coordinator ?: null,
-        $statusVal, $submittedAt, $user['id'],
-    ]);
+    $stmt->execute($vals);
 
     if ($isPending) {
         return [true, 'Target created and submitted for Dean review.'];
@@ -468,24 +371,38 @@ function target_create(array $user, string $department, string $academicYear, st
     return [true, 'Target saved as a draft. Send it for review when it is ready.'];
 }
 
-/**
- * Update a target's numbers.
- *
- * A frozen target stays frozen when an Admin edits it, but the approval stamp
- * is rewritten so the record always shows who last set the figure. A HoD can
- * never move a target into another department.
- */
 function target_update(int $id, array $user, string $department, string $academicYear, string $metric, int $targetValue, int $achievedValue, ?string $remarks, ?string $coordinator = null, ?string $targetDeadline = null, ?string $fixedText = null): array
 {
+    if (!in_array($user['role'], ['Admin', 'HoD', 'Dean'], true)) {
+        return [false, 'Unauthorized to edit targets.'];
+    }
+
     $existing = target_find($id);
     if (!$existing) {
         return [false, 'Target not found.'];
     }
+
+    $existingYear = (string) ($existing['academic_year'] ?? '');
+    $requestedYear = trim($academicYear);
+
+    if ($requestedYear !== '' && $requestedYear !== $existingYear) {
+        return [false, "Target #{$id} belongs to Academic Year {$existingYear}, not {$requestedYear}."];
+    }
+
+    // Department scope check: HoD/Coordinator can never edit outside their assigned department
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
+        $userDept = $user['department'] ?? '';
+        if ($userDept === '' || ($existing['department'] ?? '') !== $userDept) {
+            return [false, 'You do not have permission to edit targets outside your department.'];
+        }
+    }
+
     if (!target_can_edit($existing, $user)) {
         return [false, target_is_frozen($existing)
             ? 'That target is frozen. Only an Admin can change it now.'
             : 'That target is not yours to edit.'];
     }
+
     $metric = trim($metric);
     if ($metric === '') {
         return [false, 'The target title is required.'];
@@ -495,8 +412,10 @@ function target_update(int $id, array $user, string $department, string $academi
     }
 
     if ($user['role'] !== 'Admin') {
-        $department   = (string) $existing['department'];      // pinned to where it already is
-        $academicYear = (string) $existing['academic_year'];   // a HoD/Dean cannot move a target to another year
+        $department = (string) $existing['department'];           $targetYear = $existingYear;                      // non-admins cannot move a target to another year
+    } else {
+        $department = trim($department) ?: (string) $existing['department'];
+        $targetYear = ($requestedYear !== '' && is_valid_academic_year($requestedYear)) ? $requestedYear : $existingYear;
     }
 
     $frozen = target_is_frozen($existing);
@@ -509,38 +428,52 @@ function target_update(int $id, array $user, string $department, string $academi
         }
     }
 
-    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?, target_deadline = ?, achieved_value = ?, remarks = ?, coordinator = ?';
-    $args = [$department, $academicYear, $metric, $targetValue, $targetDeadline, $achievedValue, $remarks ?: null, $coordinator ?: null];
+    $sql  = 'UPDATE targets SET department = ?, academic_year = ?, metric = ?, target_value = ?';
+    $args = [$department, $targetYear, $metric, $targetValue];
+
+    if (targets_deadline_ready()) {
+        $sql   .= ', target_deadline = ?';
+        $args[] = $targetDeadline;
+    }
+
+    $sql   .= ', achieved_value = ?, remarks = ?, coordinator = ?';
+    array_push($args, $achievedValue, $remarks ?: null, $coordinator ?: null);
 
     if ($fixedText !== null) {
         $sql .= ', fixed_text = ?';
         $args[] = trim($fixedText);
     }
 
-    // Re-stamp the approval only when an Admin edits a frozen target — a HoD
-    // editing inside an unlock window is not re-approving it, so the original
-    // approver and date stand.
+    // Re-stamp the approval only when an Admin edits a frozen target
     if ($frozen && $user['role'] === 'Admin') {
         $sql .= ', approved_by = ?, approved_at = ?';
         $args[] = $user['id'];
         $args[] = date('Y-m-d H:i:s');
     }
 
-    $sql   .= ' WHERE id = ?';
+    $sql   .= ' WHERE id = ? AND academic_year = ?';
     $args[] = $id;
+    $args[] = $existingYear;
 
     db()->prepare($sql)->execute($args);
 
     return [true, $frozen ? 'Frozen target updated.' : 'Target updated.'];
 }
 
-/** Send a draft (or a sent-back target) up for review. */
 function target_submit(int $id, array $user): array
 {
     $existing = target_find($id);
     if (!$existing) {
         return [false, 'Target not found.'];
     }
+
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
+        $userDept = $user['department'] ?? '';
+        if ($userDept === '' || ($existing['department'] ?? '') !== $userDept) {
+            return [false, 'You do not have permission to submit targets outside your department.'];
+        }
+    }
+
     if (!target_can_submit($existing, $user)) {
         return [false, 'That target cannot be sent for review.'];
     }
@@ -551,12 +484,6 @@ function target_submit(int $id, array $user): array
     return [true, 'Target submitted for Dean review.'];
 }
 
-/**
- * Approve a target (freezing it) or send it back for changes.
- *
- * Sending one back needs a reason — a bare rejection tells the HoD nothing
- * about what to fix.
- */
 function target_review(int $id, array $user, string $decision, ?string $remark): array
 {
     $existing = target_find($id);
@@ -585,11 +512,6 @@ function target_review(int $id, array $user, string $decision, ?string $remark):
     return [false, 'Unknown review decision.'];
 }
 
-/**
- * Bulk approve all currently eligible targets waiting for review (status 'Dean Pending').
- * Scoped to user's authorized role and optional department/academic-year filters.
- * Runs atomically inside a database transaction.
- */
 function targets_bulk_approve(array $user, ?string $deptFilter = null, ?string $yearFilter = null): array
 {
     if (!in_array($user['role'], ['Dean', 'Admin', 'Director', 'Principal'], true)) {
@@ -597,8 +519,8 @@ function targets_bulk_approve(array $user, ?string $deptFilter = null, ?string $
     }
 
     $effectiveYear = $yearFilter ?: active_academic_year();
-    if ($user['role'] !== 'Admin' && academic_year_is_locked($effectiveYear)) {
-        return [false, "Academic year {$effectiveYear} cycle is locked by Administrator. Target approvals are frozen."];
+    if (!is_valid_academic_year($effectiveYear)) {
+        return [false, 'Invalid academic year.'];
     }
 
     $pdo = db();
@@ -667,30 +589,10 @@ function target_delete(int $id, array $user): array
     return [true, 'Target deleted.'];
 }
 
-/* ==========================================================================
-   Contribution counting (non-destructive suggestion)
-
-   Most targets are free-text meeting-report proforma rows (pass %, website
-   updation, lettered sub-items) whose achieved figure is tracked by hand and
-   must never be touched. Only a handful correspond to a record type faculty
-   actually upload. For those, we can COUNT the approved records and OFFER that
-   number beside the target — the HoD accepts it into achieved_value with one
-   click. Nothing is ever overwritten automatically.
-   ========================================================================= */
-
-/**
- * The record type whose approved rows back a target, inferred from its free-text
- * metric. Returns null for every proforma row that is not record-backed, so only
- * the mappable handful ever gets a suggestion.
- */
 function target_suggested_type(string $metric): ?string
 {
     $m = strtoupper($metric);
 
-    // Order matters: least-ambiguous words are checked first, and the broad
-    // "CONFERENCE"/"JOURNAL" catch-alls last — so a row that names FDP *and*
-    // conference ("Faculty participations in FDP … / Conference") maps to FDP,
-    // not conference. This is a best-effort hint only; the HoD reviews it.
     $rules = [
         'nss'                   => ['NSS', 'YRC', 'RRC'],
         'summer_training'       => ['SUMMER TRAINING', 'WINTER TRAINING'],
@@ -702,8 +604,7 @@ function target_suggested_type(string $metric): ?string
         'internship'            => ['INTERNSHIP'],
         'placement'             => ['PLACEMENT'],
         'patent'                => ['PATENT', 'COPY RIGHT', 'COPYRIGHT'],
-        'book'                  => ['BOOK'],            // "BOOKS PUBLICATION" and "BOOK CHAPTER"
-        'mou'                   => ['MOU', 'INDUSTRY SUPPORTED LAB'],
+        'book'                  => ['BOOK'],                    'mou'                   => ['MOU', 'INDUSTRY SUPPORTED LAB'],
         'fdp'                   => ['FDP', 'STTP'],
         'conference'            => ['CONFERENCE'],
         'journal'               => ['SCOPUS', 'SCI JOURNAL', 'UGC CARE', 'QUALITY PUBLICATION', 'JOURNAL'],
@@ -722,7 +623,6 @@ function target_suggested_type(string $metric): ?string
     return null;
 }
 
-/** Columns of a record table, cached, so a count only filters on columns it has. */
 function target_record_table_columns(string $table): array
 {
     static $cache = [];
@@ -736,13 +636,6 @@ function target_record_table_columns(string $table): array
     return $cache[$table];
 }
 
-/**
- * How many APPROVED records back this target right now — the figure the HoD may
- * accept into achieved_value. Null when the target is not record-backed.
- *
- * Scoped to the target's department (where the record type has that column) and
- * to its academic year (likewise), so the count matches the target's scope.
- */
 function target_record_count(array $target, ?string $from = null, ?string $to = null): ?int
 {
     static $countCache = [];
@@ -754,9 +647,6 @@ function target_record_count(array $target, ?string $from = null, ?string $to = 
 
     $dept = (string) ($target['department'] ?? '');
     $year = (string) ($target['academic_year'] ?? '');
-    // $from / $to (Y-m-d, inclusive) optionally narrow the count to records
-    // submitted in a period — FEAT-07 uses this for one Executive Meeting.
-    // Omitted, the count is exactly what it always was.
     $cacheKey = "{$type}|{$dept}|{$year}|{$from}|{$to}";
     if (array_key_exists($cacheKey, $countCache)) {
         return $countCache[$cacheKey];
@@ -805,10 +695,6 @@ function target_record_count(array $target, ?string $from = null, ?string $to = 
     }
 }
 
-/**
- * Return all approved faculty records contributing to a target.
- * Includes contributor name, title, proof file URL, approver name/role, dates, etc.
- */
 function target_approved_records(array $target): array
 {
     $type = target_suggested_type((string) ($target['metric'] ?? ''));
@@ -866,7 +752,11 @@ function target_approved_records(array $target): array
                 ?? $row['student_name']
                 ?? $row['creator_name']
                 ?? 'Faculty';
+<<<<<<< HEAD
             $row['_proof_url']  = !empty($row['proof_file']) ? proof_url($row['proof_file']) : null;
+=======
+            $row['_proof_url']  = !empty($row['proof_file']) ? url('view-proof.php?file=' . rawurlencode($row['proof_file']) . '&type=' . rawurlencode($type) . '&id=' . (int)($row['id'] ?? 0)) : null;
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
             $row['_doc_url']    = !empty($row['document_link']) ? $row['document_link'] : (!empty($row['certificate_link']) ? $row['certificate_link'] : null);
             $results[] = $row;
         }
@@ -876,11 +766,6 @@ function target_approved_records(array $target): array
     }
 }
 
-/**
- * Accept the counted-from-records figure into achieved_value (the HoD's one-click
- * "Use"). Goes through the same target_can_edit() gate as any other edit, so a
- * frozen target still needs Admin rights or an open unlock window.
- */
 function target_apply_count(int $id, array $user): array
 {
     $existing = target_find($id);
@@ -903,33 +788,19 @@ function target_apply_count(int $id, array $user): array
     return [true, "Achieved set to {$count} from approved records."];
 }
 
-/**
- * The earliest starting year for academic years (2000-01).
- */
 const ACADEMIC_YEAR_FIRST_START = 2000;
 
-/**
- * Determine the start year of the current academic year dynamically from current date.
- * Academic year runs June–May, so from June onward the "current" year has rolled over.
- */
 function current_academic_year_start(): int
 {
     return (int) date('n') >= 6 ? (int) date('Y') : (int) date('Y') - 1;
 }
 
-/**
- * Current academic year string in YYYY-YY format, e.g. "2026-27".
- */
 function current_academic_year(): string
 {
     $y = current_academic_year_start();
     return sprintf('%d-%02d', $y, ($y + 1) % 100);
 }
 
-/**
- * Validate an academic year format and ensure it is between 2000-01 and current academic year.
- * Future academic years and years prior to 2000 are strictly rejected.
- */
 function is_valid_academic_year(?string $year): bool
 {
     if ($year === null) {
@@ -958,16 +829,10 @@ function is_valid_academic_year(?string $year): bool
     return true;
 }
 
-/**
- * All valid academic years up to the current real-time academic year and past years.
- * Future academic years are strictly excluded.
- * As the real-time calendar rolls over each year (June), the new current year is automatically included.
- */
 function academic_years(bool $includeUpcoming = false): array
 {
     $firstStart   = ACADEMIC_YEAR_FIRST_START;
     $currentStart = current_academic_year_start();
-    // Strictly up to the current academic year; no future years allowed
     $lastStart    = $currentStart;
 
     $years = [];
@@ -977,37 +842,14 @@ function academic_years(bool $includeUpcoming = false): array
     return $years;
 }
 
-/* ==========================================================================
-   Global active academic year (Admin Year Control)
-
-   ONE centralized, system-wide "what year is ATTS operating on right now"
-   value — not per-browser-session, so the moment an Admin activates a year
-   every signed-in Faculty/Coordinator/HoD/Dean/Director sees it too, not just
-   the Admin's own session. Backed by the existing app_settings key/value
-   store (models/Setting.php) — the same mechanism already used for the
-   report-template choice ("choices an Admin makes once for everyone") — so
-   this does not introduce a second, conflicting settings system.
-
-   Every year-dependent page must call active_academic_year() to read it, and
-   never trust a client-supplied year for anything but display. Only
-   activate_academic_year() may change it, and only after validating the year
-   server-side (format, range, not in the future).
-   ========================================================================= */
-
 const ACTIVE_ACADEMIC_YEAR_SETTING = 'active_academic_year';
 
-/**
- * The one active academic year for the whole system right now.
- */
 function active_academic_year(): string
 {
     $stored = setting_get(ACTIVE_ACADEMIC_YEAR_SETTING);
     return is_valid_academic_year($stored) ? $stored : current_academic_year();
 }
 
-/**
- * Admin activates a year as the system-wide active academic year.
- */
 function activate_academic_year(string $year, int $adminUserId): array
 {
     $year = trim($year);
@@ -1020,18 +862,12 @@ function activate_academic_year(string $year, int $adminUserId): array
     return [true, "Academic year {$year} is now active for the whole system."];
 }
 
-/**
- * Check if an academic year's cycle is locked (frozen against new submissions / changes).
- */
 function academic_year_is_locked(?string $year = null): bool
 {
     $year = $year ?: active_academic_year();
     return setting_get("ay_locked_{$year}", '0') === '1';
 }
 
-/**
- * Set the lock state for an academic year.
- */
 function academic_year_set_lock(string $year, bool $locked, int $adminUserId, string $note = ''): array
 {
     $year = trim($year);
@@ -1048,9 +884,6 @@ function academic_year_set_lock(string $year, bool $locked, int $adminUserId, st
     return [true, "Academic year {$year} cycle is now {$statusText}."];
 }
 
-/**
- * Detailed lock cycle metadata for an academic year.
- */
 function academic_year_lock_info(string $year): array
 {
     $locked = academic_year_is_locked($year);
@@ -1076,9 +909,6 @@ function academic_year_lock_info(string $year): array
     ];
 }
 
-/**
- * Summary statistics of records and targets for a specific academic year.
- */
 function academic_year_summary_stats(string $year): array
 {
     static $statsCache = [];
@@ -1126,12 +956,6 @@ function academic_year_summary_stats(string $year): array
     ];
 }
 
-/**
- * Records, approved records, targets, finished meetings and lock state for
- * every year at once, keyed by year. Around twenty queries in total: asking
- * academic_year_summary_stats() and friends row by row for the ~27-year
- * registry ran over five hundred on every page load.
- */
 function academic_years_overview(array $years): array
 {
     $out = [];
@@ -1188,14 +1012,25 @@ function academic_years_overview(array $years): array
     return $out;
 }
 
-/* ==========================================================================
-   Executive meetings
-   Recording a finished Executive Meeting locks its academic year for every
-   role; the rows are that year's audit trail. The table ships in
-   sql/executive_meetings.sql and is also created here on first use: the page
-   was built against it before anything created it, so every query failed
-   quietly ("0 meetings") and recording a meeting could never lock a year.
-   ========================================================================= */
+function targets_deadline_ready(): bool
+{
+    static $ready = null;
+    if ($ready !== null) {
+        return $ready;
+    }
+    try {
+        db()->query('SELECT target_deadline FROM targets LIMIT 1');
+        return $ready = true;
+    } catch (\PDOException $e) {
+    }
+    try {
+        db()->exec('ALTER TABLE targets ADD COLUMN target_deadline DATE NULL AFTER target_value');
+        return $ready = true;
+    } catch (\PDOException $e) {
+        return $ready = false;
+    }
+}
+
 const EXECUTIVE_MEETINGS_DDL = "CREATE TABLE IF NOT EXISTS executive_meetings (
   id             INT AUTO_INCREMENT PRIMARY KEY,
   academic_year  VARCHAR(9)   NOT NULL,
@@ -1210,12 +1045,6 @@ const EXECUTIVE_MEETINGS_DDL = "CREATE TABLE IF NOT EXISTS executive_meetings (
   KEY idx_exec_meeting_year (academic_year, meeting_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
-/**
- * Whether the executive_meetings table can be used, creating it if missing.
- * Checked once per request. False only when it is missing and could not be
- * created (e.g. the database user may not CREATE) — callers then degrade and
- * the Academic Year page says so instead of pretending there are no meetings.
- */
 function executive_meetings_ready(): bool
 {
     static $ready = null;
@@ -1226,7 +1055,6 @@ function executive_meetings_ready(): bool
         db()->query('SELECT 1 FROM executive_meetings LIMIT 1');
         return $ready = true;
     } catch (\PDOException $e) {
-        // Missing: fall through and create it.
     }
     try {
         db()->exec(EXECUTIVE_MEETINGS_DDL);
@@ -1236,11 +1064,6 @@ function executive_meetings_ready(): bool
     }
 }
 
-/**
- * A meeting number as entered — "3", "#3", "Meeting #3", "No. 3" — reduced to
- * its bare form "3". The page prints "Meeting #" in front, so storing the
- * prefix produced "Meeting #Meeting #3" and let "#3" and "3" coexist.
- */
 function executive_meeting_number_normalise(string $number): string
 {
     $n = trim($number);
@@ -1250,9 +1073,6 @@ function executive_meeting_number_normalise(string $number): string
     return trim($n);
 }
 
-/**
- * All executive meetings recorded for an academic year, newest first.
- */
 function executive_meetings_for_year(string $year): array
 {
     if (!executive_meetings_ready()) {
@@ -1273,9 +1093,6 @@ function executive_meetings_for_year(string $year): array
     }
 }
 
-/**
- * Count of executive meetings finished for an academic year.
- */
 function executive_meeting_count(string $year): int
 {
     if (!executive_meetings_ready()) {
@@ -1290,9 +1107,6 @@ function executive_meeting_count(string $year): int
     }
 }
 
-/**
- * Latest executive meeting recorded for an academic year.
- */
 function executive_meeting_latest(string $year): ?array
 {
     if (!executive_meetings_ready()) {
@@ -1315,9 +1129,6 @@ function executive_meeting_latest(string $year): ?array
     }
 }
 
-/**
- * Record a finished Executive Meeting and lock the academic year cycle for all roles.
- */
 function executive_meeting_finish_and_lock(string $year, string $meetingNumber, string $meetingDate, ?string $notes, int $adminUserId): array
 {
     $year = trim($year);
@@ -1365,7 +1176,6 @@ function executive_meeting_finish_and_lock(string $year, string $meetingNumber, 
         return [false, 'The meeting could not be saved, so the year was not locked. Please try again.'];
     }
 
-    // Lock the cycle
     $lockNote = "Locked upon completion of Executive Meeting #{$meetingNumber} on " . date('d M Y', strtotime($meetingDate));
     setting_set("ay_exec_meeting_{$year}", $meetingNumber, $adminUserId);
     academic_year_set_lock($year, true, $adminUserId, $lockNote);
@@ -1373,9 +1183,6 @@ function executive_meeting_finish_and_lock(string $year, string $meetingNumber, 
     return [true, "Executive Meeting #{$meetingNumber} recorded as finished. Academic year {$year} cycle is now LOCKED for all roles."];
 }
 
-/**
- * Unlock cycle while keeping executive meeting history.
- */
 function executive_meeting_unlock(string $year, int $adminUserId, string $reason = ''): array
 {
     $note = $reason ? trim($reason) : 'Cycle unlocked by Admin for submissions before next Executive Meeting';
@@ -1388,9 +1195,6 @@ function metric_names(): array
     return $rows ?: [];
 }
 
-/**
- * Automatically update achieved_value for all record-backed targets in the targets table.
- */
 function sync_all_target_achieved(): void
 {
     $targets = db()->query("SELECT * FROM targets")->fetchAll();
@@ -1403,9 +1207,6 @@ function sync_all_target_achieved(): void
     }
 }
 
-/**
- * Automatically update achieved_value for targets matching a specific record type.
- */
 function sync_target_achieved_for_type(string $type): void
 {
     $targets = db()->query("SELECT * FROM targets")->fetchAll();
@@ -1421,10 +1222,6 @@ function sync_target_achieved_for_type(string $type): void
     }
 }
 
-/**
- * Default targets list from the CSE Executive Meeting Report Word document.
- * Fixed target details and fixed target values are sourced directly from the document.
- */
 function target_defaults(): array
 {
     return [
@@ -1476,14 +1273,6 @@ function target_defaults(): array
     ];
 }
 
-/**
- * Ensure default targets exist for a department and academic year.
- * If targets already exist, does not duplicate them (safe idempotent seed).
- *
- * $academicYear defaults to the system's active academic year — never a
- * hard-coded year — so seeding always lands in whichever year ATTS is
- * currently operating on.
- */
 function ensure_default_targets(string $department, ?string $academicYear = null, ?int $createdBy = null): int
 {
     $department = trim($department);
@@ -1499,8 +1288,12 @@ function ensure_default_targets(string $department, ?string $academicYear = null
     }
 
     $defaults = target_defaults();
-    $sql = 'INSERT INTO targets (department, academic_year, sort_order, serial_no, metric, fixed_text, target_value, target_deadline, achieved_value, status, created_by, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, \'Draft\', ?, NOW(), NOW())';
+    $hasDeadline = targets_deadline_ready();
+    $dlCol = $hasDeadline ? 'target_deadline, ' : '';
+    $dlVal = $hasDeadline ? 'NULL, ' : '';
+
+    $sql = 'INSERT INTO targets (department, academic_year, sort_order, serial_no, metric, fixed_text, target_value, ' . $dlCol . 'achieved_value, status, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ' . $dlVal . '0, \'Draft\', ?, NOW(), NOW())';
     $stmt = db()->prepare($sql);
 
     $inserted = 0;
@@ -1520,4 +1313,3 @@ function ensure_default_targets(string $department, ?string $academicYear = null
 
     return $inserted;
 }
-

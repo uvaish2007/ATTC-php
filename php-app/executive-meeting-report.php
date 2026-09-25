@@ -1,40 +1,28 @@
 <?php
-/**
- * FEAT-06 — Executive Meeting Report (filters + preview + Present).
- *
- * The report-style front end for the Executive Meeting presentation: pick the
- * filters here, see what they select, then Present opens the same filtered
- * dataset as a full-screen deck.
- *
- * Open to every signed-in role, exactly like reports.php. What each role may
- * actually see is decided server-side by em_resolve_filters() and
- * report_records(), never by the dropdowns.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/ExecutiveMeetingReport.php';
 
 $user = require_login();
 
-// Every filter is validated against this user's own scope.
 $filters = em_resolve_filters($user, [
     'department'     => input('department'),
     'academic_year'  => input('academic_year'),
     'faculty_id'     => input('faculty_id'),
     'student_reg'    => input('student_reg'),
+    'target_metric'  => input('target_metric'),   
     'meeting_number' => input('meeting_number'),
-    'em'             => input('em'),   // FEAT-07 EM1 / EM2 / All
+    'em'             => input('em'),   
 ]);
 
 $dataset = em_dataset($user, $filters);
 $slides  = em_slides($dataset);
 $summary = $dataset['summary'];
 
-// Options for the dropdowns, in the same scope the filters were resolved in.
 $departments   = departments_all();
 $years         = academic_years();
 $facultyList   = em_faculty_options($user, $filters['department']);
 $studentList   = em_student_options($user, $filters['department'], $filters['year']);
+$targetList    = em_target_options($filters['department'], $filters['year']);
 $canPickDept   = em_can_pick_department($user);
 $presentUrl    = url('present-executive-meeting.php') . '?' . http_build_query(em_filter_query($filters));
 
@@ -78,10 +66,12 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
   <?php else: ?>
-    <label class="fb-field" title="Your role reports on a fixed scope">
+    <div class="fb-field" title="Department automatically determined from your login" style="display:flex; flex-direction:column; justify-content:flex-end;">
       <span class="fb-k">Department</span>
-      <select disabled><option selected><?= e($summary['Department']) ?></option></select>
-    </label>
+      <div style="font-weight:600; font-size:13px; color:var(--color-ink,#0f172a); padding:7px 12px; background:rgba(0,0,0,0.04); border:1px solid var(--border-color,#cbd5e1); border-radius:6px; white-space:nowrap;">
+        <?= e($summary['Department']) ?>
+      </div>
+    </div>
   <?php endif; ?>
 
   <!-- Academic Year (FEAT-02 active year is the default) -->
@@ -122,9 +112,28 @@ require __DIR__ . '/inc/header.php';
     </select>
   </label>
 
+  <!-- Targets: every target type set in this scope. Open to every role; what
+       the list contains is decided by the department the server resolved. -->
+  <label class="fb-field em-target-field" title="Narrow the Target vs Achieved section to one target type">
+    <span class="fb-k">Targets</span>
+    <select name="target_metric">
+      <?php if (empty($targetList)): ?>
+        <option value="">No targets set for this scope</option>
+      <?php else: ?>
+        <option value="">All Targets</option>
+        <?php foreach ($targetList as $t): ?>
+          <option value="<?= e($t['metric']) ?>" title="<?= e($t['label']) ?>"
+                  <?= ($filters['target_metric'] ?? null) === $t['metric'] ? 'selected' : '' ?>>
+            <?= e($t['label']) ?>
+          </option>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </select>
+  </label>
+
   <!-- Executive Meeting period (FEAT-07): EM1 / EM2 from the configured schedule -->
   <label class="fb-field" title="Records submitted during EM1 or EM2, per the Executive Meeting schedule">
-    <span class="fb-k">Executive Meeting</span>
+    <span class="fb-k">EM Duration</span>
     <select name="em">
       <option value="all" <?= $filters['em'] === 'all' ? 'selected' : '' ?>>All (EM1 &amp; EM2)</option>
       <?php foreach (EM_MEETINGS as $emKey => $emName): ?>
@@ -176,6 +185,12 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
+<?php if (!empty($filters['department']) && $dataset['total'] === 0 && count($dataset['targets']) === 0): ?>
+  <div class="alert alert-warning mt-4">
+    <?= icon('info', 16) ?> No presentation data available for <?= e($summary['Department']) ?> for the selected Academic Year / Executive Meeting.
+  </div>
+<?php endif; ?>
+
 <!-- What the applied filters select -->
 <div class="card mt-4" style="border-left:4px solid var(--brand,#FF4F01);">
   <div class="card-head">
@@ -188,7 +203,8 @@ require __DIR__ . '/inc/header.php';
         in this scope
       </div>
     </div>
-    <a class="btn btn-primary em-present-btn" href="<?= e($presentUrl) ?>" title="Open the filtered report as a full-screen presentation">
+    <a class="btn btn-primary em-present-btn" href="<?= e($presentUrl) ?>" id="emPresentBtn"
+       onclick="return openPresentation(event);" title="Present the filtered report full screen">
       <?= icon('play-circle', 17) ?> PRESENT
     </a>
   </div>
@@ -199,6 +215,55 @@ require __DIR__ . '/inc/header.php';
       <?php foreach ($summary as $label => $value): ?>
         <span class="em-chip"><span class="em-chip-k"><?= e($label) ?></span><?= e($value) ?></span>
       <?php endforeach; ?>
+    </div>
+
+    <!-- FEAT: Summary of Target Achievements (First Page Preview) -->
+    <?php $ts = $dataset['target_summary'] ?? em_target_summary($dataset['targets']); ?>
+    <div class="ts-preview-box mt-4">
+      <div class="ts-preview-hdr">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="ts-preview-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="m22 2-6.5 6.5"/><path d="M12 2a10 10 0 1 0 10 10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>
+            </svg>
+          </div>
+          <div style="width:1.5px; height:24px; background:rgba(255,255,255,0.3);"></div>
+          <div>
+            <div style="font-size:11px; font-weight:600; color:#D6E4FF; line-height:1.2;">Summary of</div>
+            <div style="font-size:18px; font-weight:800; color:#FFFFFF; line-height:1.1; letter-spacing:-0.01em;">Target Achievements</div>
+          </div>
+        </div>
+        <span class="badge" style="background:rgba(255,255,255,0.15); color:#fff; border:1px solid rgba(255,255,255,0.2); font-size:11px;">Presentation Slide 1</span>
+      </div>
+      <div class="ts-preview-grid">
+        <div class="ts-pcard">
+          <div class="ts-pcard-top blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4a2 2 0 0 1 2-2h8l4 4v4"/><path d="M4 8h8"/><path d="M4 12h5"/><path d="M12 17l4.5-2.5L21 17l-4.5 2.5z"/><path d="M14 18.2v2.3a2.5 2.5 0 0 0 5 0v-2.3"/><path d="M21 17v3"/><path d="M4 16v4a2 2 0 0 0 2 2h6"/>
+            </svg>
+            <span>Number of Academic Targets</span>
+          </div>
+          <div class="ts-pcard-num blue"><?= (int) $ts['academic_targets'] ?></div>
+        </div>
+        <div class="ts-pcard">
+          <div class="ts-pcard-top green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 6-6"/>
+            </svg>
+            <span>Number of Targets Achieved</span>
+          </div>
+          <div class="ts-pcard-num green"><?= (int) $ts['targets_achieved'] ?></div>
+        </div>
+        <div class="ts-pcard">
+          <div class="ts-pcard-top amber">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span>Number of Targets In Progress</span>
+          </div>
+          <div class="ts-pcard-num amber"><?= (int) $ts['targets_in_progress'] ?></div>
+        </div>
+      </div>
     </div>
 
     <!-- Counts feeding the deck -->
@@ -273,6 +338,83 @@ require __DIR__ . '/inc/header.php';
   .em-chip-k { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
       color:var(--ink-muted,#64748b); }
   #emFilterForm .fb-field select { min-width:150px; }
+  /* Proforma metrics are long sentences; keep the filter bar readable. */
+  #emFilterForm .em-target-field select { max-width:260px; }
+
+  /* Summary of Target Achievements Preview Styles */
+  .ts-preview-box { background:#fff; border:1px solid var(--hairline,#E4E9F2); border-radius:12px; overflow:hidden; box-shadow:0 4px 14px rgba(0,0,0,0.04); }
+  .ts-preview-hdr { background:#0E2548; padding:12px 20px; display:flex; align-items:center; justify-content:space-between; }
+  .ts-preview-grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; padding:16px; background:#F8FAFC; }
+  .ts-pcard { background:#fff; border:1px solid #E2E8F0; border-radius:10px; overflow:hidden; display:flex; flex-direction:column; }
+  .ts-pcard-top { padding:12px 14px; color:#fff; display:flex; align-items:center; gap:8px; font-weight:700; font-size:13px; }
+  .ts-pcard-top.blue  { background:#1B65C5; }
+  .ts-pcard-top.green { background:#168A53; }
+  .ts-pcard-top.amber { background:#E59819; }
+  .ts-pcard-num { padding:14px; text-align:center; font-size:38px; font-weight:900; line-height:1; }
+  .ts-pcard-num.blue  { background:#EBF3FC; color:#0E3366; }
+  .ts-pcard-num.green { background:#EAF6EE; color:#0A4D20; }
+  .ts-pcard-num.amber { background:#FEF8EC; color:#7E4A05; }
+  @media (max-width:768px) { .ts-preview-grid { grid-template-columns:1fr; } }
 </style>
+
+<?php 
+?>
+<dialog id="presentDlg" class="em-present-modal" aria-label="Executive Meeting presentation">
+  <iframe id="presentFrame" title="Executive Meeting presentation" allowfullscreen allow="fullscreen"></iframe>
+</dialog>
+
+<script>  const PRESENT_URL = <?= json_encode($presentUrl) ?>;
+
+  function openPresentation(evt) {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (!dlg || !frame || typeof dlg.showModal !== 'function') return true;   // no dialog support: follow the link
+    if (evt) evt.preventDefault();
+    frame.src = PRESENT_URL + (PRESENT_URL.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    dlg.showModal();
+    frame.onload = function() {
+      try { frame.contentWindow.focus(); } catch (err) {}
+    };
+    return false;
+  }
+
+  function closePresentation() {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (dlg && dlg.open) dlg.close();
+    if (frame) frame.removeAttribute('src');    // stops the auto-advance timer
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.atts === 'em-present-close') closePresentation();
+  });
+
+  window.addEventListener('keydown', function (e) {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (!dlg || !dlg.open || !frame || !frame.contentWindow) return;
+
+    const tag = (document.activeElement || {}).tagName || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (document.activeElement || {}).isContentEditable) {
+      return;
+    }
+
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+      e.preventDefault();
+      try { frame.contentWindow.postMessage({ atts: 'em-nav', key: 'ArrowRight' }, window.location.origin); } catch (err) {}
+    } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      e.preventDefault();
+      try { frame.contentWindow.postMessage({ atts: 'em-nav', key: 'ArrowLeft' }, window.location.origin); } catch (err) {}
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      closePresentation();
+    }
+  });
+
+  document.getElementById('presentDlg').addEventListener('close', function () {
+    const frame = document.getElementById('presentFrame');
+    if (frame) frame.removeAttribute('src');
+  });</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

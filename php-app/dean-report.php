@@ -1,39 +1,15 @@
 <?php
-/**
- * FEAT-05 — Dean Report (single-page faculty achievement report).
- *
- * A clean, one-page view of the SIGNED-IN staff member's own achievements for
- * the system-wide active academic year, meant to be shown/handed to the Dean.
- *
- * Two deliberate constraints:
- *
- *  1. Identity comes from the session and nowhere else. This page never reads a
- *     faculty id from the URL, so there is no parameter to tamper with —
- *     ?id=123 is simply ignored and the signed-in user's own report is shown.
- *     (individual-faculty-report.php is the oversight view that accepts an id
- *     and gates it through can_user_view_faculty_report().)
- *
- *  2. The academic year is the global one an Admin activates (FEAT-02,
- *     active_academic_year() in models/Target.php). No year picker, no
- *     client-supplied year, nothing hard-coded.
- */
-
 require_once __DIR__ . '/inc/auth.php';
-require_once __DIR__ . '/inc/report_layout.php';      // department_full_name()
+require_once __DIR__ . '/inc/report_layout.php';      
 require_once __DIR__ . '/models/FacultyAchievement.php';
 
-// Only the roles that actually own achievement records reach this report.
-// require_role() is the project's existing gate; it bounces everyone else to
-// denied.php. Note this runs BEFORE any data is read.
 $user = require_role(['Faculty', 'Coordinator', 'HoD']);
 
 // The subject of the report is the session user — never a request parameter.
 $facultyId = (int) $user['id'];
 
-// FEAT-02: the one system-wide active academic year, set by the Admin.
 $academicYear = active_academic_year();
 
-// Existing model, existing query path — no new SQL, no new tables.
 $data    = faculty_achievement_details($facultyId, $academicYear);
 $faculty = $data['faculty'];
 $records = $data['records'];

@@ -1,15 +1,6 @@
 <?php
-/**
- * Institution-wide settings — a thin key/value store (app_settings table).
- *
- * Used for choices an Admin makes once for everyone, the first being the report
- * template every department's report must follow. Values are cached per request
- * so a page that reads the same key many times hits the database once.
- */
-
 require_once __DIR__ . '/../inc/db.php';
 
-/** The report templates on offer, and what each means. */
 function report_templates(): array
 {
     return [
@@ -18,7 +9,6 @@ function report_templates(): array
     ];
 }
 
-/** Read a setting, falling back to $default when it has never been set. */
 function setting_get(string $name, ?string $default = null): ?string
 {
     global $g_settings_cache;
@@ -36,7 +26,6 @@ function setting_get(string $name, ?string $default = null): ?string
     return $g_settings_cache[$name] ?? $default;
 }
 
-/** Write a setting (upsert), stamping who changed it. */
 function setting_set(string $name, string $value, ?int $userId = null): void
 {
     global $g_settings_cache;
@@ -52,7 +41,6 @@ function setting_set(string $name, string $value, ?int $userId = null): void
     $stmt->execute([$name, $value, $userId]);
 }
 
-/** The active report template, validated against the known list. */
 function active_report_template(): string
 {
     $t = (string) setting_get('report_template', 'full');

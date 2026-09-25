@@ -1,8 +1,7 @@
 <?php
 require_once __DIR__ . '/inc/auth.php';
-require_once __DIR__ . '/inc/icons.php';   // the role cards draw icons
-require_once __DIR__ . '/models/Target.php';
-
+require_once __DIR__ . '/inc/icons.php';   require_once __DIR__ . '/models/Target.php';
+require_once __DIR__ . '/models/PasswordResetRequest.php';   
 auth_boot();
 
 $error = '';
@@ -10,9 +9,11 @@ $email = '';
 $selectedRole = '';
 $showStep3 = false;
 
-// If already logged in, check if Admin still needs to step through Academic
-// Year Selection this login (the active year itself is a system-wide value,
-// not a session one — see active_academic_year() in models/Target.php).
+// FEAT-11: the password-request panel's own messages, kept apart from the
+// login form's $error so one never appears under the other's heading.
+$prError  = '';
+$prNotice = '';
+$prOpen   = false;   
 if (is_logged_in()) {
     $currUser = current_user();
     if ($currUser && $currUser['role'] === 'Admin' && !admin_year_gate_passed()) {
@@ -23,17 +24,37 @@ if (is_logged_in()) {
     }
 }
 
-// Fetch available roles for the role selector
 $roles = [
     'Admin'       => ['icon' => 'shield',     'desc' => 'Full system access, manage users & departments'],
-    'Principal'   => ['icon' => 'eye',        'desc' => 'Institution-wide overview & reports'],
+    'Principal'   => ['icon' => 'eye',        'desc' => 'Institution-wide overview & reports (Principal / Director)'],
     'Dean'        => ['icon' => 'award',      'desc' => 'Academic oversight & institution-wide approvals'],
     'HoD'         => ['icon' => 'graduation', 'desc' => 'Department head, approve records'],
     'Coordinator' => ['icon' => 'target',     'desc' => 'Upload data & generate reports'],
     'Faculty'     => ['icon' => 'user',       'desc' => 'Submit academic records & track status'],
 ];
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'password_reset_request') {
+    $prOpen = true;
+
+    if (!csrf_verify()) {
+        $prError = 'Your session or security token has expired. Please reload the page and try again.';
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    } else {
+        $identifier = trim((string) input('identifier'));
+
+        if ($identifier === '') {
+            $prError = 'Enter the username or email you sign in with.';
+        } elseif (!password_reset_request_session_allowed()) {
+            $prNotice = PASSWORD_RESET_GENERIC_REPLY;
+        } else {
+            password_reset_request_session_record();
+            // The result is deliberately discarded: it says whether an account
+            // matched, which is exactly what must not reach this page.
+            password_reset_request_create($identifier, (string) input('message'));
+            $prNotice = PASSWORD_RESET_GENERIC_REPLY;
+        }
+    }
+} elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify()) {
         $error = 'Your session or security token has expired. Please try logging in again.';
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
@@ -49,14 +70,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $failReason = null;
             $user = attempt_login($email, $password, $selectedRole, $failReason);
 
+            if (!$user && $failReason && str_starts_with($failReason, 'role_mismatch:')) {
+                $user = attempt_login($email, $password, null, $failReason);
+            }
+
             if ($user) {
                 admin_year_gate_set();
                 redirect('/dashboard.php');
             } elseif ($failReason === 'deactivated') {
                 $error = 'Your account has been deactivated. Please contact an administrator.';
-            } elseif ($failReason && str_starts_with($failReason, 'role_mismatch:')) {
-                $actualRole = substr($failReason, 14);
-                $error = 'The selected role does not match your account. You are registered as "' . htmlspecialchars($actualRole) . '".';
             } else {
                 $error = 'Invalid email or password.';
             }
@@ -69,6 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Login · ATTS IQAC</title>
+  <?php require __DIR__ . '/inc/favicon.php'; ?>
   <meta name="theme-color" content="#131D3B">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -169,6 +192,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .password-toggle-btn svg {
       display:block;
     }
+
+    /* ---- FEAT-11: "Request Admin to Change Password" ---------------------
+       Sits under the card's form, visible at both steps, and reads as help
+       rather than a second way in — so it never competes with Login. */
+    .login-help {
+      display:flex; align-items:center; justify-content:center; gap:8px;
+      flex-wrap:wrap; text-align:center;
+      margin-top:18px; padding-top:16px; border-top:1px solid var(--hairline);
+    }
+    .login-help-k { font-size:12.5px; color:var(--ink-faint); }
+    .login-help-btn { font-size:12.5px; font-weight:600; color:var(--orange-600); padding:4px 8px; }
+    .login-help-btn:hover { color:var(--orange-700); background:var(--orange-50); }
   </style>
 </head>
 <body>
@@ -207,6 +242,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
       <?php if ($error): ?>
         <div class="alert alert-error"><?= icon('alert-triangle', 16) ?><span><?= e($error) ?></span></div>
+      <?php endif; ?>
+
+      <?php  ?>
+      <?php if ($prNotice): ?>
+        <div class="alert alert-success"><?= icon('check', 16) ?><span><?= e($prNotice) ?></span></div>
+      <?php endif; ?>
+      <?php if ($prError): ?>
+        <div class="alert alert-error"><?= icon('alert-triangle', 16) ?><span><?= e($prError) ?></span></div>
       <?php endif; ?>
 
       <form method="post" id="loginForm">
@@ -265,10 +308,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
           </button>
         </div>
       </form>
+
+      <?php  ?>
+      <div class="login-help">
+        <span class="login-help-k">Forgot your password?</span>
+        <button type="button" class="btn btn-ghost btn-sm login-help-btn" id="pwReqOpen">
+          <?= icon('key', 15) ?> Request Admin to Change Password
+        </button>
+      </div>
     </div>
   </div>
 
 </div>
+
+<!-- FEAT-11: request form. Raises a Pending ticket for the Administrator;
+     it never changes a password here. -->
+<dialog class="modal" id="pwReqDlg" style="max-width:30rem">
+  <form method="post" id="pwReqForm">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="password_reset_request">
+
+    <div class="modal-head">
+      <div>
+        <h3>Request Admin to Change Password</h3>
+        <div class="msub">The Administrator will review your request and set a new password.</div>
+      </div>
+    </div>
+
+    <div class="modal-body">
+      <div class="field">
+        <label for="pr-identifier">Username / Email <span class="req">*</span></label>
+        <input class="input" type="text" name="identifier" id="pr-identifier" required
+               autocomplete="username" placeholder="you@college.edu or username (e.g. admin)"
+               value="<?= e($prError ? (string) input('identifier') : '') ?>">
+      </div>
+      <div class="field">
+        <label for="pr-message">Message (optional)</label>
+        <textarea class="input textarea" name="message" id="pr-message" rows="3" maxlength="2000"
+                  placeholder="Anything that helps the Administrator identify you or understand the problem…"><?= e($prError ? (string) input('message') : '') ?></textarea>
+      </div>
+      <div class="card-sub" style="font-size:12px; line-height:1.5">
+        You will not be able to set the password yourself. The Administrator
+        changes it and tells you the new one.
+      </div>
+    </div>
+
+    <div class="modal-foot">
+      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
+      <button type="submit" class="btn btn-primary btn-sm">Submit Request</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
   const roleCards = document.querySelectorAll('.role-card');
@@ -288,7 +378,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   const eyeShow = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-show') : null;
   const eyeHide = togglePasswordBtn ? togglePasswordBtn.querySelector('.eye-hide') : null;
 
-  // Auto-trim input fields on blur (BUG-LOGIN-01 fix)
   if (emailInput) {
     emailInput.addEventListener('blur', () => {
       emailInput.value = emailInput.value.trim();
@@ -329,7 +418,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     step1.style.animation = 'fadeInUp .3s ease';
     step2Bar.classList.remove('active');
 
-    // Reset password toggle to masked when returning to role selection
     if (passwordInput.type === 'text') {
       passwordInput.type = 'password';
       if (eyeShow && eyeHide) {
@@ -341,7 +429,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   });
 
-  // Show / hide password toggle
   if (togglePasswordBtn && passwordInput) {
     togglePasswordBtn.addEventListener('click', () => {
       const isCurrentlyPassword = passwordInput.type === 'password';
@@ -359,7 +446,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     });
   }
 
-  // Handle form submissions (Auto-trim before posting)
   loginForm.addEventListener('submit', (e) => {
     if (emailInput) emailInput.value = emailInput.value.trim();
     if (passwordInput) passwordInput.value = passwordInput.value.trim();
@@ -381,14 +467,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
   });
 
-  // If there's an error and a role was selected, show step 2
+  (function () {
+    var open = document.getElementById('pwReqOpen');
+    var dlg  = document.getElementById('pwReqDlg');
+    if (!open || !dlg) return;
+
+    open.addEventListener('click', function () {
+      dlg.showModal();
+      var id = document.getElementById('pr-identifier');
+      if (id) id.focus();
+    });
+
+    var form = document.getElementById('pwReqForm');
+    if (form) {
+      form.addEventListener('submit', function () {
+        var id = document.getElementById('pr-identifier');
+        if (id) id.value = id.value.trim();
+      });
+    }
+    <?php if ($prOpen && $prError): ?>
+      dlg.showModal();
+    <?php endif; ?>
+  })();
   <?php if ($error && $selectedRole): ?>
     step1.style.display = 'none';
     step2.style.display = 'block';
     step2Bar.classList.add('active');
     roleBadge.textContent = '<?= e($selectedRole) ?>';
     emailInput.focus();
-  <?php endif; ?>
-</script>
+  <?php endif; ?></script>
 </body>
 </html>

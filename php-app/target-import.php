@@ -1,18 +1,4 @@
 <?php
-/**
- * Bulk-import department targets from a CSV file — with a preview step.
- *
- * The HoD downloads the template, fills a row per target, uploads it, and sees a
- * preview: every row is validated and marked OK or "Needs review" (with the
- * reason) BEFORE anything is written. On confirm, the OK rows are inserted as
- * Drafts in the HoD's own department — exactly as if typed on the Targets page —
- * so they then flow through the normal send-for-review workflow. Bad rows are
- * never saved and never silently dropped: they are shown so they can be fixed.
- *
- * Import is HoD-only and always into the HoD's own department, mirroring
- * target_create() (an Admin freezes/unlocks targets; a HoD enters them).
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 
@@ -23,33 +9,21 @@ $department  = (string) ($user['department'] ?? 'CSE');
 $activeYear  = active_academic_year();
 $SESSION_KEY = 'target_import_preview';
 
-/** The columns the template and parser use, in order. */
 $columns = ['metric', 'target_value', 'academic_year', 'coordinator', 'remarks'];
 
-/* -------------------------------------------------------------------------
-   Template download:  target-import.php?template=1
-   ---------------------------------------------------------------------- */
 if (($_GET['template'] ?? '') !== '') {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="target-import-template.csv"');
     $out = fopen('php://output', 'w');
-    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // BOM so Excel reads UTF-8
+    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); 
     fputcsv($out, $columns, ',', '"', '');
-    // Two example rows to show the shape (delete before importing).
+
     fputcsv($out, ['Journal Publications', '45', $activeYear, 'Dr. A. Kumar', 'SCI / Scopus indexed'], ',', '"', '');
     fputcsv($out, ['Patents Filed', '10', $activeYear, '', ''], ',', '"', '');
     fclose($out);
     exit;
 }
 
-/**
- * Validate one raw CSV row into a preview row.
- *
- * A target always lands in the system's active academic year (same rule
- * target_create() itself enforces) — the CSV's academic_year column, if any,
- * is shown back for reference but never trusted or used for the insert.
- * Returns [normalisedRow, error|null].
- */
 function import_validate_row(array $raw, string $activeYear): array
 {
     $metric = trim((string) ($raw['metric'] ?? ''));
@@ -78,15 +52,8 @@ function import_validate_row(array $raw, string $activeYear): array
     return [$row, null];
 }
 
-/* -------------------------------------------------------------------------
-   POST: upload -> parse -> preview  |  confirm -> insert  |  cancel -> clear
-   ---------------------------------------------------------------------- */
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
-    if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
-        flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Target importing is disabled.");
-        redirect('/target-import.php');
-    }
     $action = (string) input('action');
 
     if ($action === 'cancel') {
@@ -102,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             flash('error', 'Choose a CSV file to upload.');
             redirect('/target-import.php');
         }
-        if ($file['size'] > 1048576) { // 1 MB is plenty for a target list
+        if ($file['size'] > 1048576) { 
             flash('error', 'That file is too large (max 1 MB).');
             redirect('/target-import.php');
         }
@@ -113,13 +80,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect('/target-import.php');
         }
 
-        // First non-empty line is the header. Map its names to our columns.
         $header = null;
         $rows   = [];
         $okCount = 0;
 
         while (($cells = fgetcsv($handle, 0, ',', '"', '')) !== false) {
-            // Skip completely blank lines.
             if ($cells === [null] || (count($cells) === 1 && trim((string) $cells[0]) === '')) {
                 continue;
             }

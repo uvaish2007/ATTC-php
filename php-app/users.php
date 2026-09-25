@@ -7,8 +7,7 @@ $user = require_role(['Admin']);
 require_module('users');
 
 $allRoles = ['Admin','Principal','Dean','HoD','Coordinator','Faculty'];
-// A Principal account may still be stored under the older name "Director";
-// auth treats the two as one role (see inc/auth.php).
+
 $validRoles = array_merge($allRoles, ['Director']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -32,8 +31,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($ok ? 'success' : 'error', $msg);
     }
 
-    // Back to the same filtered view the change was made from (the dialogs
-    // post to the current URL, so the filters are still in the query string).
     $back = array_filter(['q' => $_GET['q'] ?? '', 'role' => $_GET['role'] ?? '', 'department' => $_GET['department'] ?? ''],
                          fn($v) => is_string($v) && trim($v) !== '');
     redirect('/users.php' . ($back ? '?' . http_build_query($back) : ''));
@@ -46,32 +43,41 @@ $users = users_all($roleFilter?:null, $deptFilter?:null, $search?:null);
 $departments = departments_all();
 $uActive = ($search ? 1 : 0) + ($roleFilter ? 1 : 0) + ($deptFilter ? 1 : 0);
 
-// ---- Categorise by department -------------------------------------------------
-// Institution-level accounts (no department) come first, then each department
-// in the Departments list's order, then any department a user still carries
-// that is no longer on that list — so nobody silently drops out of view.
-// Within a group: by role, most senior first, then by name.
 $roleRank  = ['Admin' => 0, 'Principal' => 1, 'Director' => 1, 'Dean' => 2, 'HoD' => 3, 'Coordinator' => 4, 'Faculty' => 5];
 $shownRole = fn(string $r) => $r === 'Director' ? 'Principal' : $r;
 $deptKey   = fn(string $name) => mb_strtolower(trim($name));
 
+// A user's department is a code on some rows ("AERO") and a full name on
+// others, so index each department under both spellings.
 $deptIndex = [];
 $deptOrder = ['__institution' => -1];
 foreach ($departments as $i => $d) {
-    $deptIndex[$deptKey($d['name'])] = $d;
-    $deptOrder[$deptKey($d['name'])] = $i;
+    foreach ([$d['code'] ?? '', $d['name'] ?? ''] as $alias) {
+        $alias = $deptKey((string) $alias);
+        if ($alias === '') {
+            continue;
+        }
+        $deptIndex[$alias] = $d;
+        $deptOrder[$alias] = $i;
+    }
 }
 
 $userGroups = [];
 foreach ($users as $u) {
-    $raw = trim((string) ($u['department'] ?? ''));
-    $key = $raw === '' ? '__institution' : $deptKey($raw);
+    $raw   = trim((string) ($u['department'] ?? ''));
+    $known = $deptIndex[$deptKey($raw)] ?? null;
+
+    // One key per department, whichever spelling the row used.
+    $key = $raw === ''
+        ? '__institution'
+        : ($known ? $deptKey((string) ($known['code'] ?: $known['name'])) : $deptKey($raw));
+
     if (!isset($userGroups[$key])) {
         if ($key === '__institution') {
             $userGroups[$key] = ['kind' => 'institution', 'name' => 'Institution', 'code' => null, 'dept' => ''];
-        } elseif (isset($deptIndex[$key])) {
-            $userGroups[$key] = ['kind' => 'department', 'name' => $deptIndex[$key]['name'],
-                                 'code' => $deptIndex[$key]['code'] ?: $deptIndex[$key]['name'], 'dept' => $deptIndex[$key]['name']];
+        } elseif ($known) {
+            $userGroups[$key] = ['kind' => 'department', 'name' => $known['name'],
+                                 'code' => $known['code'] ?: $known['name'], 'dept' => $known['name']];
         } else {
             $userGroups[$key] = ['kind' => 'unlisted', 'name' => $raw, 'code' => null, 'dept' => $raw];
         }
@@ -301,9 +307,6 @@ function editUser(id,d){
 function resetPw(id,n){document.getElementById('pw-id').value=id;document.getElementById('pw-name').textContent=n;document.getElementById('pwDlg').showModal();}
 function deleteUser(id,n){document.getElementById('del-id').value=id;document.getElementById('del-name').textContent=n;document.getElementById('delDlg').showModal();}
 
-/* Add, optionally straight into a department (from a group header or an
-   empty-department chip). A user added to a department is most often
-   Faculty, so that becomes the starting role there. */
 function openAdd(dept){
   var dlg=document.getElementById('addDlg');
   document.getElementById('add-dept').value=dept||'';
@@ -312,7 +315,6 @@ function openAdd(dept){
   dlg.showModal();
 }
 
-/* ---- Department groups: collapse/expand, remembered between visits -------- */
 (function(){
   var groups=Array.prototype.slice.call(document.querySelectorAll('.ug-group'));
   var toggle=document.getElementById('ugToggle');
@@ -344,11 +346,6 @@ function openAdd(dept){
   sync();
 })();
 
-/* ---- Come back to the row that was just changed ---------------------------
-   The page reloads after every save; on a long grouped list that would drop
-   the Admin back at the top. Edit and password reset return to (and briefly
-   mark) the row; delete returns to where the list was. A failed save stays at
-   the top, where its error message is. */
 (function(){
   var KEY='atts.users.return';
   document.querySelectorAll('dialog form').forEach(function(f){
@@ -370,6 +367,5 @@ function openAdd(dept){
   }else if(saved.action==='delete'){
     window.scrollTo(0,saved.y||0);
   }
-})();
-</script>
+})();</script>
 <?php require __DIR__ . '/inc/footer.php'; ?>

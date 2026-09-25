@@ -1,41 +1,32 @@
 <?php
-/**
- * Individual Faculty Achievement Report — Staff-only self-service report & oversight inspection view.
- * Displays faculty details, achievement summary, category breakdown chart, and category-wise record tables.
- * Backend authorization strictly enforced via can_user_view_faculty_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/FacultyAchievement.php';
 require_once __DIR__ . '/models/User.php';
 
 $user = require_login();
 
-// Target faculty ID defaults to logged-in user if not supplied
 $targetFacultyId = (int) input('id', 0);
 if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
-// ---- STRICT BACKEND AUTHORIZATION CHECK ----
-// Verifies self-access or authorized oversight (Admin/Principal/Director/Dean/HoD of department)
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
     exit;
 }
 
-// Filters
-$academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
+$em           = $emCtx['em'];
+$emWindow     = $emCtx['window'];
 $category     = trim((string) input('category', '')) ?: null;
 
-// FEAT-02 global active year, kept separate from the filter above: the Dean
-// Report (FEAT-05) always covers the active year, whatever this page is
-// currently filtered to.
 $activeYear = active_academic_year();
 
-// Fetch data
-$data    = faculty_achievement_details($targetFacultyId, $academicYear, $category);
+$data    = faculty_achievement_details($targetFacultyId, $academicYear, $category, $emWindow);
 $faculty = $data['faculty'];
 $records = $data['records'];
 $byCat   = $data['by_category'];
@@ -53,11 +44,11 @@ if (!$faculty) {
 $years = academic_years();
 $isSelf = (int) $user['id'] === $targetFacultyId;
 
-// Export query links
 $exportQ = array_filter([
     'id'            => $targetFacultyId,
     'academic_year' => $academicYear,
     'category'      => $category,
+    'em'            => ($em !== 'all') ? $em : null,
 ]);
 $exportLink = fn(string $fmt) => e(url('export-individual-faculty-report.php')) . '?' . http_build_query($exportQ + ['format' => $fmt]);
 
@@ -77,11 +68,11 @@ require __DIR__ . '/inc/header.php';
 
   <div class="actions flex gap-2 items-center" style="flex-wrap:wrap;">
     <?php if (!$isSelf): ?>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
-        <?= icon('arrow-left', 14) ?> Back to Reports
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Back to Faculty Achievements">
+        <?= icon('award', 14) ?> Faculty Achievements
       </a>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('faculty-achievements.php')) ?>" title="Go to Performance Matrix">
-        <?= icon('award', 14) ?> Performance Matrix
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('reports.php')) ?>" title="Return to Reports Hub">
+        <?= icon('reports', 14) ?> Reports Hub
       </a>
     <?php endif; ?>
 
@@ -89,7 +80,7 @@ require __DIR__ . '/inc/header.php';
       <?= icon('refresh', 14) ?> Refresh
     </a>
 
-    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
+    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>&from=individual" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
       <?= icon('play-circle', 14) ?> Present Report
     </a>
 
@@ -110,6 +101,11 @@ require __DIR__ . '/inc/header.php';
         </a>
         <a class="dropdown-item" href="<?= $exportLink('csv') ?>" style="display:flex; align-items:center; gap:8px; padding:8px 16px; font-weight:500;">
           <?= icon('download', 14) ?> Export CSV
+        </a>
+        <!-- Faculty Details: the A4 document (personal details, achievements,
+             document status, declaration, signature) for this same faculty id. -->
+        <a class="dropdown-item" href="<?= e(url('faculty-details-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>" target="_blank" rel="noopener" style="display:flex; align-items:center; gap:8px; padding:8px 16px; font-weight:500; border-top:1px solid var(--hairline,#E6EAF2);">
+          <?= icon('user', 14) ?> Faculty Details (A4 PDF)
         </a>
       </div>
     </div>
@@ -152,12 +148,25 @@ require __DIR__ . '/inc/header.php';
   <input type="hidden" name="id" value="<?= $targetFacultyId ?>">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filter Report</span>
 
-  <label class="fb-field">
+  <label class="fb-field" title="Filter by Academic Year">
     <span class="fb-k">Academic Year</span>
     <select name="academic_year" onchange="this.form.submit()">
-      <option value="">All Academic Years</option>
       <?php foreach ($years as $y): ?>
-        <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>><?= e($y) ?></option>
+        <option value="<?= e($y) ?>" <?= $academicYear === $y ? 'selected' : '' ?>>
+          <?= e($y) ?><?= $y === $activeYear ? ' (Active)' : '' ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+
+  <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
+    <span class="fb-k">EM Duration</span>
+    <select name="em" onchange="this.form.submit()">
+      <option value="all" <?= $em === 'all' ? 'selected' : '' ?>>All</option>
+      <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
+        <option value="<?= e($emKey) ?>" <?= $em === $emKey ? 'selected' : '' ?>>
+          <?= e(em_filter_label($emKey, $academicYear)) ?>
+        </option>
       <?php endforeach; ?>
     </select>
   </label>
@@ -346,6 +355,7 @@ require __DIR__ . '/inc/header.php';
 <?php endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="<?= e(url('assets/js/charts.js')) ?>"></script>
 <script>
 function toggleExportMenu(evt) {
   evt.stopPropagation();
@@ -357,35 +367,16 @@ document.addEventListener('click', () => {
   if (m) m.style.display = 'none';
 });
 
-(function() {
-  const summaryData = <?= json_encode($summary) ?>;
-  const ctx = document.getElementById('indivDistChart');
-  if (!ctx || !summaryData || Object.keys(summaryData).length === 0) return;
+(function () {
+  const summary = <?= json_encode($summary) ?>;
+  if (!summary || !Object.keys(summary).length) return;
 
-  const labels = Object.keys(summaryData);
-  const dataVals = Object.values(summaryData);
-  const colors = ['#FF4F01', '#2563EB', '#059669', '#F59E0B', '#6B7FA8', '#DC2626', '#33456B', '#FF9970'];
-
-  new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: labels,
-      datasets: [{
-        data: dataVals,
-        backgroundColor: colors.slice(0, labels.length),
-        borderWidth: 2,
-        borderColor: '#ffffff'
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }
-      }
-    }
+  ATTS.charts.donut('indivDistChart', {
+    labels:      Object.keys(summary),
+    data:        Object.values(summary),
+    centreLabel: 'records',
+    empty:       'Nothing recorded yet'
   });
-})();
-</script>
+})();</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

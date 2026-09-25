@@ -1,24 +1,9 @@
 <?php
-/**
- * Record Report — any record type rendered as its official IQAC template.
- *
- * The columns and title come from inc/record_specs.php (built from the Excel/Word
- * templates). Data is that type's records, role-scoped. A single-department
- * report drops the "Dept" column and shows DEPARTMENT OF <name> in the heading
- * (the Word template); an all-departments report keeps the Dept column (the
- * Excel template).
- *
- *   ?type=journal   which report
- *   ?department=CSE oversight roles may pick one (or omit for all)
- *   ?year=2025-26   the academic year in the title (and filter, where records carry one)
- *   ?format=word|excel|pdf
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/inc/record_specs.php';
 require_once __DIR__ . '/models/Record.php';
-require_once __DIR__ . '/models/Target.php';   // academic_years()
+require_once __DIR__ . '/models/Target.php';   
 
 $user = require_login();
 
@@ -34,6 +19,7 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
     $format = 'word';
 }
 
+<<<<<<< HEAD
 // Scope: oversight roles choose a department (or all); everyone else is pinned
 // to their own. This mirrors report_records()'s own scoping.
 $isOversight  = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
@@ -43,19 +29,25 @@ $department   = $isOversight ? (trim((string) input('department')) ?: null) : ($
 // directly, not only through reports.php's own, already year-locked links).
 $year         = active_academic_year();
 $singleDept   = $department !== null;
+=======
+$isOversight  = user_can_choose_department($user);
+$department   = user_department_scope($user, input('department'));
 
-// Optional review-status and submission-period filters (from the Reports page).
+$rawYear = input('academic_year') ?: input('year');
+$emCtx   = em_resolve_filter_context($rawYear, input('em'));
+$year    = $emCtx['year'];
+$em      = $emCtx['em'];
+$singleDept = $department !== null;
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
+
 $status = trim((string) input('status')) ?: null;
 if (!in_array($status, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) { $status = null; }
 $from = parse_date_input((string) input('from'));
 $to   = parse_date_input((string) input('to'));
-// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
-[$from, $to] = em_intersect_period(em_filter_value(input('em')), $from, $to, $year);
+[$from, $to] = em_intersect_period($em, $from, $to, $year);
 
-// Records of this type, in the user's scope and the active year, newest first.
 $records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to, $year);
 
-// Columns: drop the consolidated "Dept" column for a single-department report.
 $columns = array_values(array_filter($spec['columns'], fn($c) => !($singleDept && $c[1] === 'department')));
 
 $deptFullName = $singleDept ? department_full_name((string) $department) : null;
@@ -103,8 +95,11 @@ if ($format === 'word') {
         'Report Date: ' . $today
     ];
 
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
-        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, mb_substr($spec['title'], 0, 31), $metaLines)
+    $xlsxData = class_exists('SimpleXlsxWriter')
+        ? SimpleXlsxWriter::createXlsx($headers,
+            array_merge($exportRows, report_signoff_rows(
+                report_signoff_columns($singleDept ? $deptFullName : null), count($headers))),
+            mb_substr($spec['title'], 0, 31), $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -126,13 +121,9 @@ report_document_head($spec['title'], 'landscape');
 ?>
 
 <?php if ($format === 'pdf'): ?>
-  <div class="pdf-bar" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;
-       display:flex;align-items:center;justify-content:space-between;font-family:Arial,sans-serif;margin:-1.4cm -1.2cm 16px">
-    <span style="font-size:13px">Use your browser's print dialog and choose <strong>Save as PDF</strong>.</span>
-    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;
-       padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Print / Save as PDF</button>
-  </div>
-  <style>@media print { .pdf-bar { display:none !important; } }</style>
+  <?php report_pdf_bar($spec['title'], [$deptFullName ?? $deptLabel,
+      $year !== null ? 'AY ' . $year : 'All academic years',
+      number_format(count($records)) . ' records']); ?>
 <?php endif; ?>
 
 <?php
@@ -188,5 +179,9 @@ report_letterhead($mainTitle, $meta, $headingLines);
   </table>
 
 <?php
+<<<<<<< HEAD
 report_signoff(['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
+=======
+report_signoff(report_signoff_columns($singleDept ? $deptFullName : null));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 report_document_foot();

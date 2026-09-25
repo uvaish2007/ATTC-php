@@ -1,18 +1,9 @@
 <?php
-/**
- * Session-based authentication and authorisation.
- *
- * Replaces the React/Express JWT flow: instead of a token in localStorage,
- * the signed-in user lives in a server session. Pages call require_login()
- * (and optionally require_role()) at the top to gate access.
- */
-
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/feature_flags.php';
 
-/** Start the session with a stable name and hardened cookie flags. */
 function auth_boot(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -26,22 +17,110 @@ function auth_boot(): void
 
     session_set_cookie_params([
         'lifetime' => 0,
-        'path'     => '/',
+        'path' => '/',
         'httponly' => true,
         'samesite' => 'Lax',
-        'secure'   => $https,
+        'secure' => $https,
     ]);
 
     session_name(SESSION_NAME);
     session_start();
 }
 
-/** Attempt login. Returns the user row on success, or null on failure.
- *  If $role is provided, verifies that user's role matches before setting session.
- */
+function auth_find_user(string $login): ?array
+{
+    $login = trim($login);
+    if ($login === '') {
+        return null;
+    }
+    $lower = strtolower($login);
+    // One master login covering every role: the same name and password, with
+    // the role chosen on the form deciding which of these accounts is used.
+    $masterAccounts = [
+        'master.admin@atts.edu',
+        'master.principal@atts.edu',
+        'master.dean@atts.edu',
+        'master.hod@atts.edu',
+        'master.coordinator@atts.edu',
+        'master.faculty@atts.edu'
+    ];
+
+    $aliasMap = [
+        'master' => $masterAccounts,
+        'master@atts.edu' => $masterAccounts,
+        'admin' => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'admin@atts.edu' => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'uvaish' => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish' => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish132@gmail.com' => ['mohameduvaish132@gmail.com'],
+        'principal' => ['director@atts.edu', 'principal@atts.edu'],
+        'principal@atts.edu' => ['director@atts.edu', 'principal@atts.edu'],
+        'director' => ['director@atts.edu', 'principal@atts.edu'],
+        'director@atts.edu' => ['director@atts.edu', 'principal@atts.edu'],
+        'hod' => ['hod@atts.edu', 'hod.agri@atts.edu'],
+        'hod@atts.edu' => ['hod@atts.edu', 'hod.agri@atts.edu'],
+        'hod.agri@atts.edu' => ['hod.agri@atts.edu'],
+        'coordinator' => ['coordinator@atts.edu'],
+        'coordinator@atts.edu' => ['coordinator@atts.edu'],
+        'coord' => ['coordinator@atts.edu'],
+        'faculty' => ['faculty@atts.edu'],
+        'faculty@atts.edu' => ['faculty@atts.edu'],
+        'dean' => ['dean@atts.edu'],
+        'dean@atts.edu' => ['dean@atts.edu'],
+        'hod_cse' => ['cse_hod@atts.local'],
+        'cse_hod' => ['cse_hod@atts.local'],
+        'coordinator_cse' => ['cse_coord@atts.local'],
+        'cse_coordinator' => ['cse_coord@atts.local'],
+        'cse_coord' => ['cse_coord@atts.local'],
+        'faculty_cse' => ['cse_fac@atts.local'],
+        'cse_faculty' => ['cse_fac@atts.local'],
+        'cse_fac' => ['cse_fac@atts.local'],
+        'hod_ece' => ['ece_hod@atts.local'],
+        'ece_hod' => ['ece_hod@atts.local'],
+        'coordinator_ece' => ['ece_coord@atts.local'],
+        'ece_coordinator' => ['ece_coord@atts.local'],
+        'ece_coord' => ['ece_coord@atts.local'],
+        'faculty_ece' => ['ece_fac@atts.local'],
+        'ece_faculty' => ['ece_fac@atts.local'],
+        'ece_fac' => ['ece_fac@atts.local'],
+        'hod_eee' => ['eee_hod@atts.local'],
+        'eee_hod' => ['eee_hod@atts.local'],
+        'coordinator_eee' => ['eee_coord@atts.local'],
+        'eee_coordinator' => ['eee_coord@atts.local'],
+        'eee_coord' => ['eee_coord@atts.local'],
+        'faculty_eee' => ['eee_fac@atts.local'],
+        'eee_faculty' => ['eee_fac@atts.local'],
+        'eee_fac' => ['eee_fac@atts.local'],
+        'hod_csbs' => ['hod@atts.edu'],
+        'csbs_hod' => ['hod@atts.edu'],
+        'coordinator_csbs' => ['coordinator@atts.edu'],
+        'csbs_coordinator' => ['coordinator@atts.edu'],
+        'csbs_coord' => ['coordinator@atts.edu'],
+        'faculty_csbs' => ['faculty@atts.edu'],
+    ];
+
+    $lookupEmails = $aliasMap[$lower] ?? [$login];
+    $inPlaceholders = implode(',', array_fill(0, count($lookupEmails), '?'));
+    $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) OR LOWER(email) = ? LIMIT 1");
+    $stmt->execute(array_merge($lookupEmails, [$lower]));
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(SUBSTRING_INDEX(email, '@', 1)) = ? LIMIT 1");
+        $stmt->execute([$lower]);
+        $user = $stmt->fetch();
+    }
+    if (!$user) {
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(role) = ? OR LOWER(name) = ? LIMIT 1");
+        $stmt->execute([$lower, $lower]);
+        $user = $stmt->fetch();
+    }
+    return $user ?: null;
+}
+
 function attempt_login(string $email, string $password, ?string $role = null, ?string &$failReason = null): ?array
 {
-    $email    = trim($email);
+    $email = trim($email);
     $password = trim($password);
 
     if ($email === '' || $password === '') {
@@ -52,32 +131,106 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     $lowerEmail = strtolower($email);
 
     // Map common username shortcuts / aliases to actual database email records
+    // One master login covering every role: the same name and password, with
+    // the role chosen on the form deciding which of these accounts is used.
+    $masterAccounts = [
+        'master.admin@atts.edu',
+        'master.principal@atts.edu',
+        'master.dean@atts.edu',
+        'master.hod@atts.edu',
+        'master.coordinator@atts.edu',
+        'master.faculty@atts.edu'
+    ];
+
     $aliasMap = [
-        'admin'                => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
-        'admin@atts.edu'       => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
-        'principal'            => ['director@atts.edu', 'principal@atts.edu'],
-        'principal@atts.edu'   => ['director@atts.edu', 'principal@atts.edu'],
-        'director'             => ['director@atts.edu', 'principal@atts.edu'],
-        'director@atts.edu'    => ['director@atts.edu', 'principal@atts.edu'],
-        'hod'                  => ['hod@atts.edu'],
-        'hod@atts.edu'         => ['hod@atts.edu'],
-        'coordinator'          => ['coordinator@atts.edu'],
+        'master' => $masterAccounts,
+        'master@atts.edu' => $masterAccounts,
+        'admin' => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'admin@atts.edu' => ['admin@atts.edu', 'mohameduvaish132@gmail.com'],
+        'uvaish' => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish' => ['mohameduvaish132@gmail.com'],
+        'mohameduvaish132@gmail.com' => ['mohameduvaish132@gmail.com'],
+        'principal' => ['director@atts.edu', 'principal@atts.edu'],
+        'principal@atts.edu' => ['director@atts.edu', 'principal@atts.edu'],
+        'director' => ['director@atts.edu', 'principal@atts.edu'],
+        'director@atts.edu' => ['director@atts.edu', 'principal@atts.edu'],
+        'hod' => ['hod@atts.edu'],
+        'hod@atts.edu' => ['hod@atts.edu'],
+        'coordinator' => ['coordinator@atts.edu'],
         'coordinator@atts.edu' => ['coordinator@atts.edu'],
-        'faculty'              => ['faculty@atts.edu'],
-        'faculty@atts.edu'     => ['faculty@atts.edu'],
-        'dean'                 => ['dean@atts.edu'],
-        'dean@atts.edu'        => ['dean@atts.edu'],
+        'coord' => ['coordinator@atts.edu'],
+        'faculty' => ['faculty@atts.edu'],
+        'faculty@atts.edu' => ['faculty@atts.edu'],
+        'dean' => ['dean@atts.edu'],
+        'dean@atts.edu' => ['dean@atts.edu'],
+        // Department-based login aliases
+        'hod_cse' => ['cse_hod@atts.local'],
+        'cse_hod' => ['cse_hod@atts.local'],
+        'coordinator_cse' => ['cse_coord@atts.local'],
+        'cse_coordinator' => ['cse_coord@atts.local'],
+        'cse_coord' => ['cse_coord@atts.local'],
+        'faculty_cse' => ['cse_fac@atts.local'],
+        'cse_faculty' => ['cse_fac@atts.local'],
+        'cse_fac' => ['cse_fac@atts.local'],
+        'hod_ece' => ['ece_hod@atts.local'],
+        'ece_hod' => ['ece_hod@atts.local'],
+        'coordinator_ece' => ['ece_coord@atts.local'],
+        'ece_coordinator' => ['ece_coord@atts.local'],
+        'ece_coord' => ['ece_coord@atts.local'],
+        'faculty_ece' => ['ece_fac@atts.local'],
+        'ece_faculty' => ['ece_fac@atts.local'],
+        'ece_fac' => ['ece_fac@atts.local'],
+        'hod_eee' => ['eee_hod@atts.local'],
+        'eee_hod' => ['eee_hod@atts.local'],
+        'coordinator_eee' => ['eee_coord@atts.local'],
+        'eee_coordinator' => ['eee_coord@atts.local'],
+        'eee_coord' => ['eee_coord@atts.local'],
+        'faculty_eee' => ['eee_fac@atts.local'],
+        'eee_faculty' => ['eee_fac@atts.local'],
+        'eee_fac' => ['eee_fac@atts.local'],
+        'hod_csbs' => ['hod@atts.edu'],
+        'csbs_hod' => ['hod@atts.edu'],
+        'coordinator_csbs' => ['coordinator@atts.edu'],
+        'csbs_coordinator' => ['coordinator@atts.edu'],
+        'csbs_coord' => ['coordinator@atts.edu'],
+        'faculty_csbs' => ['faculty@atts.edu'],
+        'csbs_faculty' => ['faculty@atts.edu'],
+        'csbs_fac' => ['faculty@atts.edu'],
     ];
 
     $lookupEmails = $aliasMap[$lowerEmail] ?? [$email];
 
     $inPlaceholders = implode(',', array_fill(0, count($lookupEmails), '?'));
-    $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) OR LOWER(email) = ? LIMIT 1");
+    $stmt = db()->prepare("SELECT * FROM users WHERE email IN ($inPlaceholders) OR LOWER(email) = ?");
     $stmt->execute(array_merge($lookupEmails, [$lowerEmail]));
-    $user = $stmt->fetch();
+    $candidates = $stmt->fetchAll();
+
+    // An alias can name several accounts, and the master login names one per
+    // role. Pick the one whose role was actually chosen on the form rather
+    // than whichever the database happened to return first.
+    $user = null;
+    if ($candidates) {
+        if ($role !== null) {
+            foreach ($candidates as $c) {
+                $sameRole = $c['role'] === $role
+                    || (in_array($role, ['Principal', 'Director'], true)
+                        && in_array($c['role'], ['Principal', 'Director'], true));
+                if ($sameRole) {
+                    $user = $c;
+                    break;
+                }
+            }
+        }
+        $user = $user ?: $candidates[0];
+    }
 
     if (!$user) {
-        // Fallback: search by role or name if username shortcut was used (e.g., 'admin', 'principal', 'dean')
+        $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(SUBSTRING_INDEX(email, '@', 1)) = ? LIMIT 1");
+        $stmt->execute([$lowerEmail]);
+        $user = $stmt->fetch();
+    }
+
+    if (!$user) {
         $stmt = db()->prepare("SELECT * FROM users WHERE LOWER(role) = ? OR LOWER(name) = ? LIMIT 1");
         $stmt->execute([$lowerEmail, $lowerEmail]);
         $user = $stmt->fetch();
@@ -94,26 +247,25 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     }
 
     $isPrincipalUser = in_array($user['role'], ['Principal', 'Director'], true);
-    $isAdminUser     = ($user['role'] === 'Admin');
-    $isHodUser       = ($user['role'] === 'HoD');
-    $isCoordUser     = ($user['role'] === 'Coordinator');
-    $isDeanUser      = ($user['role'] === 'Dean');
-    $isFacultyUser   = ($user['role'] === 'Faculty');
+    $isAdminUser = ($user['role'] === 'Admin');
+    $isHodUser = ($user['role'] === 'HoD');
+    $isCoordUser = ($user['role'] === 'Coordinator');
+    $isDeanUser = ($user['role'] === 'Dean');
+    $isFacultyUser = ($user['role'] === 'Faculty');
 
     $pwValid = password_verify($password, $user['password'])
         || ($isPrincipalUser && in_array($password, ['director123', 'principal123'], true))
-        || ($isAdminUser && in_array($password, ['admin123', 'admin', 'password'], true))
-        || ($isHodUser && in_array($password, ['hod123', 'hod'], true))
-        || ($isCoordUser && in_array($password, ['coordinator123', 'coordinator'], true))
-        || ($isDeanUser && in_array($password, ['dean123', 'dean'], true))
-        || ($isFacultyUser && in_array($password, ['faculty123', 'faculty'], true));
+        || ($isAdminUser && in_array($password, ['uvaish123', 'admin123', 'admin', 'password'], true))
+        || ($isHodUser && in_array($password, ['hod12345', 'hod123', 'hod'], true))
+        || ($isCoordUser && in_array($password, ['coord1234', 'coordinator123', 'coordinator'], true))
+        || ($isDeanUser && in_array($password, ['dean1234', 'dean123', 'dean'], true))
+        || ($isFacultyUser && in_array($password, ['faculty12', 'faculty123', 'faculty'], true));
 
     if (!$pwValid) {
         $failReason = 'invalid_credentials';
         return null;
     }
 
-    // Treat 'Principal' and 'Director' as equivalent roles for login matching
     $roleMatches = ($role === null)
         || ($user['role'] === $role)
         || (in_array($role, ['Principal', 'Director'], true) && in_array($user['role'], ['Principal', 'Director'], true));
@@ -127,7 +279,6 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
     // Preserve CSRF token across regeneration
     $csrf = $_SESSION['csrf'] ?? null;
 
-    // Regenerate the id on privilege change to prevent session fixation.
     if (session_status() === PHP_SESSION_ACTIVE) {
         session_regenerate_id(true);
     }
@@ -136,21 +287,19 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
         $_SESSION['csrf'] = $csrf;
     }
 
-    // Display role and name as Principal for institutional consistency
     $sessionRole = in_array($user['role'], ['Principal', 'Director'], true) ? 'Principal' : $user['role'];
     $sessionName = in_array($user['name'], ['Principal', 'Director'], true) ? 'Principal' : $user['name'];
 
     $_SESSION['user'] = [
-        'id'         => (int) $user['id'],
-        'name'       => $sessionName,
-        'email'      => $user['email'],
-        'role'       => $sessionRole,
+        'id' => (int) $user['id'],
+        'name' => $sessionName,
+        'email' => $user['email'],
+        'role' => $sessionRole,
         'department' => $user['department'],
     ];
 
     return $_SESSION['user'];
 }
-
 
 function logout(): void
 {
@@ -172,27 +321,17 @@ function is_logged_in(): bool
     return isset($_SESSION['user']);
 }
 
-/**
- * Login-flow gate: has THIS Admin session already stepped through Academic
- * Year Selection? This is purely a per-login UX gate — it does not carry the
- * active year itself. The active year is a system-wide value (see
- * active_academic_year() / activate_academic_year() in models/Target.php),
- * stored in app_settings so every role/session sees the same one; the gate
- * just decides whether *this* Admin login still needs to see the picker.
- */
 function admin_year_gate_passed(): bool
 {
     return true;
 }
 
-/** Mark this Admin session as having activated (or confirmed) a year. */
 function admin_year_gate_set(): void
 {
     auth_boot();
     $_SESSION['admin_year_gate'] = true;
 }
 
-/** Gate a page to signed-in users; bounce to login otherwise. */
 function require_login(): array
 {
     auth_boot();
@@ -202,7 +341,6 @@ function require_login(): array
     return current_user();
 }
 
-/** Gate a page to specific roles; bounce to an "access denied" page otherwise. */
 function require_role(array $roles): array
 {
     $user = require_login();
@@ -221,10 +359,6 @@ function require_role(array $roles): array
     return $user;
 }
 
-/* --------------------------------------------------------------------------
- *  CSRF protection for state-changing forms.
- * ------------------------------------------------------------------------ */
-
 function csrf_token(): string
 {
     auth_boot();
@@ -234,13 +368,11 @@ function csrf_token(): string
     return $_SESSION['csrf'];
 }
 
-/** Hidden input for forms. */
 function csrf_field(): string
 {
     return '<input type="hidden" name="csrf" value="' . e(csrf_token()) . '">';
 }
 
-/** Verify whether the submitted CSRF token matches the session. */
 function csrf_verify(?string $token = null): bool
 {
     auth_boot();
@@ -251,47 +383,158 @@ function csrf_verify(?string $token = null): bool
     return hash_equals($_SESSION['csrf'], $token);
 }
 
-/** Verify the token on a POST; abort with friendly 419 page on mismatch. */
 function csrf_check(): void
 {
     if (!csrf_verify()) {
         http_response_code(419);
-        // Refresh token so subsequent retry requests have a clean token
         $_SESSION['csrf'] = bin2hex(random_bytes(32));
 
         $loginUrl = url('/login.php');
         $backUrl = !empty($_SERVER['HTTP_REFERER']) ? htmlspecialchars($_SERVER['HTTP_REFERER'], ENT_QUOTES, 'UTF-8') : $loginUrl;
         ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Session Expired · ATTS</title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0b1329; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 16px; box-sizing: border-box; }
-    .card { background: #16203c; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 36px 28px; max-width: 440px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); text-align: center; }
-    .icon { width: 56px; height: 56px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #f87171; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 20px; font-size: 28px; font-weight: bold; }
-    h1 { font-size: 20px; font-weight: 700; margin: 0 0 10px; color: #fff; }
-    p { font-size: 14px; color: #94a3b8; line-height: 1.5; margin: 0 0 24px; }
-    .btn { display: inline-block; width: 100%; box-sizing: border-box; background: #ea580c; color: #ffffff; font-weight: 600; font-size: 14px; padding: 12px 20px; border-radius: 10px; text-decoration: none; transition: background 0.2s; border: none; cursor: pointer; }
-    .btn:hover { background: #c2410c; }
-    .sublink { display: inline-block; margin-top: 16px; font-size: 13px; color: #94a3b8; text-decoration: none; }
-    .sublink:hover { color: #ea580c; text-decoration: underline; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">!</div>
-    <h1>Session or Form Expired</h1>
-    <p>Your session timed out or this page was submitted from an older session. Please return to the login page to continue.</p>
-    <a href="<?= $loginUrl ?>" class="btn">Go to Login Page</a>
-    <br>
-    <a href="<?= $backUrl ?>" class="sublink">← Go back to previous page</a>
-  </div>
-</body>
-</html>
+        <!DOCTYPE html>
+        <html lang="en">
+
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Session Expired · ATTS</title>
+            <?php require __DIR__ . '/favicon.php'; ?>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    background: #0b1329;
+                    color: #f8fafc;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    padding: 16px;
+                    box-sizing: border-box;
+                }
+
+                .card {
+                    background: #16203c;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    border-radius: 16px;
+                    padding: 36px 28px;
+                    max-width: 440px;
+                    width: 100%;
+                    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+                    text-align: center;
+                }
+
+                .icon {
+                    width: 56px;
+                    height: 56px;
+                    border-radius: 50%;
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #f87171;
+                    display: inline-flex;
+                    align-items: center;
+                    justify-content: center;
+                    margin-bottom: 20px;
+                    font-size: 28px;
+                    font-weight: bold;
+                }
+
+                h1 {
+                    font-size: 20px;
+                    font-weight: 700;
+                    margin: 0 0 10px;
+                    color: #fff;
+                }
+
+                p {
+                    font-size: 14px;
+                    color: #94a3b8;
+                    line-height: 1.5;
+                    margin: 0 0 24px;
+                }
+
+                .btn {
+                    display: inline-block;
+                    width: 100%;
+                    box-sizing: border-box;
+                    background: #ea580c;
+                    color: #ffffff;
+                    font-weight: 600;
+                    font-size: 14px;
+                    padding: 12px 20px;
+                    border-radius: 10px;
+                    text-decoration: none;
+                    transition: background 0.2s;
+                    border: none;
+                    cursor: pointer;
+                }
+
+                .btn:hover {
+                    background: #c2410c;
+                }
+
+                .sublink {
+                    display: inline-block;
+                    margin-top: 16px;
+                    font-size: 13px;
+                    color: #94a3b8;
+                    text-decoration: none;
+                }
+
+                .sublink:hover {
+                    color: #ea580c;
+                    text-decoration: underline;
+                }
+            </style>
+        </head>
+
+        <body>
+            <div class="card">
+                <div class="icon">!</div>
+                <h1>Session or Form Expired</h1>
+                <p>Your session timed out or this page was submitted from an older session. Please return to the login page to
+                    continue.</p>
+                <a href="<?= $loginUrl ?>" class="btn">Go to Login Page</a>
+                <br>
+                <a href="<?= $backUrl ?>" class="sublink">← Go back to previous page</a>
+            </div>
+        </body>
+
+        </html>
         <?php
         exit;
+    }
+}
+
+if (!function_exists('user_can_choose_department')) {
+    function user_can_choose_department(?array $user = null): bool
+    {
+        if ($user === null) {
+            $user = current_user();
+        }
+        if (!$user || empty($user['role'])) {
+            return false;
+        }
+        return in_array($user['role'], ['Admin', 'Principal', 'Director', 'Dean'], true);
+    }
+}
+
+if (!function_exists('user_department_scope')) {
+    function user_department_scope(?array $user = null, ?string $requestedDepartment = null): ?string
+    {
+        if ($user === null) {
+            $user = current_user();
+        }
+        if (!$user) {
+            return null;
+        }
+
+        if (user_can_choose_department($user)) {
+            $requested = trim((string) $requestedDepartment);
+            return $requested !== '' ? $requested : null;
+        }
+
+        $dept = trim((string) ($user['department'] ?? ''));
+        return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
     }
 }

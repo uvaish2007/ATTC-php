@@ -1,15 +1,4 @@
 <?php
-/**
- * Settings — Admin only.
- *
- * The page has three tabs. Which one you see comes from the address bar,
- * e.g. settings.php?tab=account :
- *
- *   metrics  → the list of things the IQAC tracks (used by Targets)
- *   account  → your own name, phone and password
- *   system   → read-only facts about this installation
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Metric.php';
 require_once __DIR__ . '/models/User.php';
@@ -17,7 +6,6 @@ require_once __DIR__ . '/models/User.php';
 $user = require_role(['Admin']);
 require_module('settings');
 
-// ---- Which tab is open? --------------------------------------------------
 $tabs = [
     'metrics' => 'Metrics',
     'account' => 'My Account',
@@ -30,7 +18,6 @@ if (!isset($tabs[$tab])) {
     $tab = 'metrics';
 }
 
-// ---- Handle the forms ----------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
@@ -42,7 +29,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (int) input('proof_required', 0)
         );
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'metric_update') {
         [$ok, $msg] = metric_update(
             (int) input('id'),
@@ -52,20 +38,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             (int) input('status', 1)
         );
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'metric_delete') {
         [$ok, $msg] = metric_delete((int) input('id'));
         flash($ok ? 'success' : 'error', $msg);
-
     } elseif ($action === 'save_profile') {
         [$ok, $msg] = user_update_profile($user['id'], (string) input('name'), (string) input('phone'));
         flash($ok ? 'success' : 'error', $msg);
 
-        // Keep the name in the sidebar in step with the change.
         if ($ok) {
             $_SESSION['user']['name'] = trim((string) input('name'));
         }
-
     } elseif ($action === 'change_password') {
         [$ok, $msg] = user_change_password(
             $user['id'],
@@ -79,7 +61,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/settings.php?tab=' . $tab);
 }
 
-// ---- Data for whichever tab is showing -----------------------------------
 $metrics    = metrics_all();
 $categories = metric_categories();
 $me         = user_find($user['id']);
@@ -103,15 +84,8 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
-<!-- Tab bar: each tab is just a link back to this page -->
-<div class="tabs">
-  <?php foreach ($tabs as $key => $label): ?>
-    <a class="tab<?= $tab === $key ? ' active' : '' ?>" href="<?= e(url('settings.php?tab=' . $key)) ?>">
-      <?= e($label) ?>
-    </a>
-  <?php endforeach; ?>
-</div>
-
+<!-- Tab bar — shared with password-requests.php, which draws the same strip -->
+<?php $settingsTab = $tab; require __DIR__ . '/inc/settings_tabs.php'; ?>
 
 <?php if ($tab === 'metrics'): ?>
 
@@ -205,7 +179,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 
-
 <?php elseif ($tab === 'account'): ?>
 
   <!-- ===================== My Account ===================== -->
@@ -279,13 +252,11 @@ require __DIR__ . '/inc/header.php';
 
   </div>
 
-
 <?php else: ?>
 
   <!-- ===================== System ===================== -->
   <?php
-    // Read a few facts about the running app. Nothing here can be edited from
-    // the browser — the real settings live in php-app/.env
+
     $pdo = db();
 
     $tableCounts = [
@@ -394,7 +365,6 @@ require __DIR__ . '/inc/header.php';
   </div>
 
 <?php endif; ?>
-
 
 <!-- Add metric -->
 <dialog class="modal" id="addMetric">

@@ -1,13 +1,4 @@
 <?php
-/**
- * Minimal .env loader — so database credentials live in one editable file
- * (php-app/.env) instead of being hardcoded in PHP. No external library.
- *
- * Lines are KEY=VALUE. Blank lines and lines starting with # are ignored.
- * Values may be wrapped in single or double quotes. Real environment
- * variables (set by the server) always win over the file.
- */
-
 function load_env(string $path): void
 {
     static $loaded = [];
@@ -32,7 +23,6 @@ function load_env(string $path): void
         $key   = trim($key);
         $value = trim($value);
 
-        // Strip one layer of surrounding quotes.
         $len = strlen($value);
         if ($len >= 2) {
             $q = $value[0];
@@ -50,10 +40,6 @@ function load_env(string $path): void
     }
 }
 
-/**
- * Read an env value with a default. "true"/"false" (any case) come back as
- * booleans; everything else is returned as-is.
- */
 function env(string $key, $default = null)
 {
     $value = getenv($key);

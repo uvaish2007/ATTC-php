@@ -1,17 +1,4 @@
 <?php
-/**
- * Report Template Builder — Admin only.
- *
- * The Admin designs the report here: they add, rename, reorder and remove
- * COLUMNS, and add/edit/reorder/remove ROWS, filling a value per column. What
- * they build is stored (report_columns / report_rows) and becomes the template
- * every department's report follows — rendered by template-report.php.
- *
- * The layout is CSS-grid rows, not an HTML table, so each editable line can be
- * its own <form> (a <form> may not live inside a <tr>). Reorder and delete are
- * separate one-button forms beside the edit form.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Department.php';
@@ -75,9 +62,6 @@ $rows        = template_rows();
 $dataFields  = target_data_fields();
 $departments = departments_all();
 
-// The row editor only edits Label cells — Data cells are auto-filled from each
-// department's targets and are never typed here — so the editor grid spans just
-// the label columns, with the data columns shown once as a legend.
 $labelColumns = array_values(array_filter($columns, fn($c) => ($c['source'] ?? 'label') !== 'data'));
 $dataColumns  = array_values(array_filter($columns, fn($c) => ($c['source'] ?? 'label') === 'data'));
 $labelGrid = 'grid-template-columns:' . implode(' ', array_map(
@@ -105,15 +89,11 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 <script>
-  /* Open the template report, filling data from the chosen department (or the
-     empty structure when none is picked). */
   function tplGo(fmt, newTab) {
     var d = document.getElementById('tplDept').value;
     var u = '<?= e(url('template-report.php')) ?>?format=' + fmt + (d ? '&department=' + encodeURIComponent(d) : '');
     if (newTab) { window.open(u, '_blank'); } else { window.location = u; }
-  }
-</script>
-
+  }</script>
 
 <!-- ============================ COLUMNS ============================ -->
 <div class="card">
@@ -192,7 +172,6 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 </div>
-
 
 <!-- ============================ ROWS ============================ -->
 <div class="mt-5 card">
@@ -420,7 +399,6 @@ require __DIR__ . '/inc/header.php';
       saveOrder(type, currentOrder);
     });
 
-    // Touch support for touchscreens
     var touchItem = null;
     var touchStartY = 0;
     var touchInitialOrder = [];
@@ -513,10 +491,8 @@ require __DIR__ . '/inc/header.php';
     }, 2200);
   }
 
-  // Initialize drag and drop for Columns and Rows
   initDragAndDrop('#tpl_columns_container', '.tpl-col-line', 'col');
   initDragAndDrop('#tpl_rows_container', '.tpl-row-line', 'row');
-})();
-</script>
+})();</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

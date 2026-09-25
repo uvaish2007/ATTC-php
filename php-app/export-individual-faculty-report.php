@@ -1,10 +1,4 @@
 <?php
-/**
- * Multi-Format Exporter for Individual Faculty Achievement Report.
- * Exports PDF, Excel (.xlsx), Word (.doc), and CSV formats.
- * Strictly enforces backend permission checking via can_user_view_faculty_report().
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/inc/xlsx_writer.php';
@@ -12,28 +6,32 @@ require_once __DIR__ . '/models/FacultyAchievement.php';
 
 $user = require_login();
 
-// Target faculty ID defaults to current logged-in user if unspecified
 $targetFacultyId = (int) input('id', 0);
 if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
-// Backend Authorization Verification
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
     exit;
 }
 
-$academicYear = trim((string) input('academic_year', '')) ?: active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
+$em           = $emCtx['em'];
+$emWindow     = $emCtx['window'];
+$category     = trim((string) input('category', '')) ?: null;
 $format       = strtolower(trim((string) input('format', 'excel')));
 
 if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
     $format = 'excel';
 }
 
-// Fetch faculty details and records
-$data = faculty_achievement_details($targetFacultyId, $academicYear);
+$data = faculty_achievement_details($targetFacultyId, $academicYear, $category, $emWindow);
 $faculty = $data['faculty'];
 $records = $data['records'];
 $byCategory = $data['by_category'];
@@ -49,9 +47,6 @@ $today    = date('d.m.Y');
 $fileStem = 'individual-faculty-achievement-report-' . preg_replace('/[^a-z0-9]/i', '-', $faculty['name']) . '-' . date('Y-m-d');
 $title    = 'INDIVIDUAL FACULTY ACHIEVEMENT REPORT';
 
-/* ========================================================================
-   1. EXCEL (.xlsx)
-   ===================================================================== */
 if ($format === 'excel') {
     $headers = ['S.No', 'Category', 'Title / Paper / Activity', 'Department', 'Status', 'Academic Year', 'Submission Date'];
     
@@ -69,10 +64,15 @@ if ($format === 'excel') {
         ];
     }
 
+<<<<<<< HEAD
     $sigCols = ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL'];
     foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
         $rows[] = $sRow;
     }
+=======
+    $rows = array_merge($rows, report_signoff_rows(
+        report_signoff_columns(department_full_name($faculty['department'] ?? null)), count($headers)));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Individual Report', [
         REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)',
@@ -97,15 +97,12 @@ if ($format === 'excel') {
     header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 }
 
-/* ========================================================================
-   2. CSV (.csv)
-   ===================================================================== */
 if ($format === 'csv') {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.csv"');
 
     $out = fopen('php://output', 'w');
-    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); 
 
     fputcsv($out, [REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)']);
     fputcsv($out, [$title]);
@@ -140,9 +137,6 @@ if ($format === 'csv') {
     exit;
 }
 
-/* ========================================================================
-   3. WORD (.doc) & 4. PDF (Print HTML View)
-   ===================================================================== */
 if ($format === 'word') {
     header('Content-Type: application/msword');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
@@ -156,6 +150,7 @@ if ($format === 'word') {
   <style>
     body { font-family: "Calibri", "Segoe UI", Arial, sans-serif; font-size: 13px; color: #131D3B; margin: 20px; line-height: 1.4; }
     .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border-bottom: 2px solid #131D3B; }
+    .hdr-banner { text-align:center; margin-bottom:8px; }
     .hdr-logo { font-size: 20px; font-weight: 800; color: #FF4F01; letter-spacing: -.02em; }
     .hdr-sub { font-size: 12px; color: #5A6785; font-weight: 600; text-transform: uppercase; }
     .title-box { background: #F4F6FA; border: 1px solid #E4E9F2; border-radius: 8px; padding: 14px 18px; margin-bottom: 20px; }
@@ -179,6 +174,7 @@ if ($format === 'word') {
 </head>
 <body>
 
+<<<<<<< HEAD
   <?php if ($format === 'pdf'): ?>
     <div class="no-print" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 10px;">
       <button onclick="window.print()" style="background: #FF4F01; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
@@ -189,12 +185,30 @@ if ($format === 'word') {
       </button>
     </div>
   <?php endif; ?>
+=======
+<?php if ($format === 'pdf'): ?>
+  <?php report_pdf_bar($title ?? 'Individual Faculty Report',
+      [$faculty['name'] ?? '', $faculty['department'] ?? '', 'AY ' . $academicYear]); ?>
+<?php endif; ?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
+
+  <?php $bannerImg = report_banner_img(680); ?>
+  <?php if ($bannerImg !== ''): ?>
+    <div class="hdr-banner"><?= $bannerImg ?></div>
+  <?php endif; ?>
 
   <table class="hdr-table">
     <tr>
       <td>
+<<<<<<< HEAD
         <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
         <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Academic Target Tracking System</div>
+=======
+        <?php if ($bannerImg === ''): ?>
+          <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
+        <?php endif; ?>
+        <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Faculty Profile</div>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       </td>
       <td style="text-align: right; font-size: 12px; color: #5A6785;">
         <div><strong>Report Date:</strong> <?= e($today) ?></div>

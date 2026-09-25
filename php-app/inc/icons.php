@@ -1,9 +1,4 @@
 <?php
-/**
- * Inline SVG icons (Lucide-style), so the UI needs no icon CDN or font.
- * Usage: echo icon('dashboard');
- */
-
 function icon(string $name, int $size = 18): string
 {
     $paths = [

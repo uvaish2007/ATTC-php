@@ -1,46 +1,47 @@
 <?php
-/**
- * App shell: <head>, sidebar, topbar. A page sets $pageTitle (and optionally
- * $pageSubtitle / $breadcrumb) then require()s this, renders its content, and
- * ends with footer.php.
- *
- * Assumes require_login() has already run and $user is available.
- */
-
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/helpers.php';
 require_once __DIR__ . '/icons.php';
 require_once __DIR__ . '/nav.php';
 require_once __DIR__ . '/../models/Announcement.php';
 require_once __DIR__ . '/../models/Target.php';
-require_once __DIR__ . '/../models/ExecutiveMeeting.php';   // FEAT-07 status pill
-require_once __DIR__ . '/notifications.php';
-
+require_once __DIR__ . '/../models/ExecutiveMeeting.php';   require_once __DIR__ . '/notifications.php';
+require_once __DIR__ . '/../models/User.php';        
 $user   = $user ?? current_user();
 $active = basename($_SERVER['SCRIPT_NAME']);
 
-// The one system-wide active academic year — read once per page load and
-// reused everywhere below (the badge counts and the topbar indicator).
 $atts_activeYear = active_academic_year();
 
-// FEAT-07: the active year's Executive Meeting status, from the one EM engine.
 $atts_emStatus = em_status($atts_activeYear);
 
 $headerNotifications = fetch_header_notifications($user);
 $unreadNotifCount    = count(array_filter($headerNotifications, fn($n) => !empty($n['unread'])));
 
+$myPhotoFile = !empty($user['id']) ? user_photo_filename((int) $user['id']) : null;
+$myPhotoUrl  = $myPhotoFile !== null
+    ? url('photo.php?user=' . (int) $user['id'] . '&v=' . substr(md5($myPhotoFile), 0, 8))
+    : null;
+
 $navItems = navigation_for($user['role']);
 $groups   = group_navigation($navItems);
 
+<<<<<<< HEAD
+=======
+require_once __DIR__ . '/../models/EditRequest.php';
+require_once __DIR__ . '/../models/PasswordResetRequest.php';   
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
     'announcements' => unread_announcements_count($user),
-    // Targets waiting on a decision. Only the two roles that can decide are
-    // told about them; for anyone else the count is noise. For an Admin the
-    // badge also counts unlock requests, since those are actioned on the same
-    // Targets page.
     'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
+<<<<<<< HEAD
+=======
+    'edit_requests' => edit_requests_pending_count($user),
+    // FEAT-11 — only the Admin decides password requests, so only the Admin is
+    // told how many are waiting. The count is not even queried for anyone else.
+    'password_requests' => $user['role'] === 'Admin' ? password_reset_requests_pending_count() : 0,
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 ];
 
 $pageTitle    = $pageTitle    ?? 'Dashboard';
@@ -53,6 +54,7 @@ $flashes      = take_flashes();
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($pageTitle) ?> · ATTS IQAC</title>
   <meta name="theme-color" content="#131D3B">
+  <?php require __DIR__ . '/favicon.php'; ?>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Inter when the machine is online; Segoe UI is the fallback, so the portal
@@ -126,7 +128,17 @@ $flashes      = take_flashes();
           <div class="nav-section-label"><?= e($section) ?></div>
           <div class="nav-list">
             <?php foreach ($items as $item):
+<<<<<<< HEAD
               $isActive = ($item['path'] === $active);
+=======
+              if ($active === 'approvals.php' || $active === 'edit-requests.php') {
+                $isActive = (strtok($item['path'], '?') === 'approvals.php');
+              } elseif ($active === 'password-requests.php') {
+                $isActive = (strtok($item['path'], '?') === 'settings.php');
+              } else {
+                $isActive = (strtok($item['path'], '?') === $active);
+              }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
               $badge = isset($item['badge']) ? ($badgeCounts[$item['badge']] ?? 0) : 0;
               $locked = !module_is_active(module_for_path($item['path']));
             ?>
@@ -152,7 +164,11 @@ $flashes      = take_flashes();
 
     <div class="sidebar-foot">
       <div class="side-user">
-        <div class="avatar"><?= e(initials($user['name'])) ?></div>
+        <?php if ($myPhotoUrl !== null): ?>
+          <img class="avatar avatar-photo" src="<?= e($myPhotoUrl) ?>" alt="Your profile photo">
+        <?php else: ?>
+          <div class="avatar"><?= e(initials($user['name'])) ?></div>
+        <?php endif; ?>
         <div class="meta">
           <div class="nm" title="<?= e($user['name']) ?>"><?= e($user['name']) ?></div>
           <div class="rl"><?= e($user['role']) ?><?= !empty($user['department']) ? ' · ' . e($user['department']) : '' ?></div>
@@ -182,7 +198,7 @@ $flashes      = take_flashes();
           <?php else: ?>
             <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS DASHBOARD</a>
             <span class="sep"><?= icon('chevron', 14) ?></span>
-            <span class="cur"><?= e($breadcrumb) ?></span>
+            <span class="cur" title="<?= e($breadcrumb) ?>"><?= e($breadcrumb) ?></span>
           <?php endif; ?>
         </nav>
       </div>
@@ -262,7 +278,11 @@ $flashes      = take_flashes();
           <div class="nm"><?= e($user['name']) ?></div>
           <div class="rl"><?= e($user['role']) ?><?= $user['department'] ? ' · ' . e($user['department']) : '' ?></div>
         </div>
-        <div class="avatar-dark"><?= e(initials($user['name'])) ?></div>
+        <?php if ($myPhotoUrl !== null): ?>
+          <img class="avatar-dark avatar-photo" src="<?= e($myPhotoUrl) ?>" alt="Your profile photo">
+        <?php else: ?>
+          <div class="avatar-dark"><?= e(initials($user['name'])) ?></div>
+        <?php endif; ?>
       </div>
     </header>
 

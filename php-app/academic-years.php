@@ -1,15 +1,14 @@
-`<?php
+<?php
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Record.php';
-require_once __DIR__ . '/models/ExecutiveMeeting.php';   // FEAT-07 schedule
+require_once __DIR__ . '/models/ExecutiveMeeting.php';   
 
 $user = require_role(['Admin']);
 
-// Active operating academic year
 $activeYear     = active_academic_year();
 $currentCalYear = current_academic_year();
-$allYears       = academic_years();          // newest first, up to the current term
+$allYears       = academic_years();          
 
 // The year being viewed (defaults to the active one; never a future year).
 $selectedYear = trim((string) input('year', $activeYear));
@@ -17,12 +16,11 @@ if (!is_valid_academic_year($selectedYear) || !in_array($selectedYear, $allYears
     $selectedYear = $activeYear;
 }
 
-// Handle state changes
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
     $action = (string) input('action');
     $year   = (string) input('academic_year', $selectedYear);
-    // Come back to the tab the change was made from.
+
     $tabQs  = input('tab') === 'registry' ? '&tab=registry' : '';
 
     if ($action === 'activate') {
@@ -62,11 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     redirect('/academic-years.php?year=' . urlencode($year) . $tabQs);
 }
 
-// ---- Every year at once (registry, picker, stepper) -------------------------
 $overview        = academic_years_overview($allYears);
 $meetingsReady   = executive_meetings_ready();
 
-// ---- The year being viewed --------------------------------------------------
 $selectedLockInfo      = academic_year_lock_info($selectedYear);
 $isLocked              = $selectedLockInfo['locked'];
 $selectedStats         = $overview[$selectedYear];
@@ -75,8 +71,6 @@ $selectedExecCount     = count($selectedExecMeetings);
 $selectedLatestMeeting = $selectedExecMeetings[0] ?? null;
 $isSelectedActive      = ($selectedYear === $activeYear);
 
-// FEAT-07: the EM1/EM2 schedule for the year being viewed. The year comes from
-// this page's existing selection, not a second picker.
 $selectedEmStatus   = em_status($selectedYear);
 $selectedEmSchedule = $selectedEmStatus['schedule'];
 $selectedEmSpan     = em_academic_year_span($selectedYear);
@@ -87,25 +81,19 @@ if ($emDraft && ($emDraft['year'] ?? null) !== $selectedYear) {
 }
 $emValue = fn(string $k): string => (string) ($emDraft[$k] ?? $selectedEmSchedule[$k] ?? '');
 
-// Suggest the next meeting number: one past the highest numeric one so far.
 $nums = array_map('intval', array_filter(array_column($selectedExecMeetings, 'meeting_number'), 'ctype_digit'));
 $selectedNextMeetingNum = ($nums ? max($nums) : 0) + 1;
 
-// Where a year sits relative to the operating year. The current calendar term
-// is often NEWER than the operating year (the calendar rolls over in June;
-// the Admin switches when ready) — that is not a past year.
 $yearStart = fn(string $y): int => (int) substr($y, 0, 4);
 $yearKind  = fn(string $y): string => $y === $activeYear ? 'active'
                                      : ($yearStart($y) > $yearStart($activeYear) ? 'newer' : 'past');
 $kindLabel = ['active' => 'Active', 'newer' => 'Not yet active', 'past' => 'Past'];
 $selectedKind = $yearKind($selectedYear);
 
-// Newer / older neighbours for the stepper ($allYears runs newest first).
 $idx       = array_search($selectedYear, $allYears, true);
 $newerYear = $allYears[$idx - 1] ?? null;
 $olderYear = $allYears[$idx + 1] ?? null;
 
-// ---- Records by category (viewed year) --------------------------------------
 $selectedCategoryData = [];
 foreach (record_types() as $k => $t) {
     $tbl = $t['table'];
@@ -120,8 +108,6 @@ foreach (record_types() as $k => $t) {
     } catch (\PDOException $e) {}
 }
 
-// ---- Targets by department (viewed year) ------------------------------------
-// Every target status has a column, so each row adds up to its total.
 $selectedDeptTargets = [];
 try {
     $stmt = db()->prepare(
@@ -144,10 +130,6 @@ foreach ($selectedDeptTargets as $dt) {
     $tgtTotals['draft']    += (int) $dt['draft_targets'];
 }
 
-// ---- The term, June to May --------------------------------------------------
-// Matches current_academic_year_start(): the year rolls over on 1 June. (This
-// page used to draw a July–June term, so in June it disagreed with the rest
-// of the system about which year was current.)
 $ayStartYear = $yearStart($selectedYear);
 $termStart   = new DateTime(sprintf('%d-06-01', $ayStartYear));
 $termEnd     = new DateTime(sprintf('%d-05-31', $ayStartYear + 1));
@@ -158,7 +140,7 @@ if ($today < $termStart) {
     $termState = 'ended';    $monthNow = 12;
 } else {
     $termState = 'running';
-    $monthNow  = ((int) $today->format('n') - 6 + 12) % 12;    // 0 = June … 11 = May
+    $monthNow  = ((int) $today->format('n') - 6 + 12) % 12;    
 }
 $termPct = $termState === 'running'
     ? (int) round(($today->getTimestamp() - $termStart->getTimestamp()) / max(1, $termEnd->getTimestamp() - $termStart->getTimestamp()) * 100)
@@ -280,7 +262,7 @@ require __DIR__ . '/inc/header.php';
       </div>
       <div class="ay-months" aria-hidden="true">
         <?php for ($i = 0; $i < 12; $i++):
-            $m  = ($i + 5) % 12 + 1;                          // 6..12, 1..5
+            $m  = ($i + 5) % 12 + 1;                          
             $yy = $i < 7 ? $ayStartYear : $ayStartYear + 1;
             $cls = $i < $monthNow ? 'done' : ($i === $monthNow ? 'now' : '');
         ?>
@@ -335,7 +317,7 @@ require __DIR__ . '/inc/header.php';
         <div class="card-sub">Recording a finished Executive Meeting locks <strong><?= e($selectedYear) ?></strong> for every role. You can reopen it later; the meeting stays on record.</div>
       </div>
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <?php // FEAT-06: present this year's meeting report full screen. ?>
+        <?php ?>
         <a class="btn btn-secondary btn-sm"
            href="<?= e(url('executive-meeting-report.php') . '?' . http_build_query(['academic_year' => $selectedYear])) ?>"
            title="Filter and present the Executive Meeting report for <?= e($selectedYear) ?>">
@@ -361,8 +343,8 @@ require __DIR__ . '/inc/header.php';
         </div>
       <?php endif; ?>
 
-      <?php // The same form either way; while the year is already locked it is
-            // folded away, because recording another meeting is then the exception. ?>
+      <?php 
+?>
       <?php if ($isLocked): ?><details class="ay-more" id="meetFormWrap"><summary><?= icon('chevron', 14) ?> Record another meeting for <?= e($selectedYear) ?></summary><?php endif; ?>
       <form method="post" class="ay-meet-form"
             onsubmit="return confirm(<?= e(json_encode($isLocked ? 'Record this Executive Meeting for ' . $selectedYear . '?' : 'Record this Executive Meeting and lock ' . $selectedYear . ' for all roles?')) ?>);">
@@ -762,8 +744,6 @@ require __DIR__ . '/inc/header.php';
 </dialog>
 
 <script>
-/* Tabs. The choice is kept in the address (?tab=registry), so a reload or a
-   change made from the registry comes back to the registry. */
 function switchAyTab(tab) {
   var reg = tab === 'registry';
   document.getElementById('ay_tab_overview').hidden = reg;
@@ -779,7 +759,6 @@ function switchAyTab(tab) {
   } catch (e) {}
 }
 
-/* The header's Lock button: bring the meeting form into view, ready to type. */
 function openExecMeetingForm() {
   switchAyTab('overview');
   var wrap = document.getElementById('meetFormWrap');

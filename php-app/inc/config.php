@@ -1,18 +1,9 @@
 <?php
-/**
- * Application configuration.
- *
- * Credentials and settings come from php-app/.env — edit THAT file to change
- * the database, not this one. The defaults here are only used if a key is
- * missing from .env, so the app still boots.
- */
-
 require_once __DIR__ . '/env.php';
 
 load_env(dirname(__DIR__) . '/.env');
 load_env(dirname(dirname(__DIR__)) . '/.env');
 
-// --- Database (MySQL / MariaDB) ---
 define('DB_HOST', env('DB_HOST', 'localhost'));
 define('DB_PORT', env('DB_PORT', '3306'));
 define('DB_NAME', env('DB_NAME', 'atts_main'));
@@ -24,9 +15,6 @@ if (strpos((string) env('DB_HOST', ''), 'tidbcloud.com') !== false) {
 }
 define('DB_SSL_CA', (string) env('DB_SSL_CA', $defaultSslCa));
 
-// --- Application ---
-// The URL path the app is served from. "/php-app" for XAMPP htdocs; "" if you
-// serve the folder itself at the root (e.g. `php -S localhost:8000 -t php-app`).
 $defaultBaseUrl = (isset($_SERVER['SCRIPT_NAME']) && strpos($_SERVER['SCRIPT_NAME'], '/php-app') === 0) ? '/php-app' : '';
 $envBaseUrl     = env('BASE_URL');
 $resolvedBase   = ($envBaseUrl !== null && $envBaseUrl !== '') ? $envBaseUrl : $defaultBaseUrl;
@@ -37,7 +25,6 @@ define('UPLOAD_URL', BASE_URL . '/uploads');
 
 define('SESSION_NAME', (string) env('SESSION_NAME', 'atts_session'));
 
-// Temporarily enable error reporting to diagnose remote server issues
 error_reporting(E_ALL);
 ini_set('display_errors', '1');
 define('APP_DEBUG', true);
@@ -45,9 +32,6 @@ define('APP_DEBUG', true);
 define('APP_TIMEZONE', (string) env('APP_TIMEZONE', 'Asia/Kolkata'));
 date_default_timezone_set(APP_TIMEZONE);
 
-/**
- * Baseline security response headers. Sent once, before any output.
- */
 function send_security_headers(): void
 {
     if (headers_sent()) {

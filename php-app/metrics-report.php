@@ -1,20 +1,4 @@
 <?php
-/**
- * Metrics Report — a per-metric summary of the academic records.
- *
- * One row per record type (Journals, Patents, FDP …) with how many have been
- * submitted and where they sit in review (Approved / Pending / Rejected / Draft),
- * for the chosen scope and period. Built for a HoD's "metrics report" and for
- * the Director's clear, institution-wide academic overview.
- *
- * Same three outputs as the meeting report — ?format=word|excel|pdf — from one
- * HTML body, with the shared letterhead and sign-off, so it matches every other
- * report. Scope is role-enforced inside report_records():
- *     Admin    → any department (or all)
- *     HoD      → own department
- *     Director → whole institution (overall only)
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Record.php';
@@ -26,29 +10,23 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
     $format = 'word';
 }
 
-$department = trim((string) input('department')) ?: null;   // honoured only for Admin
+$department = user_department_scope($user, input('department'));
 $from       = parse_date_input((string) input('from'));
 $to         = parse_date_input((string) input('to'));
-// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
-// A meeting window belongs to one academic year, so the year is pinned too;
-// with "all" em_filter_year() is null and this report is unchanged.
-$emFilter    = em_filter_value(input('em'));
-[$from, $to] = em_intersect_period($emFilter, $from, $to);
 
-// report_records applies the role scope (Director → all, HoD → own dept).
-$records = report_records($user, $department, null, null, $from, $to, em_filter_year($emFilter));
+$rawYear  = input('academic_year') ?: input('year');
+$emCtx    = em_resolve_filter_context($rawYear, input('em'));
+$year     = $emCtx['year'];
+$emFilter = $emCtx['em'];
+[$from, $to] = em_intersect_period($emFilter, $from, $to, $year);
 
-// The label shown on the report reflects the scope actually applied.
-if ($user['role'] === 'HoD') {
-    $deptLabel = $user['department'] ?: 'ALL DEPARTMENTS';
-} else {
-    $deptLabel = $department ?: 'ALL DEPARTMENTS';   // Admin/Director may narrow
-}
+$records = report_records($user, $department, null, null, $from, $to, $year);
+
+$deptLabel = $department ?: 'ALL DEPARTMENTS';
 // The full department name shown in the report itself; $deptLabel (raw code)
 // is kept only for building the download filename below.
 $deptDisplay = department_full_name($deptLabel);
 
-// ---- Aggregate: one row per record type, counted by review status ----------
 $statuses = ['Approved', 'Submitted', 'Rejected', 'Draft'];
 $rows     = [];
 foreach (record_types() as $t) {
@@ -123,8 +101,11 @@ if ($format === 'word') {
         $metaLines[] = 'Period: ' . $periodLabel;
     }
 
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
-        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, 'Metrics Summary', $metaLines)
+    $xlsxData = class_exists('SimpleXlsxWriter')
+        ? SimpleXlsxWriter::createXlsx($headers,
+            array_merge($exportRows, report_signoff_rows(
+                report_signoff_columns($deptLabel !== 'ALL DEPARTMENTS' ? $deptDisplay : null), count($headers))),
+            'Metrics Summary', $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -153,13 +134,8 @@ report_document_head('Metrics Report');
 ?>
 
 <?php if ($format === 'pdf'): ?>
-  <div class="pdf-bar" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;
-       display:flex;align-items:center;justify-content:space-between;font-family:Arial,sans-serif;margin:-1.4cm -1.2cm 16px">
-    <span style="font-size:13px">Use your browser's print dialog and choose <strong>Save as PDF</strong>.</span>
-    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;
-       padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Print / Save as PDF</button>
-  </div>
-  <style>@media print { .pdf-bar { display:none !important; } }</style>
+  <?php report_pdf_bar('Metrics Summary', [$deptDisplay, $periodLabel,
+      number_format(count($rows)) . ' metrics']); ?>
 <?php endif; ?>
 
 <?php report_letterhead('Metrics Report', $meta); ?>
@@ -205,5 +181,9 @@ report_document_head('Metrics Report');
   </table>
 
 <?php
+<<<<<<< HEAD
 report_signoff(['HOD' . ($deptLabel !== 'ALL DEPARTMENTS' ? ' / ' . $deptDisplay : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
+=======
+report_signoff(report_signoff_columns($deptLabel !== 'ALL DEPARTMENTS' ? $deptDisplay : null));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 report_document_foot();

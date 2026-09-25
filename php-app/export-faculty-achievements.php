@@ -1,13 +1,4 @@
 <?php
-/**
- * Export Department & Faculty Achievements Report (FEAT-04).
- *
- * Supports Excel (.xlsx), Word (.doc), CSV (.csv), and PDF formats.
- * Strictly respects active filters, role authorization (Admin, Dean, HoD),
- * and isolates HoD data exclusively to their own department.
- * Automatically uses system-wide active Academic Year from FEAT-02.
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/inc/xlsx_writer.php';
@@ -20,49 +11,39 @@ require_module('reports');
 
 $role = $user['role'] ?? '';
 
-// FEAT-04: Authorization check — Admin, Dean, HoD (and Principal/Director if authorized)
-$allowedRoles = ['Admin', 'Dean', 'HoD', 'Principal', 'Director'];
+$allowedRoles = ['Admin', 'Dean', 'HoD', 'Coordinator', 'Principal', 'Director'];
 if (!in_array($role, $allowedRoles, true)) {
     http_response_code(403);
     echo "<h1>403 Forbidden</h1><p>You are not authorized to export Department &amp; Faculty Achievements.</p>";
     exit;
 }
 
-// Global active academic year from FEAT-02 (no manual client override)
-$academicYear = active_academic_year();
+require_once __DIR__ . '/models/ExecutiveMeeting.php';
+
+$rawYear      = input('academic_year') ?: input('year');
+$emCtx        = em_resolve_filter_context($rawYear, input('em'));
+$academicYear = $emCtx['year'];
 $format       = strtolower(trim((string) input('format', 'excel')));
 if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
     $format = 'excel';
 }
 
-// Department scoping:
-// HoD is strictly locked server-side to their own authorized department.
-// Any client-supplied department parameter for HoD is ignored.
-if ($role === 'HoD') {
-    $effDept = $user['department'] ?: null;
-} else {
-    // Admin, Dean, Principal can view all or filter by department
-    $effDept = trim((string) input('department', '')) ?: null;
-}
+$effDept = user_department_scope($user, input('department'));
 
 $category  = trim((string) input('category', '')) ?: null;
 $facultyId = (int) input('faculty_id', 0) ?: null;
 
-// Fetch faculty achievements dataset
-// FEAT-07: same Executive Meeting (EM1/EM2) window as the on-screen page.
 $emWindow  = em_filter_window(em_filter_value(input('em')), $academicYear);
 $summary   = faculty_achievements_summary($user, $effDept, $academicYear, $category, $facultyId, $emWindow);
 $deptComp  = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 $facGrid   = faculty_achievements_grid($user, $effDept, $academicYear, $category, $facultyId, null, $emWindow);
 
-// Standardized filenames matching FEAT-04 specification
 $safeYear   = preg_replace('/[^A-Za-z0-9\-]/', '-', $academicYear);
 $fileStem   = "ATTS_Faculty_Achievements_{$safeYear}";
 $title      = 'DEPARTMENT & FACULTY ACHIEVEMENTS REPORT';
 $today      = date('d.m.Y');
 $scopeLabel = $effDept ? department_full_name($effDept) : 'ALL AUTHORIZED DEPARTMENTS';
 
-// Group faculty members department-wise
 $groupedFaculty = [];
 foreach ($facGrid as $f) {
     $dName = !empty($f['department']) && $f['department'] !== '—' ? $f['department'] : 'Other / General';
@@ -70,14 +51,10 @@ foreach ($facGrid as $f) {
 }
 ksort($groupedFaculty);
 
-/* ========================================================================
-   1. EXCEL EXPORT (.xlsx)
-   ===================================================================== */
 if ($format === 'excel') {
     $headers = ['S.No', 'Faculty Name', 'Employee ID', 'Designation', 'Department', 'Journals', 'Conferences', 'Books/Chapters', 'Events', 'Training/FDP', 'Patents', 'Other', 'Total Achievements'];
     $rows = [];
 
-    // Summary Comparison Table at the top
     $rows[] = ['DEPARTMENT-WISE SUMMARY COMPARISON', '', '', '', '', '', '', '', '', '', '', '', ''];
     $rows[] = ['Department', 'Publications', 'Conferences', 'Books', 'Events', 'Training', 'Patents', 'Total Achievements', '', '', '', '', ''];
     foreach ($deptComp as $dc) {
@@ -96,7 +73,6 @@ if ($format === 'excel') {
     $rows[] = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
     $rows[] = ['', '', '', '', '', '', '', '', '', '', '', '', ''];
 
-    // Department-wise Grouped Individual Faculty Listings
     $grandTotals = ['j' => 0, 'c' => 0, 'b' => 0, 'e' => 0, 't' => 0, 'p' => 0, 'o' => 0, 'tot' => 0];
 
     if (empty($groupedFaculty)) {
@@ -139,7 +115,6 @@ if ($format === 'excel') {
                 ];
             }
 
-            // Department Subtotal row
             $rows[] = [
                 'Subtotal',
                 count($facultyList) . ' Faculty members',
@@ -162,7 +137,6 @@ if ($format === 'excel') {
             }
         }
 
-        // Grand Total row
         $rows[] = [
             'TOTAL',
             'All Departments Total (' . count($facGrid) . ' Faculty)',
@@ -193,6 +167,8 @@ if ($format === 'excel') {
         'Report Date: ' . $today,
     ];
 
+    $rows = array_merge($rows, report_signoff_rows(null, count($headers)));   
+
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Faculty Achievements', $metaLines);
     if ($xlsxData !== '') {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -208,15 +184,12 @@ if ($format === 'excel') {
     header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 }
 
-/* ========================================================================
-   2. CSV EXPORT (.csv)
-   ===================================================================== */
 if ($format === 'csv') {
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.csv"');
 
     $out = fopen('php://output', 'w');
-    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+    fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF)); 
 
     fputcsv($out, [REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)']);
     fputcsv($out, [$title]);
@@ -255,9 +228,6 @@ if ($format === 'csv') {
     exit;
 }
 
-/* ========================================================================
-   3. WORD (.doc) & 4. PDF (Print HTML View)
-   ===================================================================== */
 if ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
@@ -273,6 +243,7 @@ if ($format === 'word') {
     html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     body { font-family: "Calibri", "Segoe UI", Arial, sans-serif; font-size: 11pt; color: #131D3B; margin: 20px; line-height: 1.4; }
     .hdr-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; border-bottom: 2px solid #131D3B; }
+    .hdr-banner { text-align:center; margin-bottom:8px; }
     .hdr-logo { font-size: 18pt; font-weight: 800; color: #131D3B; letter-spacing: -.02em; }
     .hdr-sub { font-size: 10pt; color: #5A6785; font-weight: 600; text-transform: uppercase; margin-top: 3px; }
     .title-box { background: #F4F6FA; border: 1px solid #E4E9F2; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }
@@ -301,20 +272,22 @@ if ($format === 'word') {
 <body>
 
   <?php if ($format === 'pdf'): ?>
-    <div class="no-print" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 10px;">
-      <button onclick="window.print()" style="background: #FF4F01; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Print / Save as PDF
-      </button>
-      <button onclick="window.close()" style="background: #E4E9F2; color: #131D3B; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Close Window
-      </button>
-    </div>
+    <?php report_pdf_bar('Faculty Achievements', [$scopeLabel ?? '', 'AY ' . $academicYear,
+        number_format(count($rows ?? [])) . ' rows'], ['word', 'excel'], 'landscape'); ?>
+    <div class="pdf-sheet">
+  <?php endif; ?>
+
+  <?php $bannerImg = report_banner_img(850); ?>
+  <?php if ($bannerImg !== ''): ?>
+    <div class="hdr-banner"><?= $bannerImg ?></div>
   <?php endif; ?>
 
   <table class="hdr-table">
     <tr>
       <td>
-        <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
+        <?php if ($bannerImg === ''): ?>
+          <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
+        <?php endif; ?>
         <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Academic Target Tracking System</div>
       </td>
       <td style="text-align: right; font-size: 10pt; color: #5A6785;">
@@ -460,5 +433,6 @@ if ($format === 'word') {
     Generated automatically by ATTS IQAC System on <?= e($today) ?> &middot; Academic Year: <?= e($academicYear) ?> &middot; Official Academic Record
   </div>
 
+<?php if ($format === 'pdf'): ?></div><?php endif; ?>
 </body>
 </html>

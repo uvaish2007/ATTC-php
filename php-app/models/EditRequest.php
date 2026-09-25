@@ -1,15 +1,8 @@
 <?php
-/**
- * Edit Request Model — Structured tickets for HOD 'Request Edit to Dean/Admin' workflow.
- */
-
 require_once __DIR__ . '/../inc/db.php';
-require_once __DIR__ . '/Target.php'; // active_academic_year()
-require_once __DIR__ . '/Record.php'; // record_types()
+require_once __DIR__ . '/Target.php'; 
+require_once __DIR__ . '/Record.php'; 
 
-/**
- * Ensure the edit_requests table exists.
- */
 function edit_requests_table_init(): void
 {
     static $initialized = false;
@@ -50,9 +43,6 @@ function edit_requests_table_init(): void
     }
 }
 
-/**
- * Check whether an active pending edit request exists for a record.
- */
 function edit_request_has_active(string $recordType, int $recordId): bool
 {
     edit_requests_table_init();
@@ -65,9 +55,12 @@ function edit_request_has_active(string $recordType, int $recordId): bool
     }
 }
 
+<<<<<<< HEAD
 /**
  * Create a new structured edit request ticket.
  */
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 if (!function_exists('edit_request_create')) {
 function edit_request_create(array $data): array
 {
@@ -133,7 +126,6 @@ function edit_request_create(array $data): array
         ]);
         $requestId = (int) $pdo->lastInsertId();
 
-        // Update target record status to 'Edit Requested'
         $updateSql = "UPDATE `{$table}` SET `status` = 'Edit Requested', `review_remark` = ?, `updated_at` = NOW() WHERE `id` = ?";
         $pdo->prepare($updateSql)->execute(["Edit Request #ER-{$requestId}: " . $reason, $recordId]);
 
@@ -149,9 +141,6 @@ function edit_request_create(array $data): array
 }
 }
 
-/**
- * Fetch a single edit request ticket with user names.
- */
 function edit_request_get(int $id): ?array
 {
     edit_requests_table_init();
@@ -173,12 +162,19 @@ function edit_request_get(int $id): ?array
     }
 }
 
-/**
- * List edit request tickets with optional filters.
- */
-function edit_requests_list(array $filters = []): array
+if (!function_exists('edit_requests_list')) {
+function edit_requests_list($filters = [], ?string $status = null, ?string $academicYear = null, ?int $requestedBy = null): array
 {
     edit_requests_table_init();
+
+    if (!is_array($filters)) {
+        $department = $filters;
+        $filters = [];
+        if (!empty($department)) { $filters['department'] = (string) $department; }
+        if (!empty($status)) { $filters['status'] = (string) $status; }
+        if (!empty($academicYear)) { $filters['academic_year'] = (string) $academicYear; }
+        if (!empty($requestedBy)) { $filters['requested_by'] = (int) $requestedBy; }
+    }
 
     $sql = "SELECT er.*, 
                    u_req.name AS requester_name, u_req.email AS requester_email,
@@ -199,9 +195,14 @@ function edit_requests_list(array $filters = []): array
         $params[] = $filters['status'];
     }
 
-    if (!empty($filters['academic_year'])) {
+    if (!empty($filters['academic_year']) && $filters['academic_year'] !== 'all') {
         $sql .= " AND er.academic_year = ?";
         $params[] = $filters['academic_year'];
+    }
+
+    if (!empty($filters['requested_by'])) {
+        $sql .= " AND er.requested_by = ?";
+        $params[] = (int) $filters['requested_by'];
     }
 
     if (!empty($filters['q'])) {
@@ -221,10 +222,8 @@ function edit_requests_list(array $filters = []): array
         return [];
     }
 }
+}
 
-/**
- * Process an edit request ticket: Approve (unlock for edit) or Reject.
- */
 function edit_request_process(int $id, string $action, ?string $adminComments, int $processedBy, string $userRole): array
 {
     edit_requests_table_init();
@@ -265,11 +264,9 @@ function edit_request_process(int $id, string $action, ?string $adminComments, i
             $newRecordStatus = 'Unlocked for Edit';
             $remark = "Edit allowed by {$userRole}" . ($adminCommentsTrimmed ? ": {$adminCommentsTrimmed}" : '');
 
-            // Update ticket
             $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = ?, `processed_by` = ?, `processed_at` = NOW(), `admin_comments` = ?, `updated_at` = NOW() WHERE `id` = ?");
             $stmt->execute([$newTicketStatus, $processedBy, $adminCommentsTrimmed ?: null, $id]);
 
-            // Update underlying record to 'Unlocked for Edit'
             $stmtRec = $pdo->prepare("UPDATE `{$table}` SET `status` = ?, `review_remark` = ?, `updated_at` = NOW() WHERE `id` = ?");
             $stmtRec->execute([$newRecordStatus, $remark, $recordId]);
 
@@ -277,14 +274,12 @@ function edit_request_process(int $id, string $action, ?string $adminComments, i
             return [true, "Edit Request #ER-{$id} approved. Record unlocked for Coordinator/Faculty editing."];
         } elseif ($action === 'reject') {
             $newTicketStatus = 'Rejected';
-            $newRecordStatus = 'Approved'; // Revert back to approved so record remains valid in reports
+            $newRecordStatus = 'Approved'; 
             $remark = "Edit request rejected by {$userRole}" . ($adminCommentsTrimmed ? ": {$adminCommentsTrimmed}" : '');
 
-            // Update ticket
             $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = ?, `processed_by` = ?, `processed_at` = NOW(), `admin_comments` = ?, `updated_at` = NOW() WHERE `id` = ?");
             $stmt->execute([$newTicketStatus, $processedBy, $adminCommentsTrimmed ?: null, $id]);
 
-            // Revert underlying record status
             $stmtRec = $pdo->prepare("UPDATE `{$table}` SET `status` = ?, `review_remark` = ?, `updated_at` = NOW() WHERE `id` = ?");
             $stmtRec->execute([$newRecordStatus, $remark, $recordId]);
 
@@ -308,9 +303,6 @@ function edit_request_process(int $id, string $action, ?string $adminComments, i
     }
 }
 
-/**
- * Mark any pending/approved edit request for a record as Completed (e.g. after edit is saved).
- */
 function edit_request_mark_completed_for_record(string $recordType, int $recordId): void
 {
     edit_requests_table_init();
@@ -322,9 +314,6 @@ function edit_request_mark_completed_for_record(string $recordType, int $recordI
     }
 }
 
-/**
- * Count pending edit requests for navigation badge.
- */
 function edit_requests_pending_count(array $user): int
 {
     if (!in_array($user['role'], ['Admin', 'Dean', 'HoD'], true)) {
@@ -340,7 +329,6 @@ function edit_requests_pending_count(array $user): int
             $stmt->execute([$dept]);
             return (int) $stmt->fetchColumn();
         } else {
-            // Admin and Dean see all pending tickets
             $stmt = db()->query("SELECT COUNT(*) FROM `edit_requests` WHERE `status` = 'Pending'");
             return (int) $stmt->fetchColumn();
         }
@@ -349,9 +337,6 @@ function edit_requests_pending_count(array $user): int
     }
 }
 
-/**
- * Retrieve the full original record row for previewing in the review modal.
- */
 function edit_request_original_record(string $recordType, int $recordId): ?array
 {
     $types = record_types();
@@ -372,5 +357,27 @@ function edit_request_original_record(string $recordType, int $recordId): ?array
         return $row ?: null;
     } catch (\PDOException $e) {
         return null;
+    }
+}
+
+if (!function_exists('edit_request_find')) {
+    function edit_request_find(int $id): ?array
+    {
+        return edit_request_get($id);
+    }
+}
+
+if (!function_exists('edit_request_review')) {
+    function edit_request_review(int $requestId, string $decision, ?string $comment, array $user): array
+    {
+        $action = ($decision === 'approve') ? 'approve' : 'reject';
+        return edit_request_process($requestId, $action, $comment, (int) ($user['id'] ?? 0), (string) ($user['role'] ?? 'Dean'));
+    }
+}
+
+if (!function_exists('edit_request_complete')) {
+    function edit_request_complete(int $recordId, string $recordType, int $coordinatorId = 0, ?array $oldValues = null, ?array $newValues = null): void
+    {
+        edit_request_mark_completed_for_record($recordType, $recordId);
     }
 }

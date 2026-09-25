@@ -1,8 +1,83 @@
 <?php
-/**
- * Lightweight, native XLSX file generator using ZipArchive and OpenXML.
- * Generates valid .xlsx files compatible with Microsoft Excel, Google Sheets, LibreOffice.
- */
+class SimpleZipWriter
+{
+    private array $entries = [];
+    private string $data   = '';
+
+    public function addFromString(string $name, string $content): void
+    {
+        $crc     = crc32($content);
+        $rawSize = strlen($content);
+
+        $method     = 0;
+        $compressed = $content;
+        $deflated   = @gzdeflate($content, 6);
+        if ($deflated !== false && strlen($deflated) < $rawSize) {
+            $method     = 8;
+            $compressed = $deflated;
+        }
+
+        [$dosTime, $dosDate] = self::dosTimestamp();
+
+        $this->entries[] = [
+            'name'     => $name,
+            'offset'   => strlen($this->data),
+            'crc'      => $crc,
+            'method'   => $method,
+            'compSize' => strlen($compressed),
+            'rawSize'  => $rawSize,
+            'time'     => $dosTime,
+            'date'     => $dosDate,
+        ];
+
+        $this->data .= pack('VvvvvvVVVvv',
+            0x04034b50,                        20,                                0,                                 $method,
+            $dosTime,
+            $dosDate,
+            $crc,
+            strlen($compressed),
+            $rawSize,
+            strlen($name),
+            0                              ) . $name . $compressed;
+    }
+
+    public function getContents(): string
+    {
+        $central      = '';
+        $centralStart = strlen($this->data);
+
+        foreach ($this->entries as $e) {
+            $central .= pack('VvvvvvvVVVvvvvvVV',
+                0x02014b50,                        20,                                20,                                0,                                 $e['method'],
+                $e['time'],
+                $e['date'],
+                $e['crc'],
+                $e['compSize'],
+                $e['rawSize'],
+                strlen($e['name']),
+                0,                                 0,                                 0,                                 0,                                 0x20,                              $e['offset']
+            ) . $e['name'];
+        }
+
+        $count = count($this->entries);
+
+        return $this->data . $central . pack('VvvvvVVv',
+            0x06054b50,                        0,                                 0,                                 $count,                            $count,                            strlen($central),
+            $centralStart,
+            0                              );
+    }
+
+    private static function dosTimestamp(): array
+    {
+        $t    = getdate();
+        $year = max(1980, (int) $t['year']);
+
+        return [
+            (($t['hours'] << 11) | ($t['minutes'] << 5) | ((int) ($t['seconds'] / 2))) & 0xFFFF,
+            ((($year - 1980) << 9) | ($t['mon'] << 5) | $t['mday']) & 0xFFFF,
+        ];
+    }
+}
 
 class SimpleXlsxWriter
 {
@@ -11,6 +86,7 @@ class SimpleXlsxWriter
      */
     public static function createXlsx(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
     {
+<<<<<<< HEAD
         return self::createMultiSheetXlsx([
             [
                 'title'   => $sheetTitle,
@@ -52,8 +128,36 @@ class SimpleXlsxWriter
         }
 
         $sheetCount = count($sheets);
+=======
+        $zip = new SimpleZipWriter();
 
-        // 1. [Content_Types].xml
+        $colWidths = [];
+        $cCount = count($headers);
+        foreach ($rows as $r) {
+            if (is_array($r)) {
+                $cCount = max($cCount, count($r));
+            }
+        }
+        $cCount = max(1, $cCount);
+
+        for ($i = 0; $i < $cCount; $i++) {
+            $maxLen = 10;
+            if (isset($headers[$i])) {
+                $maxLen = max($maxLen, mb_strlen((string)$headers[$i]));
+            }
+            foreach ($rows as $r) {
+                if (isset($r[$i])) {
+                    $valStr = is_array($r[$i]) ? (string)($r[$i]['text'] ?? '') : (string)$r[$i];
+                    $lines = explode("\n", $valStr);
+                    foreach ($lines as $line) {
+                        $maxLen = max($maxLen, mb_strlen($line));
+                    }
+                }
+            }
+            $colWidths[$i] = min(60, max(10, $maxLen + 3));
+        }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
+
         $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -67,14 +171,12 @@ class SimpleXlsxWriter
         $contentTypes .= "\n</Types>";
         $zip->addFromString('[Content_Types].xml', $contentTypes);
 
-        // 2. _rels/.rels
         $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
 </Relationships>';
         $zip->addFromString('_rels/.rels', $rels);
 
-        // 3. xl/_rels/workbook.xml.rels
         $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">';
         for ($s = 1; $s <= $sheetCount; $s++) {
@@ -85,8 +187,12 @@ class SimpleXlsxWriter
         $wbRels .= "\n</Relationships>";
         $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
 
+<<<<<<< HEAD
         // 4. xl/workbook.xml
         $usedTitles = [];
+=======
+        $sheetNameClean = self::sanitizeXml(mb_substr($sheetTitle, 0, 31));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>';
@@ -110,6 +216,7 @@ class SimpleXlsxWriter
         $workbook .= "\n  </sheets>\n</workbook>";
         $zip->addFromString('xl/workbook.xml', $workbook);
 
+<<<<<<< HEAD
         // 5. xl/styles.xml
         $styles = self::getStylesXml();
         $zip->addFromString('xl/styles.xml', $styles);
@@ -135,6 +242,9 @@ class SimpleXlsxWriter
     public static function getStylesXml(): string
     {
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+=======
+        $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="4">
     <font><sz val="11"/><name val="Calibri"/></font>
@@ -227,7 +337,6 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
-        // Header Row
         if (!empty($headers)) {
             $sheetData .= '<row r="' . $rIdx . '" ht="24" customHeight="1">';
             $cIdx = 0;
@@ -240,7 +349,6 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
-        // Data Rows
         foreach ($rows as $row) {
             $sheetData .= '<row r="' . $rIdx . '">';
             $cIdx = 0;
@@ -261,11 +369,39 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
+<<<<<<< HEAD
         return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+=======
+        $hyperlinksXml = '';
+        if (!empty($hyperlinks)) {
+            $hyperlinksXml = '<hyperlinks>';
+            foreach ($hyperlinks as $h) {
+                $hyperlinksXml .= '<hyperlink ref="' . $h['ref'] . '" r:id="' . $h['rId'] . '" display="' . self::sanitizeXml($h['display']) . '"/>';
+            }
+            $hyperlinksXml .= '</hyperlinks>';
+
+            $sheet1Rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+                '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . "\n";
+            foreach ($hyperlinks as $h) {
+                $sheet1Rels .= '  <Relationship Id="' . $h['rId'] . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' . self::sanitizeXml($h['url']) . '" TargetMode="External"/>' . "\n";
+            }
+            $sheet1Rels .= '</Relationships>';
+            $zip->addFromString('xl/worksheets/_rels/sheet1.xml.rels', $sheet1Rels);
+        }
+
+        $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   ' . $colsXml . '
   <sheetData>' . $sheetData . '</sheetData>
 </worksheet>';
+<<<<<<< HEAD
+=======
+        $zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
+
+        return $zip->getContents();
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     }
 
     private static function sanitizeXml(string $str): string

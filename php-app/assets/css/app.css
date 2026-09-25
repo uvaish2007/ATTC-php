@@ -1,11 +1,5 @@
-/* ============================================================================
-   ATTS IQAC Portal — design system
-   Brand: navy #131D3B, orange #FF4F01 (unchanged).
-   Minimal surfaces, generous rhythm, restrained motion.
-   ========================================================================== */
 
 :root {
-  /* ---- Brand scales (unchanged) ---- */
   --navy-50:#F4F6FA; --navy-100:#E7EBF3; --navy-200:#C9D2E4; --navy-300:#9FADCB;
   --navy-400:#6B7FA8; --navy-500:#465A87; --navy-600:#33456B; --navy-700:#253356;
   --navy-800:#1A2547; --navy-900:#131D3B; --navy-950:#0C1329;
@@ -13,34 +7,28 @@
   --orange-50:#FFF3ED; --orange-100:#FFE3D4; --orange-200:#FFC3A8; --orange-300:#FF9970;
   --orange-400:#FF6E33; --orange-500:#FF4F01; --orange-600:#E04400; --orange-700:#B83700;
 
-  /* ---- Semantic surfaces ---- */
   --canvas:#F7F9FC; --surface:#FFFFFF; --surface-sunken:#FBFCFE;
   --ink:#131D3B; --ink-muted:#5A6785; --ink-faint:#8B96AE;
   --hairline:#E6EAF2; --hairline-soft:#EFF2F8;
 
-  /* ---- Status (kept in step with the inline colours the pages already use) - */
   --ok:#059669; --ok-bg:#ECFDF5; --ok-line:#A7F3D0;
   --info:#2563EB; --info-bg:#EFF6FF; --info-line:#BFDBFE;
   --warn:#B45309; --warn-bg:#FFFBEB; --warn-line:#FDE68A;
   --bad:#DC2626; --bad-bg:#FEF2F2; --bad-line:#FECACA;
 
-  /* ---- Radii ---- */
   --r-xs:6px; --r-sm:8px; --r-md:10px; --r-lg:14px; --r-xl:18px; --r-pill:999px;
   --radius:14px;                        /* kept: referenced widely by the pages */
 
-  /* ---- Elevation. Tinted with the brand navy so shadows never look grey. ---- */
   --shadow-xs:0 1px 2px rgba(19,29,59,.05);
   --shadow-card:0 1px 2px rgba(19,29,59,.04), 0 2px 8px rgba(19,29,59,.045);
   --shadow-card-hover:0 2px 4px rgba(19,29,59,.05), 0 14px 32px -8px rgba(19,29,59,.14);
   --shadow-pop:0 18px 48px -12px rgba(12,19,41,.28), 0 4px 12px rgba(12,19,41,.08);
   --shadow-brand:0 4px 14px -4px rgba(255,79,1,.45);
 
-  /* ---- Motion ---- */
   --ease:cubic-bezier(.32,.72,0,1);
   --ease-out:cubic-bezier(.16,1,.3,1);
   --dur:.22s; --dur-slow:.42s;
 
-  /* ---- Focus ---- */
   --ring:0 0 0 3px rgba(255,79,1,.22);
 
   --sidebar-w:260px;
@@ -66,13 +54,10 @@ body {
 a { color:inherit; text-decoration:none; }
 .tabular, .stat-value { font-variant-numeric:tabular-nums; }
 
-/* One consistent focus ring for everything reachable by keyboard. */
 :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
   outline:none; box-shadow:var(--ring); border-radius:var(--r-sm);
 }
 
-/* Quiet, brand-tinted scrollbars for the page and inner panels. The sidebar
-   opts out entirely (see .sidebar-nav). */
 * { scrollbar-width:thin; scrollbar-color:var(--navy-200) transparent; }
 ::-webkit-scrollbar { width:10px; height:10px; }
 ::-webkit-scrollbar-track { background:transparent; }
@@ -82,7 +67,6 @@ a { color:inherit; text-decoration:none; }
 
 ::selection { background:var(--orange-100); color:var(--orange-700); }
 
-/* ---- App shell ---------------------------------------------------------- */
 .app { display:flex; min-height:100vh; }
 
 .sidebar {
@@ -92,15 +76,11 @@ a { color:inherit; text-decoration:none; }
   height:100vh; height:100dvh; overflow:hidden;
   z-index:60;
 }
-/* A hairline of light down the inner edge, so the navy reads as a raised panel
-   rather than a flat block butted against the canvas. */
 .sidebar::after {
   content:""; position:absolute; inset:0 0 0 auto; width:1px; pointer-events:none;
   background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.02));
 }
 
-/* The brand block is exactly the topbar's height, so their bottom borders
-   meet in one continuous line across the top of the app. */
 .sidebar-brand {
   height:var(--topbar-h); display:flex; align-items:center; gap:12px; padding:0 20px;
   border-bottom:1px solid rgba(255,255,255,.08); flex-shrink:0;
@@ -116,11 +96,6 @@ a { color:inherit; text-decoration:none; }
 .brand-sub { font-size:10px; color:var(--navy-300); letter-spacing:.1em;
   text-transform:uppercase; font-weight:500; margin-top:1px; }
 
-/* ---- Sidebar navigation ------------------------------------------------
-   No visible scrollbar in any role. Every role's menu is sized to fit a
-   laptop-height screen outright; on anything shorter the list still scrolls
-   (wheel, touch, keyboard) and a soft fade at the clipped edge shows there is
-   more — set by the footer script, which toggles .fade-top / .fade-bottom. */
 @property --fade-top    { syntax:'<length>'; inherits:false; initial-value:0px; }
 @property --fade-bottom { syntax:'<length>'; inherits:false; initial-value:0px; }
 
@@ -164,7 +139,6 @@ a { color:inherit; text-decoration:none; }
   opacity:1; transform:scale(1);
   background:var(--orange-500); box-shadow:0 4px 12px -5px rgba(255,79,1,.6);
 }
-/* A rail on the panel edge marks the current page at a glance. */
 .nav-link.active::after {
   content:""; position:absolute; left:-12px; top:50%; transform:translateY(-50%);
   width:3px; height:18px; border-radius:0 3px 3px 0; background:var(--orange-400);
@@ -181,7 +155,6 @@ a { color:inherit; text-decoration:none; }
 }
 .nav-link.active .nav-badge { background:rgba(255,255,255,.24); }
 
-/* ---- Sidebar footer: who is signed in, with Logout on the same row ------ */
 .sidebar-foot { border-top:1px solid rgba(255,255,255,.08); padding:10px 12px; flex-shrink:0; }
 .side-user { display:flex; align-items:center; gap:11px; padding:4px 4px 4px 6px; }
 .avatar {
@@ -208,7 +181,6 @@ a { color:inherit; text-decoration:none; }
 .side-signout svg, .side-logout svg { transition:transform var(--dur) var(--ease-out); }
 .side-signout:hover svg, .side-logout:hover svg { transform:translateX(2px); }
 
-/* ---- Main column -------------------------------------------------------- */
 .main { flex:1; min-width:0; display:flex; flex-direction:column; }
 .topbar {
   position:sticky; top:0; z-index:40; height:var(--topbar-h); flex-shrink:0;
@@ -228,8 +200,6 @@ a { color:inherit; text-decoration:none; }
   transition:color var(--dur) var(--ease); }
 a.breadcrumb-root:hover, .breadcrumb a.root:hover { color:var(--orange-500); }
 
-/* Back: a quiet outlined pill rather than a heavy block, so it sits level
-   with the breadcrumb instead of competing with the page's primary action. */
 .topbar-back-btn {
   display:inline-flex; align-items:center; gap:6px; flex-shrink:0;
   height:32px; padding:0 12px 0 9px; border-radius:var(--r-pill);
@@ -264,20 +234,15 @@ a.breadcrumb-root:hover, .breadcrumb a.root:hover { color:var(--orange-500); }
   display:grid; place-items:center; font-size:11.5px; font-weight:600; letter-spacing:.04em;
   flex-shrink:0; box-shadow:0 0 0 2px var(--surface), 0 0 0 3px var(--navy-100); }
 
-/* Hamburger + scrim: only ever visible on the narrow layout (see the
-   responsive block at the end of this file). */
 .nav-toggle { display:none; }
 .scrim { display:none; }
 
 .content { flex:1; padding:24px clamp(16px,2.6vw,32px) 48px; }
 .container { max-width:1600px; margin:0 auto; }
 
-/* Each page fades up once on load, so a dashboard settles in rather than
-   snapping into place. */
 .content > .container { animation:page-in var(--dur-slow) var(--ease-out) both; }
 @keyframes page-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
 
-/* ---- Page header -------------------------------------------------------- */
 .page-head { display:flex; align-items:flex-start; justify-content:space-between;
   gap:16px; margin-bottom:22px; flex-wrap:wrap; }
 .page-head h1 { font-size:clamp(21px,2.2vw,26px); line-height:1.15; font-weight:700;
@@ -286,9 +251,6 @@ a.breadcrumb-root:hover, .breadcrumb a.root:hover { color:var(--orange-500); }
 .page-head .actions { display:flex; align-items:center; gap:8px; flex-shrink:0; flex-wrap:wrap; }
 .page-head .actions form { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
-/* A filter bar laid out as a flex row: its controls are sized by their
-   content. Without this the blanket `width:100%` on .select/.input makes each
-   control claim a whole row of its own. */
 form.flex { flex-wrap:wrap; }
 form.flex > .select, form.flex > .input,
 .page-head .actions .select, .page-head .actions .input {
@@ -297,19 +259,18 @@ form.flex > .select, form.flex > .input,
 form.flex > .input[type="date"] { min-width:0; }
 form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowrap; }
 
-/* ---- Cards -------------------------------------------------------------- */
 .card {
   background:var(--surface); border:1px solid var(--hairline);
   border-radius:var(--radius); box-shadow:var(--shadow-card);
   transition:box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
-.card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:20px 24px 14px; }
+.card-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:20px 24px 14px; flex-wrap:wrap; }   /* wraps so nowrap button rows cannot push the page wider than the screen */
 .card-title { font-size:15px; font-weight:600; margin:0; letter-spacing:-.014em; }
 .card-sub { font-size:12px; color:var(--ink-faint); margin-top:3px; line-height:1.5; }
 .card-body { padding:24px; }
 .card-head + .card-body { padding-top:0; }
 
-/* ---- Stat cards --------------------------------------------------------- */
 .stat-grid { display:grid; gap:14px; margin-bottom:20px; }
 .grid-4 { grid-template-columns:repeat(4,1fr); }
 .grid-6 { grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); }
@@ -326,8 +287,6 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
   transition:transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease),
              border-color var(--dur) var(--ease);
 }
-/* A hairline of brand colour wipes across the top edge on hover: the only
-   decoration on the tile, and it never shifts the number. */
 .stat::before {
   content:""; position:absolute; inset:0 0 auto 0; height:2px;
   background:linear-gradient(90deg,var(--orange-500),var(--orange-300));
@@ -336,9 +295,6 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
 }
 .stat:hover { transform:translateY(-2px); box-shadow:var(--shadow-card-hover); border-color:var(--navy-100); }
 .stat:hover::before { transform:scaleX(1); }
-/* The top row has a fixed height, so a label that wraps to two lines never
-   pushes its number below its neighbours'. The caption sits on the tile's
-   bottom edge whatever is above it. */
 .stat-top { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; }
 .stat-label { font-size:13px; font-weight:500; color:var(--ink-muted); line-height:1.3;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
@@ -352,7 +308,6 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
 .stat-desc { font-size:11.5px; color:var(--ink-faint); line-height:1.4; margin-top:auto; padding-top:4px;
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
-/* ---- Buttons ------------------------------------------------------------ */
 .btn {
   display:inline-flex; align-items:center; justify-content:center; gap:8px;
   height:42px; padding:0 16px; border-radius:var(--r-md); font-size:13.5px; font-weight:500;
@@ -377,7 +332,6 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
 .btn-ghost { background:none; color:var(--ink-muted); }
 .btn-ghost:hover { background:var(--navy-50); color:var(--ink); }
 
-/* ---- Badges ------------------------------------------------------------- */
 .badge {
   display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border-radius:var(--r-xs);
   font-size:11.5px; font-weight:500; white-space:nowrap; border:1px solid transparent;
@@ -393,7 +347,6 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
 .badge-warning { background:var(--warn-bg); color:var(--warn);  border-color:#FEF3C7; }
 .badge-danger  { background:var(--bad-bg);  color:#B91C1C;      border-color:var(--bad-line); }
 
-/* ---- Tables ------------------------------------------------------------- */
 .table-wrap { overflow-x:auto; overscroll-behavior-x:contain; }
 table.data { width:100%; border-collapse:collapse; text-align:left; }
 table.data thead th {
@@ -408,7 +361,6 @@ table.data tbody tr { transition:background .14s var(--ease); }
 table.data tbody tr:hover { background:var(--navy-50); }
 table.data .num { text-align:right; font-variant-numeric:tabular-nums; }
 
-/* ---- Forms -------------------------------------------------------------- */
 .field { margin-bottom:16px; }
 .field label { display:block; font-size:12.5px; font-weight:500; color:var(--ink-muted); margin-bottom:6px; }
 .field .req { color:var(--orange-500); }
@@ -422,7 +374,6 @@ table.data .num { text-align:right; font-variant-numeric:tabular-nums; }
 .input:focus, .select:focus { border-color:var(--orange-500); box-shadow:var(--ring); }
 .input::placeholder { color:var(--ink-faint); }
 .input[disabled], .select[disabled] { background:var(--navy-50); color:var(--ink-faint); cursor:not-allowed; }
-/* The chevron is drawn into the control so every browser shows the same select. */
 .select {
   appearance:none; -webkit-appearance:none; padding-right:34px; cursor:pointer;
   background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235A6785' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
@@ -432,7 +383,6 @@ select.select[multiple] { background-image:none; padding-right:13px; height:auto
 .field .hint { font-size:11.5px; color:var(--ink-faint); margin-top:6px; }
 .field .err  { font-size:11.5px; color:#B91C1C; margin-top:6px; }
 
-/* ---- Alerts / flash ----------------------------------------------------- */
 .alert {
   position:relative; display:flex; align-items:flex-start; gap:12px;
   padding:12px 16px 12px 18px; border-radius:var(--r-lg);
@@ -440,7 +390,6 @@ select.select[multiple] { background-image:none; padding-right:13px; height:auto
   animation:alert-in var(--dur-slow) var(--ease-out) both;
 }
 @keyframes alert-in { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:none; } }
-/* The stripe carries the meaning through even in a greyscale printout. */
 .alert::before { content:""; position:absolute; left:0; top:8px; bottom:8px; width:3px;
   border-radius:0 3px 3px 0; background:currentColor; opacity:.55; }
 .alert svg { flex-shrink:0; margin-top:1px; }
@@ -449,14 +398,12 @@ select.select[multiple] { background-image:none; padding-right:13px; height:auto
 .alert-info    { background:var(--info-bg); border-color:var(--info-line); color:#1E40AF; }
 .alert-warning { background:var(--warn-bg); border-color:var(--warn-line); color:#92400E; }
 
-/* ---- Empty state -------------------------------------------------------- */
 .empty { text-align:center; padding:56px 24px; }
 .empty .ic { width:52px; height:52px; border-radius:var(--r-pill); background:var(--navy-50);
   color:var(--navy-300); display:grid; place-items:center; margin:0 auto; }
 .empty p { margin:14px 0 0; font-size:14px; color:var(--ink-muted); font-weight:500; }
 .empty .note { font-size:12px; color:var(--ink-faint); margin-top:5px; font-weight:400; }
 
-/* ---- Department breakdown / grids -------------------------------------- */
 .mt-5 { margin-top:20px; }
 .dept-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px; }
 .dept-card { display:flex; align-items:center; gap:12px; border:1px solid var(--hairline); border-radius:12px; padding:14px; }
@@ -470,11 +417,9 @@ select.select[multiple] { background-image:none; padding-right:13px; height:auto
 .mini-btn:hover { background:var(--navy-50); color:var(--ink); }
 .mini-btn.danger:hover { background:#FEF2F2; color:#B91C1C; }
 
-/* Progress bar (dept totals) */
 .bar { width:64px; height:6px; border-radius:999px; background:var(--navy-100); overflow:hidden; display:inline-block; vertical-align:middle; }
 .bar > span { display:block; height:100%; border-radius:999px; background:var(--orange-500); }
 
-/* ---- Login -------------------------------------------------------------- */
 .login-wrap { min-height:100vh; display:flex; }
 .login-brand { width:45%; background:var(--navy-900); color:#fff; padding:48px;
   display:flex; flex-direction:column; justify-content:space-between; position:relative; overflow:hidden; }
@@ -487,7 +432,6 @@ select.select[multiple] { background-image:none; padding-right:13px; height:auto
 .login-card .lead { font-size:14px; color:var(--ink-muted); margin-top:6px; }
 @media (max-width:900px){ .login-brand{ display:none; } }
 
-/* ---- Modal (native <dialog>) ------------------------------------------- */
 dialog.modal {
   border:0; border-radius:16px; padding:0; width:100%; max-width:32rem;
   box-shadow:var(--shadow-pop); color:var(--ink);
@@ -504,10 +448,6 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .flex { display:flex; } .gap-2 { gap:8px; } .gap-3 { gap:12px; }
 .between { justify-content:space-between; } .items-center { align-items:center; }
 
-/* ============================================================================
-   Page section layouts
-   These replace repeated inline `style="display:grid; ..."` in the pages.
-   ========================================================================== */
 .grid-2-1 { display:grid; grid-template-columns:2fr 1fr; gap:20px; }
 .grid-1-2 { display:grid; grid-template-columns:1fr 1.6fr; gap:20px; }
 .grid-1-1 { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
@@ -517,19 +457,16 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
   .grid-2-1, .grid-1-2, .grid-1-1 { grid-template-columns:1fr; }
 }
 
-/* ---- Horizontal bar list (records by metric, team by role) -------------- */
 .bar-row { display:flex; align-items:center; gap:12px; padding:5px 0; }
 .bar-row .bar-label { width:96px; font-size:13px; color:var(--ink-muted); }
 .bar-row .bar-track { flex:1; height:16px; background:var(--navy-50); border-radius:6px; overflow:hidden; }
 .bar-row .bar-fill  { display:block; height:100%; background:var(--orange-500); border-radius:6px; }
 .bar-row .bar-num   { width:28px; text-align:right; font-weight:600; font-size:13px; }
 
-/* Slimmer navy variant, used for the "Team by role" list. */
 .bar-row.thin .bar-track { height:8px; border-radius:999px; }
 .bar-row.thin .bar-fill  { background:var(--navy-700); border-radius:999px; }
 .bar-row.thin .bar-num   { width:24px; }
 
-/* ---- Submission pipeline (stacked status bar + legend) ------------------ */
 .pipeline { display:flex; height:12px; border-radius:999px; overflow:hidden; background:var(--navy-50); gap:2px; }
 .pipeline > span { display:block; }
 .legend { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:20px; }
@@ -540,29 +477,18 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 
 .legend-row .pc { width:38px; text-align:right; font-size:12px; }
 
-/* ---- Column chart (records by metric) ----------------------------------- */
-/* The SVG has a fixed viewBox and scales like a picture, so the labels can
-   never overlap however wide the card gets. */
 .chart { width:100%; height:auto; display:block; }
-.chart-grid  { stroke:var(--hairline); stroke-width:1; }
-.chart-base  { stroke:var(--navy-200); stroke-width:1; }
-.chart-axis  { fill:var(--ink-faint); font-size:12px; }
-.chart-value { fill:var(--ink-muted); font-size:12px; font-weight:600; }
-.chart-bar   { fill:var(--orange-500); transition:fill .15s; }
-.chart-bar:hover { fill:var(--orange-600); }
+.chart-grid  { stroke:var(--hairline-soft); stroke-width:1; stroke-dasharray:3 3; }
+.chart-base  { stroke:var(--hairline); stroke-width:1; }
+.chart-axis  { fill:var(--ink-faint); font-size:11px; font-weight:500; }
+.chart-axis.lbl { font-weight:600; }
+.chart-value { fill:var(--ink-muted); font-size:11px; font-weight:700; }
+.chart-bar   { fill:var(--orange-500); transition:opacity var(--dur) var(--ease); }
+.chart-bar:hover { opacity:.82; }
 
-/* ==========================================================================
-   Target vs Achieved
-   A KPI-tile summary, then one horizontal progress row per target. Horizontal
-   bars (not columns) so a full free-text target name always fits, and any
-   number of targets simply stacks.
-   ========================================================================= */
-
-/* ---- Filter bar ---- */
 .chart-filters { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .chart-filters .select { min-width:0; padding:6px 10px; font-size:13px; }
 
-/* ---- Timed unlock banner (Targets / dashboard) ----------------------------- */
 .unlock-banner { display:flex; align-items:center; gap:14px; padding:14px 18px; border-radius:12px;
   margin-bottom:20px; border:1px solid var(--hairline); }
 .unlock-banner .ub-ic { width:38px; height:38px; border-radius:10px; display:grid; place-items:center; flex-shrink:0; }
@@ -571,7 +497,6 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .unlock-banner .ub-sub { font-size:12.5px; color:var(--ink-muted); margin-top:2px; }
 .unlock-banner .ub-clock { font-size:24px; font-weight:700; letter-spacing:.02em; flex-shrink:0;
   font-variant-numeric:tabular-nums; }
-/* Open = green/live, pending = amber, locked = navy */
 .unlock-banner.open   { background:#ECFDF5; border-color:#A7F3D0; }
 .unlock-banner.open   .ub-ic { background:#059669; color:#fff; }
 .unlock-banner.open   .ub-clock { color:#047857; }
@@ -580,11 +505,9 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .unlock-banner.locked { background:var(--navy-50); }
 .unlock-banner.locked .ub-ic { background:var(--navy-700); color:#fff; }
 
-/* ---- Upload panel action bar ---------------------------------------------- */
 .upload-actions { display:flex; align-items:center; gap:8px; margin-top:18px; flex-wrap:wrap; }
 .upload-actions .spacer { flex:1 1 20px; }
 
-/* ---- Report template builder (columns + rows) ------------------------------ */
 .tpl-scroll { overflow-x:auto; overflow-y:visible; }
 .tpl-line { display:flex; align-items:center; gap:10px; padding:7px 8px; border-bottom:1px solid var(--hairline); }
 .tpl-line:hover:not(.tpl-head):not(.tpl-add) { background:var(--navy-50); border-radius:8px; }
@@ -597,15 +520,12 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .tpl-head:hover { background:var(--surface); }
 .tpl-colname { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em;
   color:var(--ink-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-/* A data cell in the row builder: auto-filled from the upload, so kept quiet so
-   the eye lands on the Label cells the admin actually fills. */
 .tpl-auto { display:inline-flex; align-items:center; gap:4px; justify-content:center; font-size:11px;
   font-weight:500; color:var(--ink-faint); background:var(--canvas); border:1px solid var(--hairline);
   border-radius:7px; padding:9px 6px; white-space:nowrap; }
 .tpl-auto svg { opacity:.5; }
 .tpl-auto-chip { display:inline-flex; align-items:center; font-size:11px; font-weight:600; color:var(--navy-600);
   background:var(--navy-50); border:1px dashed var(--navy-200); border-radius:6px; padding:1px 6px; }
-/* Label / Data type badge in the column editor. */
 .tpl-type { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:999px;
   font-size:11px; font-weight:700; white-space:nowrap; }
 .tpl-type.label { background:var(--navy-50); color:var(--navy-600); }
@@ -616,12 +536,10 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
   background:var(--canvas); border:1px solid var(--hairline); border-radius:10px; }
 .tpl-legend-lead { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--ink-muted); }
 
-/* ---- Reports hub: the three generatable reports, side by side -------------- */
 .report-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
 .report-cards .card { margin:0; }
 .report-cards .card-title { display:flex; align-items:center; gap:8px; }
 
-/* ---- Meeting-report download: one label + three format links --------------- */
 .report-dl { display:inline-flex; align-items:stretch; border:1px solid var(--navy-200);
   border-radius:8px; overflow:hidden; height:34px; }
 .report-dl-label { display:flex; align-items:center; gap:6px; padding:0 12px; font-size:13px;
@@ -630,7 +548,6 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
   color:var(--navy-700); border-left:1px solid var(--navy-200); transition:background .12s, color .12s; }
 .report-dl-fmt:hover { background:var(--orange-500); color:#fff; }
 
-/* ---- Summary tiles ---- */
 .attain-tiles { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
   gap:12px; margin-bottom:22px; }
 .attain-tile { border:1px solid var(--hairline); border-radius:12px; padding:14px 16px;
@@ -645,12 +562,10 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .tile-bar { height:6px; border-radius:999px; background:var(--navy-100); overflow:hidden; margin-top:10px; }
 .tile-bar > span { display:block; height:100%; border-radius:999px; transition:width .4s ease; }
 
-/* ---- Scale header (0 / 50% / target) ---- */
 .attain-scale { display:flex; justify-content:space-between; font-size:11px;
   color:var(--ink-faint); padding:0 0 6px; border-bottom:1px solid var(--hairline); margin-bottom:4px; }
 .attain-scale .col2 { text-align:center; }
 
-/* ---- One target per row ---- */
 .attain-list { display:flex; flex-direction:column; }
 .attain-row  { display:grid; grid-template-columns:minmax(0,1.5fr) 2fr minmax(116px,auto);
   gap:18px; align-items:center; padding:13px 8px; border-bottom:1px solid var(--hairline);
@@ -665,9 +580,6 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
   overflow:hidden; text-overflow:ellipsis; }
 .attain-info .scope .st { font-weight:600; }
 
-/* The bar: a full-width track (= the target) with the achieved share filled in.
-   A faint 100% marker sits at the target line so a bar that fell short is read
-   against where it was meant to reach. */
 .attain-track { position:relative; height:14px; border-radius:999px; background:var(--navy-100);
   overflow:hidden; }
 .attain-fill  { display:block; height:100%; border-radius:999px; min-width:2px; transition:width .4s ease; }
@@ -678,7 +590,6 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .attain-nums .pct  { font-size:17px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1; }
 .attain-nums .frac { font-size:12px; color:var(--ink-faint); margin-top:3px; font-variant-numeric:tabular-nums; }
 
-/* ---- Legend / footnote ---- */
 .attain-foot { display:flex; align-items:center; gap:20px; flex-wrap:wrap; margin-top:16px;
   padding-top:14px; border-top:1px solid var(--hairline); font-size:12px; color:var(--ink-muted); }
 .attain-key { display:flex; align-items:center; gap:7px; }
@@ -690,7 +601,6 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
   .attain-scale { display:none; }
 }
 
-/* ---- Doughnut (submission pipeline) ------------------------------------- */
 .donut-wrap { display:flex; align-items:center; gap:28px; flex-wrap:wrap; }
 .donut { width:168px; height:168px; flex-shrink:0; }
 .donut-track { fill:none; stroke:var(--navy-50); stroke-width:16; }
@@ -700,17 +610,13 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .donut-caption { fill:var(--ink-faint); font-size:11px; }
 .donut-wrap .legend { flex:1; min-width:180px; grid-template-columns:1fr; gap:10px; margin-top:0; }
 
-/* ---- Share bar inside the departments table ----------------------------- */
 .share { display:flex; align-items:center; gap:8px; justify-content:flex-end; }
 .share-track { width:56px; height:6px; border-radius:999px; background:var(--navy-50); overflow:hidden; }
 .share-fill  { display:block; height:100%; background:var(--navy-700); border-radius:999px; }
 
-/* Sortable column heading. */
 .sort-th { cursor:pointer; user-select:none; }
 .sort-th:hover { color:var(--ink); }
 
-/* ---- Target progress meters --------------------------------------------- */
-/* A 0-100 scale printed once, then one meter per target beneath it. */
 .scale { display:flex; justify-content:space-between; font-size:11px; color:var(--ink-faint);
   padding-bottom:6px; border-bottom:1px solid var(--hairline); margin-bottom:12px; }
 .meter-row  { margin-bottom:16px; }
@@ -720,27 +626,20 @@ dialog.modal::backdrop { background:rgba(12,19,41,.5); }
 .meter-fill  { display:block; height:100%; background:var(--orange-500); border-radius:999px; }
 .meter-foot  { font-size:12px; }
 
-/* ---- Simple list rows --------------------------------------------------- */
 .list-row { display:flex; align-items:center; justify-content:space-between; gap:12px;
   padding:8px 0; border-bottom:1px solid var(--hairline); }
 .list-row:last-child { border-bottom:0; }
 .list-row .t { font-size:13px; font-weight:500; }
-/* Titles and captions stack even when they are written as <span>s. */
 .list-row .t, .list-row .card-sub { display:block; }
 
-/* Label/value pair, e.g. "Journals  2" */
 .kv-row { display:flex; align-items:center; justify-content:space-between; padding:6px 0; }
 .kv-row .k { color:var(--ink-muted); }
 .kv-row .v { font-weight:600; }
 
-/* Totals row at the bottom of a data table (department breakdown). */
 table.data tfoot td { border-top:2px solid var(--hairline); padding-top:12px; }
 
-/* A table that needs room to breathe; scrolls inside .table-wrap. */
 table.data.wide { min-width:640px; }
 
-/* ---- Tab bar (Settings) ------------------------------------------------- */
-/* Each tab is an ordinary link back to the same page with a different ?tab= */
 .tabs { display:flex; gap:4px; margin-bottom:20px; border-bottom:1px solid var(--hairline); }
 .tab {
   padding:10px 16px; font-size:14px; font-weight:500; color:var(--ink-muted);
@@ -749,7 +648,6 @@ table.data.wide { min-width:640px; }
 .tab:hover  { color:var(--ink); }
 .tab.active { color:var(--orange-600); border-bottom-color:var(--orange-500); }
 
-/* ---- Note row (an icon beside a short explanation) ---------------------- */
 .note-row { display:flex; align-items:flex-start; gap:12px; }
 .note-ic {
   width:28px; height:28px; border-radius:8px; flex-shrink:0;
@@ -760,11 +658,9 @@ table.data.wide { min-width:640px; }
   font-family:Consolas, "Courier New", monospace;
 }
 
-/* Plain paragraph inside a dialog. */
 .modal-text { color:var(--ink-muted); font-size:14px; margin:0; }
 .modal-text strong { color:var(--ink); }
 
-/* ---- Profile header ----------------------------------------------------- */
 .profile-hero { display:flex; align-items:center; gap:20px; }
 .avatar-xl {
   width:72px; height:72px; border-radius:999px; flex-shrink:0;
@@ -775,22 +671,15 @@ table.data.wide { min-width:640px; }
 .profile-meta { display:flex; align-items:center; flex-wrap:wrap; gap:6px 16px; margin-top:8px; font-size:13px; }
 .profile-meta span { display:inline-flex; align-items:center; gap:6px; }
 
-/* ---- Card that behaves like a big link ---------------------------------- */
 .link-card { display:flex; align-items:center; gap:16px; padding:20px 24px; transition:box-shadow .15s, transform .15s; }
 .link-card:hover { box-shadow:var(--shadow-card-hover); transform:translateY(-1px); }
 .link-card > div:nth-child(2) { flex:1; min-width:0; }
 .link-card-go { color:var(--ink-faint); display:grid; place-items:center; }
 
-/* ---- Size variants ------------------------------------------------------ */
 .avatar-sm { width:36px; height:36px; font-size:11px; flex-shrink:0; }
 .input-sm  { height:36px; min-width:200px; }
 .mt-2 { margin-top:8px; }
 
-/* ============================================================================
-   Announcement Centre
-   ========================================================================== */
-
-/* ---- Filter bar --------------------------------------------------------- */
 .filter-bar { padding:12px 16px; }
 .filter-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .filter-row .select { width:auto; min-width:150px; height:38px; }
@@ -803,15 +692,12 @@ table.data.wide { min-width:640px; }
 .search-box:focus-within { border-color:var(--orange-500); }
 .search-box input { flex:1; border:0; outline:none; font-size:14px; font-family:inherit; color:var(--ink); background:none; }
 
-/* ---- Notice cards ------------------------------------------------------- */
 .ann-card { margin-bottom:16px; transition:box-shadow .15s, transform .15s; }
 .ann-card:hover { box-shadow:var(--shadow-card-hover); transform:translateY(-1px); }
 .ann-card.unread { border-left:3px solid var(--orange-500); }
 
-/* The pinned one sits above the list and is a little louder. */
 .ann-featured { margin-bottom:16px; border:1px solid var(--orange-200); background:linear-gradient(180deg,var(--orange-50),var(--surface) 90px); }
 
-/* Priority Announcement Boxes: Urgent (Dark Red), Important (Dark Green), Normal (Default) */
 .ann-card.priority-urgent,
 .ann-featured.priority-urgent {
   border: 2px solid #991b1b !important;
@@ -858,7 +744,6 @@ table.data.wide { min-width:640px; }
   border-left: 3px solid var(--orange-500) !important;
 }
 
-/* Priority badges */
 .badge-priority-urgent,
 .badge.badge-priority-urgent,
 .badge-urgent,
@@ -893,7 +778,6 @@ table.data.wide { min-width:640px; }
   font-weight: 600 !important;
 }
 
-/* Modal dialog priority accents */
 dialog.modal.priority-urgent {
   border: 2px solid #991b1b !important;
 }
@@ -910,7 +794,6 @@ dialog.modal.priority-important .modal-head {
   border-bottom: 1px solid #bbf7d0 !important;
 }
 
-
 .ann-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; margin-bottom:10px; }
 .ann-title { margin:0; font-size:16px; font-weight:600; line-height:1.4; }
 .ann-featured .ann-title { font-size:19px; }
@@ -925,28 +808,22 @@ dialog.modal.priority-important .modal-head {
 
 .ann-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:16px; }
 
-/* A form that has to sit inline beside buttons. */
 .inline { display:inline; }
 
-/* The orange dot that means "you have not opened this". */
 .dot-new { width:7px; height:7px; border-radius:999px; background:var(--orange-500); display:inline-block; }
 
-/* Bookmark button once it is on. */
 .mini-btn.on { background:var(--orange-50); color:var(--orange-600); border-color:var(--orange-200); }
 
-/* ---- Paging ------------------------------------------------------------- */
 .pager { display:flex; gap:6px; justify-content:center; margin-top:20px; }
 .page-link { min-width:34px; height:34px; padding:0 10px; border-radius:8px; display:grid; place-items:center;
   font-size:13px; font-weight:500; color:var(--ink-muted); border:1px solid var(--hairline); background:var(--surface); }
 .page-link:hover  { border-color:var(--navy-300); color:var(--ink); }
 .page-link.active { background:var(--navy-900); border-color:var(--navy-900); color:#fff; }
 
-/* ---- Right sidebar ------------------------------------------------------ */
 .side-col a.list-row { transition:padding-left .15s; }
 .side-col a.list-row:hover { padding-left:4px; }
 .side-col a.list-row:hover .t { color:var(--orange-600); }
 
-/* ---- Month calendar ----------------------------------------------------- */
 .cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; text-align:center; }
 .cal-head { font-size:10px; font-weight:600; color:var(--ink-faint); padding-bottom:4px; }
 .cal-day  { font-size:12px; padding:6px 0; border-radius:8px; color:var(--ink-muted); position:relative; }
@@ -958,21 +835,18 @@ dialog.modal.priority-important .modal-head {
   width:4px; height:4px; border-radius:999px; background:var(--orange-500);
 }
 
-/* ---- Reading a notice --------------------------------------------------- */
 .modal-wide { max-width:46rem; }
 
 .deadline-strip { display:flex; align-items:center; gap:10px; padding:10px 14px; margin-bottom:18px;
   background:var(--orange-50); border:1px solid var(--orange-100); border-radius:10px;
   font-size:13px; color:var(--orange-700); }
 
-/* The formatted message body. */
 .rich { font-size:14px; line-height:1.7; color:var(--ink); }
 .rich p  { margin:0 0 14px; }
 .rich ul { margin:0 0 14px; padding-left:20px; }
 .rich li { margin-bottom:6px; }
 .rich strong { font-weight:600; }
 
-/* ---- Attachments -------------------------------------------------------- */
 .attach-list, .analytics { margin-top:22px; padding-top:18px; border-top:1px solid var(--hairline); }
 .attach-title { display:flex; align-items:center; gap:8px; font-size:12px; font-weight:600;
   text-transform:uppercase; letter-spacing:.06em; color:var(--ink-faint); margin-bottom:12px; }
@@ -983,7 +857,6 @@ dialog.modal.priority-important .modal-head {
 .attach-ic { width:32px; height:32px; border-radius:8px; background:var(--navy-50); color:var(--navy-700);
   display:grid; place-items:center; flex-shrink:0; }
 
-/* ---- Writing a notice --------------------------------------------------- */
 .textarea { height:auto; padding:12px 14px; line-height:1.6; resize:vertical; }
 .input.file { height:auto; padding:10px 14px; }
 
@@ -1000,11 +873,8 @@ dialog.modal.priority-important .modal-head {
   .form-grid { grid-template-columns:1fr; }
 }
 
-/* Attainment-by-target list scrolls inside a fixed height so the whole set is
-   available without stretching the card. */
 .attain-scroll { max-height:360px; overflow-y:auto; padding-right:4px; }
 
-/* ---- Targets grouped by department --------------------------------------- */
 .tg-group { padding:0; margin-bottom:16px; overflow:hidden; }
 .tg-group > summary { display:flex; align-items:center; gap:12px; padding:15px 20px 15px 24px;
   cursor:pointer; list-style:none; }
@@ -1020,7 +890,6 @@ dialog.modal.priority-important .modal-head {
 .tg-group .tg-chev { color:var(--ink-faint); display:inline-flex; transition:transform .15s; }
 .tg-group[open] .tg-chev { transform:rotate(90deg); }
 
-/* ---- Small utilities ---------------------------------------------------- */
 .truncate { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .nowrap   { white-space:nowrap; }
 .min-w-0  { min-width:0; }
@@ -1028,7 +897,6 @@ dialog.modal.priority-important .modal-head {
 .fw-500 { font-weight:500; } .fw-600 { font-weight:600; } .fw-700 { font-weight:700; }
 .pt-0 { padding-top:0; }
 
-/* ---- Filter funnel — a compact dropdown that replaces a full filter bar - */
 .filter-funnel { position:relative; display:inline-block; }
 .filter-funnel > summary {
   list-style:none; cursor:pointer; user-select:none;
@@ -1066,7 +934,6 @@ dialog.modal.priority-important .modal-head {
 .filter-funnel[open] .filter-backdrop { display:block; position:fixed; inset:0; z-index:50; background:transparent; }
 @media (max-width:640px){ .filter-pop { right:0; left:auto; } }
 
-/* ---- Locked (maintenance) sidebar modules -------------------------------- */
 .nav-link.locked { opacity:.55; cursor:not-allowed; }
 .nav-link.locked:hover { background:transparent; color:inherit; }
 .nav-link.locked:hover::before { opacity:0; }
@@ -1074,7 +941,6 @@ dialog.modal.priority-important .modal-head {
 .nav-link.locked .nav-label { text-decoration:none; }
 .nav-lock { margin-left:auto; display:inline-flex; align-items:center; opacity:.75; }
 
-/* ---- Role badge in the topbar (who am I logged in as) -------------------- */
 .role-badge {
   display:inline-flex; align-items:center; gap:5px;
   padding:4px 10px; border-radius:999px;
@@ -1084,7 +950,6 @@ dialog.modal.priority-important .modal-head {
 }
 .role-badge svg { opacity:.85; }
 
-/* ---- Academic Year indicator in the topbar (system-wide, every page) ----- */
 .year-badge {
   display:inline-flex; align-items:center; gap:6px;
   padding:4px 10px; border-radius:999px;
@@ -1100,7 +965,6 @@ dialog.modal.priority-important .modal-head {
 }
 @media (max-width:900px) { .year-badge .yb-lock { display:none; } }
 
-/* ---- Executive Meeting status in the topbar (FEAT-07) --------------------- */
 .em-badge {
   display:inline-flex; align-items:center; gap:6px;
   height:26px; padding:0 10px; border-radius:999px;
@@ -1113,7 +977,6 @@ dialog.modal.priority-important .modal-head {
 .em-badge.em-upcoming .em-dot { background:#2563EB; }
 @media (max-width:1100px) { .em-badge { display:none; } }
 
-/* ---- Target: "counted from approved records" suggestion ------------------ */
 .rec-suggest { display:flex; align-items:center; justify-content:flex-end; gap:6px; margin-top:3px; font-weight:400; }
 .rec-count { display:inline-flex; align-items:center; gap:3px; font-size:11px; color:var(--ink-faint); white-space:nowrap; }
 .rec-use {
@@ -1122,7 +985,6 @@ dialog.modal.priority-important .modal-head {
 }
 .rec-use:hover { background:var(--orange-100); border-color:var(--orange-300); }
 
-/* ---- Alpha release banner ------------------------------------------------ */
 .alpha-banner {
   display:flex; align-items:center; gap:10px; flex-wrap:wrap;
   margin-bottom:16px; padding:9px 14px; border-radius:10px;
@@ -1136,20 +998,6 @@ dialog.modal.priority-important .modal-head {
 .alpha-text strong { color:var(--orange-700); }
 @media print { .alpha-banner { display:none; } }
 
-/* ============================================================================
-   FILTER BAR — the one filter pattern used on every page
-   ----------------------------------------------------------------------------
-   <form class="fbar">
-     <span class="fbar-title">[icon] Filters</span>
-     <label class="fb-field"><span class="fb-k">Status</span><select>…</select></label>
-     <label class="fb-field fb-search">[icon]<input type="search"></label>
-     <div class="fb-field fb-range">…two .fb-date inputs…</div>
-     <span class="fbar-end">…count + Clear all…</span>
-   </form>
-   Each filter is a pill: a quiet label, then the value you can change. A pill
-   that is narrowing the results turns orange (.is-set, toggled by the footer
-   script), so the current scope reads at a glance without opening anything.
-   ========================================================================== */
 .fbar {
   display:flex; align-items:center; flex-wrap:wrap; gap:8px;
   padding:10px; margin:0 0 20px;
@@ -1169,7 +1017,6 @@ dialog.modal.priority-important .modal-head {
 }
 .fbar-title svg { color:var(--navy-400); }
 
-/* ---- A filter pill ---- */
 .fb-field {
   position:relative; display:inline-flex; align-items:center; gap:7px;
   height:36px; padding:0 0 0 12px; max-width:100%; min-width:0; margin:0;
@@ -1192,7 +1039,6 @@ dialog.modal.priority-important .modal-head {
 }
 .fb-field > select:focus-visible, .fb-field input:focus-visible { box-shadow:none; }
 
-/* Narrowing the results. */
 .fb-field.is-set { background:var(--orange-50); border-color:var(--orange-200); }
 .fb-field.is-set .fb-k { color:var(--orange-600); }
 .fb-field.is-set > select {
@@ -1201,7 +1047,6 @@ dialog.modal.priority-important .modal-head {
 }
 .fb-field.is-set:hover { border-color:var(--orange-300); }
 
-/* ---- Search pill ---- */
 .fb-search { flex:1 1 240px; min-width:190px; padding:0 6px 0 12px; cursor:text; }
 .fb-search > svg { color:var(--ink-faint); flex-shrink:0; }
 .fb-search input {
@@ -1211,7 +1056,6 @@ dialog.modal.priority-important .modal-head {
 .fb-search input::placeholder { color:var(--ink-faint); }
 .fb-search.is-set > svg { color:var(--orange-600); }
 .fb-search.is-set input { color:var(--orange-700); font-weight:500; }
-/* The submit sits inside the search pill: Enter works, and so does a click. */
 .fb-go {
   width:26px; height:26px; flex-shrink:0; display:grid; place-items:center;
   border:0; border-radius:var(--r-sm); cursor:pointer; padding:0;
@@ -1221,7 +1065,6 @@ dialog.modal.priority-important .modal-head {
 .fb-go:hover { background:var(--orange-500); }
 .fb-go:active { transform:scale(.92); }
 
-/* ---- Date-range pill ---- */
 .fb-range { padding-right:8px; cursor:default; }
 .fb-range > svg { color:var(--ink-faint); flex-shrink:0; }
 .fb-range.is-set > svg { color:var(--orange-600); }
@@ -1234,7 +1077,7 @@ dialog.modal.priority-important .modal-head {
 .fb-range.is-set .fb-date input { color:var(--orange-700); }
 .fb-date .date-picker-btn {
   position:absolute; right:0; top:50%; transform:translateY(-50%);
-  width:22px; height:22px; display:grid; place-items:center; padding:0;
+  width:24px; height:24px; display:grid; place-items:center; padding:0;
   border:0; border-radius:6px; background:none; color:var(--ink-faint); cursor:pointer;
   transition:background var(--dur) var(--ease), color var(--dur) var(--ease);
 }
@@ -1244,7 +1087,6 @@ dialog.modal.priority-important .modal-head {
 .fbar-err { flex-basis:100%; margin:0; padding:0 4px; font-size:12px; font-weight:500; color:var(--bad); }
 .fbar-err:empty { display:none; }
 
-/* ---- Trailing summary + reset ---- */
 .fbar-end { margin-left:auto; display:inline-flex; align-items:center; gap:6px; padding-left:6px; flex-shrink:0; }
 .fbar-count {
   display:inline-flex; align-items:center; height:24px; padding:0 9px; border-radius:var(--r-pill);
@@ -1260,10 +1102,7 @@ dialog.modal.priority-important .modal-head {
 }
 .fbar-clear:hover { background:var(--navy-50); color:var(--ink); }
 
-/* ---- Variants ---- */
-/* Pills with no container, for a page header (the dashboard's scope). */
 .fbar.fbar-bare { padding:0; margin:0; background:none; border:0; box-shadow:none; }
-/* Flush inside a card, directly under its heading. */
 .card > .fbar.fbar-flush {
   margin:0; border-radius:0; border-width:1px 0; box-shadow:none;
   background:var(--surface-sunken); padding:10px 16px;
@@ -1277,12 +1116,6 @@ dialog.modal.priority-important .modal-head {
   .fbar-end { margin-left:0; width:100%; justify-content:space-between; padding-left:0; }
 }
 
-/* ============================================================================
-   USERS, GROUPED BY DEPARTMENT  (users.php)
-   Built on the Targets page's .tg-group: one collapsible card per department,
-   a header that summarises it, and the same five columns in every group so
-   the columns line up down the whole page.
-   ========================================================================== */
 .ug-toolbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 2px 10px; }
 .ug-caption { display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:500; color:var(--ink-faint); }
 .ug-caption svg { color:var(--navy-400); }
@@ -1293,7 +1126,6 @@ dialog.modal.priority-important .modal-head {
 .tg-group.ug-group[open] { box-shadow:var(--shadow-card); }
 .ug-group > summary { gap:14px; padding:13px 16px 13px 16px; transition:background var(--dur) var(--ease); }
 
-/* The department's "avatar": its code, or an icon for the special groups. */
 .ug-code {
   width:48px; height:42px; padding:0 3px; flex-shrink:0; border-radius:var(--r-md);
   display:grid; place-items:center; overflow:hidden;   /* one width, so every name starts in line */
@@ -1318,7 +1150,6 @@ dialog.modal.priority-important .modal-head {
 .ug-add { width:30px; height:30px; border:1px solid var(--hairline); background:var(--surface); color:var(--ink-muted); }
 .ug-add:hover { border-color:var(--orange-200); background:var(--orange-50); color:var(--orange-600); }
 
-/* Five fixed columns, identical in every group, so they align page-wide. */
 .ug-table { table-layout:fixed; min-width:680px; }
 table.data.ug-table tbody td { vertical-align:middle; padding-top:11px; padding-bottom:11px; }
 table.data.ug-table tbody td:first-child { padding-left:16px; }
@@ -1330,11 +1161,9 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
   letter-spacing:.06em; text-transform:uppercase; }
 .avatar-dark.avatar-sm { width:34px; height:34px; font-size:11px; box-shadow:none; }
 
-/* The row a save came back to: a brief orange wash, then gone. */
 .ug-table tbody tr.ug-flash { animation:ug-flash 2.2s var(--ease) both; }
 @keyframes ug-flash { 0%,35% { background:var(--orange-50); } 100% { background:transparent; } }
 
-/* Departments nobody has been added to yet. */
 .ug-empty {
   display:flex; align-items:flex-start; gap:10px 16px; flex-wrap:wrap; margin-top:4px;
   padding:14px 16px; border:1px dashed var(--navy-200); border-radius:var(--radius);
@@ -1354,8 +1183,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .ug-chip:hover { border-color:var(--orange-200); background:var(--orange-50); color:var(--orange-700); }
 .ug-chip:hover svg { color:var(--orange-600); }
 
-/* Phone: the join date gives way so names have room, and each department's
-   header stays on one line. */
 @media (max-width:640px) {
   .ug-group > summary { gap:10px; padding:12px; }
   .ug-head { flex:1 1 auto; }
@@ -1370,14 +1197,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
   table.data.ug-table tbody td:last-child  { padding-right:10px; }
 }
 
-/* ============================================================================
-   ACADEMIC YEAR  (academic-years.php)
-   One hero for the year being viewed (with its June–May term), the four
-   figures that matter, the Executive Meeting lock, the year's data, and the
-   registry of every year.
-   ========================================================================== */
-
-/* Tabs drawn as <button>s share the link tabs' look. */
 .tabs button.tab {
   display:inline-flex; align-items:center; gap:8px; background:none; border:0;
   border-bottom:2px solid transparent; font:inherit; font-size:13.5px; font-weight:500;
@@ -1398,7 +1217,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .btn-unlock { color:#047857; border-color:var(--ok-line); background:var(--surface); }
 .btn-unlock:hover { background:var(--ok-bg); border-color:#6EE7B7; }
 
-/* ---- Status pills ---- */
 .ay-pill {
   display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px;
   border-radius:var(--r-pill); border:1px solid transparent; white-space:nowrap;
@@ -1412,7 +1230,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .ay-pill.locked { background:var(--bad-bg);  color:#B91C1C; border-color:var(--bad-line); }
 .ay-pill.term   { background:var(--surface); color:var(--ink-muted); border-color:var(--hairline); }
 
-/* ---- Hero ---- */
 .ay-hero { padding:22px 24px 20px; margin-bottom:16px; }
 .ay-hero-top { display:flex; align-items:flex-start; justify-content:space-between; gap:18px 24px; flex-wrap:wrap; }
 .ay-eyebrow { font-size:10.5px; font-weight:600; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); }
@@ -1423,7 +1240,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .ay-pills { display:flex; flex-wrap:wrap; gap:6px; }
 .ay-lede { margin:12px 0 0; max-width:62ch; font-size:13.5px; line-height:1.6; color:var(--ink-muted); }
 
-/* Step through years without opening a list. */
 .ay-nav { display:flex; align-items:center; gap:6px; flex-shrink:0; }
 .ay-step {
   display:inline-flex; align-items:center; gap:4px; height:36px; padding:0 10px 0 8px;
@@ -1436,7 +1252,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .ay-step:hover { border-color:var(--navy-200); color:var(--ink); }
 .ay-step.is-off { opacity:.35; pointer-events:none; }
 
-/* ---- The June–May term as twelve months ---- */
 .ay-term { margin-top:20px; padding-top:18px; border-top:1px solid var(--hairline); }
 .ay-term-head { display:flex; align-items:baseline; justify-content:space-between; gap:6px 16px; flex-wrap:wrap;
   margin-bottom:10px; font-size:12.5px; color:var(--ink-muted); }
@@ -1457,7 +1272,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .ay-phase.is-now  { border-top-color:var(--orange-500); }
 .ay-phase.is-now b { color:var(--orange-700); }
 
-/* ---- Executive meeting & lock ---- */
 .ay-lockstrip {
   display:flex; align-items:center; gap:14px; padding:12px 14px; margin-bottom:18px;
   border-radius:var(--r-lg); background:var(--bad-bg); border:1px solid var(--bad-line);
@@ -1492,7 +1306,6 @@ table.data.ug-table tbody td:last-child  { padding-right:16px; }
 .ay-meet-no i { width:22px; height:22px; border-radius:50%; display:grid; place-items:center; font-style:normal;
   background:var(--orange-50); color:var(--orange-700); font-size:10.5px; font-weight:700; }
 
-/* ---- Tables inside the page's cards ---- */
 .ay-table-box { border:1px solid var(--hairline); border-radius:var(--r-lg); overflow:hidden; }
 .ay-table-box table.data thead th { background:var(--surface-sunken); padding-top:10px; padding-bottom:10px; }
 .ay-table-box table.data th:first-child, .ay-table-box table.data td:first-child { padding-left:14px; }
@@ -1510,7 +1323,6 @@ table.data.ay-t tbody td { vertical-align:middle; padding-top:10px; padding-bott
 .ay-sub span { font-size:12px; font-weight:500; color:var(--ink-faint); }
 .ay-note { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--ink-faint); }
 
-/* ---- Registry ---- */
 .ay-reg-wrap { max-height:640px; overflow:auto; }
 table.data.ay-reg thead th { position:sticky; top:0; z-index:2; background:var(--surface-sunken); }
 table.data.ay-reg tbody td { vertical-align:middle; padding-top:9px; padding-bottom:9px; }
@@ -1522,7 +1334,6 @@ table.data.ay-reg th:last-child,  table.data.ay-reg td:last-child  { padding-rig
 .ay-tag { display:inline-flex; align-items:center; height:18px; padding:0 7px; margin-left:6px; vertical-align:1px;
   border-radius:var(--r-pill); background:var(--navy-50); color:var(--navy-600); font-size:10px; font-weight:600; }
 .ay-tag.viewing { background:var(--orange-500); color:#fff; }
-/* Three fixed slots, so every row's buttons sit in the same columns. */
 .ay-acts { display:grid; grid-template-columns:76px 86px 108px; gap:6px; justify-content:end; }
 .ay-acts .btn, .ay-acts form { width:100%; margin:0; }
 .ay-acts .btn { padding:0 8px; }
@@ -1544,19 +1355,13 @@ table.data.ay-reg th:last-child,  table.data.ay-reg td:last-child  { padding-rig
   .ay-lockstrip .btn { margin-left:0; }
 }
 
-/* ============================================================================
-   REFINEMENT LAYER
-   Loaded last, so it wins over the section rules above. Everything here is
-   polish — motion, focus, the sidebar's height tiers, the narrow-screen shell —
-   never new colour.
-   ========================================================================== */
+dialog.em-present-modal {
+  width:100vw; max-width:100vw; height:100vh; max-height:100vh;
+  padding:0; margin:0; border:0; border-radius:0; background:#000; overflow:hidden;
+}
+dialog.em-present-modal::backdrop { background:rgba(0,0,0,.85); }
+dialog.em-present-modal iframe { display:block; width:100%; height:100%; border:0; }
 
-/* ---- Sidebar height tiers ---------------------------------------------------
-   The tallest menu (Admin: 10 items in 4 sections) measures ~650px at the
-   default spacing. On shorter windows — a 1366x768 laptop, or a 1080p screen
-   at 150% scaling — the spacing tightens so the whole menu still fits without
-   scrolling. Only on a genuinely tiny window does the (invisible) scroll take
-   over, with the edge fade as its cue. */
 @media (min-width:1025px) and (max-height:760px) {
   .sidebar-nav { padding:10px 12px 12px; gap:10px; }
   .nav-section-label { padding-bottom:4px; }
@@ -1571,7 +1376,6 @@ table.data.ay-reg th:last-child,  table.data.ay-reg td:last-child  { padding-rig
   .brand-sub { display:none; }
 }
 
-/* ---- Notification panel (markup lives in inc/header.php) ----------------- */
 .notif-wrapper { position:relative; display:inline-block; }
 .notif-bell-btn { position:relative; cursor:pointer; }
 .notif-bell-btn:hover svg { animation:bell-swing .5s var(--ease-out); }
@@ -1634,17 +1438,16 @@ table.data.ay-reg th:last-child,  table.data.ay-reg td:last-child  { padding-rig
 .notif-empty-icon { margin-bottom:8px; opacity:.45; }
 .notif-empty-text { font-size:13px; font-weight:500; }
 
-/* ---- Topbar pills: role + academic year ---------------------------------- */
 .role-badge { height:26px; padding:0 10px; letter-spacing:.06em; font-size:10.5px; }
 .year-badge {
   height:26px; padding:0 11px; box-shadow:0 3px 10px -4px rgba(224,68,0,.55);
   font-size:11px; letter-spacing:.01em;
 }
 
-/* ---- Modals: a real entrance, and a backdrop that actually blurs --------- */
 dialog.modal {
   border:0; border-radius:var(--r-xl); padding:0; width:100%; max-width:32rem;
   box-shadow:var(--shadow-pop); color:var(--ink); background:var(--surface);
+  max-height:calc(100vh - 48px); overflow-y:auto;
 }
 dialog.modal[open] { animation:modal-in var(--dur-slow) var(--ease-out); }
 @keyframes modal-in {
@@ -1665,7 +1468,6 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   background:var(--surface-sunken); border-radius:0 0 var(--r-xl) var(--r-xl); }
 .modal-text { color:var(--ink-muted); font-size:14px; margin:0; line-height:1.6; }
 
-/* ---- Tabs ---------------------------------------------------------------- */
 .tabs { gap:2px; margin-bottom:22px; overflow-x:auto; scrollbar-width:none; }
 .tabs::-webkit-scrollbar { display:none; }
 .tab { padding:11px 15px; font-size:13.5px; font-weight:500; white-space:nowrap;
@@ -1675,7 +1477,6 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
 .tab:hover { color:var(--ink); background:var(--navy-50); }
 .tab.active { color:var(--orange-600); border-bottom-color:var(--orange-500); background:transparent; }
 
-/* ---- Cards that behave like links / notices ------------------------------ */
 .link-card { border-radius:var(--radius);
   transition:box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease-out),
              border-color var(--dur) var(--ease); }
@@ -1687,13 +1488,11 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   border-color var(--dur) var(--ease); }
 .ann-card:hover { box-shadow:var(--shadow-card-hover); transform:translateY(-2px); }
 
-/* ---- Pagination ---------------------------------------------------------- */
 .page-link { transition:background var(--dur) var(--ease), border-color var(--dur) var(--ease),
   color var(--dur) var(--ease); }
 .page-link:hover { background:var(--navy-50); border-color:var(--navy-200); }
 .page-link.active { box-shadow:0 2px 8px -2px rgba(19,29,59,.4); }
 
-/* ---- Search box + filter popover ---------------------------------------- */
 .search-box { border-radius:var(--r-md);
   transition:border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
 .search-box:focus-within { border-color:var(--orange-500); box-shadow:var(--ring); }
@@ -1703,7 +1502,6 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
 .filter-pop { border-radius:var(--r-lg); animation:pop-in .18s var(--ease-out); }
 @keyframes pop-in { from { opacity:0; transform:translateY(-6px) scale(.98); } to { opacity:1; transform:none; } }
 
-/* ---- Small controls ------------------------------------------------------ */
 .mini-btn { transition:background var(--dur) var(--ease), color var(--dur) var(--ease),
   transform .1s var(--ease); }
 .mini-btn:active { transform:scale(.92); }
@@ -1711,23 +1509,19 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   transform var(--dur) var(--ease-out); }
 .dept-card:hover { border-color:var(--navy-200); box-shadow:var(--shadow-xs); transform:translateY(-1px); }
 
-/* ---- Bars and meters grow to their value on load ------------------------- */
 .bar > span, .bar-row .bar-fill, .meter-fill, .tile-bar > span, .attain-fill, .share-fill {
   transform-origin:left center; animation:bar-grow .8s var(--ease-out) both;
 }
 @keyframes bar-grow { from { transform:scaleX(0); } to { transform:scaleX(1); } }
 
-/* ---- Banners ------------------------------------------------------------- */
 .alpha-banner { border-radius:var(--r-md); }
 .unlock-banner { border-radius:var(--r-lg); box-shadow:var(--shadow-xs); }
 .unlock-banner.open .ub-clock { animation:pulse-soft 2.4s ease-in-out infinite; }
 @keyframes pulse-soft { 0%,100% { opacity:1; } 50% { opacity:.6; } }
 
-/* ---- Targets grouped by department -------------------------------------- */
 .tg-group > summary { transition:background var(--dur) var(--ease); }
 .tg-group[open] { box-shadow:var(--shadow-card-hover); }
 
-/* ---- Login --------------------------------------------------------------- */
 .login-wrap { min-height:100vh; display:flex; background:var(--canvas); }
 .login-brand {
   width:46%; max-width:620px; color:#fff; padding:clamp(32px,4vw,56px);
@@ -1735,8 +1529,6 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   position:relative; overflow:hidden; isolation:isolate;
   background:linear-gradient(160deg, var(--navy-800) 0%, var(--navy-900) 45%, var(--navy-950) 100%);
 }
-/* Two soft brand-coloured washes drifting behind the copy — slow enough to
-   read as depth rather than animation. */
 .login-brand::before, .login-brand::after {
   content:""; position:absolute; border-radius:50%; z-index:-1;
   filter:blur(70px); pointer-events:none;
@@ -1770,12 +1562,10 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
 .login-card .lead { font-size:13.5px; color:var(--ink-muted); margin-top:7px; }
 @media (max-width:900px){ .login-brand{ display:none; } }
 
-/* ---- Mid-width desktop: make room in the topbar -------------------------- */
 @media (max-width:1280px) {
   .topbar-user, .topbar-div { display:none; }
 }
 
-/* ---- Narrow screens: the sidebar becomes a drawer ------------------------ */
 @media (max-width:1024px) {
   .nav-toggle { display:grid; }
 
@@ -1817,7 +1607,6 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   table.data tbody td { font-size:13px; }
 }
 
-/* ---- Anyone who asked for less motion gets none -------------------------- */
 @media (prefers-reduced-motion:reduce) {
   *, *::before, *::after {
     animation-duration:.001ms !important; animation-iteration-count:1 !important;
@@ -1825,7 +1614,6 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   }
 }
 
-/* ---- Print: keep only the report ---------------------------------------- */
 @media print {
   .sidebar, .topbar, .scrim, .nav-toggle, .actions, .btn, .tabs, .link-card,
   .page-head .sub, .alpha-banner, .notif-panel, .fbar { display:none !important; }
@@ -1838,4 +1626,25 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   table.data th, table.data td { border:1px solid #333; padding:5px 7px; }
   .badge { border:1px solid #999; }
   a[href]:after { content:""; }
+}
+
+.avatar-photo { object-fit:cover; background:var(--navy-900); }
+.avatar-dark.avatar-photo, .avatar.avatar-photo { padding:0; }
+
+.photo-manage { display:flex; align-items:flex-start; gap:24px; flex-wrap:wrap; }
+.photo-manage .grow { flex:1; min-width:260px; }
+.photo-manage .mt-3 { margin-top:12px; }
+
+.photo-frame {
+  width:105px; height:135px;            /* 35 x 45 mm at 3x, the passport ratio */
+  flex-shrink:0; border:1px dashed var(--hairline); border-radius:10px;
+  background:rgba(244,246,250,.6); overflow:hidden;
+  display:grid; place-items:center; text-align:center;
+  font-size:12px; color:var(--ink-faint); line-height:1.4;
+}
+.photo-frame img { width:100%; height:100%; object-fit:cover; display:block; }
+
+@media (max-width:640px) {
+  .photo-manage { gap:16px; }
+  .photo-manage .grow { min-width:100%; }
 }

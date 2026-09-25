@@ -1,14 +1,4 @@
 <?php
-/**
- * Send an announcement attachment to the browser.
- *
- * Files are NOT linked to directly. They are served through this page so that
- * two things are checked first: you are signed in, and you are allowed to see
- * the announcement the file belongs to.
- *
- *     download.php?file=12
- */
-
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Announcement.php';
 
@@ -29,7 +19,6 @@ if (!announcement_find((int) $file['announcement_id'], $user)) {
     exit('You do not have access to this file.');
 }
 
-// basename() keeps the path inside the uploads folder whatever the row says.
 $path = UPLOAD_DIR . '/announcements/' . basename($file['stored_name']);
 
 if (!is_file($path)) {

@@ -1,27 +1,20 @@
 <?php
-/**
- * Small shared helpers: output escaping, URLs, redirects, and flash messages.
- */
-
 require_once __DIR__ . '/config.php';
 
-/** Escape a value for safe HTML output. Use on EVERYTHING echoed into a page. */
 function e($value): string
 {
     return htmlspecialchars((string) ($value ?? ''), ENT_QUOTES, 'UTF-8');
 }
 
-/** Build an app URL from a path, e.g. url('/dashboard.php'). */
 function url(string $path = ''): string
 {
     return BASE_URL . '/' . ltrim($path, '/');
 }
 
-/** Build a URL for a proof file, served through the resilient proof viewer endpoint. */
 function proof_url(?string $filename): string
 {
     $filename = trim((string) $filename);
-    if ($filename === '') {
+    if ($filename === '' || stripos($filename, 'upload.php') !== false) {
         return '';
     }
     if (str_starts_with($filename, 'http://') || str_starts_with($filename, 'https://')) {
@@ -30,7 +23,6 @@ function proof_url(?string $filename): string
     return url('proof.php?file=' . rawurlencode(basename($filename)));
 }
 
-/** Redirect to an app path and stop. */
 function redirect(string $path): void
 {
     if (strpos($path, 'http://') === 0 || strpos($path, 'https://') === 0) {
@@ -45,23 +37,18 @@ function redirect(string $path): void
     exit;
 }
 
-/** Read a request value (GET or POST) with a default. */
 function input(string $key, $default = '')
 {
     return $_POST[$key] ?? $_GET[$key] ?? $default;
 }
 
-/**
- * Normalise a user-entered date string (DD-MM-YYYY or YYYY-MM-DD) to ISO YYYY-MM-DD for SQL.
- * Returns null if invalid or empty.
- */
 function parse_date_input(?string $input): ?string
 {
     $input = trim((string) $input);
     if ($input === '') {
         return null;
     }
-    // DD-MM-YYYY or DD/MM/YYYY
+
     if (preg_match('/^(\d{1,2})[-|\/](\d{1,2})[-|\/](\d{4})$/', $input, $m)) {
         $day   = (int) $m[1];
         $month = (int) $m[2];
@@ -70,7 +57,7 @@ function parse_date_input(?string $input): ?string
             return sprintf('%04d-%02d-%02d', $year, $month, $day);
         }
     }
-    // YYYY-MM-DD
+
     if (preg_match('/^(\d{4})[-|\/](\d{1,2})[-|\/](\d{1,2})$/', $input, $m)) {
         $year  = (int) $m[1];
         $month = (int) $m[2];
@@ -83,9 +70,6 @@ function parse_date_input(?string $input): ?string
     return $ts ? date('Y-m-d', $ts) : null;
 }
 
-/**
- * Format ISO YYYY-MM-DD or date input string into display format DD-MM-YYYY.
- */
 function format_date_display(?string $dateStr): string
 {
     $dateStr = trim((string) $dateStr);
@@ -99,7 +83,6 @@ function format_date_display(?string $dateStr): string
     return date('d-m-Y', strtotime($iso));
 }
 
-/** Queue a one-shot flash message shown on the next page load. */
 function flash(string $type, string $message): void
 {
     if (session_status() !== PHP_SESSION_ACTIVE) {
@@ -108,7 +91,6 @@ function flash(string $type, string $message): void
     $_SESSION['flash'][] = ['type' => $type, 'message' => $message];
 }
 
-/** Pull and clear all queued flash messages. */
 function take_flashes(): array
 {
     $messages = $_SESSION['flash'] ?? [];
@@ -116,7 +98,6 @@ function take_flashes(): array
     return $messages;
 }
 
-/** Format an ISO/DB datetime as a short relative time ("3m ago"). */
 function time_ago($datetime): string
 {
     if (!$datetime) {
@@ -138,10 +119,6 @@ function time_ago($datetime): string
     return date('d M Y', $ts);
 }
 
-/**
- * Colour class for a record status.
- * Draft = grey, Submitted = blue, Approved = green, Rejected = red.
- */
 function status_class(string $status): string
 {
     $map = [
@@ -151,38 +128,28 @@ function status_class(string $status): string
         'Dean Pending'          => 'warning',
         'Approved'              => 'success',
         'Rejected'              => 'danger',
+        'Pending'               => 'warning',
+        'Completed'             => 'success',
         'Edit Requested'        => 'warning',
         'Unlocked for Edit'     => 'primary',
         'Resubmitted'           => 'info',
         'Correction Authorized' => 'primary',
+<<<<<<< HEAD
         'Completed'             => 'success',
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     ];
 
     return $map[$status] ?? 'neutral';
 }
 
-/**
- * Turn a plain-text message into safe HTML for the announcement body.
- *
- * The text is escaped FIRST, so nothing a user types can become real markup.
- * Only three touches of formatting are then added back:
- *
- *   a blank line          starts a new paragraph
- *   a line beginning "- " becomes a bullet
- *   **words like this**   become bold
- */
 function format_text(string $text): string
 {
     $text = str_replace(["\r\n", "\r"], "\n", trim($text));
 
     $html = '';
 
-    // A blank line separates one block from the next.
     foreach (preg_split('/\n{2,}/', $text) as $block) {
-
-        // Lines are collected as we go and written out when the kind of line
-        // changes, so an intro sentence followed by bullets comes out as a
-        // paragraph AND a list, not one run-on paragraph.
         $sentences = [];
         $bullets   = [];
 
@@ -220,10 +187,6 @@ function format_text(string $text): string
     return preg_replace('/\*\*(.+?)\*\*/s', '<strong>$1</strong>', $html);
 }
 
-/**
- * The opening words of a long message, for a card preview.
- * Cuts on a space so the last word is never chopped in half.
- */
 function excerpt(string $text, int $limit = 160): string
 {
     $text = trim(preg_replace('/\s+/', ' ', strip_tags($text)));
@@ -238,7 +201,6 @@ function excerpt(string $text, int $limit = 160): string
     return rtrim($space ? substr($cut, 0, $space) : $cut, ' ,.;:-') . '…';
 }
 
-/** A file size people can read, e.g. "1.4 MB". */
 function human_size(int $bytes): string
 {
     if ($bytes >= 1048576) {
@@ -251,9 +213,6 @@ function human_size(int $bytes): string
     return $bytes . ' B';
 }
 
-/**
- * How long until a deadline, in words: "in 3 days", "today", "overdue".
- */
 function time_until($datetime): string
 {
     if (!$datetime) {
@@ -274,37 +233,24 @@ function time_until($datetime): string
     return "in $days days";
 }
 
-/**
- * The outline of one chart bar, for the <path d="..."> of an SVG column.
- *
- * A plain rectangle with rx="4" would round all four corners, including the
- * two sitting on the baseline. This draws the same box but curves only the
- * top two, so every bar rests flat on the axis:
- *
- *      ,--------.   <- rounded top (the end that carries the value)
- *      |        |
- *      |________|   <- square bottom, on the baseline
- */
 function bar_path(float $x, float $top, float $width, float $baseline, float $radius = 4): string
 {
     $height = $baseline - $top;
 
-    // A very short bar can't fit the curve, so shrink the radius to suit.
     $r = min($radius, $height, $width / 2);
 
     return sprintf(
         'M %1$.1f %2$.1f V %3$.1f Q %1$.1f %4$.1f %5$.1f %4$.1f H %6$.1f Q %7$.1f %4$.1f %7$.1f %3$.1f V %2$.1f Z',
-        $x,                    // 1 left edge
-        $baseline,             // 2 bottom
-        $top + $r,             // 3 where the curve starts
-        $top,                  // 4 the very top
-        $x + $r,               // 5 end of the top-left curve
-        $x + $width - $r,      // 6 start of the top-right curve
-        $x + $width            // 7 right edge
+        $x,                    
+        $baseline,             
+        $top + $r,             
+        $top,                  
+        $x + $r,               
+        $x + $width - $r,      
+        $x + $width            
     );
 }
 
-/** Initials from a name, e.g. "Mohamed Uvaish" -> "MU". */
 function initials(string $name): string
 {
     $parts = preg_split('/\s+/', trim($name));
@@ -317,7 +263,6 @@ function initials(string $name): string
     return $out !== '' ? $out : 'U';
 }
 
-// Fallbacks for mbstring functions if the extension is not enabled in PHP
 if (!function_exists('mb_strtolower')) {
     function mb_strtolower(string $string, ?string $encoding = null): string {
         return strtolower($string);
@@ -339,31 +284,30 @@ if (!function_exists('mb_strlen')) {
     }
 }
 
+<<<<<<< HEAD
 /**
  * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
  * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
  */
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 function academic_year_variants(?string $year): array
 {
     $year = trim((string) $year);
     if ($year === '') return [];
     $variants = [$year];
-    // If format like 2025-26 -> add 2025-2026
+
     if (preg_match('/^(\d{4})-(\d{2})$/', $year, $m)) {
         $century = substr($m[1], 0, 2);
         $variants[] = $m[1] . '-' . $century . $m[2];
     }
-    // If format like 2025-2026 -> add 2025-26
+
     elseif (preg_match('/^(\d{4})-(\d{4})$/', $year, $m)) {
         $variants[] = $m[1] . '-' . substr($m[2], 2, 2);
     }
     return array_values(array_unique($variants));
 }
 
-/**
- * Compare two department names robustly, ignoring spacing, case, and standard abbreviations.
- * E.g. 'AI & DS' matches 'AI&DS', 'AIDS', and 'CSE' matches 'Computer Science and Engineering'.
- */
 function department_names_match(?string $deptA, ?string $deptB): bool
 {
     if ($deptA === null || $deptB === null) return false;
@@ -413,6 +357,7 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
+<<<<<<< HEAD
 /**
  * Expand a department code/short name to its full official name for all report
  * headings, meta lines, table columns, and sign-offs across PDF/Excel/Word/CSV.
@@ -423,6 +368,117 @@ if (!function_exists('department_full_name')) {
         $dept = trim((string) $dept);
         if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
             return $dept;
+=======
+function department_variants(?string $dept): array
+{
+    if ($dept === null) {
+        return [];
+    }
+    $trim = trim($dept);
+    if ($trim === '' || $trim === '__UNASSIGNED_DEPT__') {
+        return [];
+    }
+
+    $variants = [$trim];
+    $clean = function(string $s): string {
+        $s = strtolower($s);
+        $s = str_replace(['&', 'and'], '+', $s);
+        $s = preg_replace('/[^a-z0-9+]/', '', $s);
+        return $s;
+    };
+    $cDept = $clean($trim);
+    $lowerDept = strtolower($trim);
+
+    $knownAliases = [
+        'cse'   => ['CSE', 'cse', 'Computer Science and Engineering', 'computer science and engineering', 'Computer Science & Engineering', 'computer science & engineering'],
+        'csbs'  => ['CSBS', 'csbs', 'Computer Science and Business Systems', 'computer science and business systems', 'Computer Science & Business Systems', 'computer science & business systems'],
+        'aids'  => ['AI & DS', 'ai & ds', 'AIDS', 'aids', 'AI&DS', 'ai&ds', 'Artificial Intelligence and Data Science', 'artificial intelligence and data science', 'Artificial Intelligence & Data Science', 'artificial intelligence & data science'],
+        'aiml'  => ['AI & ML', 'ai & ml', 'AIML', 'aiml', 'AI&ML', 'ai&ml', 'Artificial Intelligence and Machine Learning', 'artificial intelligence and machine learning', 'Artificial Intelligence & Machine Learning', 'artificial intelligence & machine learning'],
+        'ece'   => ['ECE', 'ece', 'Electronics and Communication Engineering', 'electronics and communication engineering', 'Electronics & Communication Engineering', 'electronics & communication engineering'],
+        'eee'   => ['EEE', 'eee', 'Electrical and Electronics Engineering', 'electrical and electronics engineering', 'Electrical & Electronics Engineering', 'electrical & electronics engineering'],
+        'it'    => ['IT', 'it', 'Information Technology', 'information technology'],
+        'mech'  => ['MECH', 'mech', 'Mechanical Engineering', 'mechanical engineering'],
+        'civil' => ['CIVIL', 'civil', 'Civil Engineering', 'civil engineering'],
+        'aero'  => ['AERO', 'aero', 'Aeronautical Engineering', 'aeronautical engineering'],
+        'chem'  => ['CHEM', 'chem', 'Chemical Engineering', 'chemical engineering'],
+        'cyber' => ['Cyber Security', 'cyber security', 'Cybersecurity', 'cybersecurity'],
+        'arch'  => ['Architecture', 'architecture', 'Arch', 'arch'],
+        'mca'   => ['MCA', 'mca', 'Master of Computer Applications', 'master of computer applications'],
+        'mba'   => ['MBA', 'mba', 'Master of Business Administration', 'master of business administration'],
+    ];
+
+    foreach ($knownAliases as $code => $group) {
+        $matched = false;
+        if ($cDept === $code || in_array($lowerDept, array_map('strtolower', $group), true)) {
+            $matched = true;
+        } else {
+            foreach ($group as $alias) {
+                if (department_names_match($trim, $alias)) {
+                    $matched = true;
+                    break;
+                }
+            }
+        }
+        if ($matched) {
+            foreach ($group as $alias) {
+                $variants[] = $alias;
+            }
+        }
+    }
+
+    return array_values(array_unique($variants));
+}
+
+function record_proof_url(string $type, int $id, ?string $filename = null, bool $download = false, bool $absolute = true): string
+{
+    $params = [
+        'type' => $type,
+        'id'   => $id,
+    ];
+    if ($filename !== null && $filename !== '') {
+        $clean = basename($filename);
+        if (stripos($clean, 'upload.php') === false) {
+            $params['file'] = $clean;
+        }
+    }
+    if ($download) {
+        $params['download'] = '1';
+    }
+    $rel = url('proof.php?' . http_build_query($params));
+    if (!$absolute) {
+        return $rel;
+    }
+    if (strpos($rel, 'http://') === 0 || strpos($rel, 'https://') === 0) {
+        return $rel;
+    }
+    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost:8000';
+    return $scheme . '://' . $host . $rel;
+}
+
+function record_proof_meta(string $type, int $id, ?string $filename): ?array
+{
+    $filename = basename(trim((string) $filename));
+    if ($filename === '') {
+        return null;
+    }
+    $baseDir = defined('UPLOAD_DIR') ? realpath(UPLOAD_DIR) : null;
+    if (!$baseDir) {
+        $baseDir = realpath(__DIR__ . '/../uploads');
+    }
+    if (!$baseDir) {
+        return null;
+    }
+    $paths = [
+        $baseDir . DIRECTORY_SEPARATOR . 'proofs' . DIRECTORY_SEPARATOR . $filename,
+        $baseDir . DIRECTORY_SEPARATOR . $filename,
+    ];
+    $filePath = null;
+    foreach ($paths as $p) {
+        if (file_exists($p) && is_file($p)) {
+            $filePath = realpath($p);
+            break;
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         }
 
         static $map = [
@@ -482,4 +538,123 @@ if (!function_exists('department_full_name')) {
 
         return $dept;
     }
+<<<<<<< HEAD
 }
+=======
+
+    $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+    $isImage = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
+    $viewUrl = record_proof_url($type, $id, $filename, false, true);
+    $downUrl = record_proof_url($type, $id, $filename, true, true);
+
+    $base64Data = null;
+    if ($isImage && $filePath && filesize($filePath) <= 2097152) { 
+        $mime = ($ext === 'png') ? 'image/png' : (($ext === 'webp') ? 'image/webp' : (($ext === 'gif') ? 'image/gif' : 'image/jpeg'));
+        $base64Data = 'data:' . $mime . ';base64,' . base64_encode((string) @file_get_contents($filePath));
+    }
+
+    return [
+        'filename'     => $filename,
+        'ext'          => $ext,
+        'is_image'     => $isImage,
+        'view_url'     => $viewUrl,
+        'download_url' => $downUrl,
+        'exists'       => ($filePath !== null),
+        'base64_data'  => $base64Data,
+    ];
+}
+
+function proof_file_path(?string $filename): ?string
+{
+    if (!$filename) {
+        return null;
+    }
+    $safe = basename($filename);
+    if ($safe === '') {
+        return null;
+    }
+    $base = rtrim(UPLOAD_DIR, '/\\');
+    if (is_file($base . '/' . $safe)) {
+        return $base . '/' . $safe;
+    }
+    if (is_file($base . '/proofs/' . $safe)) {
+        return $base . '/proofs/' . $safe;
+    }
+    return null;
+}
+
+function proof_file_exists(?string $filename): bool
+{
+    return proof_file_path($filename) !== null;
+}
+
+function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $recordId = null): string
+{
+    require_once __DIR__ . '/icons.php';
+
+    $proofFile = trim((string)$proofFile);
+    if ($proofFile === '' || stripos($proofFile, 'upload.php') !== false) {
+        return '<span class="card-sub">No proof attached</span>';
+    }
+
+    if (!proof_file_exists($proofFile)) {
+        return '<span class="card-sub" style="color:var(--ink-muted,#64748b);">Proof unavailable</span>';
+    }
+
+    if (!empty($typeKey) && !empty($recordId)) {
+        $viewUrl = record_proof_url($typeKey, (int)$recordId, $proofFile, false, false);
+        $downloadUrl = record_proof_url($typeKey, (int)$recordId, $proofFile, true, false);
+    } else {
+        $params = ['file' => $proofFile];
+        if (!empty($typeKey)) {
+            $params['type'] = $typeKey;
+        }
+        if (!empty($recordId)) {
+            $params['id'] = $recordId;
+        }
+        $viewUrl = url('proof.php?' . http_build_query($params));
+        $params['download'] = '1';
+        $downloadUrl = url('proof.php?' . http_build_query($params));
+    }
+
+    return '<div style="display:inline-flex;align-items:center;gap:6px;">'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($viewUrl) . '" target="_blank" rel="noopener" title="View Proof">'
+        . icon('paperclip', 14) . ' View Proof</a>'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($downloadUrl) . '" download title="Download Proof">'
+        . icon('download', 14) . '</a>'
+        . '</div>';
+}
+
+if (!function_exists('user_can_choose_department')) {
+    function user_can_choose_department(?array $user = null): bool
+    {
+        if ($user === null && function_exists('current_user')) {
+            $user = current_user();
+        }
+        if (!$user || empty($user['role'])) {
+            return false;
+        }
+        return in_array($user['role'], ['Admin', 'Principal', 'Director', 'Dean'], true);
+    }
+}
+
+if (!function_exists('user_department_scope')) {
+    function user_department_scope(?array $user = null, ?string $requestedDepartment = null): ?string
+    {
+        if ($user === null && function_exists('current_user')) {
+            $user = current_user();
+        }
+        if (!$user) {
+            return null;
+        }
+
+        if (user_can_choose_department($user)) {
+            $requested = trim((string) $requestedDepartment);
+            return $requested !== '' ? $requested : null;
+        }
+
+        $dept = trim((string) ($user['department'] ?? ''));
+        return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
+    }
+}
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
