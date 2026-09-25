@@ -112,9 +112,9 @@ $total = count($records);
 
 // The scope label reflects what the role can actually see.
 if ($isHod) {
-    $scopeName = $user['department'] ?: 'All departments';
+    $scopeName = department_full_name($user['department'] ?: 'All departments');
 } else {
-    $scopeName = $department ?: 'All departments';
+    $scopeName = department_full_name($department ?: 'All departments');
 }
 
 // ---- Query strings each report link carries ------------------------------
@@ -357,7 +357,7 @@ require __DIR__ . '/inc/header.php';
 
   // Active-filter chips under the heading.
   $activeBits = array_filter([
-      $department ? 'Dept: ' . $department : null,
+      $department ? 'Dept: ' . department_full_name($department) : null,
       $category   ? 'Category: ' . $categories[$category]['label'] : null,
       $year       ? 'Year: ' . $year       : null,
       $status     ? 'Status: ' . $status   : null,
@@ -377,7 +377,7 @@ require __DIR__ . '/inc/header.php';
     <div class="card-head">
       <div>
         <div class="card-title" style="display:flex; align-items:center; gap:8px;">
-          <?= icon('reports', 18) ?> Consolidated Report
+          <?= icon('reports', 18) ?> Consolidated All-Department Report
         </div>
         <div class="card-sub">
           College-wide consolidated institutional report &middot; All departments grouped department-wise &middot; Academic Year: <?= e($year) ?>
@@ -393,13 +393,13 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
         <div class="hero-card-actions">
-          <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel')) ?>">
-            <?= icon('download') ?> Download Excel
+          <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>">
+            <?= icon('download') ?> Download Excel (Multi-Tab)
           </a>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf')) ?>" target="_blank" rel="noopener">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">
             <?= icon('file-text', 14) ?> Download PDF
           </a>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word')) ?>">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word' . ($year ? '&year=' . urlencode($year) : ''))) ?>">
             <?= icon('file-text', 14) ?> Download Word
           </a>
         </div>
@@ -661,6 +661,20 @@ require __DIR__ . '/inc/header.php';
     <!-- Institution-wide summaries -->
     <div class="rh-label">Summary Reports</div>
     <div class="tmpl-report-grid">
+
+      <?php if ($canConsolidated): ?>
+        <div class="tmpl-report-row" style="background:linear-gradient(to right, rgba(26,37,71,0.03), transparent); border-left:3px solid #1A2547;">
+          <div class="tmpl-report-info">
+            <div class="tmpl-report-name" style="font-weight:700; color:#1A2547;"><?= icon('layers', 15) ?> Consolidated All-Department Report</div>
+            <div class="tmpl-report-sub">Full college data &middot; Multi-tab Excel / Grouped PDF &amp; Word &middot; All <?= count($departments) ?> departments</div>
+          </div>
+          <div class="tmpl-report-links">
+            <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>"><?= icon('download') ?> Excel (Multi-Tab)</a>
+            <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word' . ($year ? '&year=' . urlencode($year) : ''))) ?>">Word</a>
+            <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">PDF</a>
+          </div>
+        </div>
+      <?php endif; ?>
 
       <?php if ($canSummary): ?>
         <?php $mq = $meetingQ2; ?>

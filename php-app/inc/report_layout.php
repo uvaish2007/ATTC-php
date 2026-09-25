@@ -51,50 +51,72 @@ function report_banner_datauri(): string
  * an Admin has set up in Manage Departments before giving up and returning
  * the value unchanged.
  */
-function department_full_name(?string $dept): string
-{
-    $dept = trim((string) $dept);
-    if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
+if (!function_exists('department_full_name')) {
+    function department_full_name(?string $dept): string
+    {
+        $dept = trim((string) $dept);
+        if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
+            return $dept;
+        }
+
+        static $map = [
+            'CSE'                  => 'Computer Science and Engineering',
+            'CSBS'                 => 'Computer Science and Business Systems',
+            'AIDS'                 => 'Artificial Intelligence and Data Science',
+            'ECE'                  => 'Electronics and Communication Engineering',
+            'EEE'                  => 'Electrical and Electronics Engineering',
+            'MECH'                 => 'Mechanical Engineering',
+            'CIVIL'                => 'Civil Engineering',
+            'IT'                   => 'Information Technology',
+            'AGRI'                 => 'Agriculture Engineering',
+            'AERO'                 => 'Aeronautical Engineering',
+            'MARINE'               => 'Marine Engineering',
+            'AIML'                 => 'Artificial Intelligence and Machine Learning',
+            'CYBER'                => 'Cyber Security',
+            'CYBERSECURITY'        => 'Cyber Security',
+            'CHEM'                 => 'Chemical Engineering',
+            'ARCH'                 => 'Architecture',
+            'MCA'                  => 'Master of Computer Applications',
+            'MBA'                  => 'Master of Business Administration',
+            'SH'                   => 'Science and Humanities',
+            'SANDH'                => 'Science and Humanities',
+            'SCIENCEANDHUMANITIES' => 'Science and Humanities',
+            'BME'                  => 'Biomedical Engineering',
+            'BT'                   => 'Biotechnology',
+        ];
+
+        $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
+        if (isset($map[$key])) {
+            return $map[$key];
+        }
+
+        // Check if $dept already matches a full name in the map
+        foreach ($map as $k => $fullName) {
+            if (strcasecmp($dept, $fullName) === 0) {
+                return $fullName;
+            }
+        }
+
+        // Not a known abbreviation — check the Admin-managed department list, in
+        // case it already carries a fuller name than either the code or what was
+        // stored on the record.
+        require_once __DIR__ . '/../models/Department.php';
+        foreach (departments_all() as $d) {
+            $codeKey = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$d['code']));
+            $nameKey = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$d['name']));
+            if ($key === $codeKey || $key === $nameKey) {
+                if (isset($map[$codeKey])) {
+                    return $map[$codeKey];
+                }
+                if (isset($map[$nameKey])) {
+                    return $map[$nameKey];
+                }
+                return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
+            }
+        }
+
         return $dept;
     }
-
-    static $map = [
-        'CSE'           => 'Computer Science and Engineering',
-        'CSBS'          => 'Computer Science and Business Systems',
-        'AIDS'          => 'Artificial Intelligence and Data Science',
-        'ECE'           => 'Electronics and Communication Engineering',
-        'EEE'           => 'Electrical and Electronics Engineering',
-        'MECH'          => 'Mechanical Engineering',
-        'CIVIL'         => 'Civil Engineering',
-        'IT'            => 'Information Technology',
-        'AGRI'          => 'Agriculture Engineering',
-        'AERO'          => 'Aeronautical Engineering',
-        'MARINE'        => 'Marine Engineering',
-        'AIML'          => 'Artificial Intelligence and Machine Learning',
-        'CYBER'         => 'Cyber Security',
-        'CYBERSECURITY' => 'Cyber Security',
-        'CHEM'          => 'Chemical Engineering',
-        'ARCH'          => 'Architecture',
-        'MCA'           => 'Master of Computer Applications',
-        'MBA'           => 'Master of Business Administration',
-    ];
-
-    $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
-    if (isset($map[$key])) {
-        return $map[$key];
-    }
-
-    // Not a known abbreviation — check the Admin-managed department list, in
-    // case it already carries a fuller name than either the code or what was
-    // stored on the record.
-    require_once __DIR__ . '/../models/Department.php';
-    foreach (departments_all() as $d) {
-        if (strcasecmp($d['code'], $dept) === 0 || strcasecmp($d['name'], $dept) === 0) {
-            return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
-        }
-    }
-
-    return $dept;
 }
 
 /**
@@ -206,8 +228,8 @@ function report_letterhead(string $title, array $meta = [], array $headingLines 
 <?php
 }
 
-/** The signature line. Defaults to the standard IQAC sign-off. */
-function report_signoff(array $columns = ['HOD', 'IQAC COORDINATOR', 'PRINCIPAL']): void
+/** The signature line. Defaults to the standard institutional IQAC & Academic sign-off. */
+function report_signoff(array $columns = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']): void
 {
     ?>
   <table class="rpt-sign">
@@ -218,6 +240,36 @@ function report_signoff(array $columns = ['HOD', 'IQAC COORDINATOR', 'PRINCIPAL'
     </tr>
   </table>
 <?php
+}
+
+/**
+ * Generate spaced signature rows to append at the end of an Excel sheet.
+ */
+function report_signoff_excel_rows(array $columns = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'], int $totalCols = 7): array
+{
+    $count = count($columns);
+    if ($count === 0) {
+        return [];
+    }
+
+    $totalCols = max(1, $totalCols);
+    $sigRow = array_fill(0, max($totalCols, $count), '');
+
+    if ($count === 1) {
+        $sigRow[0] = $columns[0];
+    } else {
+        $step = max(1, (int) floor(($totalCols - 1) / ($count - 1)));
+        foreach ($columns as $idx => $label) {
+            $colPos = min($totalCols - 1, $idx * $step);
+            $sigRow[$colPos] = $label;
+        }
+    }
+
+    return [
+        array_fill(0, $totalCols, ''),
+        array_fill(0, $totalCols, ''),
+        $sigRow,
+    ];
 }
 
 /** Close the document. */

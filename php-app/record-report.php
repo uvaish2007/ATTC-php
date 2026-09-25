@@ -90,6 +90,11 @@ if ($format === 'word') {
         $serial++;
     }
 
+    $sigCols = ['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
+        $exportRows[] = $sRow;
+    }
+
     $titleLine = $spec['title'] . ($year !== null ? ' - DURING THE ACADEMIC YEAR ' . $year : ' - ALL ACADEMIC YEARS');
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
@@ -183,5 +188,5 @@ report_letterhead($mainTitle, $meta, $headingLines);
   </table>
 
 <?php
-report_signoff(['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'PRINCIPAL']);
+report_signoff(['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
 report_document_foot();

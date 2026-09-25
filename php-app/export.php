@@ -125,6 +125,10 @@ if ($format === 'csv') {
         csv_line($out, export_row($record, $serial++));
     }
 
+    csv_line($out, []);
+    csv_line($out, []);
+    csv_line($out, ['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
+
     fclose($out);
     exit;
 }
@@ -141,6 +145,10 @@ if ($format === 'excel') {
     $exportRows = [];
     foreach ($records as $i => $r) {
         $exportRows[] = export_row($r, $i + 1);
+    }
+    $sigCols = ['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($columns)) as $sRow) {
+        $exportRows[] = $sRow;
     }
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
@@ -223,6 +231,6 @@ report_letterhead($reportTitle, $meta);
   </table>
 
 <?php
-report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
 report_document_foot();
 

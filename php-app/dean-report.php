@@ -97,7 +97,7 @@ require __DIR__ . '/inc/header.php';
         </div>
         <div>
           <div style="font-size:11px; font-weight:700; color:var(--ink-muted,#5A6785); text-transform:uppercase;">Department</div>
-          <div style="font-weight:700; color:var(--ink,#131D3B);"><?= e($faculty['department']) ?></div>
+          <div style="font-weight:700; color:var(--ink,#131D3B);"><?= e(department_full_name($faculty['department'])) ?></div>
         </div>
         <div>
           <div style="font-size:11px; font-weight:700; color:var(--ink-muted,#5A6785); text-transform:uppercase;">Academic Year</div>

@@ -150,41 +150,72 @@ test_assert("16. Admin table row renders inline approval card with live proof if
 test_assert("17. Admin review dialog embeds proof viewer iframe", $adminHasReviewFrame);
 test_assert("18. Admin review dialog renders Download Proof button", $adminHasReviewDownload);
 
+// Check Admin Dean Edit Request Dialog (#deanEditDlg)
+$adminHasDeanEditDlg   = strpos($adminViewHtml, 'id="deanEditDlg"') !== false;
+$adminHasDeanEditFrame = strpos($adminViewHtml, 'id="der-frame"') !== false;
+$adminHasDeanEditDl    = strpos($adminViewHtml, 'id="der-download"') !== false;
+$adminHasDeanEditTab   = strpos($adminViewHtml, 'id="der-newtab"') !== false;
+$adminHasDeanEditNoPrf = strpos($adminViewHtml, 'id="der-no-proof"') !== false;
+$adminHasCardKey       = strpos($adminViewHtml, "data-card-key=\"journal-{$testRecId}\"") !== false;
+test_assert("19. Admin Dean Edit Request dialog present (#deanEditDlg)", $adminHasDeanEditDlg);
+test_assert("20. Admin Dean Edit Request dialog embeds live proof frame (#der-frame)", $adminHasDeanEditFrame);
+test_assert("21. Admin Dean Edit Request dialog includes Download Proof button (#der-download)", $adminHasDeanEditDl);
+test_assert("22. Admin Dean Edit Request dialog includes Open Tab button (#der-newtab)", $adminHasDeanEditTab);
+test_assert("23. Admin Dean Edit Request dialog has no-proof fallback (#der-no-proof)", $adminHasDeanEditNoPrf);
+test_assert("24. Admin inline card has unique data-card-key attribute to prevent DOM ID collisions", $adminHasCardKey);
+
+// Check Dean Decision Dialog (#decisionDlg)
+$adminReqHtml = $admin->request("{$baseUrl}/approvals.php?tab=requests");
+$adminHasDecisionDlg   = strpos($adminReqHtml, 'id="decisionDlg"') !== false;
+$adminHasDecisionFrame = strpos($adminReqHtml, 'id="dec-frame"') !== false;
+test_assert("25. Decision dialog (#decisionDlg) present in requests tab", $adminHasDecisionDlg);
+test_assert("26. Decision dialog embeds live proof preview iframe (#dec-frame)", $adminHasDecisionFrame);
+
 // 4. Test HoD Review Records View
 echo "\n--- Testing HoD Review Records View ---\n";
 $hod = new HttpSession();
 $hodLoggedIn = $hod->login('hod.test@atts.local', 'pass123', 'HoD');
-test_assert("19. HoD logged in successfully", $hodLoggedIn);
+test_assert("27. HoD logged in successfully", $hodLoggedIn);
 
 $hodViewHtml = $hod->request("{$baseUrl}/approvals.php?tab=records");
-test_assert("20. HoD opened approvals.php?tab=records (HTTP 200)", $hod->lastHttpCode === 200);
+test_assert("28. HoD opened approvals.php?tab=records (HTTP 200)", $hod->lastHttpCode === 200);
 
 $hodHasProofRow = strpos($hodViewHtml, 'id="her-proof-row"') !== false;
 $hodHasProofDl  = strpos($hodViewHtml, 'id="her-proof-download"') !== false;
-test_assert("21. HoD Edit Request dialog embeds Proof Attachment section (#her-proof-row)", $hodHasProofRow);
-test_assert("22. HoD Edit Request dialog includes Proof Download button (#her-proof-download)", $hodHasProofDl);
+$hodHasProofFrame = strpos($hodViewHtml, 'id="her-frame"') !== false;
+test_assert("29. HoD Edit Request dialog embeds Proof Attachment section (#her-proof-row)", $hodHasProofRow);
+test_assert("30. HoD Edit Request dialog includes Proof Download button (#her-proof-download)", $hodHasProofDl);
+test_assert("31. HoD Edit Request dialog embeds live proof preview iframe (#her-frame)", $hodHasProofFrame);
 
-// 5. Test Proof Delivery & Download Headers
+// 5. Test Dual View (entry-details.php)
+echo "\n--- Testing Dual View (entry-details.php) Proof Embedding ---\n";
+$entryDetailsHtml = $coord->request("{$baseUrl}/entry-details.php?type=journal&id={$testRecId}");
+test_assert("32. Coordinator opened entry-details.php?type=journal&id={$testRecId} (HTTP 200)", $coord->lastHttpCode === 200);
+$entryHasFrame = strpos($entryDetailsHtml, 'id="proof-frame"') !== false;
+$entryHasDownload = strpos($entryDetailsHtml, "download=1") !== false;
+$entryHasProofUrl = strpos($entryDetailsHtml, urlencode($testProof)) !== false || strpos($entryDetailsHtml, $testProof) !== false;
+test_assert("33. entry-details.php embeds live proof viewer iframe (#proof-frame)", $entryHasFrame);
+test_assert("34. entry-details.php includes direct proof download button", $entryHasDownload);
+test_assert("35. entry-details.php references exact uploaded proof file", $entryHasProofUrl);
+
+// 6. Test Proof Delivery & Download Headers
 echo "\n--- Testing Proof Delivery and Download Header Verification ---\n";
 $ch = curl_init("{$baseUrl}/proof.php?file=" . urlencode($testProof) . "&download=1");
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_HEADER, true);
-// Use coordinator's session cookie
 $reflector = new ReflectionProperty($coord, 'cookieFile');
-$reflector->setAccessible(true);
 $coordCookieFile = $reflector->getValue($coord);
 curl_setopt($ch, CURLOPT_COOKIEFILE, $coordCookieFile);
 $proofResponse = curl_exec($ch);
 $headerSize = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
 $proofHeaders = substr($proofResponse, 0, $headerSize);
-curl_close($ch);
 
 $hasAttachmentHeader = stripos($proofHeaders, 'Content-Disposition: attachment') !== false;
 $hasProofFilename = stripos($proofHeaders, $testProof) !== false;
-test_assert("23. proof.php?download=1 sends Content-Disposition: attachment", $hasAttachmentHeader);
-test_assert("24. proof.php download header references exact attachment filename", $hasProofFilename);
+test_assert("36. proof.php?download=1 sends Content-Disposition: attachment", $hasAttachmentHeader);
+test_assert("37. proof.php download header references exact attachment filename", $hasProofFilename);
 
-// 6. Test Approval via the Upgraded Review Modal Form
+// 7. Test Approval via the Upgraded Review Modal Form
 echo "\n--- Testing Approval Submission via Upgraded Review Dialog Form ---\n";
 $csrf = $coord->extractCsrf($coordViewHtml);
 $postData = [
@@ -201,13 +232,54 @@ $verifyStmt = $pdo->prepare("SELECT status, review_remark FROM journal_publicati
 $verifyStmt->execute([$testRecId]);
 $updatedRow = $verifyStmt->fetch(PDO::FETCH_ASSOC);
 
-test_assert("25. Record status successfully updated to 'Approved' in database", $updatedRow['status'] === 'Approved');
-test_assert("26. Review remark captured in record", strpos($updatedRow['review_remark'], 'embedded proof') !== false);
+test_assert("38. Record status successfully updated to 'Approved' in database", $updatedRow['status'] === 'Approved');
+test_assert("39. Review remark captured in record", strpos($updatedRow['review_remark'], 'embedded proof') !== false);
 
-// Clean up test data
+// Clean up test data from section 1-7
 $pdo->prepare("DELETE FROM journal_publications WHERE id = ?")->execute([$testRecId]);
 @unlink($proofPath);
 
+// 8. Test Duplicate IDs Across Different Record Types & Empty Proof Fallback
+echo "\n--- Testing Duplicate IDs & Empty Proof Fallback Handling ---\n";
+$dupId = 90077;
+$pdo->prepare("DELETE FROM journal_publications WHERE id = ?")->execute([$dupId]);
+$pdo->prepare("DELETE FROM patents WHERE id = ?")->execute([$dupId]);
+
+$proofDup = 'test_proof_dup_' . time() . '.pdf';
+$proofDupPath = $uploadsDir . '/' . $proofDup;
+file_put_contents($proofDupPath, "%PDF-1.4\n% Test Duplicate ID Proof\n");
+
+// Journal with Proof
+$pdo->prepare("INSERT INTO journal_publications (id, academic_year, department, faculty_name, paper_title, journal_name, publication_month, publication_year, status, proof_file, created_at, updated_at)
+VALUES (?, ?, ?, 'Dr. Alpha', 'Journal With Proof #90077', 'IEEE Trans', 'March', '2026', 'Submitted', ?, NOW(), NOW())")
+->execute([$dupId, $activeYear, $dept, $proofDup]);
+
+// Patent with NO Proof (Empty Proof Fallback Test)
+$pdo->prepare("INSERT INTO patents (id, academic_year, department, faculty_name, title, category, status, proof_file, document_link, created_at, updated_at)
+VALUES (?, ?, ?, 'Dr. Beta', 'Patent Without Proof #90077', 'Granted', 'Submitted', NULL, NULL, NOW(), NOW())")
+->execute([$dupId, $activeYear, $dept]);
+
+$adminMultiHtml = $admin->request("{$baseUrl}/approvals.php?tab=pending");
+
+// 1. Both unique card keys exist
+$hasJournalCardKey = strpos($adminMultiHtml, "data-card-key=\"journal-{$dupId}\"") !== false;
+$hasPatentCardKey  = strpos($adminMultiHtml, "data-card-key=\"patent-{$dupId}\"") !== false;
+test_assert("40. Admin pending view renders distinct card key for Journal #{$dupId}", $hasJournalCardKey);
+test_assert("41. Admin pending view renders distinct card key for Patent #{$dupId}", $hasPatentCardKey);
+
+// 2. Journal card renders live iframe and direct download button
+$hasJournalIframe = strpos($adminMultiHtml, "data-src=\"") !== false && strpos($adminMultiHtml, $proofDup) !== false;
+test_assert("42. Journal card with proof contains live iframe source and download link", $hasJournalIframe);
+
+// 3. Patent card renders empty proof fallback message
+$hasNoProofBox = strpos($adminMultiHtml, "No Proof File Uploaded") !== false;
+test_assert("43. Patent card without proof renders graceful 'No Proof File Uploaded' fallback", $hasNoProofBox);
+
+// Clean up duplicate ID test records
+$pdo->prepare("DELETE FROM journal_publications WHERE id = ?")->execute([$dupId]);
+$pdo->prepare("DELETE FROM patents WHERE id = ?")->execute([$dupId]);
+@unlink($proofDupPath);
+
 echo "\n========================================================================\n";
-echo "BUG-WF-13 EMBEDDED PROOF VIEWER & DOWNLOAD: ALL 26 TESTS PASSED (100%)!\n";
+echo "BUG-WF-13 EMBEDDED PROOF VIEWER & DOWNLOAD: ALL 43 TESTS PASSED (100%)!\n";
 echo "========================================================================\n";

@@ -92,9 +92,9 @@ $latestRequest = $linkedRequests[0] ?? null;
 $attributes = record_display_attributes($type, $record);
 
 // Attached proof resolution
-$proofFile = !empty($record['proof_file']) ? $record['proof_file'] : null;
-$docUrl    = $record['document_link'] ?? $record['certificate_link'] ?? $record['report_link'] ?? $record['proceedings_link'] ?? null;
-$proofUrl  = $proofFile ? proof_url($proofFile) : ($docUrl ?: null);
+$proofFile = !empty($record['proof_file']) ? $record['proof_file'] : ($record['proofs'] ?? null);
+$docUrl    = $record['document_link'] ?? $record['certificate_link'] ?? $record['report_link'] ?? $record['proceedings_link'] ?? $record['appointment_order_link'] ?? null;
+$proofUrl  = $proofFile ? proof_url($proofFile) : ($docUrl ? proof_url($docUrl) : null);
 
 $pageTitle = 'Entry Details · ' . ($record['_title'] ?? 'Record #' . $id);
 require __DIR__ . '/inc/header.php';
@@ -374,7 +374,7 @@ require __DIR__ . '/inc/header.php';
 
         <div style="background:#F1F5F9; min-height:76vh; position:relative; display:flex; flex-direction:column;">
           <?php if ($proofUrl): ?>
-            <iframe src="<?= e($proofUrl) ?>" style="width:100%; height:78vh; border:none; display:block; background:#fff;" loading="lazy"></iframe>
+            <iframe id="proof-frame" src="<?= e($proofUrl) ?>" style="width:100%; height:78vh; border:none; display:block; background:#fff;" loading="lazy"></iframe>
           <?php else: ?>
             <div style="padding:50px 30px; text-align:center; color:#64748B; margin:auto;">
               <div style="font-size:36px; margin-bottom:12px; opacity:0.6;">📄</div>

@@ -33,8 +33,9 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
  * see all; everyone else is pinned to their own department.
  */
 $isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
+$rawDept     = trim((string) (input('department') ?: input('dept')));
 $department  = $isOversight
-    ? (trim((string) input('department')) ?: null)
+    ? ($rawDept !== '' ? $rawDept : null)
     : ($user['department'] ?? null);
 
 $columns = template_columns();
@@ -115,6 +116,9 @@ if ($format === 'word') {
     ];
 
     foreach ($deptsToRender as $dIndex => $dept) {
+        if ($department === null && count($deptsToRender) > 1 && $dept !== null) {
+            $exportRows[] = array_merge(['DEPARTMENT OF ' . strtoupper(department_full_name($dept))], array_fill(0, max(0, count($columns) - 1), ''));
+        }
         $byMetric = $buildByMetric($dept);
         foreach ($rows as $ri => $r) {
             $matchText = $matchKey ? $norm($r['cells'][$matchKey] ?? '') : '';
@@ -129,6 +133,11 @@ if ($format === 'word') {
             }
             $exportRows[] = $rowValues;
         }
+    }
+
+    $sigCols = ['HOD' . ($department ? ' / ' . department_full_name($department) : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($hdr)) as $sRow) {
+        $exportRows[] = $sRow;
     }
 
     $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
@@ -307,6 +316,6 @@ foreach ($deptsToRender as $dIndex => $dept):
   </table>
 
 <?php
-    report_signoff(['HOD' . ($dept ? ' / ' . department_full_name($dept) : ''), 'IQAC COORDINATOR', 'PRINCIPAL']);
+    report_signoff(['HOD' . ($dept ? ' / ' . department_full_name($dept) : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
 endforeach;
 report_document_foot();

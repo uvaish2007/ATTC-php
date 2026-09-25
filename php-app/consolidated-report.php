@@ -33,8 +33,8 @@ if (!$isAuthorized) {
     exit;
 }
 
-// Global active academic year from FEAT-02 (no manual client override)
-$academicYear = active_academic_year();
+// Active academic year or requested year filter
+$academicYear = trim((string) input('year', '')) ?: active_academic_year();
 $format       = strtolower(trim((string) input('format', 'pdf')));
 if (!in_array($format, ['pdf', 'excel', 'word'], true)) {
     $format = 'pdf';
@@ -42,7 +42,7 @@ if (!in_array($format, ['pdf', 'excel', 'word'], true)) {
 
 $today    = date('d.m.Y');
 $safeYear = preg_replace('/[^A-Za-z0-9\-]/', '-', $academicYear);
-$fileStem = "ATTS_Consolidated_Report_{$safeYear}";
+$fileStem = "ATTS_Consolidated_All_Department_Report_{$safeYear}";
 $title    = 'CONSOLIDATED ALL-DEPARTMENT REPORT';
 
 // 1. Fetch all departments registered in the system
@@ -137,21 +137,21 @@ foreach ($deptData as $dGroup) {
 }
 
 /* ========================================================================
-   1. EXCEL EXPORT (.xlsx)
+   1. EXCEL EXPORT (.xlsx) — Multi-Tab Consolidated Workbook
    ===================================================================== */
 if ($format === 'excel') {
-    $headers = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date'];
-    $rows = [];
+    $sheets = [];
+    $sigCols = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
 
-    // Part A: Institutional Summary Block
-    $rows[] = ['INSTITUTIONAL SUMMARY BY DEPARTMENT', '', '', '', '', '', ''];
-    $rows[] = ['S.No', 'Department Name', 'Code', 'Total Records', 'Approved', 'Pending / Under Review', 'Targets Fixed / Achieved'];
-    
+    // Part A: Sheet 1 — Institutional Overview
+    $overviewHeaders = ['S.No', 'Department Name', 'Code', 'Total Records', 'Approved', 'Pending / Under Review', 'Targets Fixed / Achieved'];
+    $overviewRows = [];
+
     $sIdx = 1;
     foreach ($deptData as $dGroup) {
         $tInfo = $dGroup['targets'];
         $tStr  = $tInfo ? ((int)$tInfo['total_targets'] . ' targets (' . (int)$tInfo['sum_achieved'] . ' achieved)') : '—';
-        $rows[] = [
+        $overviewRows[] = [
             $sIdx++,
             $dGroup['full_name'],
             $dGroup['info']['code'],
@@ -161,44 +161,77 @@ if ($format === 'excel') {
             $tStr,
         ];
     }
-    $rows[] = ['TOTAL', 'College Total across All Departments', count($departments) . ' Depts', $totalRecordsCollege, $totalApprovedCollege, $totalPendingCollege, ''];
-    $rows[] = ['', '', '', '', '', '', ''];
-    $rows[] = ['', '', '', '', '', '', ''];
+    $overviewRows[] = ['TOTAL', 'College Total across All Departments', count($departments) . ' Depts', $totalRecordsCollege, $totalApprovedCollege, $totalPendingCollege, ''];
 
-    // Part B: Department-wise Grouped Records
-    foreach ($deptData as $dGroup) {
-        $rows[] = ['DEPARTMENT: ' . strtoupper($dGroup['full_name']) . ' (' . $dGroup['info']['code'] . ')', '', '', '', '', '', ''];
-        
-        if (empty($dGroup['records'])) {
-            $rows[] = ['—', 'No records available for the selected Academic Year (' . $academicYear . ').', '', '', $dGroup['info']['code'], '—', '—'];
-        } else {
-            $rows[] = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date'];
-            $rNo = 1;
-            foreach ($dGroup['records'] as $r) {
-                $rows[] = [
-                    $rNo++,
-                    $r['_title'],
-                    $r['_type_label'],
-                    $r['_person'],
-                    $dGroup['info']['code'],
-                    $r['status'],
-                    date('d/m/Y', strtotime($r['created_at'])),
-                ];
-            }
-            $rows[] = ['Subtotal', count($dGroup['records']) . ' records', '', '', $dGroup['info']['code'], $dGroup['approved'] . ' Approved', ''];
-        }
-        $rows[] = ['', '', '', '', '', '', ''];
+    foreach (report_signoff_excel_rows($sigCols, count($overviewHeaders)) as $sRow) {
+        $overviewRows[] = $sRow;
     }
 
-    $metaLines = [
+    $overviewMeta = [
         REPORT_INSTITUTION,
-        $title,
+        $title . ' — INSTITUTIONAL OVERVIEW',
         'Academic Year: ' . $academicYear,
         'Scope: All Departments (' . count($departments) . ' registered departments)',
         'Report Date: ' . $today,
     ];
 
-    $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Consolidated Report', $metaLines);
+    $sheets[] = [
+        'title'   => 'College Overview',
+        'headers' => $overviewHeaders,
+        'rows'    => $overviewRows,
+        'meta'    => $overviewMeta,
+    ];
+
+    // Part B: Sheets 2..N — Department-wise Grouped Records Tabs
+    $deptHeaders = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date'];
+
+    foreach ($deptData as $dGroup) {
+        $deptRows = [];
+
+        if (empty($dGroup['records'])) {
+            $deptRows[] = ['—', 'No records available for the selected Academic Year (' . $academicYear . ').', '', '', $dGroup['full_name'], '—', '—'];
+        } else {
+            $rNo = 1;
+            foreach ($dGroup['records'] as $r) {
+                $deptRows[] = [
+                    $rNo++,
+                    $r['_title'],
+                    $r['_type_label'],
+                    $r['_person'],
+                    $dGroup['full_name'],
+                    $r['status'],
+                    date('d/m/Y', strtotime($r['created_at'])),
+                ];
+            }
+            $deptRows[] = ['Subtotal', count($dGroup['records']) . ' records', '', '', $dGroup['full_name'], $dGroup['approved'] . ' Approved, ' . $dGroup['pending'] . ' Pending', ''];
+        }
+
+        foreach (report_signoff_excel_rows($sigCols, count($deptHeaders)) as $sRow) {
+            $deptRows[] = $sRow;
+        }
+
+        $deptMeta = [
+            REPORT_INSTITUTION,
+            'DEPARTMENT: ' . mb_strtoupper($dGroup['full_name']) . ' (' . $dGroup['info']['code'] . ')',
+            'Academic Year: ' . $academicYear,
+            'Department Records: ' . count($dGroup['records']) . ' total (' . $dGroup['approved'] . ' approved, ' . $dGroup['pending'] . ' pending)',
+            'Report Date: ' . $today,
+        ];
+
+        // Clean sheet title (Department Code or Name, max 31 characters, no invalid chars)
+        $sheetTitle = trim((string)($dGroup['info']['code'] ?: $dGroup['info']['name']));
+        $sheetTitle = preg_replace('/[\\\\\\/\?\*\:\[\]]/', '', $sheetTitle);
+        $sheetTitle = mb_substr(trim($sheetTitle) ?: 'Dept', 0, 31);
+
+        $sheets[] = [
+            'title'   => $sheetTitle,
+            'headers' => $deptHeaders,
+            'rows'    => $deptRows,
+            'meta'    => $deptMeta,
+        ];
+    }
+
+    $xlsxData = SimpleXlsxWriter::createMultiSheetXlsx($sheets);
     if ($xlsxData !== '') {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
@@ -207,6 +240,10 @@ if ($format === 'excel') {
         echo $xlsxData;
         exit;
     }
+
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 }
 
 /* ========================================================================
@@ -285,7 +322,7 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
     
     <div style="background:#F3F4F6; border:1px solid #000; padding:8px 12px; margin-bottom:10px;">
       <div style="font-size:12pt; font-weight:bold; color:#000;">
-        <?= $secIdx ?>. DEPARTMENT: <?= strtoupper(e($dGroup['full_name'])) ?> (<?= e($dGroup['info']['code']) ?>)
+        <?= $secIdx ?>. DEPARTMENT OF <?= strtoupper(e($dGroup['full_name'])) ?>
       </div>
       <div style="font-size:9.5pt; color:#374151; margin-top:2px;">
         Total Records: <strong><?= count($dGroup['records']) ?></strong> &middot;
@@ -332,7 +369,7 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
   <?php endforeach; ?>
 
   <div style="margin-top:30px;">
-    <?php report_signoff(['HOD', 'DEAN', 'IQAC COORDINATOR', 'PRINCIPAL']); ?>
+    <?php report_signoff(['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']); ?>
   </div>
 
 <?php

@@ -62,19 +62,26 @@ if ($format === 'excel') {
             $sno++,
             $r['category'],
             $r['title'],
-            $r['department'],
+            department_full_name($r['department']),
             $r['status'],
             $r['year'],
             date('d/m/Y', strtotime($r['created_at'])),
         ];
     }
 
+    $sigCols = ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
+        $rows[] = $sRow;
+    }
+
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Individual Report', [
-        'title'       => $title,
-        'department'  => $faculty['department'],
-        'year'        => $academicYear,
-        'generated'   => $today,
-        'institution' => REPORT_INSTITUTION,
+        REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)',
+        $title,
+        'Faculty Name: ' . $faculty['name'] . ' (' . $faculty['employee_id'] . ')',
+        'Designation: ' . $faculty['designation'],
+        'Department: ' . department_full_name($faculty['department']),
+        'Academic Year: ' . ($academicYear ?: 'All Years'),
+        'Report Date: ' . $today,
     ]);
 
     if ($xlsxData !== '') {
@@ -84,6 +91,10 @@ if ($format === 'excel') {
         echo $xlsxData;
         exit;
     }
+
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 }
 
 /* ========================================================================
@@ -101,7 +112,7 @@ if ($format === 'csv') {
     fputcsv($out, ['Faculty Name: ' . $faculty['name']]);
     fputcsv($out, ['Employee ID: ' . $faculty['employee_id']]);
     fputcsv($out, ['Designation: ' . $faculty['designation']]);
-    fputcsv($out, ['Department: ' . $faculty['department']]);
+    fputcsv($out, ['Department: ' . department_full_name($faculty['department'])]);
     fputcsv($out, ['Academic Year: ' . ($academicYear ?: 'All Years')]);
     fputcsv($out, ['Report Date: ' . $today]);
     fputcsv($out, []);
@@ -114,12 +125,16 @@ if ($format === 'csv') {
             $sno++,
             $r['category'],
             $r['title'],
-            $r['department'],
+            department_full_name($r['department']),
             $r['status'],
             $r['year'],
             date('d/m/Y', strtotime($r['created_at'])),
         ]);
     }
+
+    fputcsv($out, []);
+    fputcsv($out, []);
+    fputcsv($out, ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL']);
 
     fclose($out);
     exit;
@@ -201,7 +216,7 @@ if ($format === 'word') {
         <td class="fac-info-label">Designation:</td>
         <td><?= e($faculty['designation']) ?></td>
         <td class="fac-info-label">Department:</td>
-        <td><?= e($faculty['department']) ?></td>
+        <td><?= e(department_full_name($faculty['department'])) ?></td>
       </tr>
     </table>
   </div>
@@ -262,6 +277,15 @@ if ($format === 'word') {
       </table>
     <?php endforeach; ?>
   <?php endif; ?>
+
+  <table class="rpt-sign" style="width:100%; margin-top:40px; margin-bottom:24px; border-collapse:collapse;">
+    <tr>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">FACULTY MEMBER</td>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">HOD / <?= e(strtoupper(department_full_name($faculty['department']))) ?></td>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">DEAN / ACADEMICS</td>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">PRINCIPAL</td>
+    </tr>
+  </table>
 
   <div class="footer">
     Official Individual Faculty Achievement Document &middot; <?= e(REPORT_INSTITUTION) ?> &middot; Generated <?= e($today) ?>
