@@ -59,7 +59,7 @@ if ($format === 'excel') {
     $rows[] = ['Department', 'Publications', 'Conferences', 'Books', 'Events', 'Training', 'Patents', 'Total Achievements', '', '', '', '', ''];
     foreach ($deptComp as $dc) {
         $rows[] = [
-            $dc['department'],
+            department_full_name($dc['department']),
             (int) $dc['publications'],
             (int) $dc['conferences'],
             (int) $dc['books'],
@@ -110,7 +110,7 @@ if ($format === 'excel') {
                     $f['name'],
                     $f['employee_id'],
                     $f['designation'],
-                    $f['department'],
+                    department_full_name($f['department']),
                     $j, $c, $b, $e, $t, $p, $o, $tot,
                 ];
             }
@@ -120,7 +120,7 @@ if ($format === 'excel') {
                 count($facultyList) . ' Faculty members',
                 '',
                 '',
-                $deptName,
+                department_full_name($deptName),
                 $dTotals['j'],
                 $dTotals['c'],
                 $dTotals['b'],
@@ -154,6 +154,11 @@ if ($format === 'excel') {
         ];
     }
 
+    $sigCols = ['HOD' . ($effDept ? ' / ' . strtoupper(department_full_name($effDept)) : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
+        $rows[] = $sRow;
+    }
+
     $metaLines = [
         REPORT_INSTITUTION,
         $title,
@@ -173,6 +178,10 @@ if ($format === 'excel') {
         echo $xlsxData;
         exit;
     }
+
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 }
 
 if ($format === 'csv') {
@@ -198,7 +207,7 @@ if ($format === 'csv') {
                 $f['name'],
                 $f['employee_id'],
                 $f['designation'],
-                $f['department'],
+                department_full_name($f['department']),
                 $f['journals'],
                 $f['conferences'],
                 $f['books'],
@@ -211,6 +220,9 @@ if ($format === 'csv') {
         }
         fputcsv($out, []);
     }
+
+    fputcsv($out, []);
+    fputcsv($out, ['HOD' . ($effDept ? ' / ' . strtoupper(department_full_name($effDept)) : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
 
     fclose($out);
     exit;
@@ -316,7 +328,7 @@ if ($format === 'word') {
       <tbody>
         <?php foreach ($deptComp as $d): ?>
           <tr>
-            <td style="font-weight:700;"><?= e($d['department']) ?></td>
+            <td style="font-weight:700;"><?= e(department_full_name($d['department'])) ?></td>
             <td class="num"><?= (int) $d['publications'] ?></td>
             <td class="num"><?= (int) $d['conferences'] ?></td>
             <td class="num"><?= (int) $d['books'] ?></td>
@@ -407,6 +419,15 @@ if ($format === 'word') {
       </table>
     <?php endforeach; ?>
   <?php endif; ?>
+
+  <table class="rpt-sign" style="width:100%; margin-top:40px; margin-bottom:24px; border-collapse:collapse;">
+    <tr>
+      <td style="text-align:center; font-weight:700; font-size:10.5pt; width:25%;">HOD<?= $effDept ? ' / ' . strtoupper(e(department_full_name($effDept))) : '' ?></td>
+      <td style="text-align:center; font-weight:700; font-size:10.5pt; width:25%;">DEAN / ACADEMICS</td>
+      <td style="text-align:center; font-weight:700; font-size:10.5pt; width:25%;">IQAC COORDINATOR</td>
+      <td style="text-align:center; font-weight:700; font-size:10.5pt; width:25%;">PRINCIPAL</td>
+    </tr>
+  </table>
 
   <div class="footer">
     Generated automatically by ATTS IQAC System on <?= e($today) ?> &middot; Academic Year: <?= e($academicYear) ?> &middot; Official Academic Record

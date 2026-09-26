@@ -66,10 +66,18 @@ $facStmt = db()->prepare($facSql);
 $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
+<<<<<<< HEAD
+// ---- Fetch Data ---------------------------------------------------------
+$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
+$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
+$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
+$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
+=======
 $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
 $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
 $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
@@ -656,8 +664,11 @@ require __DIR__ . '/inc/header.php';
         <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
         <input type="hidden" name="department" value="<?= e($department) ?>">
         <input type="hidden" name="category" value="<?= e($category) ?>">
+<<<<<<< HEAD
+=======
         <input type="hidden" name="em" value="<?= e($em) ?>">
         <input type="hidden" name="student_search" value="<?= e($studentSearch) ?>">
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         <label class="fb-field fb-search" style="min-width:240px;">
           <?= icon('search', 14) ?>
           <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">

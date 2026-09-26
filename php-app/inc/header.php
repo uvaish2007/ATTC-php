@@ -25,17 +25,23 @@ $myPhotoUrl  = $myPhotoFile !== null
 $navItems = navigation_for($user['role']);
 $groups   = group_navigation($navItems);
 
+<<<<<<< HEAD
+=======
 require_once __DIR__ . '/../models/EditRequest.php';
 require_once __DIR__ . '/../models/PasswordResetRequest.php';   
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
     'announcements' => unread_announcements_count($user),
     'targets'       => (in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true) ? targets_pending_count($atts_activeYear) : 0)
                        + ($user['role'] === 'Admin' ? unlock_pending_count() : 0),
+<<<<<<< HEAD
+=======
     'edit_requests' => edit_requests_pending_count($user),
     // FEAT-11 — only the Admin decides password requests, so only the Admin is
     // told how many are waiting. The count is not even queried for anyone else.
     'password_requests' => $user['role'] === 'Admin' ? password_reset_requests_pending_count() : 0,
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 ];
 
 $pageTitle    = $pageTitle    ?? 'Dashboard';
@@ -122,6 +128,9 @@ $flashes      = take_flashes();
           <div class="nav-section-label"><?= e($section) ?></div>
           <div class="nav-list">
             <?php foreach ($items as $item):
+<<<<<<< HEAD
+              $isActive = ($item['path'] === $active);
+=======
               if ($active === 'approvals.php' || $active === 'edit-requests.php') {
                 $isActive = (strtok($item['path'], '?') === 'approvals.php');
               } elseif ($active === 'password-requests.php') {
@@ -129,6 +138,7 @@ $flashes      = take_flashes();
               } else {
                 $isActive = (strtok($item['path'], '?') === $active);
               }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
               $badge = isset($item['badge']) ? ($badgeCounts[$item['badge']] ?? 0) : 0;
               $locked = !module_is_active(module_for_path($item['path']));
             ?>

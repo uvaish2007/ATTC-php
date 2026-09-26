@@ -4,7 +4,7 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Setting.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
 
 $rawYear = trim((string) (input('academic_year') ?: input('year')));
 $emRaw   = trim((string) input('em'));

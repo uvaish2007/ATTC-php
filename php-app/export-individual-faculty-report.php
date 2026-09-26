@@ -48,38 +48,40 @@ $fileStem = 'individual-faculty-achievement-report-' . preg_replace('/[^a-z0-9]/
 $title    = 'INDIVIDUAL FACULTY ACHIEVEMENT REPORT';
 
 if ($format === 'excel') {
-    $headers = ['S.No', 'Category', 'Title / Paper / Activity', 'Department', 'Status', 'Academic Year', 'Submission Date', 'Proof'];
+    $headers = ['S.No', 'Category', 'Title / Paper / Activity', 'Department', 'Status', 'Academic Year', 'Submission Date'];
     
     $rows = [];
     $sno = 1;
     foreach ($records as $r) {
-        $pfile = trim((string)($r['proof_file'] ?? ''));
-        $pType = $r['type_key'] ?? '';
-        $pId   = (int)($r['id'] ?? 0);
-        $proofVal = ($pfile !== '')
-            ? ['text' => 'View Proof', 'url' => record_proof_url($pType, $pId, $pfile, false, true)]
-            : '—';
         $rows[] = [
             $sno++,
             $r['category'],
             $r['title'],
-            $r['department'],
+            department_full_name($r['department']),
             $r['status'],
             $r['year'],
             date('d/m/Y', strtotime($r['created_at'])),
-            $proofVal,
         ];
     }
 
+<<<<<<< HEAD
+    $sigCols = ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
+        $rows[] = $sRow;
+    }
+=======
     $rows = array_merge($rows, report_signoff_rows(
         report_signoff_columns(department_full_name($faculty['department'] ?? null)), count($headers)));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Individual Report', [
-        'title'       => $title,
-        'department'  => $faculty['department'],
-        'year'        => $academicYear,
-        'generated'   => $today,
-        'institution' => REPORT_INSTITUTION,
+        REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)',
+        $title,
+        'Faculty Name: ' . $faculty['name'] . ' (' . $faculty['employee_id'] . ')',
+        'Designation: ' . $faculty['designation'],
+        'Department: ' . department_full_name($faculty['department']),
+        'Academic Year: ' . ($academicYear ?: 'All Years'),
+        'Report Date: ' . $today,
     ]);
 
     if ($xlsxData !== '') {
@@ -89,6 +91,10 @@ if ($format === 'excel') {
         echo $xlsxData;
         exit;
     }
+
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 }
 
 if ($format === 'csv') {
@@ -103,30 +109,29 @@ if ($format === 'csv') {
     fputcsv($out, ['Faculty Name: ' . $faculty['name']]);
     fputcsv($out, ['Employee ID: ' . $faculty['employee_id']]);
     fputcsv($out, ['Designation: ' . $faculty['designation']]);
-    fputcsv($out, ['Department: ' . $faculty['department']]);
+    fputcsv($out, ['Department: ' . department_full_name($faculty['department'])]);
     fputcsv($out, ['Academic Year: ' . ($academicYear ?: 'All Years')]);
     fputcsv($out, ['Report Date: ' . $today]);
     fputcsv($out, []);
 
-    fputcsv($out, ['S.No', 'Category', 'Title / Description', 'Department', 'Status', 'Academic Year', 'Date', 'Proof']);
+    fputcsv($out, ['S.No', 'Category', 'Title / Description', 'Department', 'Status', 'Academic Year', 'Date']);
 
     $sno = 1;
     foreach ($records as $r) {
-        $pfile = trim((string)($r['proof_file'] ?? ''));
-        $pType = $r['type_key'] ?? '';
-        $pId   = (int)($r['id'] ?? 0);
-        $proofVal = ($pfile !== '') ? record_proof_url($pType, $pId, $pfile, false, true) : '—';
         fputcsv($out, [
             $sno++,
             $r['category'],
             $r['title'],
-            $r['department'],
+            department_full_name($r['department']),
             $r['status'],
             $r['year'],
             date('d/m/Y', strtotime($r['created_at'])),
-            $proofVal,
         ]);
     }
+
+    fputcsv($out, []);
+    fputcsv($out, []);
+    fputcsv($out, ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL']);
 
     fclose($out);
     exit;
@@ -169,10 +174,23 @@ if ($format === 'word') {
 </head>
 <body>
 
+<<<<<<< HEAD
+  <?php if ($format === 'pdf'): ?>
+    <div class="no-print" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 10px;">
+      <button onclick="window.print()" style="background: #FF4F01; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+        Print / Save as PDF
+      </button>
+      <button onclick="window.close()" style="background: #E4E9F2; color: #131D3B; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
+        Close Window
+      </button>
+    </div>
+  <?php endif; ?>
+=======
 <?php if ($format === 'pdf'): ?>
   <?php report_pdf_bar($title ?? 'Individual Faculty Report',
       [$faculty['name'] ?? '', $faculty['department'] ?? '', 'AY ' . $academicYear]); ?>
 <?php endif; ?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
   <?php $bannerImg = report_banner_img(680); ?>
   <?php if ($bannerImg !== ''): ?>
@@ -182,14 +200,19 @@ if ($format === 'word') {
   <table class="hdr-table">
     <tr>
       <td>
+<<<<<<< HEAD
+        <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
+        <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Academic Target Tracking System</div>
+=======
         <?php if ($bannerImg === ''): ?>
           <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
         <?php endif; ?>
         <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Faculty Profile</div>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       </td>
-      <td style="text-align:right; font-size:11px; color:#5A6785;">
-        Date: <?= e($today) ?><br>
-        Academic Year: <strong><?= e($academicYear ?: 'All Years') ?></strong>
+      <td style="text-align: right; font-size: 12px; color: #5A6785;">
+        <div><strong>Report Date:</strong> <?= e($today) ?></div>
+        <div><strong>Academic Year:</strong> <?= e($academicYear ?: 'All Years') ?></div>
       </td>
     </tr>
   </table>
@@ -199,15 +222,15 @@ if ($format === 'word') {
     <table class="fac-info-table">
       <tr>
         <td class="fac-info-label">Faculty Name:</td>
-        <td class="fw-bold" style="font-size:14px; color:#FF4F01;"><?= e($faculty['name']) ?></td>
+        <td class="fw-bold"><?= e($faculty['name']) ?></td>
         <td class="fac-info-label">Employee ID:</td>
-        <td class="fw-bold"><?= e($faculty['employee_id']) ?></td>
+        <td><?= e($faculty['employee_id']) ?></td>
       </tr>
       <tr>
         <td class="fac-info-label">Designation:</td>
         <td><?= e($faculty['designation']) ?></td>
         <td class="fac-info-label">Department:</td>
-        <td><?= e($faculty['department']) ?></td>
+        <td><?= e(department_full_name($faculty['department'])) ?></td>
       </tr>
     </table>
   </div>
@@ -252,45 +275,31 @@ if ($format === 'word') {
             <th>Status</th>
             <th>Academic Year</th>
             <th>Submission Date</th>
-            <th>Proof</th>
           </tr>
         </thead>
         <tbody>
           <?php $idx = 1; foreach ($catItems as $item): ?>
-            <?php
-              $pfile = trim((string)($item['proof_file'] ?? ''));
-              $pType = $item['type_key'] ?? '';
-              $pId   = (int)($item['id'] ?? 0);
-              $meta  = ($pfile !== '') ? record_proof_meta($pType, $pId, $pfile) : null;
-            ?>
             <tr>
               <td><?= $idx++ ?></td>
               <td class="fw-bold"><?= e($item['title']) ?></td>
               <td><?= e($item['status']) ?></td>
               <td><?= e($item['year']) ?></td>
               <td><?= date('d/m/Y', strtotime($item['created_at'])) ?></td>
-              <td style="text-align:center;">
-                <?php if ($meta): ?>
-                  <?php if ($meta['is_image'] && !empty($meta['base64_data'])): ?>
-                    <a href="<?= e($meta['view_url']) ?>" target="_blank" style="text-decoration:none;">
-                      <img src="<?= $meta['base64_data'] ?>" alt="Proof" style="max-width:80px;max-height:50px;object-fit:contain;border:1px solid #ccc;border-radius:3px;display:block;margin:0 auto 2px auto;">
-                      <span style="font-size:8pt;color:#0044cc;text-decoration:underline;">View Proof</span>
-                    </a>
-                  <?php else: ?>
-                    <a href="<?= e($meta['view_url']) ?>" target="_blank" style="color:#0044cc;font-weight:600;font-size:9pt;text-decoration:underline;">
-                      View Proof<?= $meta['ext'] ? ' (' . strtoupper(e($meta['ext'])) . ')' : '' ?>
-                    </a>
-                  <?php endif; ?>
-                <?php else: ?>
-                  —
-                <?php endif; ?>
-              </td>
             </tr>
           <?php endforeach; ?>
         </tbody>
       </table>
     <?php endforeach; ?>
   <?php endif; ?>
+
+  <table class="rpt-sign" style="width:100%; margin-top:40px; margin-bottom:24px; border-collapse:collapse;">
+    <tr>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">FACULTY MEMBER</td>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">HOD / <?= e(strtoupper(department_full_name($faculty['department']))) ?></td>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">DEAN / ACADEMICS</td>
+      <td style="text-align:center; font-weight:700; font-size:11px; width:25%;">PRINCIPAL</td>
+    </tr>
+  </table>
 
   <div class="footer">
     Official Individual Faculty Achievement Document &middot; <?= e(REPORT_INSTITUTION) ?> &middot; Generated <?= e($today) ?>

@@ -84,9 +84,9 @@ foreach ($records as $r) {
 $total = count($records);
 
 if ($isHod) {
-    $scopeName = $user['department'] ?: 'All departments';
+    $scopeName = department_full_name($user['department'] ?: 'All departments');
 } else {
-    $scopeName = $department ?: 'All departments';
+    $scopeName = department_full_name($department ?: 'All departments');
 }
 
 $emQ      = $em !== 'all' ? $em : null;   $recordsQ = array_filter([
@@ -349,7 +349,12 @@ require __DIR__ . '/inc/header.php';
   foreach ($scoped as $r) { $typeCounts[$r['_type_key']] = ($typeCounts[$r['_type_key']] ?? 0) + 1; }
   $totalScoped = count($scoped);
 
+<<<<<<< HEAD
+  // The target proforma + metrics summary scope to the effective department.
+  $effDept = $isOversight ? $department : ($isHod ? ($user['department'] ?: null) : null);
+=======
   $effDept = $department;
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   $tStmt   = db()->prepare('SELECT COUNT(*) FROM targets' . ($effDept ? ' WHERE department = ?' : ''));
   $tStmt->execute($effDept ? [$effDept] : []);
   $targetCount = (int) $tStmt->fetchColumn();
@@ -357,7 +362,7 @@ require __DIR__ . '/inc/header.php';
   $canSummary = $role !== 'Coordinator' && $role !== 'Faculty';     $meetingQ2  = array_filter(['department' => $department, 'year' => $year]);
 
   $activeBits = array_filter([
-      $department ? 'Dept: ' . $department : null,
+      $department ? 'Dept: ' . department_full_name($department) : null,
       $category   ? 'Category: ' . $categories[$category]['label'] : null,
       $year       ? 'Year: ' . $year       : null,
       $status     ? 'Status: ' . $status   : null,
@@ -377,7 +382,7 @@ require __DIR__ . '/inc/header.php';
     <div class="card-head">
       <div>
         <div class="card-title" style="display:flex; align-items:center; gap:8px;">
-          <?= icon('reports', 18) ?> Consolidated Report
+          <?= icon('reports', 18) ?> Consolidated All-Department Report
         </div>
         <div class="card-sub">
           College-wide consolidated institutional report &middot; All departments grouped department-wise &middot; Academic Year: <?= e($year) ?>
@@ -393,13 +398,13 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
         <div class="hero-card-actions">
-          <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel')) ?>">
-            <?= icon('download') ?> Download Excel
+          <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>">
+            <?= icon('download') ?> Download Excel (Multi-Tab)
           </a>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf')) ?>" target="_blank" rel="noopener">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">
             <?= icon('file-text', 14) ?> Download PDF
           </a>
-          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word')) ?>">
+          <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word' . ($year ? '&year=' . urlencode($year) : ''))) ?>">
             <?= icon('file-text', 14) ?> Download Word
           </a>
         </div>
@@ -627,6 +632,20 @@ require __DIR__ . '/inc/header.php';
     <div class="rh-label">Summary Reports</div>
     <div class="tmpl-report-grid">
 
+      <?php if ($canConsolidated): ?>
+        <div class="tmpl-report-row" style="background:linear-gradient(to right, rgba(26,37,71,0.03), transparent); border-left:3px solid #1A2547;">
+          <div class="tmpl-report-info">
+            <div class="tmpl-report-name" style="font-weight:700; color:#1A2547;"><?= icon('layers', 15) ?> Consolidated All-Department Report</div>
+            <div class="tmpl-report-sub">Full college data &middot; Multi-tab Excel / Grouped PDF &amp; Word &middot; All <?= count($departments) ?> departments</div>
+          </div>
+          <div class="tmpl-report-links">
+            <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>"><?= icon('download') ?> Excel (Multi-Tab)</a>
+            <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word' . ($year ? '&year=' . urlencode($year) : ''))) ?>">Word</a>
+            <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">PDF</a>
+          </div>
+        </div>
+      <?php endif; ?>
+
       <?php if ($canSummary): ?>
         <?php $mq = $meetingQ2; ?>
         <div class="tmpl-report-row">
@@ -771,9 +790,9 @@ require __DIR__ . '/inc/header.php';
                 data-on="0" title="Show every record in every category" style="border-radius:999px;">
           <?= icon('eye', 14) ?> <span>Show all <?= (int) $total ?> records</span>
         </button>
-        <button type="button" class="btn btn-outline btn-sm js-toggle-cats-all" id="toggleCatsAllBtn" data-open="0"
+        <button type="button" class="btn btn-outline btn-sm js-toggle-cats-all" id="toggleCatsAllBtn" data-open="1"
                 title="Expand or collapse all category sections" style="border-radius:999px;">
-          <?= icon('chevron-down', 14) ?> <span id="toggleCatsAllTxt">Expand categories</span>
+          <?= icon('chevron-up', 14) ?> <span id="toggleCatsAllTxt">Collapse categories</span>
         </button>
       <?php endif; ?>
     </div>
@@ -804,9 +823,15 @@ require __DIR__ . '/inc/header.php';
                 <?= icon('eye', 13) ?> View only
               </a>
             <?php endif; ?>
+<<<<<<< HEAD
+            <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
+              <?= icon('chevron-up', 13) ?> <span class="cat-btn-txt">Collapse</span>
+            </button>
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
           </div>
         </div>
-        <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>" hidden>
+        <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>">
           <?php foreach ($catKeys as $key): ?>
             <?php
               $t      = $types[$key];
@@ -923,6 +948,12 @@ require __DIR__ . '/inc/header.php';
       if (body) {
         const isHidden = body.hidden;
         body.hidden = !isHidden;
+<<<<<<< HEAD
+        if (btn) {
+          const txt = btn.querySelector('.cat-btn-txt');
+          if (txt) txt.textContent = isHidden ? 'Collapse' : 'Expand';
+          btn.querySelector('svg').outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
+=======
         const anyOpen = Array.from(document.querySelectorAll('.rec-cat-body')).some(b => !b.hidden);
         const allCatsBtn = document.getElementById('toggleCatsAllBtn');
         if (allCatsBtn) {
@@ -931,6 +962,7 @@ require __DIR__ . '/inc/header.php';
           if (txt) txt.textContent = anyOpen ? 'Collapse categories' : 'Expand categories';
           const svg = allCatsBtn.querySelector('svg');
           if (svg) svg.outerHTML = anyOpen ? '<?= icon('chevron-up', 14) ?>' : '<?= icon('chevron-down', 14) ?>';
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         }
       }
       return;
@@ -959,6 +991,8 @@ require __DIR__ . '/inc/header.php';
     const open = all.dataset.on !== '1';
     if (open) {
       document.querySelectorAll('.rec-cat-body').forEach(b => b.hidden = false);
+<<<<<<< HEAD
+=======
       const allCatsBtn = document.getElementById('toggleCatsAllBtn');
       if (allCatsBtn) {
         allCatsBtn.dataset.open = '1';
@@ -967,6 +1001,7 @@ require __DIR__ . '/inc/header.php';
         const svg = allCatsBtn.querySelector('svg');
         if (svg) svg.outerHTML = '<?= icon('chevron-up', 14) ?>';
       }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     }
     document.querySelectorAll('.rec-group').forEach(g => setGroup(g, open));
     all.dataset.on = open ? '1' : '0';

@@ -73,7 +73,7 @@ require __DIR__ . '/inc/header.php';
         </div>
         <div>
           <div style="font-size:11px; font-weight:700; color:var(--ink-muted,#5A6785); text-transform:uppercase;">Department</div>
-          <div style="font-weight:700; color:var(--ink,#131D3B);"><?= e($faculty['department']) ?></div>
+          <div style="font-weight:700; color:var(--ink,#131D3B);"><?= e(department_full_name($faculty['department'])) ?></div>
         </div>
         <div>
           <div style="font-size:11px; font-weight:700; color:var(--ink-muted,#5A6785); text-transform:uppercase;">Academic Year</div>
@@ -126,20 +126,13 @@ require __DIR__ . '/inc/header.php';
             <tr>
               <th style="width:44px;">#</th>
               <th>Achievement Title / Details</th>
-              <th style="width:180px;">Category</th>
-              <th style="width:110px;">Status</th>
-              <th style="width:110px;">Submitted On</th>
-              <th style="width:100px;">Proof</th>
+              <th style="width:200px;">Category</th>
+              <th style="width:120px;">Status</th>
+              <th style="width:120px;">Submitted On</th>
             </tr>
           </thead>
           <tbody>
             <?php foreach ($records as $idx => $item): ?>
-              <?php
-                $pfile = trim((string)($item['proof_file'] ?? ''));
-                $pType = $item['type_key'] ?? '';
-                $pId   = (int)($item['id'] ?? 0);
-                $meta  = ($pfile !== '') ? record_proof_meta($pType, $pId, $pfile) : null;
-              ?>
               <tr>
                 <td class="faint tabular"><?= $idx + 1 ?></td>
                 <td class="fw-500" style="max-width:460px;">
@@ -159,15 +152,6 @@ require __DIR__ . '/inc/header.php';
                 <td class="card-sub">
                   <?php $ts = strtotime((string) $item['created_at']); ?>
                   <?= $ts ? date('d/m/Y', $ts) : '—' ?>
-                </td>
-                <td class="c">
-                  <?php if ($meta): ?>
-                    <a class="btn btn-ghost btn-sm" href="<?= e($meta['view_url']) ?>" target="_blank" rel="noopener">
-                      <?= icon('paperclip', 13) ?> Proof
-                    </a>
-                  <?php else: ?>
-                    <span class="faint">—</span>
-                  <?php endif; ?>
                 </td>
               </tr>
             <?php endforeach; ?>

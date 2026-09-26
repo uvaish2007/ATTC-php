@@ -11,12 +11,16 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Announcement Archive', 'path' => 'announcements-archive.php', 'icon' => 'archive'],
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Academic Year',        'path' => 'academic-years.php',       'icon' => 'calendar'],
+<<<<<<< HEAD
+=======
             ['section' => 'Workspace', 'label' => 'EM Schedule Manager',  'path' => 'em-schedule.php',          'icon' => 'clock'],
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Users',                'path' => 'users.php',                'icon' => 'users'],
             ['section' => 'Manage',    'label' => 'Departments',          'path' => 'departments.php',          'icon' => 'building'],
+            ['section' => 'Manage',    'label' => 'Targets',              'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Manage',    'label' => 'Report Template',      'path' => 'report-template.php',      'icon' => 'reports'],
 
             ['section' => 'Account',   'label' => 'Settings',             'path' => 'settings.php',             'icon' => 'settings', 'badge' => 'password_requests'],
@@ -24,54 +28,58 @@ function navigation_for(string $role): array
         'Principal' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
+            ['section' => 'Manage',    'label' => 'Targets',              'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
         'Director' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
+            ['section' => 'Manage',    'label' => 'Targets',              'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
         'Dean' => [
-            ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
-            ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
-            ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
-            ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
-            ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
-            ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
+            ['section' => 'Menu',    'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
+            ['section' => 'Menu',    'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Menu',    'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Menu',    'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
+            ['section' => 'Menu',    'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
+            ['section' => 'Menu',    'label' => 'Targets',              'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
+            ['section' => 'Account', 'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
         'HoD' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
+<<<<<<< HEAD
+            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals'],
+=======
             ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target'],
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],
+            ['section' => 'Manage',    'label' => 'Targets',              'path' => 'targets.php',              'icon' => 'target'],
             ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
         'Coordinator' => [
-            ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',                 'icon' => 'dashboard'],
-            ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',             'icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php?reset=1',            'icon' => 'upload'],
-            ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',                 'icon' => 'approvals', 'badge' => 'approvals'],
-            ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',                   'icon' => 'target'],
-            ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',                   'icon' => 'reports'],
-            ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php',      'icon' => 'award'],
+            ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
+            ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
+            ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
+            ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Workspace', 'label' => 'My Report',            'path' => 'individual-faculty-report.php', 'icon' => 'file-text'],
-            ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',                   'icon' => 'user'],
+            ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
         ],
         'Faculty' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
-            ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php?reset=1',       'icon' => 'upload'],
+            ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Workspace', 'label' => 'My Report',            'path' => 'individual-faculty-report.php', 'icon' => 'file-text'],
             ['section' => 'Account',   'label' => 'Profile',              'path' => 'profile.php',              'icon' => 'user'],
@@ -102,8 +110,7 @@ function group_navigation(array $items): array
 
 function nav_href(string $path): string
 {
-    $file   = strtok($path, '?');
-    $exists = is_file(dirname(__DIR__) . '/' . $file);
+    $exists = is_file(dirname(__DIR__) . '/' . $path);
     return $exists ? url($path) : url('coming-soon.php?page=' . urlencode($path));
 }
 
@@ -141,10 +148,7 @@ function pending_approvals_count(array $user): int
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
 
     $total = 0;
-    foreach (record_types() as $key => $t) {
-        if (!record_requires_approval($key)) {
-            continue;
-        }
+    foreach (record_types() as $t) {
         $table = $t['table'];
         try {
             $sql    = "SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)";

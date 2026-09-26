@@ -4,13 +4,25 @@ require_once __DIR__ . '/inc/report_layout.php';
 require_once __DIR__ . '/models/ReportTemplate.php';
 require_once __DIR__ . '/models/Target.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
 
-$format = strtolower(trim((string) input('format', 'pdf')));
+$format = strtolower(trim((string) input('format', 'word')));
 if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
-    $format = 'pdf';
+    $format = 'word';
 }
 
+<<<<<<< HEAD
+/*
+ * Scope by role: oversight roles (Admin, Director, Dean) may pick any department or
+ * see all; everyone else is pinned to their own department.
+ */
+$isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
+$rawDept     = trim((string) (input('department') ?: input('dept')));
+$department  = $isOversight
+    ? ($rawDept !== '' ? $rawDept : null)
+    : ($user['department'] ?? null);
+
+=======
 $isOversight = user_can_choose_department($user);
 $department  = user_department_scope($user, input('department'));
 
@@ -22,6 +34,7 @@ $year     = $emCtx['year'];
 $em       = $emCtx['em'];
 $emWindow = $emCtx['window'];
 
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $columns = template_columns();
 $rows    = template_rows();
 $today   = date('d.m.Y');
@@ -44,10 +57,15 @@ $norm = function ($s): string {
     return trim($s);
 };
 
+<<<<<<< HEAD
+// Index one department's uploaded targets by their normalised metric text.
+$buildByMetric = function (?string $dept) use ($norm): array {
+=======
 $buildByMetric = function (?string $dept) use ($norm, $year): array {
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     $index = [];
     if ($dept !== null) {
-        foreach (target_report_items($dept, $year) as $t) {
+        foreach (target_report_items($dept) as $t) {
             $key = $norm($t['metric']);
             if ($key !== '' && !isset($index[$key])) {
                 $index[$key] = $t;
@@ -78,12 +96,15 @@ if ($format === 'word') {
     $exportRows = [];
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
-        'EXECUTIVE MEETING REPORT - TARGETS FIXED & ACHIEVED (' . $year . ')',
+        'EXECUTIVE MEETING REPORT - TARGETS FIXED & ACHIEVED',
         'Department: ' . ($department ? department_full_name($department) : 'ALL DEPARTMENTS'),
         'Report Date: ' . $today
     ];
 
     foreach ($deptsToRender as $dIndex => $dept) {
+        if ($department === null && count($deptsToRender) > 1 && $dept !== null) {
+            $exportRows[] = array_merge(['DEPARTMENT OF ' . strtoupper(department_full_name($dept))], array_fill(0, max(0, count($columns) - 1), ''));
+        }
         $byMetric = $buildByMetric($dept);
         foreach ($rows as $ri => $r) {
             $matchText = $matchKey ? $norm($r['cells'][$matchKey] ?? '') : '';
@@ -100,11 +121,21 @@ if ($format === 'word') {
         }
     }
 
+<<<<<<< HEAD
+    $sigCols = ['HOD' . ($department ? ' / ' . department_full_name($department) : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($hdr)) as $sRow) {
+        $exportRows[] = $sRow;
+    }
+
+    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
+        ? SimpleXlsxWriter::createXlsx($hdr, $exportRows, 'Targets Report', $metaLines)
+=======
     $xlsxData = class_exists('SimpleXlsxWriter')
         ? SimpleXlsxWriter::createXlsx($hdr,
             array_merge($exportRows, report_signoff_rows(
                 report_signoff_columns($department ? department_full_name($department) : null), count($hdr))),
             'Targets Report', $metaLines)
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         : '';
 
     if (!empty($xlsxData)) {
@@ -116,14 +147,14 @@ if ($format === 'word') {
         exit;
     }
 
-    http_response_code(500);
-    exit('Failed to generate Excel spreadsheet.');
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 } else {
     header('Content-Type: text/html; charset=UTF-8');
 }
 
-$reportDocTitle = ($user['role'] === 'Coordinator') ? 'Target Report' : 'Executive Meeting Report';
-report_document_head($reportDocTitle, 'landscape');
+report_document_head('Executive Meeting Report', 'landscape');
 ?>
 
 <?php if ($format === 'pdf'): ?>
@@ -133,6 +164,10 @@ report_document_head($reportDocTitle, 'landscape');
 <?php endif; ?>
 
 <?php
+<<<<<<< HEAD
+require_once __DIR__ . '/models/Target.php';   // academic_years()
+[$durFrom, $durTo] = report_year_duration(academic_years()[0] ?? null);
+=======
 require_once __DIR__ . '/models/Target.php';   
 if ($em !== 'all' && $emWindow !== null && empty($emWindow['empty'])) {
     $durFrom = date('d-m-Y', strtotime($emWindow['from']));
@@ -140,6 +175,7 @@ if ($em !== 'all' && $emWindow !== null && empty($emWindow['empty'])) {
 } else {
     [$durFrom, $durTo] = report_year_duration($year);
 }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 foreach ($deptsToRender as $dIndex => $dept):
     $byMetric    = $buildByMetric($dept);
@@ -269,6 +305,10 @@ foreach ($deptsToRender as $dIndex => $dept):
   </table>
 
 <?php
+<<<<<<< HEAD
+    report_signoff(['HOD' . ($dept ? ' / ' . department_full_name($dept) : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
+=======
     report_signoff(report_signoff_columns($dept ? department_full_name($dept) : null));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 endforeach;
 report_document_foot();

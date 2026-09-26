@@ -134,6 +134,10 @@ function status_class(string $status): string
         'Unlocked for Edit'     => 'primary',
         'Resubmitted'           => 'info',
         'Correction Authorized' => 'primary',
+<<<<<<< HEAD
+        'Completed'             => 'success',
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     ];
 
     return $map[$status] ?? 'neutral';
@@ -280,6 +284,13 @@ if (!function_exists('mb_strlen')) {
     }
 }
 
+<<<<<<< HEAD
+/**
+ * Return all valid format representations for an academic year (e.g. ['2025-26', '2025-2026']).
+ * Ensures queries match regardless of 2-digit or 4-digit end-year convention.
+ */
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 function academic_year_variants(?string $year): array
 {
     $year = trim((string) $year);
@@ -346,6 +357,18 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
+<<<<<<< HEAD
+/**
+ * Expand a department code/short name to its full official name for all report
+ * headings, meta lines, table columns, and sign-offs across PDF/Excel/Word/CSV.
+ */
+if (!function_exists('department_full_name')) {
+    function department_full_name(?string $dept): string
+    {
+        $dept = trim((string) $dept);
+        if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
+            return $dept;
+=======
 function department_variants(?string $dept): array
 {
     if ($dept === null) {
@@ -455,8 +478,69 @@ function record_proof_meta(string $type, int $id, ?string $filename): ?array
         if (file_exists($p) && is_file($p)) {
             $filePath = realpath($p);
             break;
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         }
+
+        static $map = [
+            'CSE'                  => 'Computer Science and Engineering',
+            'CSBS'                 => 'Computer Science and Business Systems',
+            'AIDS'                 => 'Artificial Intelligence and Data Science',
+            'ECE'                  => 'Electronics and Communication Engineering',
+            'EEE'                  => 'Electrical and Electronics Engineering',
+            'MECH'                 => 'Mechanical Engineering',
+            'CIVIL'                => 'Civil Engineering',
+            'IT'                   => 'Information Technology',
+            'AGRI'                 => 'Agriculture Engineering',
+            'AERO'                 => 'Aeronautical Engineering',
+            'MARINE'               => 'Marine Engineering',
+            'AIML'                 => 'Artificial Intelligence and Machine Learning',
+            'CYBER'                => 'Cyber Security',
+            'CYBERSECURITY'        => 'Cyber Security',
+            'CHEM'                 => 'Chemical Engineering',
+            'ARCH'                 => 'Architecture',
+            'MCA'                  => 'Master of Computer Applications',
+            'MBA'                  => 'Master of Business Administration',
+            'SH'                   => 'Science and Humanities',
+            'SANDH'                => 'Science and Humanities',
+            'SCIENCEANDHUMANITIES' => 'Science and Humanities',
+            'BME'                  => 'Biomedical Engineering',
+            'BT'                   => 'Biotechnology',
+        ];
+
+        $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
+        if (isset($map[$key])) {
+            return $map[$key];
+        }
+
+        // Check if $dept already matches a full name in the map
+        foreach ($map as $k => $fullName) {
+            if (strcasecmp($dept, $fullName) === 0) {
+                return $fullName;
+            }
+        }
+
+        // Check database departments table if managed by Admin
+        if (function_exists('departments_all')) {
+            foreach (departments_all() as $d) {
+                $codeKey = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$d['code']));
+                $nameKey = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$d['name']));
+                if ($key === $codeKey || $key === $nameKey) {
+                    if (isset($map[$codeKey])) {
+                        return $map[$codeKey];
+                    }
+                    if (isset($map[$nameKey])) {
+                        return $map[$nameKey];
+                    }
+                    return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
+                }
+            }
+        }
+
+        return $dept;
     }
+<<<<<<< HEAD
+}
+=======
 
     $ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     $isImage = in_array($ext, ['jpg', 'jpeg', 'png', 'webp', 'gif'], true);
@@ -573,3 +657,4 @@ if (!function_exists('user_department_scope')) {
         return $dept !== '' ? $dept : '__UNASSIGNED_DEPT__';
     }
 }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6

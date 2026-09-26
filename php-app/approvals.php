@@ -2,19 +2,33 @@
 require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
-require_once __DIR__ . '/models/EditRequest.php';
-require_once __DIR__ . '/models/Target.php';
 
 $user = require_role(['Admin', 'HoD', 'Dean', 'Coordinator']);
 
 // A Coordinator or HoD may only review their own department; Admin/Dean may review any.
 $scopeDept = in_array($user['role'], ['HoD', 'Coordinator'], true) ? ($user['department'] ?? null) : null;
 
+<<<<<<< HEAD
+// The system-wide active academic year
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $activeYear = active_academic_year();
-$isHod = $user['role'] === 'HoD';
-$canProcess = in_array($user['role'], ['Admin', 'Dean'], true);
-journal_process_approval_expiry();
 
+<<<<<<< HEAD
+/** Resolve proof attachment filename and public URL safely with no state leakage. */
+function approvals_resolve_proof(array $r): array {
+    $proof = !empty($r['proof_file']) ? $r['proof_file'] : (
+        $r['proofs'] ?? $r['document_link'] ?? $r['certificate_link'] ?? 
+        $r['report_link'] ?? $r['proceedings_link'] ?? $r['appointment_order_link'] ?? null
+    );
+    $url = !empty($proof) ? proof_url($proof) : '';
+    return [$proof, $url];
+}
+
+// Handle all review, edit request, and approval actions
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    csrf_check();
+=======
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
 
@@ -32,13 +46,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/approvals.php?tab=requests');
     }
 
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
         flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Workflow actions are frozen for all roles.");
         redirect('/approvals.php');
     }
-
     $action = (string) input('review_action');
 
+<<<<<<< HEAD
+    if ($action === 'create_edit_request') {
+=======
     // SECURITY: HoD must never be able to approve or reject records directly!
     if ($user['role'] === 'HoD' && in_array($action, ['approve', 'reject', 'approve_all'], true)) {
         flash('error', 'HoD is a reviewer only and cannot approve or reject submitted records. To request changes, use Request Edit to Dean.');
@@ -46,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'create_edit_request' || $action === 'request_edit') {
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
         if (!in_array($user['role'], ['HoD', 'Admin'], true)) {
             flash('error', 'Only HoD or Admin can submit an Edit Request.');
             redirect('/approvals.php');
@@ -85,6 +103,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = record_acknowledge_review($type, $id, $user);
         flash($ok ? 'success' : 'error', $msg);
         redirect('/approvals.php?tab=records');
+    } elseif ($action === 'dean_request_edit') {
+        if (!in_array($user['role'], ['Dean', 'Admin'], true)) {
+            flash('error', 'Only Dean or Admin can request edits on records.');
+            redirect('/approvals.php');
+        }
+        $type = (string) input('record_type');
+        $id   = (int)    input('record_id');
+        $reason = trim((string) input('reason'));
+        $field = trim((string) input('specific_field'));
+        $currVal = trim((string) input('current_value'));
+        $reqVal = trim((string) input('requested_value'));
+        [$ok, $msg] = record_request_edit_by_dean($type, $id, $user, $reason, $field, $currVal, $reqVal);
+        flash($ok ? 'success' : 'error', $msg);
+        $fromTab = (string) input('from_tab');
+        redirect('/approvals.php?tab=' . ($fromTab ?: 'records'));
     } elseif ($action === 'approve_all') {
         if ($user['role'] === 'HoD') {
             flash('error', 'HoD is a reviewer only and cannot approve records directly.');
@@ -103,19 +136,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $remark = (string) input('review_remark');
         [$ok, $msg] = record_review($type, $id, $action, $remark, $user['id'], $scopeDept, $user['role'], $activeYear);
         flash($ok ? 'success' : 'error', $msg);
-        redirect('/approvals.php');
+        $fromTab = (string) input('from_tab');
+        redirect('/approvals.php' . ($fromTab ? '?tab=' . $fromTab : ''));
     }
 }
 
-$types       = array_filter(record_types(), fn($k) => record_requires_approval($k), ARRAY_FILTER_USE_KEY);
+$types       = record_types();
 $departments = departments_all();
-$allYears    = academic_years();
 
+<<<<<<< HEAD
+// Filters
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $filterDept = in_array($user['role'], ['Admin', 'Dean'], true) ? (trim((string) input('department')) ?: null) : null;
 $filterType = (string) input('type');
 if (!isset($types[$filterType])) { $filterType = ''; }
 $search = trim((string) input('q'));
 
+<<<<<<< HEAD
+// Department scope
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $effectiveDept = $scopeDept ?? $filterDept;
 
 $currentTab = (string) input('tab');
@@ -185,6 +226,10 @@ if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
     usort($authorizedCorrections, fn($a, $b) => strtotime($b['updated_at'] ?? $b['created_at']) <=> strtotime($a['updated_at'] ?? $a['created_at']));
 }
 
+<<<<<<< HEAD
+// Filter records
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 if ($filterType !== '') {
     $records = array_values(array_filter($records, fn($r) => $r['_type_key'] === $filterType));
 }
@@ -195,8 +240,13 @@ if ($search !== '') {
         return mb_strpos($hay, $needle) !== false;
     }));
 }
+
 $hasFilter = $filterDept || $filterType !== '' || $search !== '';
 
+<<<<<<< HEAD
+// Page Titles & Breadcrumbs
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $isHod = $user['role'] === 'HoD';
 $pageTitle = match ($user['role']) {
     'HoD'         => 'Review Records',
@@ -379,9 +429,9 @@ require __DIR__ . '/inc/header.php';
                     <div style="font-size:12px; color:#64748B"><?= e($er['requested_by_role']) ?> · <span style="font-weight:600; color:#1E3A8A"><?= e($er['department']) ?></span></div>
                   </td>
                   <td style="padding:14px 16px; vertical-align:top">
-                    <div style="font-weight:600; color:#0F172A; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="<?= e($er['record_title']) ?>">
+                    <a href="<?= e(url('entry-details.php?type=' . urlencode($er['record_type']) . '&id=' . (int)$er['record_id'])) ?>" style="font-weight:600; color:#0F172A; max-width:280px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-decoration:none; display:inline-block;" title="Open Dual View for this record">
                       <?= e($er['record_title'] ?: '(untitled record)') ?>
-                    </div>
+                    </a>
                     <div style="font-size:12px; color:#64748B; margin-top:2px">
                       Faculty: <strong><?= e($er['faculty_name'] ?: 'Unknown') ?></strong> · <span class="badge badge-info" style="font-size:10px"><?= e($types[$er['record_type']]['label'] ?? $er['record_type']) ?></span>
                     </div>
@@ -391,6 +441,19 @@ require __DIR__ . '/inc/header.php';
                       $erProof = trim((string)($er['proof_file'] ?? ''));
                       if ($erProof === '' && !empty($er['record_type']) && !empty($er['record_id'])) {
                           $foundOrig = record_find($er['record_type'], (int)$er['record_id']);
+<<<<<<< HEAD
+                          if ($foundOrig) {
+                              [$erProof, $erProofUrl] = approvals_resolve_proof($foundOrig);
+                          } else {
+                              $erProof = null;
+                              $erProofUrl = '';
+                          }
+                      } else {
+                          $erProofUrl = !empty($erProof) ? proof_url($erProof) : '';
+                      }
+                    ?>
+                    <?php if (!empty($erProofUrl)): ?>
+=======
                           $erProof = trim((string)($foundOrig['proof_file'] ?? ''));
                       }
                       if ($erProof !== '' && stripos($erProof, 'upload.php') !== false) {
@@ -403,6 +466,7 @@ require __DIR__ . '/inc/header.php';
                       <span class="card-sub" style="color:var(--ink-muted,#64748b); font-size:11px">Proof unavailable</span>
                     <?php else: ?>
                       <?php $erProofUrl = record_proof_url($er['record_type'], (int)$er['record_id'], $erProof, false, false); ?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
                       <div style="display:inline-flex; align-items:center; gap:4px">
                         <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px; border-radius:6px; cursor:pointer"
                           data-url="<?= e($erProofUrl) ?>"
@@ -413,6 +477,9 @@ require __DIR__ . '/inc/header.php';
                           onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
                           <?= icon('paperclip', 13) ?> View Proof
                         </button>
+                        <a href="<?= e($erProofUrl . (strpos($erProofUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:28px; padding:0 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px" title="Download proof file directly">
+                          <?= icon('download', 11) ?> Download
+                        </a>
                         <a href="<?= e($erProofUrl) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:28px; padding:0 6px; font-size:11px" title="Open proof document directly in a new tab">
                           <?= icon('external-link', 12) ?>
                         </a>
@@ -450,11 +517,11 @@ require __DIR__ . '/inc/header.php';
                     <?php if (in_array($user['role'], ['Dean', 'Admin'], true) && $er['status'] === 'Pending'): ?>
                       <div style="display:inline-flex; gap:6px; flex-wrap:wrap; justify-content:flex-end">
                         <button type="button" class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; height:30px; font-size:12px; font-weight:600"
-                          onclick="openDecisionModal('approve', <?= (int)$er['id'] ?>, <?= e(json_encode('ER-' . str_pad((string)$er['id'], 4, '0', STR_PAD_LEFT))) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['record_title'])) ?>)">
+                          onclick="openDecisionModal('approve', <?= (int)$er['id'] ?>, <?= e(json_encode('ER-' . str_pad((string)$er['id'], 4, '0', STR_PAD_LEFT))) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['record_title'])) ?>, <?= e(json_encode($erProofUrl)) ?>)">
                           <?= icon('check', 13) ?> Approve Request
                         </button>
                         <button type="button" class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:30px; font-size:12px; font-weight:600"
-                          onclick="openDecisionModal('reject', <?= (int)$er['id'] ?>, <?= e(json_encode('ER-' . str_pad((string)$er['id'], 4, '0', STR_PAD_LEFT))) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['record_title'])) ?>)">
+                          onclick="openDecisionModal('reject', <?= (int)$er['id'] ?>, <?= e(json_encode('ER-' . str_pad((string)$er['id'], 4, '0', STR_PAD_LEFT))) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['record_title'])) ?>, <?= e(json_encode($erProofUrl)) ?>)">
                           <?= icon('x', 13) ?> Reject
                         </button>
                       </div>
@@ -536,6 +603,7 @@ require __DIR__ . '/inc/header.php';
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Record Title</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Type</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Faculty</th>
+                <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Proof</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Dean Approval &amp; Correction Note</th>
                 <th style="padding:12px 16px; font-size:12px; font-weight:700; color:#475569">Status</th>
                 <th class="num" style="padding:12px 20px; font-size:12px; font-weight:700; color:#475569; text-align:right">Action</th>
@@ -555,6 +623,24 @@ require __DIR__ . '/inc/header.php';
                   <td style="padding:14px 16px">
                     <div style="font-weight:600; color:#0F172A"><?= e($ac['faculty_name'] ?? 'Faculty') ?></div>
                     <div style="font-size:11px; color:#64748B"><?= e($ac['department'] ?? '') ?></div>
+                  </td>
+                  <td style="padding:14px 16px">
+                    <?php
+                      [$acProof, $acProofUrl] = approvals_resolve_proof($ac);
+                    ?>
+                    <?php if (!empty($acProofUrl)): ?>
+                      <div style="display:inline-flex; align-items:center; gap:4px">
+                        <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px; border-radius:6px; cursor:pointer"
+                          onclick="openProofViewer(<?= e(json_encode($acProofUrl)) ?>, <?= e(json_encode($ac['_title'])) ?>, <?= e(json_encode($ac['faculty_name'] ?? '')) ?>, <?= e(json_encode($ac['department'] ?? '')) ?>, <?= e(json_encode($ac['_type_label'])) ?>)">
+                          <?= icon('paperclip', 13) ?> View Proof
+                        </button>
+                        <a href="<?= e($acProofUrl . (strpos($acProofUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:28px; padding:0 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px" title="Download proof file directly">
+                          <?= icon('download', 11) ?> Download
+                        </a>
+                      </div>
+                    <?php else: ?>
+                      <span class="card-sub" style="font-size:11px">—</span>
+                    <?php endif; ?>
                   </td>
                   <td style="padding:14px 16px; max-width:320px">
                     <div style="font-size:12px; background:#EFF6FF; border:1px solid #BFDBFE; padding:8px 12px; border-radius:6px; color:#1E3A8A">
@@ -762,7 +848,9 @@ require __DIR__ . '/inc/header.php';
           <?php foreach ($deptRecs as $r): ?>
             <tr style="border-bottom:1px solid #F1F5F9">
               <td style="padding-left:24px; vertical-align:middle">
-                <div style="font-weight:600; max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#0F172A"><?= e($r['_title']) ?></div>
+                <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" style="font-weight:600; max-width:340px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; color:#0F172A; text-decoration:none; display:inline-block;" title="Open Dual View for this entry">
+                  <?= e($r['_title']) ?>
+                </a>
                 <?php $who = $r['faculty_name'] ?? $r['candidate_name'] ?? $r['student_name'] ?? ''; ?>
                 <?php if ($who !== ''): ?><div class="card-sub" style="font-size:11.5px; color:#64748B"><?= e($who) ?> &middot; Dept: <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
               </td>
@@ -779,6 +867,12 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td style="vertical-align:middle">
                 <?php
+<<<<<<< HEAD
+                  [$pProof, $pUrl] = approvals_resolve_proof($r);
+                ?>
+                <?php if (!empty($pUrl)): ?>
+                  <div style="display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap">
+=======
                   $pProof = trim((string)($r['proof_file'] ?? ''));
                   if ($pProof !== '' && stripos($pProof, 'upload.php') !== false) {
                       $pProof = '';
@@ -793,6 +887,7 @@ require __DIR__ . '/inc/header.php';
                     $pUrl = record_proof_url($r['_type_key'], (int)$r['id'], $pProof, false, false);
                   ?>
                   <div style="display:inline-flex; align-items:center; gap:6px">
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
                     <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:12px; display:inline-flex; align-items:center; gap:4px; font-weight:600; border-radius:6px; cursor:pointer"
                       data-url="<?= e($pUrl) ?>"
                       data-title="<?= e($r['_title']) ?>"
@@ -802,6 +897,9 @@ require __DIR__ . '/inc/header.php';
                       onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
                       <?= icon('paperclip', 13) ?> View Proof
                     </button>
+                    <a href="<?= e($pUrl . (strpos($pUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:28px; padding:0 8px; font-size:11.5px; display:inline-flex; align-items:center; gap:3px; font-weight:600" title="Download proof file directly">
+                      <?= icon('download', 12) ?> Download
+                    </a>
                     <a href="<?= e($pUrl) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:28px; padding:0 6px; font-size:11px; display:inline-flex; align-items:center; gap:3px" title="Open proof document directly in a new tab">
                       <?= icon('external-link', 12) ?> Tab
                     </a>
@@ -823,6 +921,10 @@ require __DIR__ . '/inc/header.php';
               <td class="num" style="padding-right:24px; vertical-align:middle; text-align:right">
                 <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
                   <div class="flex gap-2" style="justify-content:flex-end; align-items:center">
+                    <button type="button" class="btn btn-sm btn-card-toggle" id="btn-card-toggle-<?= (int)$r['id'] ?>" data-card-key="<?= e($r['_type_key']) ?>-<?= (int)$r['id'] ?>" style="background:#F8FAFC; color:#1E293B; border:1px solid #CBD5E1; height:32px; padding:0 8px; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px; border-radius:6px"
+                      onclick="toggleApprovalCard(this, <?= (int)$r['id'] ?>, '<?= e($r['_type_key']) ?>')" title="Open approval record card with embedded proof viewer">
+                      <?= icon('eye', 13) ?> <span id="app-card-btn-text-<?= (int)$r['id'] ?>" class="app-card-btn-text">Approval Card</span>
+                    </button>
                     <?php if ($user['role'] === 'HoD'): ?>
                       <!-- HoD: REVIEW ONLY. Check status to dynamically change button into Requested to Dean -->
                       <?php if ($r['status'] === 'Edit Requested'): ?>
@@ -842,12 +944,12 @@ require __DIR__ . '/inc/header.php';
                           <?= icon('check-circle', 14) ?> Acknowledge Review
                         </button>
                         <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 8px; font-size:11.5px; font-weight:600; margin-left:4px"
-                          onclick="openHodEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>, <?= e(json_encode($r['_type_label'])) ?>)">
+                          onclick="openHodEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
                           <?= icon('edit', 12) ?> Re-request
                         </button>
                       <?php else: ?>
                         <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 10px; font-size:12px; font-weight:600"
-                          onclick="openHodEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>, <?= e(json_encode($r['_type_label'])) ?>)">
+                          onclick="openHodEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
                           <?= icon('edit', 14) ?> Request Edit to Dean
                         </button>
                       <?php endif; ?>
@@ -859,18 +961,21 @@ require __DIR__ . '/inc/header.php';
                         </a>
                       <?php else: ?>
                         <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; height:32px; padding:0 10px; font-size:12px; font-weight:600"
-                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve')">
+                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve', <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>)">
                           <?= icon('check', 14) ?> Approve &amp; Save to DB
                         </button>
                         <button class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:32px; padding:0 10px; font-size:12px"
-                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'reject')">
+                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'reject', <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>)">
                           <?= icon('x', 14) ?> Reject
                         </button>
                       <?php endif; ?>
                     <?php elseif ($user['role'] === 'Dean'): ?>
+                      <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 10px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="Open Dual View (Details + Proof)">
+                        <?= icon('columns', 13) ?> Dual View
+                      </a>
                       <?php if ($r['status'] === 'Edit Requested'): ?>
-                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:30px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
-                          <?= icon('clock', 13) ?> Review Edit Request &rarr;
+                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:32px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
+                          <?= icon('clock', 13) ?> Review Request &rarr;
                         </a>
                       <?php elseif ($r['status'] === 'Unlocked for Edit'): ?>
                         <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
@@ -884,11 +989,19 @@ require __DIR__ . '/inc/header.php';
                           <?= icon('check', 13) ?> Resubmitted
                         </span>
                       <?php else: ?>
-                        <span style="font-size:12px; color:#64748B; display:inline-flex; align-items:center; gap:4px">
-                          <?= icon('check-circle', 13) ?> Review Only
-                        </span>
+                        <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; padding:0 10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                          onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
+                          <?= icon('edit', 13) ?> Request Edit
+                        </button>
                       <?php endif; ?>
+<<<<<<< HEAD
+                    <?php else: // Admin ?>
+                      <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 10px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px;" title="Open Dual View (Details + Proof)">
+                        <?= icon('columns', 13) ?> Dual View
+                      </a>
+=======
                     <?php else: ?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
                       <?php if ($r['status'] === 'Unlocked for Edit'): ?>
                         <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:2px">
                           <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px" title="Approved by Dean; unlocked for Coordinator correction">
@@ -897,24 +1010,29 @@ require __DIR__ . '/inc/header.php';
                           <span style="font-size:11px; color:#4338CA; font-weight:600">Coord Editing</span>
                         </div>
                       <?php elseif ($r['status'] === 'Edit Requested'): ?>
-                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:30px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
+                        <a href="?tab=requests" class="btn btn-sm" style="background:#FEF3C7; color:#92400E; border:1px solid #FCD34D; height:32px; font-size:12px; font-weight:700; text-decoration:none; display:inline-flex; align-items:center; gap:4px">
                           <?= icon('clock', 13) ?> Edit Requested &rarr;
                         </a>
                       <?php elseif ($r['status'] === 'Approved'): ?>
-                        <span class="badge" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
-                          <?= icon('check', 13) ?> Approved
-                        </span>
+                        <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; padding:0 10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                          onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
+                          <?= icon('edit', 13) ?> Request Edit
+                        </button>
                       <?php elseif ($r['status'] === 'Resubmitted'): ?>
                         <span class="badge" style="background:#EFF6FF; color:#1E40AF; border:1px solid #C7D2FE; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
                           <?= icon('check', 13) ?> Resubmitted (HoD Reviewing)
                         </span>
                       <?php else: ?>
+                        <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; padding:0 10px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                          onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
+                          <?= icon('edit', 13) ?> Request Edit
+                        </button>
                         <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; height:32px; padding:0 10px; font-size:12px; font-weight:600"
-                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve')">
+                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'approve', <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>)">
                           <?= icon('check', 14) ?> Approve
                         </button>
                         <button class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:32px; padding:0 10px; font-size:12px"
-                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'reject')">
+                          onclick="reviewRecord('<?= e($r['_type_key']) ?>', <?= (int)$r['id'] ?>, 'reject', <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>)">
                           <?= icon('x', 14) ?> Reject
                         </button>
                       <?php endif; ?>
@@ -925,6 +1043,159 @@ require __DIR__ . '/inc/header.php';
                     <?= icon('lock', 11) ?> Cycle Locked
                   </span>
                 <?php endif; ?>
+              </td>
+            </tr>
+
+            <!-- =========================================================================
+                 INLINE EXPANDABLE APPROVAL CARD WITH EMBEDDED PROOF VIEWER & DOWNLOAD (BUG-WF-13)
+                 ========================================================================= -->
+            <tr id="app-card-row-<?= (int)$r['id'] ?>" class="app-card-row" data-card-key="<?= e($r['_type_key']) ?>-<?= (int)$r['id'] ?>" style="display:none; background:#F8FAFC;">
+              <td colspan="6" style="padding:0; border-bottom:2px solid #E2E8F0;">
+                <div style="padding:16px 20px; background:#fff; margin:10px 18px; border:1px solid #CBD5E1; border-radius:10px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.06);">
+                  
+                  <!-- Approval Card Header -->
+                  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid #E2E8F0;">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                        <span class="badge" style="background:#EFF6FF; color:#1D4ED8; font-weight:700; font-size:11px; border:1px solid #BFDBFE;">Approval Record Card</span>
+                        <span class="badge badge-info" style="font-size:11px;"><?= e($r['_type_label']) ?></span>
+                        <span class="badge badge-<?= status_class($r['status']) ?>" style="font-size:11px;"><?= e($r['status']) ?></span>
+                        <h4 style="margin:0; font-size:15px; font-weight:700; color:#0F172A;"><?= e($r['_title']) ?></h4>
+                      </div>
+                      <div style="font-size:12px; color:#64748B; margin-top:3px;">
+                        Faculty: <strong style="color:#0F172A;"><?= e($who) ?></strong> &middot; Department: <strong style="color:#1E3A8A;"><?= e($r['department'] ?? 'General') ?></strong> &middot; Academic Year: <?= e($r['academic_year'] ?? $activeYear) ?> &middot; Submitted: <?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>
+                      </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <?php if (!empty($pProof)): ?>
+                        <a href="<?= e($pUrl . (strpos($pUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:30px; font-size:12px; display:inline-flex; align-items:center; gap:4px; font-weight:600;" title="Download proof file directly">
+                          <?= icon('download', 13) ?> Download Proof
+                        </a>
+                        <a href="<?= e($pUrl) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:30px; font-size:12px; display:inline-flex; align-items:center; gap:4px;" title="Open in new browser tab">
+                          <?= icon('external-link', 13) ?> Open Tab
+                        </a>
+                      <?php endif; ?>
+                      <a href="<?= e(url('entry-details.php?type=' . urlencode($r['_type_key']) . '&id=' . (int)$r['id'])) ?>" class="btn btn-outline btn-sm" style="height:30px; font-size:12px; display:inline-flex; align-items:center; gap:4px;" title="Open Dual View">
+                        <?= icon('columns', 13) ?> Dual View
+                      </a>
+                      <button type="button" class="btn btn-ghost btn-sm" onclick="toggleApprovalCard(this, <?= (int)$r['id'] ?>, '<?= e($r['_type_key']) ?>')" style="color:#64748B; font-size:18px; line-height:1; padding:0 6px;" title="Close Card">&times;</button>
+                    </div>
+                  </div>
+
+                  <!-- Dual Split Grid: Left Details & Action Controls, Right Live Embedded Proof -->
+                  <div style="display:grid; grid-template-columns: minmax(320px, 1fr) minmax(420px, 1.25fr); gap:18px; align-items:start;">
+                    
+                    <!-- Left: Metadata & Governance Actions -->
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:12px 14px; font-size:12.5px;">
+                        <div style="font-weight:700; color:#334155; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                          <?= icon('file-text', 14) ?> Record Summary
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr; gap:6px;">
+                          <div><strong style="color:#64748B;">Title:</strong> <span style="color:#0F172A; font-weight:600;"><?= e($r['_title']) ?></span></div>
+                          <div><strong style="color:#64748B;">Faculty / Author:</strong> <?= e($who) ?></div>
+                          <div><strong style="color:#64748B;">Department:</strong> <?= e($r['department'] ?? 'General') ?></div>
+                          <div><strong style="color:#64748B;">Status:</strong> <span class="badge badge-<?= status_class($r['status']) ?>" style="font-size:10.5px"><?= e($r['status']) ?></span></div>
+                          <?php if (!empty($r['review_remark'])): ?>
+                            <div style="margin-top:4px; padding:6px 10px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; color:#1E40AF;">
+                              <strong>Review Note:</strong> <?= e($r['review_remark']) ?>
+                            </div>
+                          <?php endif; ?>
+                        </div>
+                      </div>
+
+                      <!-- Governance Action Box inside the Approval Card -->
+                      <div style="background:#FAFAFC; border:1px solid #E2E8F0; border-radius:8px; padding:14px;">
+                        <div style="font-size:13px; font-weight:700; color:#0F172A; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                          <?= icon('shield', 14) ?> Approval Decision
+                        </div>
+
+                        <?php if ($user['role'] === 'Coordinator' && $r['status'] === 'Submitted'): ?>
+                          <form method="post">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="from_tab" value="<?= e($currentTab) ?>">
+                            <input type="hidden" name="record_type" value="<?= e($r['_type_key']) ?>">
+                            <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
+                            <div class="field" style="margin-bottom:10px;">
+                              <textarea name="review_remark" class="input" rows="2" placeholder="Approval remark or note (optional)..." style="font-size:12px;"></textarea>
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                              <button type="submit" name="review_action" value="approve" class="btn btn-sm" style="background:#047857; color:#fff; font-weight:600; height:32px; display:inline-flex; align-items:center; gap:4px;">
+                                <?= icon('check-circle', 14) ?> Approve &amp; Save to DB
+                              </button>
+                              <button type="submit" name="review_action" value="reject" class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:32px; display:inline-flex; align-items:center; gap:4px;" onclick="return confirm('Reject this submitted record?');">
+                                <?= icon('x', 14) ?> Reject
+                              </button>
+                            </div>
+                          </form>
+                        <?php elseif ($user['role'] === 'Admin' && $r['status'] === 'Submitted'): ?>
+                          <form method="post">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="from_tab" value="<?= e($currentTab) ?>">
+                            <input type="hidden" name="record_type" value="<?= e($r['_type_key']) ?>">
+                            <input type="hidden" name="record_id" value="<?= (int)$r['id'] ?>">
+                            <div class="field" style="margin-bottom:10px;">
+                              <textarea name="review_remark" class="input" rows="2" placeholder="Approval remark or feedback (optional)..." style="font-size:12px;"></textarea>
+                            </div>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                              <button type="submit" name="review_action" value="approve" class="btn btn-sm" style="background:#047857; color:#fff; font-weight:600; height:32px; display:inline-flex; align-items:center; gap:4px;">
+                                <?= icon('check-circle', 14) ?> Approve
+                              </button>
+                              <button type="submit" name="review_action" value="reject" class="btn btn-sm" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; height:32px; display:inline-flex; align-items:center; gap:4px;" onclick="return confirm('Reject this submitted record?');">
+                                <?= icon('x', 14) ?> Reject
+                              </button>
+                              <button type="button" class="btn btn-sm" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; height:32px; font-weight:700; display:inline-flex; align-items:center; gap:4px;"
+                                onclick="openDeanEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($pUrl)) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
+                                <?= icon('edit', 13) ?> Request Edit
+                              </button>
+                            </div>
+                          </form>
+                        <?php elseif ($user['role'] === 'HoD'): ?>
+                          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <?php if ($r['status'] === 'Edit Requested'): ?>
+                              <span class="badge" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
+                                <?= icon('clock', 13) ?> Requested to Dean
+                              </span>
+                            <?php else: ?>
+                              <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:32px; padding:0 12px; font-size:12px; font-weight:600;"
+                                onclick="openHodEditRequest(<?= e(json_encode($r['_type_key'])) ?>, <?= (int)$r['id'] ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['academic_year'] ?? $activeYear)) ?>, <?= e(json_encode($r['_type_label'])) ?>, <?= e(json_encode($pUrl ?? '')) ?>, <?= e(json_encode($pProof ?? '')) ?>)">
+                                <?= icon('edit', 14) ?> Request Edit to Dean
+                              </button>
+                            <?php endif; ?>
+                          </div>
+                        <?php else: ?>
+                          <div style="font-size:12px; color:#64748B;">
+                            Current status: <span class="badge badge-<?= status_class($r['status']) ?>"><?= e($r['status']) ?></span>
+                          </div>
+                        <?php endif; ?>
+                      </div>
+                    </div>
+
+                    <!-- Right: Embedded Proof Viewer Iframe inside the Card -->
+                    <div style="border:1px solid #CBD5E1; border-radius:8px; overflow:hidden; background:#F8FAFC; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                      <div style="padding:10px 14px; background:#F1F5F9; border-bottom:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:700; color:#334155;">
+                          <?= icon('paperclip', 14) ?> Embedded Proof Viewer
+                        </div>
+                        <?php if (!empty($pProof)): ?>
+                          <a href="<?= e($pUrl . (strpos($pUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:26px; font-size:11px; padding:0 8px; font-weight:600;">
+                            <?= icon('download', 11) ?> Download
+                          </a>
+                        <?php endif; ?>
+                      </div>
+                      <?php if (!empty($pProof)): ?>
+                        <iframe id="app-card-iframe-<?= (int)$r['id'] ?>" data-src="<?= e($pUrl) ?>" src="" style="width:100%; height:360px; border:none; display:block; background:#fff;" loading="lazy"></iframe>
+                      <?php else: ?>
+                        <div style="padding:40px 20px; text-align:center; color:#64748B;">
+                          <div style="font-size:28px; margin-bottom:6px;">📄</div>
+                          <div style="font-weight:600; color:#334155; font-size:13px;">No Proof File Uploaded</div>
+                          <div style="font-size:11.5px; margin-top:2px;">No direct PDF attachment was submitted for this record.</div>
+                        </div>
+                      <?php endif; ?>
+                    </div>
+
+                  </div>
+                </div>
               </td>
             </tr>
           <?php endforeach; ?>
@@ -974,6 +1245,25 @@ require __DIR__ . '/inc/header.php';
         <div style="margin-top:6px; border-top:1px dashed #E2E8F0; padding-top:6px">
           <strong style="color:#475569">Record Title:</strong> <span id="her-title" style="font-weight:600; color:#0F172A"></span>
         </div>
+        <div id="her-proof-row" style="margin-top:6px; border-top:1px dashed #E2E8F0; padding-top:6px; display:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+          <span style="font-size:12px; font-weight:600; color:#475569; display:inline-flex; align-items:center; gap:4px;">
+            <?= icon('paperclip', 13) ?> Proof Attachment:
+          </span>
+          <div style="display:inline-flex; gap:6px;">
+            <a id="her-proof-view" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:26px; font-size:11px; padding:0 8px; display:inline-flex; align-items:center; gap:3px;">
+              <?= icon('external-link', 11) ?> View Proof
+            </a>
+            <a id="her-proof-download" href="#" class="btn btn-outline btn-sm" style="height:26px; font-size:11px; padding:0 8px; display:inline-flex; align-items:center; gap:3px;">
+              <?= icon('download', 11) ?> Download
+            </a>
+          </div>
+        </div>
+        <div id="her-proof-preview" style="margin-top:10px; border:1px solid #CBD5E1; border-radius:8px; overflow:hidden; background:#F8FAFC; display:none;">
+          <div style="padding:6px 12px; background:#F1F5F9; border-bottom:1px solid #E2E8F0; font-size:11px; font-weight:700; color:#475569; display:flex; align-items:center; gap:4px;">
+            <?= icon('file-text', 12) ?> Embedded Proof Preview
+          </div>
+          <iframe id="her-frame" src="" style="width:100%; height:260px; border:none; display:block; background:#fff;"></iframe>
+        </div>
       </div>
 
       <!-- Mandatory Reason -->
@@ -1015,7 +1305,7 @@ require __DIR__ . '/inc/header.php';
 <!-- =========================================================================
      MODAL 2: DEAN DECISION MODAL (Approve / Reject Edit Request)
      ========================================================================= -->
-<dialog class="modal" id="decisionDlg" style="max-width:28rem; width:90vw; border-radius:12px">
+<dialog class="modal" id="decisionDlg" style="max-width:38rem; width:92vw; border-radius:12px">
   <form method="post">
     <?= csrf_field() ?>
     <input type="hidden" name="review_action" id="dec-action">
@@ -1030,6 +1320,25 @@ require __DIR__ . '/inc/header.php';
         <div><strong>Request:</strong> <span id="dec-req-label"></span></div>
         <div><strong>Faculty:</strong> <span id="dec-faculty"></span></div>
         <div style="margin-top:2px; font-weight:600; color:#0F172A" id="dec-rec-title"></div>
+        <div id="dec-proof-row" style="margin-top:6px; border-top:1px dashed #E2E8F0; padding-top:6px; display:none; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:6px;">
+          <span style="font-size:12px; font-weight:600; color:#475569; display:inline-flex; align-items:center; gap:4px;">
+            <?= icon('paperclip', 13) ?> Attachment Proof:
+          </span>
+          <div style="display:inline-flex; gap:6px;">
+            <a id="dec-proof-tab" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:24px; font-size:11px; padding:0 6px; display:inline-flex; align-items:center; gap:3px;">
+              <?= icon('external-link', 11) ?> View
+            </a>
+            <a id="dec-proof-dl" href="#" class="btn btn-outline btn-sm" style="height:24px; font-size:11px; padding:0 6px; display:inline-flex; align-items:center; gap:3px;">
+              <?= icon('download', 11) ?> Download
+            </a>
+          </div>
+        </div>
+        <div id="dec-proof-preview" style="margin-top:10px; border:1px solid #CBD5E1; border-radius:8px; overflow:hidden; background:#F8FAFC; display:none;">
+          <div style="padding:6px 12px; background:#F1F5F9; border-bottom:1px solid #E2E8F0; font-size:11px; font-weight:700; color:#475569; display:flex; align-items:center; gap:4px;">
+            <?= icon('file-text', 12) ?> Embedded Proof Preview
+          </div>
+          <iframe id="dec-frame" src="" style="width:100%; height:260px; border:none; display:block; background:#fff;"></iframe>
+        </div>
       </div>
 
       <div class="field">
@@ -1048,15 +1357,41 @@ require __DIR__ . '/inc/header.php';
 </dialog>
 
 <!-- =========================================================================
-     MODAL 3: COORDINATOR / ADMIN REVIEW RECORD MODAL
+     MODAL 3: COORDINATOR / ADMIN REVIEW RECORD MODAL (APPROVAL CARD WITH PROOF)
      ========================================================================= -->
+<<<<<<< HEAD
+<dialog class="modal" id="reviewDlg" style="max-width:56rem; width:95vw; padding:0; border-radius:14px; overflow:hidden; border:none; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)">
+  <form method="post" id="reviewForm" style="display:flex; flex-direction:column; max-height:90vh; margin:0;">
+=======
 <dialog class="modal" id="reviewDlg" style="max-width:30rem; width:90vw; border-radius:12px">
   <form method="post">
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     <?= csrf_field() ?>
+    <input type="hidden" name="from_tab" value="<?= e($currentTab) ?>">
     <input type="hidden" name="record_type" id="rv-type">
     <input type="hidden" name="record_id" id="rv-id">
     <input type="hidden" name="review_action" id="rv-action">
 
+<<<<<<< HEAD
+    <!-- Modal Header -->
+    <div class="modal-head" style="padding:16px 22px; background:#fff; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between; gap:12px">
+      <div style="min-width:0; flex:1">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <span class="badge" id="rv-action-badge" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; font-size:11px; font-weight:700">Approval Card</span>
+          <span class="badge badge-info" id="rv-type-badge" style="font-size:11px">Record</span>
+          <h3 id="rv-title" style="margin:0; font-size:16px; font-weight:700; color:#0F172A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:440px">Review Record</h3>
+        </div>
+        <div id="rv-meta" style="font-size:12.5px; color:#64748B; margin-top:3px">Faculty Member &middot; Department</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0">
+        <a id="rv-download" href="#" class="btn btn-outline btn-sm" style="height:32px; font-size:12px; display:inline-flex; align-items:center; gap:5px; font-weight:600" title="Download uploaded attachment proof file">
+          <?= icon('download', 14) ?> Download Proof
+        </a>
+        <a id="rv-newtab" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:32px; font-size:12px; display:inline-flex; align-items:center; gap:5px" title="Open proof document in new tab">
+          <?= icon('external-link', 14) ?> Open Tab
+        </a>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeReviewDlg()" style="font-size:22px; line-height:1; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; color:#64748B" title="Close">&times;</button>
+=======
     <div class="modal-head" style="padding:16px 20px; border-bottom:1px solid #E2E8F0">
       <h3 id="rv-title" style="margin:0; font-size:16px; font-weight:700; color:#0F172A">Review Record</h3>
     </div>
@@ -1065,12 +1400,158 @@ require __DIR__ . '/inc/header.php';
       <div class="field">
         <label id="rv-remark-label" style="font-size:13px; font-weight:700; color:#0F172A; display:block; margin-bottom:6px">Remark (Optional)</label>
         <textarea class="input" name="review_remark" id="rv-remark" rows="3" placeholder="Add notes or feedback…"></textarea>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       </div>
     </div>
 
-    <div class="modal-foot" style="padding:14px 20px; border-top:1px solid #E2E8F0; display:flex; justify-content:flex-end; gap:8px">
-      <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
-      <button type="submit" class="btn btn-sm" id="rv-btn" style="background:#047857; color:#fff">Confirm</button>
+    <!-- Modal Body -->
+    <div class="modal-body" style="padding:0; background:#F8FAFC; overflow-y:auto; flex:1; display:flex; flex-direction:column">
+      
+      <!-- Live Embedded Proof Viewer -->
+      <div id="rv-proof-wrap" style="background:#F1F5F9; border-bottom:1px solid #E2E8F0; position:relative; min-height:46vh; display:flex; flex-direction:column">
+        <div id="rv-loader" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#F8FAFC; z-index:1; gap:8px; color:#64748B">
+          <div style="font-size:13px; font-weight:600">Loading proof document…</div>
+        </div>
+        
+        <iframe id="rv-frame" src="" style="width:100%; height:48vh; min-height:320px; border:none; display:block; background:#fff" onload="document.getElementById('rv-loader').style.display='none'"></iframe>
+        
+        <div id="rv-no-proof" style="display:none; padding:45px 24px; text-align:center; color:#64748B; margin:auto">
+          <div style="font-size:36px; margin-bottom:8px">📄</div>
+          <div style="font-size:15px; font-weight:700; color:#334155; margin-bottom:4px">No Attachment File Uploaded</div>
+          <div style="font-size:12.5px; color:#64748B; max-width:360px; margin:0 auto">This record has no direct PDF attachment. Review text fields and remarks below.</div>
+        </div>
+
+        <div style="padding:8px 18px; background:#F8FAFC; border-top:1px solid #E2E8F0; font-size:11.5px; color:#64748B; display:flex; align-items:center; justify-content:space-between">
+          <span style="display:inline-flex; align-items:center; gap:5px">
+            <?= icon('shield', 13) ?> Embedded Proof Viewer &middot; ATTS Governance
+          </span>
+          <span id="rv-proof-filename" style="font-weight:600; color:#475569"></span>
+        </div>
+      </div>
+
+      <!-- Decision Feedback Field -->
+      <div style="padding:16px 22px; background:#fff">
+        <div class="field" style="margin-bottom:0">
+          <label id="rv-remark-label" style="font-size:13px; font-weight:700; color:#0F172A; display:block; margin-bottom:6px">
+            Approval Remark / Governance Feedback (Optional)
+          </label>
+          <textarea class="input" name="review_remark" id="rv-remark" rows="2" placeholder="Add notes or feedback…" style="font-size:13px"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Footer -->
+    <div class="modal-foot" style="padding:14px 22px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center">
+      <div style="font-size:12px; color:#64748B">
+        Inspect embedded proof before confirming approval into the database.
+      </div>
+      <div style="display:flex; gap:10px">
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeReviewDlg()">Cancel</button>
+        <button type="submit" class="btn btn-sm" id="rv-btn" style="background:#047857; color:#fff; font-weight:600; padding:0 16px; height:34px">
+          <?= icon('check-circle', 14) ?> Confirm
+        </button>
+      </div>
+    </div>
+  </form>
+</dialog>
+
+<!-- =========================================================================
+     MODAL 3B: DEAN / ADMIN REQUEST EDIT MODAL (No silent override)
+     ========================================================================= -->
+<dialog class="modal" id="deanEditDlg" style="max-width:56rem; width:95vw; padding:0; border-radius:14px; overflow:hidden; border:none; box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)">
+  <form method="post" id="deanEditForm" style="display:flex; flex-direction:column; max-height:90vh; margin:0;">
+    <?= csrf_field() ?>
+    <input type="hidden" name="from_tab" value="<?= e($currentTab) ?>">
+    <input type="hidden" name="review_action" value="dean_request_edit">
+    <input type="hidden" name="record_type" id="der-type">
+    <input type="hidden" name="record_id" id="der-id">
+
+    <!-- Modal Header -->
+    <div class="modal-head" style="padding:16px 22px; background:#fff; border-bottom:1px solid #E2E8F0; display:flex; align-items:center; justify-content:space-between; gap:12px">
+      <div style="min-width:0; flex:1">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <span class="badge" style="background:#FEF3C7; color:#B45309; border:1px solid #FCD34D; font-size:11px; font-weight:700">Request Edit</span>
+          <h3 id="der-rec-title" style="margin:0; font-size:16px; font-weight:700; color:#0F172A; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:440px">Record Title</h3>
+        </div>
+        <div style="font-size:12.5px; color:#64748B; margin-top:3px">
+          Faculty: <strong id="der-faculty" style="color:#0F172A"></strong> &middot; Department: <strong id="der-dept" style="color:#1E3A8A"></strong>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0">
+        <a id="der-download" href="#" class="btn btn-outline btn-sm" style="height:32px; font-size:12px; display:inline-flex; align-items:center; gap:5px; font-weight:600" title="Download uploaded attachment proof file">
+          <?= icon('download', 14) ?> Download Proof
+        </a>
+        <a id="der-newtab" href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="height:32px; font-size:12px; display:inline-flex; align-items:center; gap:5px" title="Open proof document in new tab">
+          <?= icon('external-link', 14) ?> Open Tab
+        </a>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeDeanEditDlg()" style="font-size:22px; line-height:1; width:32px; height:32px; padding:0; display:inline-flex; align-items:center; justify-content:center; color:#64748B" title="Close">&times;</button>
+      </div>
+    </div>
+
+    <!-- Modal Body -->
+    <div class="modal-body" style="padding:0; background:#F8FAFC; overflow-y:auto; flex:1; display:flex; flex-direction:column">
+      
+      <!-- Live Embedded Proof Viewer -->
+      <div id="der-proof-wrap" style="background:#F1F5F9; border-bottom:1px solid #E2E8F0; position:relative; min-height:42vh; display:flex; flex-direction:column">
+        <div id="der-loader" style="position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; background:#F8FAFC; z-index:1; gap:8px; color:#64748B">
+          <div style="font-size:13px; font-weight:600">Loading proof document…</div>
+        </div>
+        
+        <iframe id="der-frame" src="" style="width:100%; height:44vh; min-height:300px; border:none; display:block; background:#fff" onload="document.getElementById('der-loader').style.display='none'"></iframe>
+        
+        <div id="der-no-proof" style="display:none; padding:45px 24px; text-align:center; color:#64748B; margin:auto">
+          <div style="font-size:36px; margin-bottom:8px">📄</div>
+          <div style="font-size:15px; font-weight:700; color:#334155; margin-bottom:4px">No Attachment File Uploaded</div>
+          <div style="font-size:12.5px; color:#64748B; max-width:360px; margin:0 auto">This record has no direct PDF attachment. Review text fields and remarks below.</div>
+        </div>
+
+        <div style="padding:8px 18px; background:#F8FAFC; border-top:1px solid #E2E8F0; font-size:11.5px; color:#64748B; display:flex; align-items:center; justify-content:space-between">
+          <span style="display:inline-flex; align-items:center; gap:5px">
+            <?= icon('shield', 13) ?> Embedded Proof Viewer &middot; Governance Correction
+          </span>
+          <span id="der-proof-filename" style="font-weight:600; color:#475569"></span>
+        </div>
+      </div>
+
+      <!-- Specific Field & Reason -->
+      <div style="padding:18px 22px; background:#fff; display:flex; flex-direction:column; gap:12px">
+        <div style="background:#F1F5F9; border-radius:8px; padding:12px; border:1px solid #E2E8F0">
+          <div style="font-size:12px; font-weight:700; color:#475569; margin-bottom:6px">Target Field to Correct (Optional)</div>
+          <div class="field" style="margin-bottom:8px">
+            <input class="input" type="text" name="specific_field" placeholder="Field name (e.g. DOI, Journal Name, Publication Date)">
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px">
+            <div class="field">
+              <label style="font-size:11px; font-weight:600; color:#64748B">Current Value</label>
+              <input class="input" type="text" name="current_value" placeholder="e.g. 10.1234/old">
+            </div>
+            <div class="field">
+              <label style="font-size:11px; font-weight:600; color:#64748B">Requested Value</label>
+              <input class="input" type="text" name="requested_value" placeholder="e.g. 10.1234/new">
+            </div>
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:0">
+          <label style="display:block; font-size:13px; font-weight:700; color:#0F172A; margin-bottom:6px">
+            Instructions for Coordinator <span class="req" style="color:#DC2626">*</span>
+          </label>
+          <textarea class="input" name="reason" rows="3" required placeholder="Explain clearly what needs correction so the Coordinator can update the record accurately…"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal Footer -->
+    <div class="modal-foot" style="padding:14px 22px; background:#F8FAFC; border-top:1px solid #E2E8F0; display:flex; justify-content:space-between; align-items:center">
+      <div style="font-size:12px; color:#64748B">
+        Record will be returned to the Department Coordinator for correction.
+      </div>
+      <div style="display:flex; gap:10px">
+        <button type="button" class="btn btn-outline btn-sm" onclick="closeDeanEditDlg()">Cancel</button>
+        <button type="submit" class="btn btn-sm" style="background:#F59E0B; color:#fff; font-weight:700; height:34px; padding:0 16px">
+          <?= icon('send', 13) ?> Submit Request for Edit
+        </button>
+      </div>
     </div>
   </form>
 </dialog>
@@ -1108,10 +1589,77 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 </dialog>
+<<<<<<< HEAD
+
+<script>
+const currentRole = <?= json_encode($user['role']) ?>;
+
+// Open Dean / Admin Request Edit dialog
+function openDeanEditRequest(type, id, title, who, dept, proofUrl, proofName) {
+  document.getElementById('der-type').value = type;
+  document.getElementById('der-id').value = id;
+  document.getElementById('der-rec-title').textContent = title || 'Record #' + id;
+  document.getElementById('der-faculty').textContent = who || 'Faculty Member';
+  document.getElementById('der-dept').textContent = dept || 'General';
+
+  const frame = document.getElementById('der-frame');
+  const loader = document.getElementById('der-loader');
+  const noProof = document.getElementById('der-no-proof');
+  const dlBtn = document.getElementById('der-download');
+  const tabBtn = document.getElementById('der-newtab');
+  const proofFileName = document.getElementById('der-proof-filename');
+
+  if (proofUrl && proofUrl.trim() !== '') {
+    if (frame) {
+      frame.style.display = 'block';
+      frame.src = proofUrl;
+    }
+    if (noProof) noProof.style.display = 'none';
+    if (loader) loader.style.display = 'flex';
+    if (dlBtn) {
+      dlBtn.style.display = 'inline-flex';
+      dlBtn.href = proofUrl + (proofUrl.indexOf('?') >= 0 ? '&download=1' : '?download=1');
+    }
+    if (tabBtn) {
+      tabBtn.style.display = 'inline-flex';
+      tabBtn.href = proofUrl;
+    }
+    if (proofFileName) proofFileName.textContent = proofName || 'Proof Document';
+  } else {
+    if (frame) {
+      frame.style.display = 'none';
+      frame.src = '';
+    }
+    if (noProof) noProof.style.display = 'block';
+    if (loader) loader.style.display = 'none';
+    if (dlBtn) dlBtn.style.display = 'none';
+    if (tabBtn) tabBtn.style.display = 'none';
+    if (proofFileName) proofFileName.textContent = 'No direct proof attachment';
+  }
+
+  document.getElementById('deanEditDlg').showModal();
+}
+
+function closeDeanEditDlg() {
+  const dlg = document.getElementById('deanEditDlg');
+  const frame = document.getElementById('der-frame');
+  if (frame) frame.src = '';
+  if (dlg) dlg.close();
+}
+
+document.getElementById('deanEditDlg').addEventListener('close', function() {
+  const frame = document.getElementById('der-frame');
+  if (frame) frame.src = '';
+});
+
+// Open HoD Edit Request dialog with auto-populated metadata and proof attachment
+function openHodEditRequest(type, id, title, who, dept, year, typeLabel, proofUrl, proofName) {
+=======
 <script>const currentRole = <?= json_encode($user['role']) ?>;
 const canProcess = <?= json_encode($canProcess) ?>;
 
 function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   document.getElementById('her-type').value = type;
   document.getElementById('her-id').value = id;
   document.getElementById('her-title').textContent = title || '(untitled)';
@@ -1119,6 +1667,37 @@ function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
   document.getElementById('her-cat').textContent = typeLabel || type;
   document.getElementById('her-year').textContent = year || '';
   document.getElementById('her-rec-id').textContent = '#' + id;
+<<<<<<< HEAD
+
+  const proofRow = document.getElementById('her-proof-row');
+  const proofDl = document.getElementById('her-proof-download');
+  const proofTab = document.getElementById('her-proof-view');
+  const herFrame = document.getElementById('her-frame');
+  const herPreview = document.getElementById('her-proof-preview');
+
+  if (proofUrl && proofUrl.trim() !== '') {
+    if (proofRow) proofRow.style.display = 'flex';
+    if (proofDl) proofDl.href = proofUrl + (proofUrl.indexOf('?') >= 0 ? '&download=1' : '?download=1');
+    if (proofTab) proofTab.href = proofUrl;
+    if (herFrame) herFrame.src = proofUrl;
+    if (herPreview) herPreview.style.display = 'block';
+  } else {
+    if (proofRow) proofRow.style.display = 'none';
+    if (herFrame) herFrame.src = '';
+    if (herPreview) herPreview.style.display = 'none';
+  }
+
+  document.getElementById('hodEditDlg').showModal();
+}
+
+document.getElementById('hodEditDlg').addEventListener('close', function() {
+  const frame = document.getElementById('her-frame');
+  if (frame) frame.src = '';
+});
+
+// Open Dean Decision dialog for Edit Requests
+function openDecisionModal(decision, reqId, reqLabel, faculty, title, proofUrl) {
+=======
   var dlg = document.getElementById('hodEditDlg');
   if (dlg && dlg.showModal) {
     dlg.showModal();
@@ -1126,11 +1705,30 @@ function openHodEditRequest(type, id, title, who, dept, year, typeLabel) {
 }
 
 function openDecisionModal(decision, reqId, reqLabel, faculty, title) {
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   document.getElementById('dec-action').value = decision === 'approve' ? 'approve_edit_request' : 'reject_edit_request';
   document.getElementById('dec-req-id').value = reqId;
   document.getElementById('dec-req-label').textContent = reqLabel;
   document.getElementById('dec-faculty').textContent = faculty;
   document.getElementById('dec-rec-title').textContent = title;
+
+  const proofRow = document.getElementById('dec-proof-row');
+  const proofTab = document.getElementById('dec-proof-tab');
+  const proofDl  = document.getElementById('dec-proof-dl');
+  const decFrame = document.getElementById('dec-frame');
+  const decPreview = document.getElementById('dec-proof-preview');
+
+  if (proofUrl && proofUrl.trim() !== '') {
+    if (proofRow) proofRow.style.display = 'flex';
+    if (proofTab) proofTab.href = proofUrl;
+    if (proofDl) proofDl.href = proofUrl + (proofUrl.indexOf('?') >= 0 ? '&download=1' : '?download=1');
+    if (decFrame) decFrame.src = proofUrl;
+    if (decPreview) decPreview.style.display = 'block';
+  } else {
+    if (proofRow) proofRow.style.display = 'none';
+    if (decFrame) decFrame.src = '';
+    if (decPreview) decPreview.style.display = 'none';
+  }
   
   const titleEl = document.getElementById('dec-title');
   const btn = document.getElementById('dec-btn');
@@ -1159,27 +1757,91 @@ function openDecisionModal(decision, reqId, reqLabel, faculty, title) {
   }
 }
 
+<<<<<<< HEAD
+document.getElementById('decisionDlg').addEventListener('close', function() {
+  const frame = document.getElementById('dec-frame');
+  if (frame) frame.src = '';
+});
+
+// Coordinator / Admin standard review record dialog (Approval Card with embedded proof)
+function reviewRecord(type, id, action, title, who, dept, proofUrl, proofName, typeLabel, year) {
+=======
 function reviewRecord(type, id, action) {
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   document.getElementById('rv-type').value = type;
   document.getElementById('rv-id').value = id;
   document.getElementById('rv-action').value = action;
   
   const btn = document.getElementById('rv-btn');
-  const title = document.getElementById('rv-title');
+  const titleEl = document.getElementById('rv-title');
   const label = document.getElementById('rv-remark-label');
+  const typeBadge = document.getElementById('rv-type-badge');
+  const metaEl = document.getElementById('rv-meta');
+  const frame = document.getElementById('rv-frame');
+  const loader = document.getElementById('rv-loader');
+  const noProof = document.getElementById('rv-no-proof');
+  const dlBtn = document.getElementById('rv-download');
+  const tabBtn = document.getElementById('rv-newtab');
+  const proofFileName = document.getElementById('rv-proof-filename');
+
+  if (titleEl) titleEl.textContent = title || 'Record #' + id;
+  if (typeBadge) typeBadge.textContent = typeLabel || type;
+  if (metaEl) {
+    let parts = [];
+    if (who) parts.push('Faculty: ' + who);
+    if (dept) parts.push('Department: ' + dept);
+    if (year) parts.push('Academic Year: ' + year);
+    metaEl.textContent = parts.join(' · ') || 'Academic Record';
+  }
+
+  if (proofUrl && proofUrl.trim() !== '') {
+    if (frame) {
+      frame.style.display = 'block';
+      frame.src = proofUrl;
+    }
+    if (noProof) noProof.style.display = 'none';
+    if (loader) loader.style.display = 'flex';
+    if (dlBtn) {
+      dlBtn.style.display = 'inline-flex';
+      dlBtn.href = proofUrl + (proofUrl.indexOf('?') >= 0 ? '&download=1' : '?download=1');
+    }
+    if (tabBtn) {
+      tabBtn.style.display = 'inline-flex';
+      tabBtn.href = proofUrl;
+    }
+    if (proofFileName) proofFileName.textContent = proofName || 'Proof Document';
+  } else {
+    if (frame) {
+      frame.style.display = 'none';
+      frame.src = '';
+    }
+    if (noProof) noProof.style.display = 'block';
+    if (loader) loader.style.display = 'none';
+    if (dlBtn) dlBtn.style.display = 'none';
+    if (tabBtn) tabBtn.style.display = 'none';
+    if (proofFileName) proofFileName.textContent = 'No direct proof attachment';
+  }
 
   if (action === 'reject') {
+<<<<<<< HEAD
+=======
     title.textContent = 'Reject Record';
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     label.textContent = 'Rejection Reason (Optional)';
     btn.textContent = 'Confirm Rejection';
     btn.className = 'btn btn-danger btn-sm';
-    btn.style.cssText = '';
+    btn.style.cssText = 'height:34px; padding:0 16px; font-weight:600';
   } else {
+<<<<<<< HEAD
+    label.textContent = 'Approval Remark / Instructions (Optional)';
+    btn.textContent = currentRole === 'Coordinator' ? 'Approve & Save to DB' : 'Approve Record';
+=======
     title.textContent = currentRole === 'Coordinator' ? 'Approve & Save to Database' : 'Approve Record';
     label.textContent = 'Remark (Optional)';
     btn.textContent = currentRole === 'Coordinator' ? 'Approve & Save to DB' : 'Approve';
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     btn.className = 'btn btn-sm';
-    btn.style.cssText = 'background:#047857; color:#fff; font-weight:600';
+    btn.style.cssText = 'background:#047857; color:#fff; font-weight:600; height:34px; padding:0 16px';
   }
 
   var dlg = document.getElementById('reviewDlg');
@@ -1188,6 +1850,77 @@ function reviewRecord(type, id, action) {
   }
 }
 
+<<<<<<< HEAD
+function closeReviewDlg() {
+  const dlg = document.getElementById('reviewDlg');
+  const frame = document.getElementById('rv-frame');
+  if (frame) frame.src = '';
+  if (dlg) dlg.close();
+}
+
+document.getElementById('reviewDlg').addEventListener('close', function() {
+  const frame = document.getElementById('rv-frame');
+  if (frame) frame.src = '';
+});
+
+// Inline expandable Approval Card toggle
+function toggleApprovalCard(trigger, id, type) {
+  if (typeof trigger === 'number' || (typeof trigger === 'string' && isFinite(trigger))) {
+    id = Number(trigger);
+    trigger = null;
+  }
+
+  let row = null;
+  let btnText = null;
+  let iframe = null;
+
+  if (trigger && typeof trigger === 'object' && trigger.nodeType) {
+    if (trigger.closest('tr.app-card-row')) {
+      row = trigger.closest('tr.app-card-row');
+      const prevTr = row.previousElementSibling;
+      if (prevTr) {
+        btnText = prevTr.querySelector('.app-card-btn-text');
+      }
+    } else {
+      const tr = trigger.closest('tr');
+      if (tr && tr.nextElementSibling && tr.nextElementSibling.classList.contains('app-card-row')) {
+        row = tr.nextElementSibling;
+      }
+      btnText = trigger.querySelector('.app-card-btn-text');
+    }
+  }
+
+  if (!row && id) {
+    if (type) {
+      row = document.querySelector('tr.app-card-row[data-card-key="' + type + '-' + id + '"]');
+    }
+    if (!row) {
+      row = document.getElementById('app-card-row-' + id);
+    }
+  }
+  if (!row) return;
+
+  if (!btnText && id) {
+    btnText = document.getElementById('app-card-btn-text-' + id);
+  }
+  iframe = row.querySelector('iframe') || (id ? document.getElementById('app-card-iframe-' + id) : null);
+
+  if (row.style.display === 'none' || row.style.display === '') {
+    row.style.display = 'table-row';
+    if (btnText) btnText.textContent = 'Close Card';
+    if (iframe && (!iframe.src || iframe.src === 'about:blank' || iframe.src === window.location.href) && iframe.getAttribute('data-src')) {
+      iframe.src = iframe.getAttribute('data-src');
+    }
+  } else {
+    row.style.display = 'none';
+    if (btnText) btnText.textContent = 'Approval Card';
+    if (iframe) iframe.src = '';
+  }
+}
+
+// HoD acknowledge review of resubmitted record
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 function acknowledgeReview(type, id) {
   if (!confirm('Acknowledge review for this corrected record and confirm as Approved in the database?')) return;
   var form = document.createElement('form');
@@ -1209,6 +1942,10 @@ function approveAll(ev, dept, n) {
   document.getElementById('bulkForm').submit();
 }
 
+<<<<<<< HEAD
+// Proof Viewer functions
+=======
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 function openProofViewer(url, title, who, dept, typeLabel) {
   if (!url || url.indexOf('upload.php') !== -1) return;
   document.getElementById('pv-title').textContent = title || 'Proof Attachment';
@@ -1248,6 +1985,15 @@ function closeProofViewer() {
   var dlg = document.getElementById('proofDlg');
   var frame = document.getElementById('pv-frame');
   if (frame) frame.src = '';
+<<<<<<< HEAD
+  if (dlg) dlg.close();
+}
+
+document.getElementById('proofDlg').addEventListener('close', function() {
+  document.getElementById('pv-frame').src = '';
+});
+</script>
+=======
   if (dlg) {
     if (typeof dlg.close === 'function') {
       dlg.close();
@@ -1280,5 +2026,6 @@ if (proofDlgEl) {
     if (frame) frame.src = '';
   });
 }</script>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

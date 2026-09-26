@@ -10,6 +10,16 @@ $format     = strtolower(trim((string) input('format', 'csv')));
 $department = user_department_scope($user, input('department'));
 $status     = trim((string) input('status', '')) ?: null;
 $type       = trim((string) input('type', '')) ?: null;
+<<<<<<< HEAD
+$from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
+$to         = parse_date_input(input('to', ''));     // period end
+// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
+// A meeting window belongs to one academic year, so the year is pinned too;
+// with "all" em_filter_year() is null and this export is unchanged.
+$emFilter    = em_filter_value(input('em'));
+[$from, $to] = em_intersect_period($emFilter, $from, $to);
+
+=======
 $category   = trim((string) input('category', '')) ?: null;
 $from       = parse_date_input(input('from', ''));   
 $to         = parse_date_input(input('to', ''));     
@@ -20,6 +30,7 @@ $year     = $emCtx['year'];
 $emFilter = $emCtx['em'];
 [$from, $to] = em_intersect_period($emFilter, $from, $to, $year);
 
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 if (!in_array($format, ['csv', 'excel', 'word', 'pdf'], true)) {
     $format = 'csv';
 }
@@ -29,6 +40,10 @@ if ($user['role'] === 'Director') {
     $department = null;
 }
 
+<<<<<<< HEAD
+// ---- Get the records (role scope is applied inside) ---------------------
+$records = report_records($user, $department, $status, $type, $from, $to, em_filter_year($emFilter));
+=======
 // Handle 'academic_record' or 'all' type alias
 $isAllAcademic = ($type === null || $type === 'academic_record' || $type === 'all');
 $queryType     = $isAllAcademic ? null : $type;
@@ -40,6 +55,7 @@ if ($category !== null && isset($categories[$category])) {
     $catTypes = record_category_types($category);
     $records  = array_values(array_filter($records, fn($r) => in_array($r['_type_key'], $catTypes, true)));
 }
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 $isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
 $scopeLabel  = $isOversight
@@ -47,11 +63,9 @@ $scopeLabel  = $isOversight
     : department_full_name($user['department'] ?: 'ALL DEPARTMENTS');
 
 $reportTitle = 'ACADEMIC RECORDS';
-if ($queryType) {
+if ($type) {
     $types = record_types();
-    $reportTitle = strtoupper($types[$queryType]['label'] ?? 'ACADEMIC RECORDS');
-} elseif ($category && isset($categories[$category])) {
-    $reportTitle = strtoupper($categories[$category]['label']);
+    $reportTitle = strtoupper($types[$type]['label'] ?? 'ACADEMIC RECORDS');
 }
 
 $periodLabel = null;
@@ -63,13 +77,23 @@ if ($from || $to) {
 $today    = date('d.m.Y');
 $fileStem = 'iqac-report-' . date('Y-m-d');
 
+<<<<<<< HEAD
+// The columns, in order. Same for every format.
+$columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date'];
+=======
 $columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date', 'Proof'];
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 function csv_line($handle, array $fields): void
 {
     fputcsv($handle, $fields, ',', '"', '');
 }
 
+<<<<<<< HEAD
+/** Build one row of plain values for a record. */
+function export_row(array $record, int $serial): array
+{
+=======
 function export_row(array $record, int $serial, string $format = 'csv'): array
 {
     $type  = $record['_type_key'] ?? '';
@@ -112,6 +136,7 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
         }
     }
 
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     return [
         $serial,
         $record['_title'],
@@ -120,7 +145,6 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
         !empty($record['department']) ? department_full_name($record['department']) : '-',
         $record['status'],
         date('d/m/Y', strtotime($record['created_at'])),
-        $proofVal,
     ];
 }
 
@@ -144,8 +168,12 @@ if ($format === 'csv') {
 
     $serial = 1;
     foreach ($records as $record) {
-        csv_line($out, export_row($record, $serial++, 'csv'));
+        csv_line($out, export_row($record, $serial++));
     }
+
+    csv_line($out, []);
+    csv_line($out, []);
+    csv_line($out, ['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
 
     fclose($out);
     exit;
@@ -155,12 +183,15 @@ if ($format === 'excel') {
     require_once __DIR__ . '/inc/xlsx_writer.php';
     $exportRows = [];
     foreach ($records as $i => $r) {
-        $exportRows[] = export_row($r, $i + 1, 'excel');
+        $exportRows[] = export_row($r, $i + 1);
     }
-    $titleLine = $reportTitle . ($year ? ' (' . $year . ')' : '');
+    $sigCols = ['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($columns)) as $sRow) {
+        $exportRows[] = $sRow;
+    }
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
-        $titleLine,
+        $reportTitle,
         'Department: ' . $scopeLabel,
         'Report Date: ' . $today
     ];
@@ -179,8 +210,9 @@ if ($format === 'excel') {
         exit;
     }
 
-    http_response_code(500);
-    exit('Failed to generate Excel spreadsheet.');
+    // Fallback to HTML table .xls if XLSX writer is unavailable or fails
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 } elseif ($format === 'word') {
     header('Content-Type: application/msword; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.doc"');
@@ -224,9 +256,8 @@ report_letterhead($reportTitle, $meta);
         <?php $serial = 1; ?>
         <?php foreach ($records as $record): ?>
           <tr>
-            <?php foreach (export_row($record, $serial++, $format) as $i => $value): ?>
-              <?php $isProof = ($i === 7); ?>
-              <td<?= $i === 0 ? ' class="num"' : ($isProof ? ' class="c"' : '') ?>><?= $isProof ? $value : e($value) ?></td>
+            <?php foreach (export_row($record, $serial++) as $i => $value): ?>
+              <td<?= $i === 0 ? ' class="num"' : '' ?>><?= e($value) ?></td>
             <?php endforeach; ?>
           </tr>
         <?php endforeach; ?>
@@ -235,5 +266,9 @@ report_letterhead($reportTitle, $meta);
   </table>
 
 <?php
+<<<<<<< HEAD
+report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
+=======
 report_signoff(report_signoff_columns($scopeLabel));
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 report_document_foot();

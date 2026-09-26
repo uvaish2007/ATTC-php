@@ -25,6 +25,9 @@ $cards = [
     <div class="sub">Your submissions and their status</div>
   </div>
   <div class="actions">
+<<<<<<< HEAD
+    <a class="btn btn-primary" href="<?= e(nav_href('upload.php')) ?>">
+=======
     <form method="get" class="fbar fbar-bare">
       <label class="fb-field" title="Filter by Academic Year">
         <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
@@ -51,6 +54,7 @@ $cards = [
       </label>
     </form>
     <a class="btn btn-primary" href="<?= e(nav_href('upload.php?reset=1')) ?>">
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       <?= icon('upload') ?> Submit a Record
     </a>
   </div>

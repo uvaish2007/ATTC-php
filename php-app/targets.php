@@ -3,7 +3,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
 
 targets_deadline_ready();
 
@@ -22,7 +22,7 @@ if ((isset($_GET['action']) && $_GET['action'] === 'get_target_records') || (iss
         echo json_encode(['ok' => false, 'msg' => 'Target not found']);
         exit;
     }
-    if (in_array($user['role'], ['HoD', 'Coordinator'], true) && !empty($user['department']) && $target['department'] !== $user['department']) {
+    if ($user['role'] === 'HoD' && !empty($user['department']) && $target['department'] !== $user['department']) {
         echo json_encode(['ok' => false, 'msg' => 'Access restricted to your department.']);
         exit;
     }
@@ -165,14 +165,21 @@ unlock_expire_due();
 
 $isHod       = $user['role'] === 'HoD';
 $isDean      = $user['role'] === 'Dean';
-$isCoord     = $user['role'] === 'Coordinator';
 $isHodOrDean = $isHod || $isDean;
 
 // Target creation and management permissions: Academic Year lock does NOT prevent target editing
 $canCreate   = in_array($user['role'], ['HoD', 'Admin'], true);
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
+<<<<<<< HEAD
+$deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
+// The academic year is never a page filter a visitor picks — every role
+// sees ONLY the system-wide active year's targets (section 8). $_GET['year']
+// is intentionally never read here.
+$yearFilter   = $activeYear;
+=======
 $deptFilter   = user_department_scope($user, $_GET['department'] ?? null);
 $yearFilter   = $selectedYear;
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
 $metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
 
@@ -199,14 +206,14 @@ $myUnlock       = $isHodOrDean ? unlock_state($unlockDept) : null;
 $pendingUnlocks = ($user['role'] === 'Admin') ? unlock_pending_all() : [];
 $unlockHours    = unlock_default_hours();
 
-$pageTitle = 'Review Targets';
-$breadcrumb = 'Review Targets';
+$pageTitle = 'Targets';
+$breadcrumb = 'Targets';
 require __DIR__ . '/inc/header.php';
 ?>
 
 <div class="page-head">
   <div>
-    <h1>Review Targets</h1>
+    <h1>Targets</h1>
     <div class="sub">
       <?= count($targets) ?> target<?= count($targets) !== 1 ? 's' : '' ?> for Academic Year <strong><?= e($selectedYear) ?></strong>
       <?php if ($selectedYear !== $activeYear): ?>
@@ -217,17 +224,28 @@ require __DIR__ . '/inc/header.php';
       <?php if ($awaiting): ?>
         &middot; <strong><?= $awaiting ?></strong> waiting for your review
       <?php endif; ?>
-      <?php if ($isHod || $isCoord): ?>&middot; <?= e($user['department'] ?? '') ?><?php endif; ?>
+      <?php if ($isHod): ?>&middot; <?= e($user['department'] ?? '') ?><?php endif; ?>
     </div>
   </div>
 
   <div class="actions">
+<<<<<<< HEAD
+    <?php // Academic year isn't counted here any more — it's always the active
+      // system year, not a filter a visitor chose. ?>
+    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
+=======
     <?php $tgActive = (($selectedYear !== $activeYear) ? 1 : 0) + ((user_can_choose_department($user) && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
     <?php
       $reportBase = array_filter([
+<<<<<<< HEAD
+          'department' => $isHod ? null : $deptFilter,
+          'year'       => $yearFilter,
+=======
           'department' => $deptFilter,
           'year'       => $selectedYear,
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       ]);
       $reportUrl = fn(string $fmt) => e(url('meeting-report.php') . '?' . http_build_query($reportBase + ['format' => $fmt]));
     ?>
@@ -253,6 +271,9 @@ require __DIR__ . '/inc/header.php';
 <form method="get" class="fbar">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
 
+<<<<<<< HEAD
+  <?php if (!$isHod): ?>
+=======
   <label class="fb-field"><span class="fb-k">Academic Year</span>
     <select name="year" onchange="this.form.submit()">
       <?php foreach ($years as $y): ?>
@@ -264,6 +285,7 @@ require __DIR__ . '/inc/header.php';
   </label>
 
   <?php if (user_can_choose_department($user)): ?>
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     <label class="fb-field"><span class="fb-k">Department</span>
       <select name="department" onchange="this.form.submit()">
         <option value="">All</option>
@@ -443,7 +465,7 @@ require __DIR__ . '/inc/header.php';
       $dCol  = $dPct >= 100 ? '#10B981' : ($dPct >= 50 ? 'var(--orange-500)' : '#EF4444');
       $draftCount = count(array_filter($deptTargets, fn($x) => in_array($x['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true)));
     ?>
-    <details class="card tg-group" <?= ($isHod || $isCoord) ? 'open' : '' ?>>
+    <details class="card tg-group" <?= $isHod ? 'open' : '' ?>>
       <summary class="tg-group-head">
         <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
         <span class="badge badge-neutral"><?= count($deptTargets) ?> target<?= count($deptTargets) !== 1 ? 's' : '' ?></span>

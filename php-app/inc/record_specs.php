@@ -20,7 +20,6 @@ function record_report_specs(): array
                 ['Link to the Article / DOI', 'doi'],
                 ['Link to Journal Website', 'journal_link'],
                 ['Document Link', 'document_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -36,7 +35,6 @@ function record_report_specs(): array
                 ['ISSN / ISBN Number', 'isbn'],
                 ['Month & Year of Publication (mm/yyyy)', 'publication_month'],
                 ['Document Link', 'document_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -53,7 +51,6 @@ function record_report_specs(): array
                 ['Venue', 'venue'],
                 ['Conference Date (dd/mm/yyyy)', 'conference_date'],
                 ['Document Link', 'document_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -71,7 +68,6 @@ function record_report_specs(): array
                 ['No. of Participants', 'participants'],
                 ['Sponsorship (if any)', 'sponsorship'],
                 ['Web Link to Event Report', 'report_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -87,7 +83,6 @@ function record_report_specs(): array
                 ['Mode', 'mode'],
                 ['Organized By (Name of the Institution / Agency)', 'organized_by'],
                 ['Certificate Link', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -101,7 +96,6 @@ function record_report_specs(): array
                 ['Valid upto (dd/mm/yyyy)', 'valid_upto'],
                 ['Purpose of Collaboration', 'purpose'],
                 ['Document Link', 'document_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -116,7 +110,6 @@ function record_report_specs(): array
                 ['Session', 'session'],
                 ['Grade', 'grade'],
                 ['Certificate Link', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -131,7 +124,6 @@ function record_report_specs(): array
                 ['Patent / Copyright Number', 'patent_number'],
                 ['Date of Publication (dd/mm/yyyy)', 'publication_date'],
                 ['Document Link', 'document_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -147,7 +139,6 @@ function record_report_specs(): array
                 ['Duration', 'duration'],
                 ['No. of Days', 'days'],
                 ['Link to the Certificate / Document', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -163,7 +154,6 @@ function record_report_specs(): array
                 ['Company Name & Address (with Contact Details)', 'company'],
                 ['Pay Scale', 'pay_scale'],
                 ['Web Link to Appointment Order', 'appointment_order_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -178,7 +168,6 @@ function record_report_specs(): array
                 ['Name of external Agency / Member involved (Name & Designation with Contact Details)', 'external_agency'],
                 ['No. of Student Participated', 'participants'],
                 ['Web Link to Event Report', 'report_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -194,7 +183,6 @@ function record_report_specs(): array
                 ['Duration', 'duration'],
                 ['Month & Year', 'month_year'],
                 ['Certificate Link', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -214,7 +202,6 @@ function record_report_specs(): array
                 ['Position secured', 'position_secured'],
                 ['Name of the Organising Institution', 'organising_institution'],
                 ['Link to the Certificate / Document', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -234,7 +221,6 @@ function record_report_specs(): array
                 ['Position secured', 'position_secured'],
                 ['Name of the Organising Institution', 'organising_institution'],
                 ['Link to the Certificate / Document', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -250,7 +236,6 @@ function record_report_specs(): array
                 ['Duration', 'duration'],
                 ['No. of Days', 'days'],
                 ['Link to the Certificate / Document', 'certificate_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -266,7 +251,6 @@ function record_report_specs(): array
                 ['Resource Person Name & Designation (with Contact Details)', 'resource_person'],
                 ['No. of Participants', 'participants'],
                 ['Web Link to Event Report', 'report_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 
@@ -284,7 +268,6 @@ function record_report_specs(): array
                 ['No. of Participants', 'participants'],
                 ['Sponsorship (if any)', 'sponsorship'],
                 ['Web Link to Event Report', 'report_link'],
-                ['Proof Attachment', 'proof_file'],
             ],
         ],
 

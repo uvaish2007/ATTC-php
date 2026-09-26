@@ -1,9 +1,13 @@
 <?php
 require_once __DIR__ . '/../inc/db.php';
+<<<<<<< HEAD
+require_once __DIR__ . '/Target.php';   // academic_years()
+=======
 require_once __DIR__ . '/../inc/auth.php';
 require_once __DIR__ . '/Target.php';   
 require_once __DIR__ . '/Record.php';
 require_once __DIR__ . '/ExecutiveMeeting.php';   
+>>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 function all_metrics(): array
 {
@@ -42,7 +46,6 @@ function other_metrics(): array { return []; }
 
 function dashboard_data(array $user): array
 {
-    journal_process_approval_expiry();
     $pdo = db();
 
     $isOversight = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);

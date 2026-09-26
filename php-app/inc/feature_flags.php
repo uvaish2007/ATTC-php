@@ -43,8 +43,7 @@ function module_is_active(string $module): bool
 
 function module_for_path(string $path): string
 {
-    $clean = strtok($path, '?');
-    return basename($clean, '.php');
+    return basename($path, '.php');
 }
 
 function require_module(string $module): void
