@@ -14,7 +14,6 @@ function report_is_word_download(): bool
     return false;
 }
 
-<<<<<<< HEAD
 /**
  * Expand a department code/short name to its full name, for every report
  * heading, meta line, "Dept" column and sign-off across the PDF/Excel/Word
@@ -89,7 +88,8 @@ if (!function_exists('department_full_name')) {
 
         return $dept;
     }
-=======
+}
+
 function report_banner_datauri(): string
 {
     static $cache = [];
@@ -118,51 +118,6 @@ function report_banner_datauri(): string
     }
 
     return $cache[$key] = '';
-}
-
-
-function department_full_name(?string $dept): string
-{
-    $dept = trim((string) $dept);
-    if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
-        return $dept;
-    }
-
-    static $map = [
-        'CSE'           => 'Computer Science and Engineering',
-        'CSBS'          => 'Computer Science and Business Systems',
-        'AIDS'          => 'Artificial Intelligence and Data Science',
-        'ECE'           => 'Electronics and Communication Engineering',
-        'EEE'           => 'Electrical and Electronics Engineering',
-        'MECH'          => 'Mechanical Engineering',
-        'CIVIL'         => 'Civil Engineering',
-        'IT'            => 'Information Technology',
-        'AGRI'          => 'Agriculture Engineering',
-        'AERO'          => 'Aeronautical Engineering',
-        'MARINE'        => 'Marine Engineering',
-        'AIML'          => 'Artificial Intelligence and Machine Learning',
-        'CYBER'         => 'Cyber Security',
-        'CYBERSECURITY' => 'Cyber Security',
-        'CHEM'          => 'Chemical Engineering',
-        'ARCH'          => 'Architecture',
-        'MCA'           => 'Master of Computer Applications',
-        'MBA'           => 'Master of Business Administration',
-    ];
-
-    $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
-    if (isset($map[$key])) {
-        return $map[$key];
-    }
-
-    require_once __DIR__ . '/../models/Department.php';
-    foreach (departments_all() as $d) {
-        if (strcasecmp($d['code'], $dept) === 0 || strcasecmp($d['name'], $dept) === 0) {
-            return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
-        }
-    }
-
-    return $dept;
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 }
 
 function report_year_duration(?string $year): array
@@ -274,10 +229,6 @@ function report_letterhead(string $title, array $meta = [], array $headingLines 
 <?php
 }
 
-<<<<<<< HEAD
-/** The signature line. Defaults to the standard institutional IQAC & Academic sign-off. */
-function report_signoff(array $columns = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']): void
-=======
 // The review screen wrapped around a report opened as ?format=pdf.
 //
 // Shows the document as a sheet of paper on a neutral canvas with a toolbar
@@ -288,7 +239,6 @@ function report_signoff(array $columns = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORD
 // "2025-26", "42 records"). Links to the same report in the other formats are
 // derived from the current URL, so a caller passes nothing for them.
 function report_pdf_bar(string $title, array $facts = [], array $alsoOffer = ['word', 'excel'], ?string $orientation = null): void
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 {
     $landscape = ($orientation ?? $GLOBALS['REPORT_ORIENTATION'] ?? 'portrait') === 'landscape';
     $sheetW    = $landscape ? '29.7cm' : '21cm';
@@ -427,7 +377,20 @@ function report_signoff(?array $columns = null): void
 <?php
 }
 
-<<<<<<< HEAD
+function report_signoff_rows(?array $columns = null, int $width = 0): array
+{
+    $columns = $columns ?? report_signoff_columns();
+    $width   = max($width, count($columns));
+
+    $blank = array_fill(0, $width, '');
+    $line  = $blank;
+    foreach (array_values($columns) as $i => $column) {
+        $line[$i] = $column;
+    }
+
+    return [$blank, $blank, $line];
+}
+
 /**
  * Generate spaced signature rows to append at the end of an Excel sheet.
  */
@@ -459,22 +422,6 @@ function report_signoff_excel_rows(array $columns = ['HOD', 'DEAN / ACADEMICS', 
 }
 
 /** Close the document. */
-=======
-function report_signoff_rows(?array $columns = null, int $width = 0): array
-{
-    $columns = $columns ?? report_signoff_columns();
-    $width   = max($width, count($columns));
-
-    $blank = array_fill(0, $width, '');
-    $line  = $blank;
-    foreach (array_values($columns) as $i => $column) {
-        $line[$i] = $column;
-    }
-
-    return [$blank, $blank, $line];
-}
-
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 function report_document_foot(): void
 {
     echo "\n</body>\n</html>";

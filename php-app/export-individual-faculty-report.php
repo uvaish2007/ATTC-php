@@ -64,15 +64,10 @@ if ($format === 'excel') {
         ];
     }
 
-<<<<<<< HEAD
     $sigCols = ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL'];
     foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
         $rows[] = $sRow;
     }
-=======
-    $rows = array_merge($rows, report_signoff_rows(
-        report_signoff_columns(department_full_name($faculty['department'] ?? null)), count($headers)));
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
     $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Individual Report', [
         REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)',
@@ -174,23 +169,10 @@ if ($format === 'word') {
 </head>
 <body>
 
-<<<<<<< HEAD
-  <?php if ($format === 'pdf'): ?>
-    <div class="no-print" style="margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 10px;">
-      <button onclick="window.print()" style="background: #FF4F01; color: white; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Print / Save as PDF
-      </button>
-      <button onclick="window.close()" style="background: #E4E9F2; color: #131D3B; border: 0; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer;">
-        Close Window
-      </button>
-    </div>
-  <?php endif; ?>
-=======
 <?php if ($format === 'pdf'): ?>
   <?php report_pdf_bar($title ?? 'Individual Faculty Report',
       [$faculty['name'] ?? '', $faculty['department'] ?? '', 'AY ' . $academicYear]); ?>
 <?php endif; ?>
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
   <?php $bannerImg = report_banner_img(680); ?>
   <?php if ($bannerImg !== ''): ?>
@@ -200,15 +182,10 @@ if ($format === 'word') {
   <table class="hdr-table">
     <tr>
       <td>
-<<<<<<< HEAD
-        <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
-        <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Academic Target Tracking System</div>
-=======
         <?php if ($bannerImg === ''): ?>
           <div class="hdr-logo"><?= e(REPORT_INSTITUTION) ?></div>
         <?php endif; ?>
         <div class="hdr-sub">Internal Quality Assurance Cell (IQAC) &middot; Faculty Profile</div>
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       </td>
       <td style="text-align: right; font-size: 12px; color: #5A6785;">
         <div><strong>Report Date:</strong> <?= e($today) ?></div>

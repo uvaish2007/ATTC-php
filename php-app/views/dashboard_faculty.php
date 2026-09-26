@@ -1,16 +1,27 @@
 <?php
+/**
+ * Faculty dashboard.
+ * Shows only the records this user submitted - nothing from other people.
+ *
+ * Comes from dashboard.php:  $user, $data
+ */
+
 $firstName = explode(' ', trim($user['name']))[0] ?: 'there';
 $stats     = $data['stats'];
 
+// One colour per status, shared with the doughnut and its legend below.
+// Same order and same colours as the master dashboard, so the two pages
+// never disagree about what "Approved" looks like.
 $statusColours = [
     'Approved'     => '#059669',
     'Dean Pending' => '#F59E0B',
     'HOD Pending'  => '#2563EB',
-    'Submitted'    => '#7C3AED',
+    'Submitted'    => '#2563EB',
     'Rejected'     => '#DC2626',
     'Draft'        => '#6B7FA8',
 ];
 
+// label, value, icon, icon colour, small caption
 $cards = [
     ['My Submissions', $stats['totalRecords'], 'file-stack', 'brand', "Records you've filed"],
     ['Approved',       $stats['approved'],     'check',      'navy',  'Accepted records'],
@@ -25,42 +36,14 @@ $cards = [
     <div class="sub">Your submissions and their status</div>
   </div>
   <div class="actions">
-<<<<<<< HEAD
     <a class="btn btn-primary" href="<?= e(nav_href('upload.php')) ?>">
-=======
-    <form method="get" class="fbar fbar-bare">
-      <label class="fb-field" title="Filter by Academic Year">
-        <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
-        <select name="academic_year" onchange="this.form.submit()">
-          <?php foreach (($data['years'] ?? academic_years()) as $y): ?>
-            <option value="<?= e($y) ?>" <?= ($data['scope']['year'] ?? '') === $y ? 'selected' : '' ?>>
-              <?= e($y) ?><?= $y === ($data['activeYear'] ?? '') ? ' (Active)' : '' ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-
-      <?php ?>
-      <label class="fb-field" title="Executive Meeting duration — filter records by EM1 or EM2 period">
-        <span class="fb-k">EM Duration</span>
-        <select name="em" onchange="this.form.submit()">
-          <option value="all" <?= ($data['scope']['em'] ?? 'all') === 'all' ? 'selected' : '' ?>>All</option>
-          <?php foreach (array_keys(EM_MEETINGS) as $emKey): ?>
-            <option value="<?= e($emKey) ?>" <?= ($data['scope']['em'] ?? '') === $emKey ? 'selected' : '' ?>>
-              <?= e(em_filter_label($emKey, $data['scope']['year'] ?? null)) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </label>
-    </form>
-    <a class="btn btn-primary" href="<?= e(nav_href('upload.php?reset=1')) ?>">
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       <?= icon('upload') ?> Submit a Record
     </a>
   </div>
 </div>
 
-<?php require __DIR__ . '/em_status_card.php'; ?>
+<?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
+
 
 <!-- Four counters across the top -->
 <div class="stat-grid grid-4">
@@ -77,6 +60,7 @@ $cards = [
   <?php endforeach; ?>
 
 </div>
+
 
 <div class="mt-5 grid-2-1">
 
@@ -117,6 +101,7 @@ $cards = [
     </div>
   </div>
 
+
   <!-- How many of each kind -->
   <div class="card">
     <div class="card-head">
@@ -153,6 +138,7 @@ $cards = [
 
 </div>
 
+
 <!-- Where your records stand, and what to do next -->
 <div class="mt-5 grid-1-1">
 
@@ -182,7 +168,8 @@ $cards = [
 
         <div class="donut-wrap">
           <?php
-
+            // Each status is one dash on the ring: its length is that status's
+            // share of the circle, pushed round by however much came before it.
             $radius        = 60;
             $circumference = 2 * M_PI * $radius;
             $drawn         = 0;
@@ -228,6 +215,7 @@ $cards = [
       <?php endif; ?>
     </div>
   </div>
+
 
   <div class="card">
     <div class="card-head">
