@@ -29,6 +29,47 @@ function record_types(): array
         'summer_training'       => ['table' => 'summer_training',        'label' => 'Summer / Winter Training',  'title_col' => 'title',         'approval_required' => true],
         'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title',  'approval_required' => true],
         'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title',   'approval_required' => true],
+
+        // 39 Institutional / Department Achievement Categories
+        'inst_pass_percentage'         => ['table' => 'inst_pass_percentage',         'label' => 'UNIVERSITY PASS PERCENTAGE',                                                    'title_col' => 'programme',       'approval_required' => true],
+        'inst_college_rank'            => ['table' => 'inst_college_rank',            'label' => 'RANK IN ANNA UNIVERSITY (College)',                                            'title_col' => 'rank_val',        'approval_required' => true],
+        'inst_student_rank'            => ['table' => 'inst_student_rank',            'label' => 'UNIVERSITY RANK (Students Univ. Ranks)',                                       'title_col' => 'student_name',    'approval_required' => true],
+        'inst_student_cgpa'            => ['table' => 'inst_student_cgpa',            'label' => 'TO IMPROVE II & III YEAR STUDENTS ABOVE 7.5 CGPA',                             'title_col' => 'student_name',    'approval_required' => true],
+        'inst_placement_mnc'           => ['table' => 'inst_placement_mnc',           'label' => 'PLACE 2024-25 BATCH STUDENTS IN TOP MNCs',                                     'title_col' => 'student_name',    'approval_required' => true],
+        'inst_publications'            => ['table' => 'inst_publications',            'label' => 'QUALITY PUBLICATIONS IN SCOPUS / SCI / SPRINGER / UGC CARE / H-INDEX',        'title_col' => 'title',           'approval_required' => true],
+        'inst_books'                   => ['table' => 'inst_books',                   'label' => 'BOOKS PUBLICATION - BOOK',                                                     'title_col' => 'book_title',      'approval_required' => false],
+        'inst_book_chapters'           => ['table' => 'inst_book_chapters',           'label' => 'BOOK CHAPTER',                                                                 'title_col' => 'chapter_title',   'approval_required' => false],
+        'inst_patents_published'       => ['table' => 'inst_patents_published',       'label' => 'PATENT PUBLISHED / DESIGN',                                                    'title_col' => 'title',           'approval_required' => true],
+        'inst_patents_granted'         => ['table' => 'inst_patents_granted',         'label' => 'PATENT GRANTED',                                                               'title_col' => 'title',           'approval_required' => true],
+        'inst_copyrights'              => ['table' => 'inst_copyrights',              'label' => 'COPYRIGHTS',                                                                   'title_col' => 'title',           'approval_required' => true],
+        'inst_sponsored_research'      => ['table' => 'inst_sponsored_research',      'label' => 'SPONSORED RESEARCH (in Lakhs)',                                                'title_col' => 'project_title',   'approval_required' => true],
+        'inst_consultancy'             => ['table' => 'inst_consultancy',             'label' => 'FUNDS CONSULTANCY PROJECTS (in Lakhs)',                                        'title_col' => 'project_title',   'approval_required' => true],
+        'inst_research_centre'         => ['table' => 'inst_research_centre',         'label' => 'RESEARCH CENTRE RECOGNITION FROM ANNA UNIVERSITY',                             'title_col' => 'recognition_name','approval_required' => true],
+        'inst_ipr_programmes'          => ['table' => 'inst_ipr_programmes',          'label' => 'PROGRAMME ON IPR / HIGHER STUDIES / ENTREPRENEURSHIP',                         'title_col' => 'programme_title', 'approval_required' => true],
+        'inst_faculty_certifications'  => ['table' => 'inst_faculty_certifications',  'label' => 'NO. OF ONLINE CERTIFICATION COURSES COMPLETED BY FACULTY',                     'title_col' => 'course_name',     'approval_required' => true],
+        'inst_mou_interactions'        => ['table' => 'inst_mou_interactions',        'label' => 'INDUSTRY INTERACTION / MOU / INDUSTRY SUPPORTED LAB',                          'title_col' => 'industry_name',   'approval_required' => true],
+        'inst_internships'             => ['table' => 'inst_internships',             'label' => 'STUDENT\'S INDUSTRY INTERNSHIP (4 weeks & above)',                             'title_col' => 'student_name',    'approval_required' => true],
+        'inst_summer_trainings'        => ['table' => 'inst_summer_trainings',        'label' => 'SUMMER TRAINING (less than 4 weeks)',                                          'title_col' => 'student_name',    'approval_required' => true],
+        'inst_student_projects'        => ['table' => 'inst_student_projects',        'label' => 'QUALITY STUDENTS PROJECT AND PUBLISH THE PROJECTS IN YOUTUBE',                 'title_col' => 'project_title',   'approval_required' => true],
+        'inst_faculty_participations'  => ['table' => 'inst_faculty_participations',  'label' => 'FACULTY PARTICIPATIONS IN FDP / TRAINING / STTP / CONFERENCE',                 'title_col' => 'programme_title', 'approval_required' => true],
+        'inst_society_memberships'     => ['table' => 'inst_society_memberships',     'label' => 'MEMBERSHIP IN PROFESSIONAL SOCIETIES',                                         'title_col' => 'society_name',    'approval_required' => true],
+        'inst_newsletters'             => ['table' => 'inst_newsletters',             'label' => 'NEWSLETTER',                                                                   'title_col' => 'newsletter_title','approval_required' => true],
+        'inst_student_certifications'  => ['table' => 'inst_student_certifications',  'label' => 'STUDENT ONLINE CERTIFICATION',                                                 'title_col' => 'student_name',    'approval_required' => true],
+        'inst_nss_events'              => ['table' => 'inst_nss_events',              'label' => 'NO OF EVENTS CONDUCTED BY NSS',                                                'title_col' => 'event_name',      'approval_required' => true],
+        'inst_inter_inst_within'       => ['table' => 'inst_inter_inst_within',       'label' => 'PARTICIPATION IN INTER-INSTITUTE EVENTS BY STUDENTS WITHIN STATE',             'title_col' => 'student_name',    'approval_required' => true],
+        'inst_inter_inst_outside'      => ['table' => 'inst_inter_inst_outside',      'label' => 'PARTICIPATION IN INTER-INSTITUTE EVENTS BY STUDENTS OUTSIDE STATE',            'title_col' => 'student_name',    'approval_required' => true],
+        'inst_inter_inst_awards'       => ['table' => 'inst_inter_inst_awards',       'label' => 'AWARDS/MEDALS IN INTER-INSTITUTE EVENTS BY STUDENTS (Within & Outside State)', 'title_col' => 'student_name',    'approval_required' => true],
+        'inst_value_added_courses'     => ['table' => 'inst_value_added_courses',     'label' => 'NO OF VALUE ADDED COURSE / HANDS ON TRAINING COURSES',                         'title_col' => 'course_name',     'approval_required' => true],
+        'inst_sports_state'            => ['table' => 'inst_sports_state',            'label' => 'EVENT PARTICIPATION IN SPORTS - STATE LEVEL',                                  'title_col' => 'student_name',    'approval_required' => true],
+        'inst_sports_national'         => ['table' => 'inst_sports_national',         'label' => 'EVENT PARTICIPATION IN SPORTS - NATIONAL LEVEL',                               'title_col' => 'student_name',    'approval_required' => true],
+        'inst_innovation_events'       => ['table' => 'inst_innovation_events',       'label' => 'INNOVATION EVENTS NEED TO CONDUCT IN EVERY DEPARTMENT',                        'title_col' => 'event_name',      'approval_required' => true],
+        'inst_iic_activities'          => ['table' => 'inst_iic_activities',          'label' => 'IIC ACTIVITIES',                                                               'title_col' => 'activity_name',   'approval_required' => true],
+        'inst_website_updations'       => ['table' => 'inst_website_updations',       'label' => 'WEBSITE UPDATION',                                                             'title_col' => 'update_title',    'approval_required' => true],
+        'inst_google_ratings'          => ['table' => 'inst_google_ratings',          'label' => 'GOOGLE RATING',                                                                'title_col' => 'google_rating',   'approval_required' => true],
+        'inst_startups'                => ['table' => 'inst_startups',                'label' => 'START UP',                                                                     'title_col' => 'startup_name',    'approval_required' => true],
+        'inst_alumni_chapters'         => ['table' => 'inst_alumni_chapters',         'label' => 'ALUMNI CHAPTER',                                                               'title_col' => 'chapter_name',    'approval_required' => true],
+        'inst_awards_recognitions'     => ['table' => 'inst_awards_recognitions',     'label' => 'AWARDS & RECOGNITION (for DEPT/ FACULTY), BoS MEMBER, DC MEMBER, QP/KEY SETTING, etc.', 'title_col' => 'title_award', 'approval_required' => true],
+        'inst_spoken_tutorials'        => ['table' => 'inst_spoken_tutorials',        'label' => 'NO. OF STUDENTS COMPLETED IIT-BOMBAY SPOKEN TUTORIAL COURSES',                 'title_col' => 'student_name',    'approval_required' => true],
     ];
 
     try {
@@ -47,18 +88,30 @@ function record_requires_approval(string $type): bool
     if (isset($types[$type]['approval_required'])) {
         return (bool) $types[$type]['approval_required'];
     }
-    return $type !== 'book';
+    return !in_array($type, ['book', 'inst_books', 'inst_book_chapters'], true);
 }
 
 function record_categories(): array
 {
     $cats = [
-        'faculty'  => ['label' => 'Faculty Contributions', 'icon' => 'file-text',
-                       'types' => ['journal', 'book', 'conference', 'patent', 'fdp', 'mou', 'nptel', 'online_course']],
-        'activity' => ['label' => 'Activities & Outreach', 'icon' => 'calendar',
-                       'types' => ['event', 'nss', 'value_added', 'training']],
-        'student'  => ['label' => 'Student Records',       'icon' => 'users',
-                       'types' => ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation']],
+        'faculty'       => ['label' => 'Faculty Contributions', 'icon' => 'file-text',
+                            'types' => ['journal', 'book', 'conference', 'patent', 'fdp', 'mou', 'nptel', 'online_course']],
+        'activity'      => ['label' => 'Activities & Outreach', 'icon' => 'calendar',
+                            'types' => ['event', 'nss', 'value_added', 'training']],
+        'student'       => ['label' => 'Student Records',       'icon' => 'users',
+                            'types' => ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation']],
+        'institutional' => ['label' => 'Institutional / Department Achievements', 'icon' => 'award',
+                            'types' => [
+                                'inst_pass_percentage', 'inst_college_rank', 'inst_student_rank', 'inst_student_cgpa', 'inst_placement_mnc',
+                                'inst_publications', 'inst_books', 'inst_book_chapters', 'inst_patents_published', 'inst_patents_granted',
+                                'inst_copyrights', 'inst_sponsored_research', 'inst_consultancy', 'inst_research_centre', 'inst_ipr_programmes',
+                                'inst_faculty_certifications', 'inst_mou_interactions', 'inst_internships', 'inst_summer_trainings',
+                                'inst_student_projects', 'inst_faculty_participations', 'inst_society_memberships', 'inst_newsletters',
+                                'inst_student_certifications', 'inst_nss_events', 'inst_inter_inst_within', 'inst_inter_inst_outside',
+                                'inst_inter_inst_awards', 'inst_value_added_courses', 'inst_sports_state', 'inst_sports_national',
+                                'inst_innovation_events', 'inst_iic_activities', 'inst_website_updations', 'inst_google_ratings',
+                                'inst_startups', 'inst_alumni_chapters', 'inst_awards_recognitions', 'inst_spoken_tutorials'
+                            ]],
     ];
 
     $known = record_types();

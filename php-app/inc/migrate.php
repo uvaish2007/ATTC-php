@@ -24,6 +24,7 @@ const MIGRATION_FILES = [
     'executive_meetings.sql',
     'department_names.sql',
     'exam_session.sql',
+    'institutional_achievements.sql',
 ];
 
 const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (
