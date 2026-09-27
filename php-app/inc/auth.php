@@ -38,7 +38,6 @@ function auth_ensure_master_accounts(): void
     try {
         $count = (int) db()->query("SELECT COUNT(*) FROM users WHERE email LIKE 'master.%@atts.edu'")->fetchColumn();
         if ($count < 6) {
-<<<<<<< HEAD
             $hash = password_hash('master123', PASSWORD_BCRYPT);
             $stmt = db()->prepare("INSERT INTO users (name, email, password, role, department, status) VALUES
                 ('Master (Admin)',       'master.admin@atts.edu',       ?, 'Admin',       NULL,   1),
@@ -49,17 +48,6 @@ function auth_ensure_master_accounts(): void
                 ('Master (Faculty)',     'master.faculty@atts.edu',     ?, 'Faculty',     'CSBS', 1)
             ON DUPLICATE KEY UPDATE status = 1, password = VALUES(password)");
             $stmt->execute([$hash, $hash, $hash, $hash, $hash, $hash]);
-=======
-            $sql = "INSERT INTO users (name, email, password, role, department, status) VALUES
-                ('Master (Admin)',       'master.admin@atts.edu',       '\$2y\$12\$Zw74FrRALYdT8b32aN6QcOKMA1FoIxQjrWMJp9wDlVrY0QlL8KqIq', 'Admin',       NULL,   1),
-                ('Master (Principal)',   'master.principal@atts.edu',   '\$2y\$12\$Zw74FrRALYdT8b32aN6QcOKMA1FoIxQjrWMJp9wDlVrY0QlL8KqIq', 'Director',    NULL,   1),
-                ('Master (Dean)',        'master.dean@atts.edu',        '\$2y\$12\$Zw74FrRALYdT8b32aN6QcOKMA1FoIxQjrWMJp9wDlVrY0QlL8KqIq', 'Dean',        NULL,   1),
-                ('Master (HoD)',         'master.hod@atts.edu',         '\$2y\$12\$Zw74FrRALYdT8b32aN6QcOKMA1FoIxQjrWMJp9wDlVrY0QlL8KqIq', 'HoD',         'CSBS', 1),
-                ('Master (Coordinator)', 'master.coordinator@atts.edu', '\$2y\$12\$Zw74FrRALYdT8b32aN6QcOKMA1FoIxQjrWMJp9wDlVrY0QlL8KqIq', 'Coordinator', 'CSBS', 1),
-                ('Master (Faculty)',     'master.faculty@atts.edu',     '\$2y\$12\$Zw74FrRALYdT8b32aN6QcOKMA1FoIxQjrWMJp9wDlVrY0QlL8KqIq', 'Faculty',     'CSBS', 1)
-            ON DUPLICATE KEY UPDATE status = 1, password = VALUES(password)";
-            db()->exec($sql);
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
         }
     } catch (\Throwable $e) {
         // Safe ignore
@@ -362,6 +350,7 @@ function attempt_login(string $email, string $password, ?string $role = null, ?s
         'role' => $sessionRole,
         'department' => $user['department'],
     ];
+
     return $_SESSION['user'];
 }
 

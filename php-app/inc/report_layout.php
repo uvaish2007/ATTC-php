@@ -14,7 +14,6 @@ function report_is_word_download(): bool
     return false;
 }
 
-<<<<<<< HEAD
 function report_banner_datauri(): string
 {
     static $cache = [];
@@ -45,8 +44,6 @@ function report_banner_datauri(): string
     return $cache[$key] = '';
 }
 
-=======
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 /**
  * Expand a department code/short name to its full name, for every report
  * heading, meta line, "Dept" column and sign-off across the PDF/Excel/Word
@@ -123,39 +120,6 @@ if (!function_exists('department_full_name')) {
     }
 }
 
-<<<<<<< HEAD
-=======
-function report_banner_datauri(): string
-{
-    static $cache = [];
-
-    $dir = dirname(__DIR__) . '/assets/img/';
-    $key = report_is_word_download() ? 'inline' : 'linked';
-
-    if (isset($cache[$key])) {
-        return $cache[$key];
-    }
-
-    foreach (['letterhead.jpg' => 'image/jpeg', 'letterhead.png' => 'image/png'] as $file => $mime) {
-        if (!is_file($dir . $file)) {
-            continue;
-        }
-
-        // Word keeps the artwork only if it is embedded. A browser would
-        // otherwise hold a copy per letterhead, and the targets proforma draws
-        // one per department — seventeen copies of the same image, which took
-        // that report past two megabytes.
-        $cache[$key] = $key === 'inline'
-            ? 'data:' . $mime . ';base64,' . base64_encode((string) file_get_contents($dir . $file))
-            : url('assets/img/' . $file);
-
-        return $cache[$key];
-    }
-
-    return $cache[$key] = '';
-}
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 function report_year_duration(?string $year): array
 {
     if ($year && preg_match('/^(\d{4})-\d{2}$/', $year, $m)) {
@@ -456,11 +420,6 @@ function report_signoff_excel_rows(array $columns = ['HOD', 'DEAN / ACADEMICS', 
         $sigRow,
     ];
 }
-<<<<<<< HEAD
-=======
-
-/** Close the document. */
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 function report_document_foot(): void
 {
     echo "\n</body>\n</html>";

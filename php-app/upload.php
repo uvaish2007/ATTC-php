@@ -6,11 +6,7 @@ require_once __DIR__ . '/models/Department.php';
 require_once __DIR__ . '/models/Target.php';   
 require_once __DIR__ . '/models/ExecutiveMeeting.php';   
 require_once __DIR__ . '/models/UploadFlow.php';         
-<<<<<<< HEAD
 require_once __DIR__ . '/inc/compression.php';
-=======
-require_once __DIR__ . '/inc/compression.php';        
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
@@ -19,18 +15,12 @@ $departments = departments_all();
 $years       = academic_years();
 $typeKeys    = array_keys($types);
 $activeYear  = active_academic_year();
-journal_process_approval_expiry();
 
 if (!defined('PROOF_MAX_BYTES')) {
     define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   
 }
 
-<<<<<<< HEAD
 if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false): array
-=======
-if (!function_exists('save_upload_proof')) {
-function save_upload_proof(?array $file, bool $required = false): array
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
@@ -55,21 +45,16 @@ function save_upload_proof(?array $file, bool $required = false): array
         return [null, 'The proof could not be uploaded (invalid temporary file).'];
     }
 
-<<<<<<< HEAD
     // PDF only, by extension and by actual content.
-=======
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-    $allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
-    if (!in_array($ext, $allowedExts, true)) {
-        return [null, 'The proof must be a PDF document (.pdf) or an image (.jpg, .jpeg, .png).'];
+    if ($ext !== 'pdf') {
+        return [null, 'The proof must be a PDF file (.pdf).'];
     }
 
     if ($file['size'] > PROOF_MAX_BYTES) {
-        return [null, 'The proof attachment is larger than 2 MB. Please upload a smaller one.'];
+        return [null, 'The PDF is larger than 2 MB. Please upload a smaller one.'];
     }
 
-<<<<<<< HEAD
     // Validate MIME type and binary header magic bytes (%PDF-)
     $finfo = @finfo_open(FILEINFO_MIME_TYPE);
     $mime = $finfo ? (string) @finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
@@ -77,41 +62,15 @@ function save_upload_proof(?array $file, bool $required = false): array
         @finfo_close($finfo);    }
     if ($mime !== '' && stripos($mime, 'pdf') === false && stripos($mime, 'octet-stream') === false) {
         return [null, 'That file is not a valid PDF document.'];
-=======
-    $finfo = @finfo_open(FILEINFO_MIME_TYPE);
-    $mime = $finfo ? (string) @finfo_file($finfo, $file['tmp_name']) : (function_exists('mime_content_type') ? (string) @mime_content_type($file['tmp_name']) : '');
-    if ($finfo && PHP_VERSION_ID < 80500) {
-        @finfo_close($finfo);
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     }
 
     $handle = @fopen($file['tmp_name'], 'rb');
-    $header4 = $handle ? fread($handle, 4) : '';
+    $header = $handle ? fread($handle, 4) : '';
     if ($handle) {
         fclose($handle);
     }
-
-    if ($ext === 'pdf') {
-        if ($mime !== '' && stripos($mime, 'pdf') === false && stripos($mime, 'octet-stream') === false) {
-            return [null, 'That file is not a valid PDF document.'];
-        }
-        if ($header4 !== '%PDF') {
-            return [null, 'That file is not a valid PDF document.'];
-        }
-    } elseif (in_array($ext, ['jpg', 'jpeg'], true)) {
-        if ($mime !== '' && stripos($mime, 'jpeg') === false && stripos($mime, 'jpg') === false && stripos($mime, 'octet-stream') === false) {
-            return [null, 'That file is not a valid JPEG image.'];
-        }
-        if (substr($header4, 0, 3) !== "\xFF\xD8\xFF") {
-            return [null, 'That file is not a valid JPEG image.'];
-        }
-    } elseif ($ext === 'png') {
-        if ($mime !== '' && stripos($mime, 'png') === false && stripos($mime, 'octet-stream') === false) {
-            return [null, 'That file is not a valid PNG image.'];
-        }
-        if ($header4 !== "\x89PNG") {
-            return [null, 'That file is not a valid PNG image.'];
-        }
+    if ($header !== '%PDF') {
+        return [null, 'That file is not a valid PDF document.'];
     }
 
     $baseFolder = rtrim(UPLOAD_DIR, '/\\');
@@ -125,7 +84,7 @@ function save_upload_proof(?array $file, bool $required = false): array
 
     $uniqueId = bin2hex(random_bytes(8));
     $timestamp = time();
-    $stored = "record_{$uniqueId}_{$timestamp}.{$ext}";
+    $stored = "record_{$uniqueId}_{$timestamp}.pdf";
 
     $destPath = $baseFolder . '/' . $stored;
 
@@ -178,16 +137,8 @@ if (upload_flow_applies($user)) {
     }
     $flowState = upload_flow_state($user);
 
-    $scopeParam = (string)($_GET['scope'] ?? '');
-    if ($scopeParam !== '' && in_array($scopeParam, ['faculty', 'student', 'institutional'], true)) {
-        if (!$isFacultyHome || in_array($scopeParam, ['faculty', 'institutional'], true)) {
-            upload_flow_store($user, ['data_type' => $scopeParam]);
-            $flowState['data_type'] = $scopeParam;
-        }
-    }
-
-    // Faculty upload Faculty Data or Institutional Achievements, default to faculty
-    if ($isFacultyHome && $flowState['year'] !== null && !in_array($flowState['data_type'], ['faculty', 'institutional'], true)) {
+    // Faculty only ever upload Faculty Data, so that choice is made for them.
+    if ($isFacultyHome && $flowState['year'] !== null && $flowState['data_type'] !== 'faculty') {
         upload_flow_store($user, ['data_type' => 'faculty']);
         $flowState['data_type'] = 'faculty';
     }
@@ -200,12 +151,10 @@ if (upload_flow_applies($user)) {
                 redirect('/upload.php');
             }
             if ($isFacultyHome) {
-                $curDt = in_array($flowState['data_type'], ['faculty', 'institutional'], true) ? $flowState['data_type'] : 'faculty';
-                upload_flow_store($user, ['data_type' => $curDt]);
+                upload_flow_store($user, ['data_type' => 'faculty']);
                 $backType = (string) ($_POST['return_type'] ?? '');
-                $facAllowed = upload_flow_faculty_types($curDt);
-                redirect('/upload.php?type=' . urlencode(in_array($backType, $facAllowed, true)
-                    ? $backType : $facAllowed[0]));
+                redirect('/upload.php?type=' . urlencode(in_array($backType, upload_flow_faculty_types(), true)
+                    ? $backType : upload_flow_faculty_types()[0]));
             }
             redirect('/upload.php?step=data-type');
         }
@@ -232,13 +181,9 @@ if (upload_flow_applies($user)) {
                     flash('error', "Academic year {$flowState['stale_year']} is no longer open for uploads. Switched to the current academic year.");
                 }
                 $homeYear = in_array($activeYear, upload_flow_years(), true) ? $activeYear : (upload_flow_years()[0] ?? $activeYear);
-                $homeDt = in_array($flowState['data_type'], ['faculty', 'institutional'], true) ? $flowState['data_type'] : 'faculty';
-                upload_flow_store($user, ['year' => $homeYear, 'data_type' => $homeDt]);
-                $flowState['year'] = $homeYear;
-                $flowState['data_type'] = $homeDt;
+                upload_flow_store($user, ['year' => $homeYear, 'data_type' => 'faculty']);
             }
-            $targetFacTypes = upload_flow_faculty_types($flowState['data_type'] ?? 'faculty');
-            redirect('/upload.php?type=' . urlencode($targetFacTypes[0]));
+            redirect('/upload.php?type=' . urlencode(upload_flow_faculty_types()[0]));
         }
         if (($_GET['step'] ?? '') === 'data-type' && $flowState['year'] !== null) {
             $uploadFlowStep = 'data_type';
@@ -260,12 +205,10 @@ if (upload_flow_applies($user)) {
             $flowState['year'] = $activeYear;
             upload_flow_store($user, ['year' => $activeYear]);
         }
-        $dType = upload_flow_data_type_of($directType) ?: 'faculty';
-        if (!$isFacultyHome || in_array($dType, ['faculty', 'institutional'], true)) {
-            if ($flowState['data_type'] !== $dType) {
-                $flowState['data_type'] = $dType;
-                upload_flow_store($user, ['data_type' => $dType]);
-            }
+        if ($flowState['data_type'] === null) {
+            $dType = upload_flow_data_type_of($directType) ?: 'faculty';
+            $flowState['data_type'] = $dType;
+            upload_flow_store($user, ['data_type' => $dType]);
         }
     }
 
@@ -277,7 +220,7 @@ if (upload_flow_applies($user)) {
         redirect('/upload.php');
     }
     if ($flowState['data_type'] === null) {
-        flash('error', 'Please choose Faculty Data, Student Data, or Institutional Achievements before uploading data.');
+        flash('error', 'Please choose Faculty Data or Student Data before uploading data.');
         redirect('/upload.php?step=data-type');
     }
 
@@ -289,47 +232,34 @@ if (upload_flow_applies($user)) {
     $typeKeys  = $flowDefs[$flowState['data_type']]['types'];
     $askedType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
     if ($isFacultyHome) {
-        $typeKeys = upload_flow_faculty_types($flowState['data_type']);
+        $typeKeys = upload_flow_faculty_types();
         // A record uploaded before student types left the faculty list stays editable.
         if ($flowEditId > 0 && $askedType === $flowEditType && isset($types[$askedType]) && !in_array($askedType, $typeKeys, true)) {
             $typeKeys[] = $askedType;
         }
         if (!in_array($askedType, $typeKeys, true)) {
             flash('error', isset($types[$askedType])
-                ? $types[$askedType]['label'] . ' is not permitted for faculty uploads.'
+                ? $types[$askedType]['label'] . ' is not part of faculty uploads.'
                 : 'Invalid record type.');
-            redirect('/upload.php?type=' . urlencode($typeKeys[0]));
+            redirect('/upload.php');
         }
     }
     if (!in_array($askedType, $typeKeys, true)) {
         $belongsTo = upload_flow_data_type_of($askedType);
         flash('error', $belongsTo !== null
             ? $types[$askedType]['label'] . ' is part of ' . $flowDefs[$belongsTo]['label'] . '. You are uploading '
-<<<<<<< HEAD
                 . $uploadFlow['label'] . ' for ' . $uploadFlow['year'] . '. Use "Back to Data Type" to switch.'
-=======
-              . $uploadFlow['label'] . ' for ' . $uploadFlow['year'] . '. Use scope switcher to switch.'
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
             : 'Invalid record type.');
         redirect('/upload.php?type=' . urlencode($typeKeys[0]));
     }
 }
 
-<<<<<<< HEAD
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
-=======
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
-    csrf_check();
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     $type = (string) input('record_type');
     $nav  = (string) input('nav', 'add');   
 
-    $targetYear = $uploadFlow ? $uploadFlow['year'] : trim((string) input('academic_year', $activeYear));
-    if (!is_valid_academic_year($targetYear)) {
-        flash('error', "Invalid or future academic year '{$targetYear}'. Submissions for future years are rejected.");
-        redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
-    }
-    if ($user['role'] !== 'Admin' && academic_year_is_locked($targetYear)) {
+    $targetYear = trim((string) input('academic_year', $activeYear));
+    if ($user['role'] !== 'Admin' && (academic_year_is_locked($activeYear) || academic_year_is_locked($targetYear))) {
         flash('error', "Academic year {$targetYear} cycle is currently locked by the Administrator. New record submissions for {$targetYear} are frozen.");
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
@@ -345,35 +275,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         redirect('/upload.php');
     }
 
-    // Role-based permission check: Faculty can only upload permitted institutional types
-    if ($user['role'] === 'Faculty') {
-        if (str_starts_with($type, 'inst_') && !in_array($type, upload_flow_faculty_institutional_types(), true)) {
-            flash('error', 'Faculty accounts are not authorized to upload ' . ($types[$type]['label'] ?? $type) . '.');
-            redirect('/upload.php');
-        }
-    }
-
-    // Department authorization enforcement
-    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
-        $_POST['department'] = $user['department'];
-    } elseif ($user['role'] === 'Coordinator' && !empty($user['department'])) {
-        $subDept = trim((string)($_POST['department'] ?? ''));
-        if ($subDept !== '' && !department_names_match($subDept, $user['department'])) {
-            flash('error', 'You are not authorized to submit data for department: ' . htmlspecialchars($subDept));
-            redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
-        }
-        $_POST['department'] = $user['department'];
-    }
-
     foreach ($_POST as $k => $v) {
         if (substr($k, -6) === '_other') {
             $base = substr($k, 0, -6);
-            if (($_POST[$base] ?? '') === 'Others') {
-                if (trim((string) $v) !== '') {
-                    $_POST[$base] = trim((string) $v);
-                } else {
-                    $_POST[$base] = ''; // Missing "Others" specification must fail validation
-                }
+            if (($_POST[$base] ?? '') === 'Others' && trim((string) $v) !== '') {
+                $_POST[$base] = trim((string) $v);
             }
         }
     }
@@ -576,307 +482,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             'resource_person' => 'Chief Guest / Resource Person',
             'report_link' => 'Web Link to Event Report',
         ],
-        'inst_pass_percentage' => [
-            'department' => 'Department',
-            'programme' => 'Programme / Course',
-            'class_year' => 'Class / Year',
-            'semester' => 'Semester',
-        ],
-        'inst_college_rank' => [
-            'department' => 'Department',
-            'rank_val' => 'Rank in Anna University',
-            'university' => 'University',
-        ],
-        'inst_student_rank' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'university_rank' => 'University Rank',
-        ],
-        'inst_student_cgpa' => [
-            'department' => 'Department',
-            'class_year' => 'Class / Year',
-            'semester' => 'Semester',
-            'reg_no' => 'Register Number',
-            'student_name' => 'Student Name',
-            'cgpa' => 'CGPA',
-        ],
-        'inst_placement_mnc' => [
-            'department' => 'Department',
-            'batch' => 'Batch',
-            'reg_no' => 'Register Number',
-            'student_name' => 'Student Name',
-            'company_name' => 'Company Name',
-            'placement_status' => 'Placement Status',
-        ],
-        'inst_publications' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'authors' => 'Author(s)',
-            'title' => 'Title of Paper',
-            'journal_name' => 'Journal Name',
-            'publication_type' => 'Publication Type',
-        ],
-        'inst_books' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'book_title' => 'Book Title',
-            'authors' => 'Author(s)',
-            'publisher' => 'Publisher',
-            'isbn' => 'ISBN',
-        ],
-        'inst_book_chapters' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'chapter_title' => 'Chapter Title',
-            'book_title' => 'Book Title',
-            'authors' => 'Author(s)',
-            'publisher' => 'Publisher',
-            'isbn' => 'ISBN',
-        ],
-        'inst_patents_published' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'inventors' => 'Inventor(s)',
-            'title' => 'Title of Patent / Design',
-            'patent_number' => 'Patent / Design Number',
-            'patent_type' => 'Patent Type',
-        ],
-        'inst_patents_granted' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'inventors' => 'Inventor(s)',
-            'title' => 'Title of Patent',
-            'patent_number' => 'Patent Number',
-            'grant_date' => 'Grant Date',
-            'granting_authority' => 'Granting Authority',
-        ],
-        'inst_copyrights' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'title' => 'Title / Work',
-            'copyright_number' => 'Copyright Number',
-            'registration_date' => 'Registration Date',
-        ],
-        'inst_sponsored_research' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name / PI',
-            'project_title' => 'Project Title',
-            'funding_agency' => 'Funding Agency',
-            'project_amount' => 'Project Amount (in Lakhs)',
-        ],
-        'inst_consultancy' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'project_title' => 'Project Title',
-            'client_org' => 'Client / Organization',
-            'project_amount' => 'Project Amount (in Lakhs)',
-        ],
-        'inst_research_centre' => [
-            'department' => 'Department',
-            'recognition_name' => 'Recognition Name',
-            'recognizing_authority' => 'Recognizing Authority',
-        ],
-        'inst_ipr_programmes' => [
-            'department' => 'Department',
-            'programme_type' => 'Programme Type',
-            'programme_title' => 'Programme Title',
-            'programme_date' => 'Date',
-            'organizer' => 'Organizer',
-        ],
-        'inst_faculty_certifications' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'course_name' => 'Course Name',
-            'provider' => 'Platform / Provider',
-            'completion_date' => 'Completion Date',
-        ],
-        'inst_mou_interactions' => [
-            'department' => 'Department',
-            'industry_name' => 'Industry Name',
-            'interaction_type' => 'Type',
-            'interaction_date' => 'Date',
-        ],
-        'inst_internships' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'company' => 'Company / Industry',
-            'start_date' => 'Start Date',
-            'end_date' => 'End Date',
-            'duration_weeks' => 'Duration in Weeks',
-        ],
-        'inst_summer_trainings' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'organization' => 'Organization',
-            'start_date' => 'Start Date',
-            'end_date' => 'End Date',
-            'duration_days' => 'Duration (Days / Weeks)',
-            'training_title' => 'Training Title',
-        ],
-        'inst_student_projects' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'project_title' => 'Project Title',
-            'project_guide' => 'Project Guide',
-            'youtube_url' => 'YouTube URL',
-        ],
-        'inst_faculty_participations' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'programme_type' => 'Programme Type',
-            'programme_title' => 'Programme Title',
-            'organizer' => 'Organizer',
-            'start_date' => 'Start Date',
-            'end_date' => 'End Date',
-        ],
-        'inst_society_memberships' => [
-            'department' => 'Department',
-            'faculty_name' => 'Faculty Name',
-            'society_name' => 'Professional Society',
-            'membership_number' => 'Membership Number',
-        ],
-        'inst_newsletters' => [
-            'department' => 'Department',
-            'newsletter_title' => 'Newsletter Title',
-            'editor_coordinator' => 'Editor / Coordinator',
-        ],
-        'inst_student_certifications' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'course_name' => 'Course Name',
-            'platform' => 'Platform',
-            'completion_date' => 'Completion Date',
-        ],
-        'inst_nss_events' => [
-            'department' => 'Department',
-            'event_name' => 'Event Name',
-            'event_date' => 'Date',
-            'venue' => 'Venue',
-            'coordinator' => 'Coordinator',
-        ],
-        'inst_inter_inst_within' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'event_name' => 'Event Name',
-            'host_institution' => 'Host Institution',
-            'location' => 'Location',
-            'event_date' => 'Date',
-        ],
-        'inst_inter_inst_outside' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'event_name' => 'Event Name',
-            'host_institution' => 'Host Institution',
-            'state_name' => 'State',
-            'city' => 'City',
-            'event_date' => 'Date',
-        ],
-        'inst_inter_inst_awards' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'event_name' => 'Event Name',
-            'host_institution' => 'Host Institution',
-            'location' => 'Location',
-            'award_medal' => 'Award / Medal',
-            'event_date' => 'Date',
-        ],
-        'inst_value_added_courses' => [
-            'department' => 'Department',
-            'course_name' => 'Course Name',
-            'organizer' => 'Organizer',
-            'start_date' => 'Start Date',
-            'end_date' => 'End Date',
-        ],
-        'inst_sports_state' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'sport' => 'Sport',
-            'event_name' => 'Event Name',
-            'event_date' => 'Date',
-            'venue' => 'Venue',
-        ],
-        'inst_sports_national' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'sport' => 'Sport',
-            'event_name' => 'Event Name',
-            'event_date' => 'Date',
-            'venue' => 'Venue',
-        ],
-        'inst_innovation_events' => [
-            'department' => 'Department',
-            'event_name' => 'Event Name',
-            'event_type' => 'Event Type',
-            'event_date' => 'Date',
-            'coordinator' => 'Coordinator',
-        ],
-        'inst_iic_activities' => [
-            'department' => 'Department',
-            'activity_name' => 'Activity Name',
-            'activity_type' => 'Activity Type',
-            'activity_date' => 'Date',
-            'organizer' => 'Organizer',
-            'coordinator' => 'Coordinator',
-        ],
-        'inst_website_updations' => [
-            'department' => 'Department',
-            'update_title' => 'Update Title',
-            'page_section' => 'Page / Section Updated',
-            'updated_by' => 'Updated By',
-            'update_date' => 'Update Date',
-        ],
-        'inst_google_ratings' => [
-            'department' => 'Department',
-            'google_rating' => 'Google Rating',
-            'measurement_date' => 'Measurement Date',
-        ],
-        'inst_startups' => [
-            'department' => 'Department',
-            'startup_name' => 'Startup Name',
-            'founders' => 'Founder(s)',
-            'founder_type' => 'Founder Type',
-        ],
-        'inst_alumni_chapters' => [
-            'department' => 'Department',
-            'chapter_name' => 'Chapter Name',
-            'location' => 'Location',
-            'coordinator' => 'Coordinator',
-            'formation_date' => 'Formation Date',
-        ],
-        'inst_awards_recognitions' => [
-            'department' => 'Department',
-            'person_name' => 'Person Name',
-            'recognition_type' => 'Recognition Type',
-            'organization' => 'Organization',
-            'title_award' => 'Title / Award',
-        ],
-        'inst_spoken_tutorials' => [
-            'department' => 'Department',
-            'student_name' => 'Student Name',
-            'reg_no' => 'Register Number',
-            'course_name' => 'Course Name',
-            'tutorial_name' => 'Tutorial Name',
-            'completion_date' => 'Completion Date',
-        ],
     ];
 
     if ($user['role'] === 'Faculty' && !empty($user['department'])) {
         $_POST['department'] = $user['department'];
     }
-<<<<<<< HEAD
-=======
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     $validationErrors = [];
     $expectedFields = $requiredMap[$type] ?? [];
 
@@ -890,13 +500,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             continue;
         }
 
-        if (in_array($fKey, ['doi', 'journal_link', 'document_link', 'certificate_link', 'report_link', 'appointment_order_link', 'book_url', 'chapter_url', 'newsletter_url', 'site_url'], true)) {
+        if (in_array($fKey, ['doi', 'journal_link', 'document_link', 'certificate_link', 'report_link', 'appointment_order_link'], true)) {
             if (!preg_match('/^https?:\/\/.+/i', $val)) {
                 $validationErrors[] = "{$fLabel} must be a valid URL starting with http:// or https://.";
             }
         }
 
-        if (in_array($fKey, ['conference_date', 'publication_date', 'from_date', 'to_date', 'signed_date', 'valid_upto', 'event_date', 'activity_date', 'registration_date', 'achievement_date', 'programme_date', 'completion_date', 'formation_date', 'measurement_date'], true)) {
+        if (in_array($fKey, ['conference_date', 'publication_date', 'from_date', 'to_date', 'signed_date', 'valid_upto', 'event_date', 'activity_date'], true)) {
             if (strtotime($val) === false) {
                 $validationErrors[] = "{$fLabel} must be a valid date.";
             }
@@ -906,102 +516,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (!is_numeric($val) || (int)$val < 1) {
                 $validationErrors[] = "{$fLabel} must be a number greater than 0.";
             }
-        }
-    }
-
-    // Category-specific validations
-    if ($type === 'inst_pass_percentage') {
-        $rawRows = $_POST['rows'] ?? [];
-        if (!is_array($rawRows) || empty($rawRows)) {
-            $validationErrors[] = 'At least one subject pass percentage row is required.';
-        } else {
-            $validRowCount = 0;
-            foreach ($rawRows as $idx => $row) {
-                $rSubCode = trim((string)($row['subject_code'] ?? ''));
-                $rSubName = trim((string)($row['subject_name'] ?? ''));
-                $rTot     = trim((string)($row['total_members'] ?? ''));
-                $rPas     = trim((string)($row['passed_members'] ?? ''));
-
-                if ($rSubCode === '' && $rSubName === '' && $rTot === '' && $rPas === '') {
-                    continue;
-                }
-
-                $rNum = $idx + 1;
-                if ($rSubCode === '') $validationErrors[] = "Row #{$rNum}: Subject Code is required.";
-                if ($rSubName === '') $validationErrors[] = "Row #{$rNum}: Subject Name is required.";
-                if ($rTot === '' || !is_numeric($rTot) || (int)$rTot < 1) {
-                    $validationErrors[] = "Row #{$rNum}: Total Members must be a positive number.";
-                }
-                if ($rPas === '' || !is_numeric($rPas) || (int)$rPas < 0) {
-                    $validationErrors[] = "Row #{$rNum}: Passed Members must be 0 or greater.";
-                }
-                if (is_numeric($rTot) && is_numeric($rPas) && (int)$rPas > (int)$rTot) {
-                    $validationErrors[] = "Row #{$rNum}: Passed Members cannot exceed Total Members.";
-                }
-                $validRowCount++;
-            }
-            if ($validRowCount === 0 && empty($validationErrors)) {
-                $validationErrors[] = 'Please enter at least one valid subject row.';
-            }
-        }
-    } elseif ($type === 'inst_student_cgpa') {
-        $cgpa = (float)($_POST['cgpa'] ?? 0);
-        if ($cgpa <= 7.5) {
-            $validationErrors[] = 'CGPA must be strictly above 7.5 for this category (entered: ' . htmlspecialchars((string)($_POST['cgpa'] ?? '')) . ').';
-        }
-        $_POST['eligibility'] = 'Eligible (Above 7.5)';
-    } elseif ($type === 'inst_internships') {
-        $durationWeeks = (float)($_POST['duration_weeks'] ?? 0);
-        $startDate = trim((string)($_POST['start_date'] ?? ''));
-        $endDate = trim((string)($_POST['end_date'] ?? ''));
-        if ($durationWeeks < 4) {
-            $validationErrors[] = 'Duration in Weeks must be 4 weeks or above for this category.';
-        }
-        if ($startDate !== '' && $endDate !== '') {
-            $sTime = strtotime($startDate);
-            $eTime = strtotime($endDate);
-            if ($sTime !== false && $eTime !== false) {
-                $diffDays = ($eTime - $sTime) / 86400;
-                if ($diffDays < 28) {
-                    $validationErrors[] = 'Internship dates indicate less than 4 weeks (minimum 28 days required).';
-                }
-            }
-        }
-    } elseif ($type === 'inst_summer_trainings') {
-        $durationDays = trim((string)($_POST['duration_days'] ?? ''));
-        $startDate = trim((string)($_POST['start_date'] ?? ''));
-        $endDate = trim((string)($_POST['end_date'] ?? ''));
-        if (is_numeric($durationDays) && (float)$durationDays >= 28) {
-            $validationErrors[] = 'Summer training duration must be less than 4 weeks (less than 28 days).';
-        }
-        if ($startDate !== '' && $endDate !== '') {
-            $sTime = strtotime($startDate);
-            $eTime = strtotime($endDate);
-            if ($sTime !== false && $eTime !== false) {
-                $diffDays = ($eTime - $sTime) / 86400;
-                if ($diffDays >= 28) {
-                    $validationErrors[] = 'Summer training dates indicate 4 weeks or more. This category is strictly for training less than 4 weeks.';
-                }
-            }
-        }
-    } elseif ($type === 'inst_student_projects') {
-        $yt = trim((string)($_POST['youtube_url'] ?? ''));
-        if ($yt === '' || !preg_match('/^https?:\/\/.+/i', $yt) || (!str_contains($yt, 'youtube.com') && !str_contains($yt, 'youtu.be'))) {
-            $validationErrors[] = 'YouTube URL must be a valid YouTube link starting with http:// or https://.';
-        }
-    } elseif ($type === 'inst_google_ratings') {
-        $gr = (float)($_POST['google_rating'] ?? 0);
-        if ($gr < 1.0 || $gr > 5.0) {
-            $validationErrors[] = 'Google Rating must be a numeric value between 1.0 and 5.0.';
-        }
-    } elseif ($type === 'inst_sports_state') {
-        $_POST['level_secured'] = 'State';
-    } elseif ($type === 'inst_sports_national') {
-        $_POST['level_secured'] = 'National';
-    } elseif (in_array($type, ['inst_sponsored_research', 'inst_consultancy'], true)) {
-        $amt = trim((string)($_POST['project_amount'] ?? ''));
-        if ($amt === '' || !is_numeric($amt) || (float)$amt < 0) {
-            $validationErrors[] = 'Project Amount (in Lakhs) must be a non-negative numeric value.';
         }
     }
 
@@ -1015,152 +529,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
 
     if (!empty($validationErrors)) {
-        if ($proofStored !== null) {
-            @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
-            @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
-        }
         flash('error', implode('<br>', $validationErrors));
         redirect('/upload.php?type=' . $type);
-    }
-
-    if ($type === 'inst_pass_percentage') {
-        $pdo = db();
-        $parentDept  = trim((string)($_POST['department'] ?? ''));
-        $parentProg  = trim((string)($_POST['programme'] ?? ''));
-        $parentClass = trim((string)($_POST['class_year'] ?? ''));
-        $parentSem   = trim((string)($_POST['semester'] ?? ''));
-        $examSession = trim((string)($_POST['exam_session'] ?? ''));
-
-        $rawRows = $_POST['rows'] ?? [];
-        $validRows = [];
-        $totalSubjects = 0;
-        $totalStudents = 0;
-        $totalPassed = 0;
-        $seenCodes = [];
-
-        foreach ($rawRows as $idx => $row) {
-            $rowSubCode = trim((string)($row['subject_code'] ?? ''));
-            $rowSubName = trim((string)($row['subject_name'] ?? ''));
-            $rowRegNo   = trim((string)($row['reg_no'] ?? ''));
-            $rowStudent = trim((string)($row['student_name'] ?? ''));
-            $rowPassStat= trim((string)($row['pass_status'] ?? 'Pass'));
-            $rowTotal   = (int)($row['total_members'] ?? 0);
-            $rowPassed  = (int)($row['passed_members'] ?? 0);
-            $rowClass   = trim((string)($row['class_year'] ?? '')) ?: $parentClass;
-            $rowSem     = trim((string)($row['semester'] ?? '')) ?: $parentSem;
-
-            if ($rowSubCode === '' && $rowSubName === '' && $rowTotal === 0 && $rowPassed === 0) {
-                continue;
-            }
-
-            $passPct = $rowTotal > 0 ? round(($rowPassed / $rowTotal) * 100, 2) : 0.00;
-
-            $validRows[] = [
-                'class_year'      => $rowClass,
-                'semester'        => $rowSem,
-                'subject_code'    => $rowSubCode,
-                'subject_name'    => $rowSubName,
-                'reg_no'          => $rowRegNo,
-                'student_name'    => $rowStudent,
-                'pass_status'     => in_array($rowPassStat, ['Pass', 'Fail'], true) ? $rowPassStat : 'Pass',
-                'total_members'   => $rowTotal,
-                'passed_members'  => $rowPassed,
-                'pass_percentage' => $passPct,
-                'sort_order'      => $idx,
-            ];
-
-            if (!in_array($rowSubCode, $seenCodes, true)) {
-                $seenCodes[] = $rowSubCode;
-                $totalSubjects++;
-            }
-            $totalStudents += $rowTotal;
-            $totalPassed   += $rowPassed;
-        }
-
-        $overallPassPct = $totalStudents > 0 ? round(($totalPassed / $totalStudents) * 100, 2) : 0.00;
-        $initialStatus = 'Submitted';
-        if (in_array($user['role'], ['Coordinator', 'HoD', 'Admin'], true)) {
-            $initialStatus = 'Approved';
-        }
-
-        $editId = (int) input('edit_id');
-        $pdo->beginTransaction();
-        try {
-            if ($editId > 0) {
-                $updSql = "UPDATE inst_pass_percentage SET department = ?, programme = ?, class_year = ?, semester = ?, exam_session = ?, total_subjects = ?, total_students = ?, total_passed = ?, overall_pass_percentage = ?, proof_file = COALESCE(?, proof_file), status = 'Resubmitted', review_remark = ?, updated_at = NOW() WHERE id = ?";
-                $pdo->prepare($updSql)->execute([$parentDept, $parentProg, $parentClass, $parentSem, $examSession, $totalSubjects, $totalStudents, $totalPassed, $overallPassPct, $proofStored, 'Corrected and resubmitted by ' . ($user['name'] ?? ''), $editId]);
-                $parentId = $editId;
-                $pdo->prepare("DELETE FROM inst_pass_percentage_rows WHERE pass_percentage_id = ?")->execute([$parentId]);
-            } else {
-                $insSql = "INSERT INTO inst_pass_percentage (academic_year, department, programme, class_year, semester, exam_session, total_subjects, total_students, total_passed, overall_pass_percentage, proof_file, status, created_by, approved_by, approved_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-                $pdo->prepare($insSql)->execute([
-                    $targetYear,
-                    $parentDept,
-                    $parentProg,
-                    $parentClass,
-                    $parentSem,
-                    $examSession,
-                    $totalSubjects,
-                    $totalStudents,
-                    $totalPassed,
-                    $overallPassPct,
-                    $proofStored,
-                    $initialStatus,
-                    $user['id'],
-                    ($initialStatus === 'Approved' ? (int)$user['id'] : null),
-                    ($initialStatus === 'Approved' ? date('Y-m-d H:i:s') : null)
-                ]);
-                $parentId = (int)$pdo->lastInsertId();
-            }
-
-            $rowStmt = $pdo->prepare("INSERT INTO inst_pass_percentage_rows (pass_percentage_id, class_year, semester, subject_code, subject_name, reg_no, student_name, pass_status, total_members, passed_members, pass_percentage, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-            foreach ($validRows as $vr) {
-                $rowStmt->execute([
-                    $parentId,
-                    $vr['class_year'],
-                    $vr['semester'],
-                    $vr['subject_code'],
-                    $vr['subject_name'],
-                    $vr['reg_no'],
-                    $vr['student_name'],
-                    $vr['pass_status'],
-                    $vr['total_members'],
-                    $vr['passed_members'],
-                    $vr['pass_percentage'],
-                    $vr['sort_order']
-                ]);
-            }
-            $pdo->commit();
-
-            if ($editId > 0) {
-                record_workflow_audit($type, $editId, 'COORDINATOR_RESUBMITTED', $user, 'Unlocked for Edit', 'Resubmitted', 'Resubmitted corrected pass percentage record', null, $parentDept, $targetYear);
-            } else {
-                if ($initialStatus === 'Submitted') {
-                    record_workflow_audit($type, $parentId, 'FACULTY_SUBMITTED', $user, null, 'Submitted', 'Submitted pass percentage record', null, $parentDept, $targetYear);
-                }
-            }
-
-            flash('success', 'University Pass Percentage recorded successfully (' . count($validRows) . ' subject row(s)).');
-            $_SESSION['submitted_draft_type'] = $type;
-
-            if ($nav === 'next') {
-                $idx  = array_search($type, $typeKeys, true);
-                $dest = $typeKeys[$idx + 1] ?? $type;
-                redirect('/upload.php?type=' . $dest);
-            }
-            redirect('/upload.php?type=' . $type);
-        } catch (\PDOException $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
-            if ($proofStored !== null) {
-                @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
-                @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
-            }
-            error_log('inst_pass_percentage insert error: ' . $e->getMessage());
-            flash('error', 'Database error saving University Pass Percentage: ' . $e->getMessage());
-            redirect('/upload.php?type=' . $type);
-        }
     }
 
     $table = $types[$type]['table'];
@@ -1171,9 +541,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $tableColumns = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_COLUMN);
         $allowed      = array_diff($tableColumns, $protected);
 
-        $fields = [];
-        $values = [];
-        $placeholders = [];
+    $fields = [];
+    $values = [];
+    $placeholders = [];
 
     $editId = (int) input('edit_id');
     if ($editId > 0) {
@@ -1253,16 +623,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     }
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
-    if ($initialStatus === 'Approved') {
-        if (in_array('approved_at', $tableColumns, true)) {
-            $fields[] = 'approved_at'; $values[] = date('Y-m-d H:i:s'); $placeholders[] = '?';
-        }
-        if (in_array('approved_by', $tableColumns, true)) {
-            $fields[] = 'approved_by'; $values[] = (int)$user['id']; $placeholders[] = '?';
-        }
-    }
     if (in_array('academic_year', $tableColumns, true)) {
-        $fields[] = 'academic_year'; $values[] = $targetYear; $placeholders[] = '?';
+        $fields[] = 'academic_year'; $values[] = $activeYear; $placeholders[] = '?';
     }
     if (in_array('created_at', $tableColumns, true)) {
         $fields[] = 'created_at';
@@ -1274,12 +636,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $_POST['department'] = $user['department'];
         }
 
-        foreach ($_POST as $k => $v) {
-            if (!in_array($k, $allowed, true) || $v === '') continue;
-            $fields[] = $k;
-            $values[] = $v;
-            $placeholders[] = '?';
-        }
+    foreach ($_POST as $k => $v) {
+        if (!in_array($k, $allowed, true) || $v === '') continue;
+        $fields[] = $k;
+        $values[] = $v;
+        $placeholders[] = '?';
+    }
 
         if (in_array('department', $allowed, true) && !in_array('department', $fields, true) && !empty($user['department'])) {
             $fields[] = 'department';
@@ -1313,45 +675,26 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             );
         }
 
-<<<<<<< HEAD
         // An upload that lands Approved refreshes any target it feeds.
-=======
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
         if ($initialStatus === 'Approved' || !record_requires_approval($type)) {
             require_once __DIR__ . '/models/Target.php';
             sync_target_achieved_for_type($type);
         }
 
-        if (!record_requires_approval($type)) {
-            $where = 'submitted';
-        } elseif ($initialStatus === 'Approved') {
-            $where = 'recorded';
-        } else {
-            $where = 'submitted for review';
-        }
-        flash('success', 'Record ' . $where . ' successfully.');
+        $where = $initialStatus === 'Approved' ? 'recorded' : 'submitted for review';
+        flash('success', $types[$type]['label'] . ' ' . $where . '.');
         $_SESSION['submitted_draft_type'] = $type;
     } catch (\PDOException $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
-        }
         if ($proofStored !== null) {
             @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
             @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
         }
-        error_log('upload.php database operation failed: ' . $e->getMessage());
-        flash('error', 'Sorry, that record could not be saved due to a database error. Please check the fields and try again.');
-        redirect('/upload.php?type=' . $type);
-    } catch (\Throwable $e) {
-        if ($pdo->inTransaction()) {
-            $pdo->rollBack();
+        error_log('upload.php insert failed: ' . $e->getMessage());
+        $err = 'Sorry, that record could not be saved. Please check the fields and try again.';
+        if (defined('APP_DEBUG') && APP_DEBUG) {
+            $err .= ' [' . $e->getMessage() . ']';
         }
-        if ($proofStored !== null) {
-            @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
-            @unlink(rtrim(UPLOAD_DIR, '/\\') . '/proofs/' . $proofStored);
-        }
-        error_log('upload.php operation failed: ' . $e->getMessage());
-        flash('error', 'Sorry, an error occurred while processing the record. Please try again.');
+        flash('error', $err);
         redirect('/upload.php?type=' . $type);
     }
 
@@ -1367,13 +710,8 @@ $effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
 $myRecords = my_records($user['id']);
 $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
 unset($_SESSION['submitted_draft_type']);
-
-$tabsToShow = $uploadFlow ? array_intersect_key($types, array_flip($typeKeys)) : $types;
-$defaultType = $typeKeys[0] ?? 'journal';
-$selectedType = trim((string)($_GET['type'] ?? $defaultType));
-if (!isset($types[$selectedType]) || !in_array($selectedType, $typeKeys, true)) {
-    $selectedType = $defaultType;
-}
+$selectedType = trim((string)($_GET['type'] ?? 'journal'));
+if (!isset($types[$selectedType])) $selectedType = 'journal';
 
 $editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? 0));
 $editRecord = null;
@@ -1404,48 +742,10 @@ $isLast    = $selIdx === count($typeKeys) - 1;
 $nextType  = $typeKeys[$selIdx + 1] ?? null;
 $prevType  = $selIdx > 0 ? $typeKeys[$selIdx - 1] : null;
 
-<<<<<<< HEAD
 /**
  * Render department input: locked readonly for Faculty (preserving their department),
  * and selectable for other authorized roles (Admin, etc.).
  */
-=======
-$editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? 0));
-$editRecord = null;
-if ($editId > 0 && isset($types[$selectedType])) {
-    $table = $types[$selectedType]['table'];
-    $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE id = ?");
-    $stmt->execute([$editId]);
-    $rec = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($rec) {
-        $canEdit = false;
-        if (in_array($user['role'], ['Admin', 'Dean'], true)) {
-            $canEdit = true;
-        } elseif ($user['role'] === 'Faculty') {
-            $canEdit = ((int)($rec['created_by'] ?? 0) === (int)$user['id']);
-        } elseif (in_array($user['role'], ['Coordinator', 'HoD'], true)) {
-            $canEdit = ((int)($rec['created_by'] ?? 0) === (int)$user['id']) 
-                || (!empty($user['department']) && department_names_match($rec['department'] ?? '', $user['department']));
-        }
-        if ($canEdit) {
-            $editRecord = $rec;
-            if (!empty($editRecord['academic_year'])) {
-                $effectiveYear = $editRecord['academic_year'];
-            }
-        }
-    }
-}
-
-$passPercentageRows = [];
-if ($selectedType === 'inst_pass_percentage' && $editId > 0) {
-    try {
-        $rStmt = db()->prepare("SELECT * FROM inst_pass_percentage_rows WHERE pass_percentage_id = ? ORDER BY sort_order ASC, id ASC");
-        $rStmt->execute([$editId]);
-        $passPercentageRows = $rStmt->fetchAll(PDO::FETCH_ASSOC);
-    } catch (\Throwable $e) {}
-}
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 if (!function_exists('render_dept_field')) {
 function render_dept_field(array $user, array $departments, string $label = 'Department', bool $required = false): void
 {
@@ -1492,13 +792,9 @@ require __DIR__ . '/inc/header.php';
         <span class="badge badge-primary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
           <?= icon('calendar', 14) ?> Academic Year: <strong><?= e($uploadFlow['year']) ?></strong>
         </span>
-        <div style="display:inline-flex;align-items:center;background:rgba(255,255,255,0.85);border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:2px;gap:2px">
-          <a href="<?= e(url('upload.php?scope=faculty')) ?>" class="btn btn-sm <?= ($uploadFlow['data_type'] === 'faculty') ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px;padding:4px 10px;height:28px">Faculty Data</a>
-          <?php if (!upload_flow_is_faculty($user)): ?>
-            <a href="<?= e(url('upload.php?scope=student')) ?>" class="btn btn-sm <?= ($uploadFlow['data_type'] === 'student') ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px;padding:4px 10px;height:28px">Student Data</a>
-          <?php endif; ?>
-          <a href="<?= e(url('upload.php?scope=institutional')) ?>" class="btn btn-sm <?= ($uploadFlow['data_type'] === 'institutional') ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px;padding:4px 10px;height:28px">Institutional Achievements</a>
-        </div>
+        <span class="badge badge-secondary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
+          <?= icon($uploadFlow['icon'] ?? 'folder', 14) ?> Scope: <strong><?= e($uploadFlow['label']) ?></strong>
+        </span>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <?php if (upload_flow_is_faculty($user)): ?>
@@ -1527,14 +823,10 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 <?php endif; ?>
-<<<<<<< HEAD
-=======
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 <!-- Type selector tabs -->
 <div class="card" style="margin-bottom:16px">
   <div class="card-body js-category-nav-container" style="padding:8px 16px 14px; overflow-x:auto; white-space:nowrap; position:relative; scrollbar-width:thin;">
-    <?php foreach ($tabsToShow as $key => $t): ?>
+    <?php foreach ($types as $key => $t): ?>
       <a href="<?= e(url('upload.php?type=' . $key)) ?>"
          class="btn btn-sm js-category-tab <?= $selectedType === $key ? 'btn-primary active' : 'btn-ghost' ?>"
          data-type="<?= e($key) ?>"
@@ -1679,7 +971,7 @@ require __DIR__ . '/inc/header.php';
       <?= icon('lock', 20) ?>
     </div>
     <div style="flex:1">
-      <div style="font-weight:700;font-size:13px">Academic Year <?= e($effectiveYear) ?> Cycle is Locked</div>
+      <div style="font-weight:700;font-size:13px">Academic Year <?= e($activeYear) ?> Cycle is Locked</div>
       <div style="font-size:12px;color:#B91C1C;margin-top:2px">The Administrator has frozen submissions for this academic year cycle following an Executive Meeting. <?= $user['role'] === 'Admin' ? 'As an Admin, you retain upload authority.' : 'New submissions are frozen across all roles until unlocked by an Administrator.' ?></div>
     </div>
   </div>
@@ -1758,18 +1050,6 @@ require __DIR__ . '/inc/header.php';
         <?php if (!empty($_GET['source'])): ?>
           <input type="hidden" name="source" value="<?= e($_GET['source']) ?>">
         <?php endif; ?>
-<<<<<<< HEAD
-=======
-
-        <?php if ($editRecord && ($editRecord['status'] ?? '') === 'Unlocked for Edit'): ?>
-          <div style="background:#EFF6FF;border:1px solid #BFDBFE;border-left:4px solid #1D4ED8;color:#1E40AF;padding:12px 16px;border-radius:8px;margin-bottom:18px;font-size:13px">
-            <strong>Editing Unlocked Record #<?= $editId > 0 ? $editId : (int)$editRecord['id'] ?>:</strong> An edit request was approved by Dean/Admin. Please make the required corrections and click "Save & Resubmit Record".
-            <?php if (!empty($editRecord['review_remark'])): ?>
-              <div style="margin-top:4px;font-size:12px;color:#1D4ED8"><strong>Instructions:</strong> <?= e($editRecord['review_remark']) ?></div>
-            <?php endif; ?>
-          </div>
-        <?php endif; ?>
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
       <?php endif; ?>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
@@ -1803,7 +1083,7 @@ require __DIR__ . '/inc/header.php';
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label>
-          <input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
+          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
         </div>
         <?php render_exam_session_field($effectiveYear); ?>
       <?php endif; ?>
@@ -1993,8 +1273,6 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Sponsorship <span class="req">*</span> <span class="card-sub">(if any, write N/A if none)</span></label><input class="input" name="sponsorship" required></div>
         <div class="field" style="grid-column:span 2"><label>Chief Guest / Resource Person <span class="req">*</span> <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person" required></div>
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
-      <?php elseif (str_starts_with($selectedType, 'inst_')): ?>
-        <?php require __DIR__ . '/views/upload_institutional_forms.php'; ?>
       <?php endif; ?>
 
         <!-- Proof / attachment (optional) — carried onto the report -->
@@ -2038,16 +1316,14 @@ require __DIR__ . '/inc/header.php';
           <?php if ($prevType): ?>
             <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
           <?php endif; ?>
-          <button type="submit" name="nav" value="submit" id="btnSubmitReview" class="btn btn-primary"><?= icon('check') ?> Submit and Review</button>
           <?php if (!$isLast): ?>
-            <button type="submit" name="nav" value="next" class="btn btn-outline">
+            <button type="submit" name="nav" value="next" class="btn btn-primary">
               Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
             </button>
+          <?php else: ?>
+            <button type="submit" name="nav" value="submit" class="btn btn-primary"><?= icon('check') ?> Submit for Review</button>
           <?php endif; ?>
-<<<<<<< HEAD
 
-=======
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
         <?php endif; ?>
       </div>
 
@@ -2084,45 +1360,6 @@ require __DIR__ . '/inc/header.php';
         </script>
       <?php endif; ?>
     </form>
-
-    <?php if ($editRecord): ?>
-    <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      var record = <?= json_encode($editRecord) ?>;
-      var form = document.querySelector('form[enctype="multipart/form-data"]');
-      if (!form || !record) return;
-      for (var key in record) {
-        if (!record.hasOwnProperty(key)) continue;
-        if (key.indexOf('_') === 0 || key === 'id' || key === 'status' || key === 'proof_file' || key === 'created_at' || key === 'updated_at') continue;
-        var val = record[key];
-        if (val === null || val === undefined) continue;
-        var el = form.elements[key];
-        if (el) {
-          if (el.type === 'select-one' || el.tagName === 'SELECT') {
-            var matched = false;
-            for (var i = 0; i < el.options.length; i++) {
-              if (el.options[i].value == val || el.options[i].text == val) {
-                el.selectedIndex = i;
-                matched = true;
-                break;
-              }
-            }
-            if (!matched && el.classList.contains('js-other')) {
-              el.value = 'Others';
-              var otherBox = form.elements[key + '_other'];
-              if (otherBox) {
-                otherBox.value = val;
-                otherBox.style.display = '';
-              }
-            }
-          } else if (el.type !== 'file' && el.type !== 'hidden') {
-            el.value = val;
-          }
-        }
-      }
-    });
-    </script>
-    <?php endif; ?>
 
     <script>
       document.querySelectorAll('.js-other').forEach(function (sel) {
@@ -2322,56 +1559,13 @@ require __DIR__ . '/inc/header.php';
           }
         }
 
-        function updateDraftUI(draft) {
-          var badge = document.querySelector('.js-form-status-badge');
-          var draftRow = document.getElementById('js-draft-table-row');
-          var draftTitle = document.getElementById('js-draft-table-title');
-          var emptyRow = document.getElementById('js-empty-table-row');
-          var hasData = hasDraftData(draft);
-
-          if (badge) {
-            var badgeText = serverDraft ? (serverDraft.status || 'Draft') : 'Draft';
-            badge.textContent = badgeText;
-            badge.className = 'badge badge-neutral js-form-status-badge';
-          }
-
-          if (draftRow) {
-            if (hasData) {
-              var title = draft ? (draft.paper_title || draft.title || draft.event_title || draft.course_title || draft.activity_name || draft.student_name || draft.candidate_name || draft.programme || draft.book_title || draft.project_title || draft.course_name || draft.startup_name || draft.chapter_name || draft.update_title || draft.recognition_name || draft.rank_val || '(Draft in progress)') : '(Draft in progress)';
-              if (draftTitle) draftTitle.textContent = title;
-              draftRow.style.display = '';
-              if (emptyRow) emptyRow.style.display = 'none';
-            } else {
-              draftRow.style.display = 'none';
-              if (emptyRow) emptyRow.style.display = '';
-            }
-          }
-        }
-
         form.addEventListener('input', function () {
           if (isRestoring) return;
           debouncedSaveDraft();
-          updateDraftUI(getDraftData());
         });
         form.addEventListener('change', function () {
           if (isRestoring) return;
           saveDraft();
-          updateDraftUI(getDraftData());
-        });
-
-        // Ensure browser constraint validation triggers on submit and highlights missing fields
-        // Includes duplicate click protection against repeated submissions
-        form.addEventListener('submit', function (e) {
-          if (!form.checkValidity()) {
-            e.preventDefault();
-            form.reportValidity();
-            return;
-          }
-          if (form.dataset.submitting === '1') {
-            e.preventDefault();
-            return;
-          }
-          form.dataset.submitting = '1';
         });
 
         document.querySelectorAll('.js-category-tab').forEach(function (tab) {
@@ -2439,10 +1633,6 @@ require __DIR__ . '/inc/header.php';
 
 <!-- My recent records -->
 <?php
-<<<<<<< HEAD
-=======
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
   $mTypeRaw = isset($_GET['mtype']) ? (string) $_GET['mtype'] : null;
   if ($mTypeRaw === null) {
       $mType = $selectedType;
@@ -2453,10 +1643,6 @@ require __DIR__ . '/inc/header.php';
   } else {
       $mType = $selectedType;
   }
-<<<<<<< HEAD
-=======
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
   $mStatus = (string) input('mstatus');
   if (!in_array($mStatus, ['Draft', 'HOD Pending', 'Dean Pending', 'Submitted', 'Approved', 'Rejected'], true)) { $mStatus = ''; }
   $mQ      = trim((string) input('mq'));
@@ -2469,20 +1655,20 @@ require __DIR__ . '/inc/header.php';
     $shown = array_filter($shown, fn($r) => mb_strpos(mb_strtolower((string) ($r['_title'] ?? '')), $needle) !== false);
   }
   $shown = array_values($shown);
-  $mFilter = $mType !== $selectedType || $mStatus !== '' || $mQ !== '';
+  $mFilter = $mType !== '' || $mStatus !== '' || $mQ !== '';
 ?>
-<?php $mActive = ($mType !== $selectedType ? 1 : 0) + ($mStatus !== '' ? 1 : 0) + ($mQ !== '' ? 1 : 0); ?>
+<?php $mActive = ($mType !== '' ? 1 : 0) + ($mStatus !== '' ? 1 : 0) + ($mQ !== '' ? 1 : 0); ?>
 <div class="card">
   <div class="card-head">
     <div><div class="card-title">My Submissions</div>
-      <div class="card-sub"><?= $mFilter ? count($shown) . ' of ' . count($myRecords) : count($shown) . ' ' . e($types[$selectedType]['label'] ?? '') . ' records' ?></div></div>
+      <div class="card-sub"><?= $mFilter ? count($shown) . ' of ' . count($myRecords) : count($myRecords) . ' total' ?> records</div></div>
   </div>
   <form method="get" class="fbar fbar-flush">
     <input type="hidden" name="type" value="<?= e($selectedType) ?>">
 
     <label class="fb-field"><span class="fb-k">Record type</span>
       <select name="mtype" onchange="this.form.submit()">
-        <option value="" <?= $mType === '' ? 'selected' : '' ?>>All Categories</option>
+        <option value="">All</option>
         <?php foreach ($types as $key => $t): ?>
           <option value="<?= e($key) ?>" <?= $mType === $key ? 'selected' : '' ?>><?= e($t['label']) ?></option>
         <?php endforeach; ?>
@@ -2507,28 +1693,19 @@ require __DIR__ . '/inc/header.php';
     <span class="fbar-end">
       <?php if ($mActive): ?>
         <span class="fbar-count"><?= (int) ($mActive) ?> active</span>
-        <a class="fbar-clear" href="<?= e(url('upload.php?type=' . $selectedType)) ?>"><?= icon('x', 13) ?> Reset to Category</a>
+        <a class="fbar-clear" href="<?= e(url('upload.php?type=' . $selectedType)) ?>"><?= icon('x', 13) ?> Clear all</a>
       <?php else: ?>
-        <span class="fbar-note">Showing <?= e($types[$selectedType]['label'] ?? 'this category') ?></span>
+        <span class="fbar-note">All your submissions</span>
       <?php endif; ?>
     </span>
   </form>
   <div class="card-body" style="padding:0">
-    <div class="table-wrap"><table class="data"><thead><tr>
-      <th style="padding-left:24px">Record</th><th>Type</th><th>Proof</th><th>Status</th><th>Submitted</th>
-    </tr></thead><tbody>
-    <tr id="js-draft-table-row" style="display:none; background:rgba(241,245,249,0.7); border-left:3px solid var(--muted, #94A3B8);">
-      <td style="padding-left:24px"><div id="js-draft-table-title" style="font-weight:500; font-style:italic; color:var(--muted, #64748B); max-width:350px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">(Unsaved Draft)</div></td>
-      <td><span class="badge badge-neutral"><?= e($types[$selectedType]['label']) ?></span></td>
-      <td><span class="card-sub">—</span></td>
-      <td><span class="badge badge-neutral">Draft</span></td>
-      <td class="card-sub" id="js-draft-table-time"><em>In progress (Draft)</em></td>
-    </tr>
     <?php if (empty($shown)): ?>
-      <tr id="js-empty-table-row"><td colspan="5" style="text-align:center; padding:32px; color:var(--muted, #64748B);">
-        <div style="font-size:13px; font-weight:500;"><?= $mFilter ? 'No submissions match these filters' : ($mType !== '' ? 'No submissions yet for ' . e($types[$mType]['label'] ?? $types[$selectedType]['label']) : 'No submissions yet') ?></div>
-      </td></tr>
+      <div class="empty"><div class="ic"><?= icon($mFilter ? 'filter' : 'upload', 20) ?></div><p><?= $mFilter ? 'No submissions match these filters' : 'No submissions yet' ?></p></div>
     <?php else: ?>
+      <div class="table-wrap"><table class="data"><thead><tr>
+        <th style="padding-left:24px">Record</th><th>Type</th><th>Proof</th><th>Status</th><th>Submitted</th>
+      </tr></thead><tbody>
       <?php foreach (array_slice($shown, 0, 50) as $r):
         $statusBadge = ['Draft'=>'neutral','Submitted'=>'info','HOD Pending'=>'info','Dean Pending'=>'warning','Approved'=>'success','Rejected'=>'danger'];
       ?>
@@ -2546,9 +1723,8 @@ require __DIR__ . '/inc/header.php';
           </td>
           <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>"><?= e(time_ago($r['created_at'])) ?></td>
         </tr>
-      <?php endforeach; ?>
+      <?php endforeach; ?></tbody></table></div>
     <?php endif; ?>
-    </tbody></table></div>
   </div>
 </div>
 

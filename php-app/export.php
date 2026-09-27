@@ -1,6 +1,5 @@
 <?php
 /**
-<<<<<<< HEAD
  * Export and print-ready renderers for records.
  *
  * Emits the current list of records — matching whatever filters are in
@@ -17,19 +16,6 @@
  *   to         YYYY-MM-DD
  *   year       academic year (e.g. 2024-25)
  *   em         all | em1 | em2
-=======
- * Download the report as a file.
- *
- * reports.php links here with the same filters, e.g.
- *     export.php?format=excel&department=CSBS&status=Approved
- *
- * Three formats, all made with plain PHP - no extra libraries needed:
- *   csv    -> a .csv file (opens in Excel or Google Sheets)
- *   excel  -> an HTML table saved as .xls (Excel opens it and keeps the layout)
- *   word   -> an HTML page saved as .doc (Word opens it and keeps the layout)
- *
- * For PDF: open the Print view from reports.php and choose "Save as PDF".
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
  */
 
 require_once __DIR__ . '/inc/auth.php';
@@ -40,9 +26,7 @@ require_once __DIR__ . '/models/ExecutiveMeeting.php';
 
 $user = require_login();
 
-// ---- Read the same filters the Reports page uses ------------------------
 $format     = strtolower(trim((string) input('format', 'csv')));
-<<<<<<< HEAD
 $type       = trim((string) input('type', '')) ?: null;
 $category   = trim((string) input('category', '')) ?: null;
 $from       = parse_date_input(input('from', ''));   
@@ -57,26 +41,10 @@ $emFilter = $emCtx['em'];
 $status     = trim((string) input('status', '')) ?: null;
 if (!in_array($status, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) {
     $status = null;
-=======
-$department = trim((string) input('department', '')) ?: null;
-$status     = trim((string) input('status', '')) ?: null;
-$type       = trim((string) input('type', '')) ?: null;
-$from       = parse_date_input(input('from', ''));   // period start (YYYY-MM-DD)
-$to         = parse_date_input(input('to', ''));     // period end
-// FEAT-07: narrow to one Executive Meeting (EM1/EM2), same as the Reports page.
-// A meeting window belongs to one academic year, so the year is pinned too;
-// with "all" em_filter_year() is null and this export is unchanged.
-$emFilter    = em_filter_value(input('em'));
-[$from, $to] = em_intersect_period($emFilter, $from, $to);
-
-if (!in_array($format, ['csv', 'excel', 'word', 'pdf'], true)) {
-    $format = 'csv';
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 }
 
 $department = user_department_scope($user, input('department'));
 
-<<<<<<< HEAD
 // Handle 'academic_record' or 'all' type alias
 $isAllAcademic = ($type === null || $type === 'academic_record' || $type === 'all');
 $queryType     = $isAllAcademic ? null : $type;
@@ -91,16 +59,6 @@ if ($category !== null && isset($categories[$category])) {
 
 // ---- Naming and header metadata ----------------------------------------
 $scopeLabel = $department ? department_full_name($department) : 'ALL DEPARTMENTS';
-=======
-// ---- Get the records (role scope is applied inside) ---------------------
-$records = report_records($user, $department, $status, $type, $from, $to, em_filter_year($emFilter));
-
-// ---- Things that appear in the report heading ---------------------------
-$isOversight = in_array($user['role'], ['Admin', 'Director', 'Dean'], true);
-$scopeLabel  = $isOversight
-    ? department_full_name($department ?: 'ALL DEPARTMENTS')
-    : department_full_name($user['department'] ?: 'ALL DEPARTMENTS');
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 
 $types = record_types();
 if ($type && isset($types[$type])) {
@@ -111,7 +69,6 @@ if ($type && isset($types[$type])) {
     $typeLabel = 'All Academic Records';
 }
 
-<<<<<<< HEAD
 $today = date('d.m.Y');
 
 if ($from && $to) {
@@ -122,13 +79,6 @@ if ($from && $to) {
     $periodLabel = 'Up to ' . date('d.m.Y', strtotime($to));
 } else {
     $periodLabel = '';
-=======
-// A human-readable period line for the heading, when a range was chosen.
-$periodLabel = null;
-if ($from || $to) {
-    $fmt = fn(?string $d) => $d ? date('d.m.Y', strtotime($d)) : '…';
-    $periodLabel = 'From ' . $fmt($from) . ' to ' . $fmt($to);
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 }
 
 $safeType  = preg_replace('/[^A-Za-z0-9\-]/', '_', $typeLabel);
@@ -138,7 +88,6 @@ $fileStem  = 'ATTS_' . $safeType . '_' . $safeScope . '_' . date('Ymd');
 $reportTitle = strtoupper($typeLabel);
 
 // The columns, in order. Same for every format.
-<<<<<<< HEAD
 $columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date', 'Proof'];
 
 /** Build one row of values for a record. */
@@ -184,25 +133,6 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
         }
     }
 
-=======
-$columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date'];
-
-/**
- * Write one line of the CSV file.
- *
- * PHP 8.4 asks every caller to say which escape character to use. An empty
- * string means "none", which is what Excel and Google Sheets expect: a quote
- * inside a field is doubled ("") rather than backslashed.
- */
-function csv_line($handle, array $fields): void
-{
-    fputcsv($handle, $fields, ',', '"', '');
-}
-
-/** Build one row of plain values for a record. */
-function export_row(array $record, int $serial): array
-{
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     return [
         $serial,
         $record['_title'],
@@ -215,18 +145,12 @@ function export_row(array $record, int $serial): array
     ];
 }
 
-
-/* ========================================================================
-   CSV
-   ===================================================================== */
 if ($format === 'csv') {
-
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fileStem . '.csv"');
 
     $out = fopen('php://output', 'w');
 
-    // Excel needs this marker to read UTF-8 (é, ñ, …) correctly.
     fwrite($out, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
     csv_line($out, [REPORT_INSTITUTION . ' - Internal Quality Assurance Cell (IQAC)']);
@@ -252,13 +176,6 @@ if ($format === 'csv') {
     exit;
 }
 
-
-/* ========================================================================
-   Excel (.xls) and Word (.doc)
-
-   Both open an HTML table, so the markup below is shared. Only the
-   content type and the file extension change.
-   ===================================================================== */
 if ($format === 'excel') {
     require_once __DIR__ . '/inc/xlsx_writer.php';
     $exportRows = [];
@@ -276,17 +193,7 @@ if ($format === 'excel') {
     foreach (report_signoff_excel_rows($sigCols, count($columns)) as $sRow) {
         $exportRows[] = $sRow;
     }
-<<<<<<< HEAD
     $xlsxData = class_exists('SimpleXlsxWriter')
-=======
-    $metaLines = [
-        'MOHAMED SATHAK ENGINEERING COLLEGE',
-        $reportTitle,
-        'Department: ' . $scopeLabel,
-        'Report Date: ' . $today
-    ];
-    $xlsxData = (class_exists('ZipArchive') && class_exists('SimpleXlsxWriter'))
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
         ? SimpleXlsxWriter::createXlsx($columns, $exportRows, 'Academic Records', $metaLines)
         : '';
 
@@ -308,7 +215,6 @@ if ($format === 'excel') {
     header('Content-Type: text/html; charset=UTF-8');
 }
 
-// Same letterhead, grid and sign-off as every other report (inc/report_layout).
 $meta = [['Department', $scopeLabel]];
 if ($periodLabel) {
     $meta[] = ['Period', $periodLabel];
@@ -320,13 +226,8 @@ report_document_head($reportTitle . ' Report');
 ?>
 
 <?php if ($format === 'pdf'): ?>
-  <div class="pdf-bar" style="position:sticky;top:0;background:#1A2547;color:#fff;padding:10px 16px;
-       display:flex;align-items:center;justify-content:space-between;font-family:Arial,sans-serif;margin:-1.4cm -1.2cm 16px">
-    <span style="font-size:13px">Use your browser's print dialog and choose <strong>Save as PDF</strong>.</span>
-    <button onclick="window.print()" style="background:#FF4F01;color:#fff;border:0;border-radius:6px;
-       padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer">Print / Save as PDF</button>
-  </div>
-  <style>@media print { .pdf-bar { display:none !important; } }</style>
+  <?php report_pdf_bar($reportTitle . ' Report', [$scopeLabel, $periodLabel,
+      number_format(count($records)) . ' records']); ?>
 <?php endif; ?>
 
 <?php
@@ -361,11 +262,5 @@ report_letterhead($reportTitle, $meta);
   </table>
 
 <?php
-<<<<<<< HEAD
 report_signoff(report_signoff_columns($scopeLabel));
 report_document_foot();
-=======
-report_signoff(['HOD' . ($scopeLabel !== 'ALL DEPARTMENTS' ? ' / ' . $scopeLabel : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
-report_document_foot();
-
->>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
