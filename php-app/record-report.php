@@ -19,17 +19,6 @@ if (!in_array($format, ['word', 'excel', 'pdf'], true)) {
     $format = 'word';
 }
 
-<<<<<<< HEAD
-// Scope: oversight roles choose a department (or all); everyone else is pinned
-// to their own. This mirrors report_records()'s own scoping.
-$isOversight  = in_array($user['role'], ['Admin', 'Director', 'Principal', 'Dean'], true);
-$department   = $isOversight ? (trim((string) input('department')) ?: null) : ($user['department'] ?? null);
-// The system's active academic year — never the client-supplied ?year=,
-// which a hand-built URL could set to any year (this page is reachable
-// directly, not only through reports.php's own, already year-locked links).
-$year         = active_academic_year();
-$singleDept   = $department !== null;
-=======
 $isOversight  = user_can_choose_department($user);
 $department   = user_department_scope($user, input('department'));
 
@@ -38,7 +27,6 @@ $emCtx   = em_resolve_filter_context($rawYear, input('em'));
 $year    = $emCtx['year'];
 $em      = $emCtx['em'];
 $singleDept = $department !== null;
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
 $status = trim((string) input('status')) ?: null;
 if (!in_array($status, ['Draft', 'Submitted', 'Approved', 'Rejected'], true)) { $status = null; }
@@ -179,9 +167,5 @@ report_letterhead($mainTitle, $meta, $headingLines);
   </table>
 
 <?php
-<<<<<<< HEAD
-report_signoff(['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
-=======
 report_signoff(report_signoff_columns($singleDept ? $deptFullName : null));
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 report_document_foot();

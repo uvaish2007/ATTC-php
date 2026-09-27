@@ -349,12 +349,7 @@ require __DIR__ . '/inc/header.php';
   foreach ($scoped as $r) { $typeCounts[$r['_type_key']] = ($typeCounts[$r['_type_key']] ?? 0) + 1; }
   $totalScoped = count($scoped);
 
-<<<<<<< HEAD
-  // The target proforma + metrics summary scope to the effective department.
-  $effDept = $isOversight ? $department : ($isHod ? ($user['department'] ?: null) : null);
-=======
   $effDept = $department;
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   $tStmt   = db()->prepare('SELECT COUNT(*) FROM targets' . ($effDept ? ' WHERE department = ?' : ''));
   $tStmt->execute($effDept ? [$effDept] : []);
   $targetCount = (int) $tStmt->fetchColumn();
@@ -823,12 +818,9 @@ require __DIR__ . '/inc/header.php';
                 <?= icon('eye', 13) ?> View only
               </a>
             <?php endif; ?>
-<<<<<<< HEAD
             <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
               <?= icon('chevron-up', 13) ?> <span class="cat-btn-txt">Collapse</span>
             </button>
-=======
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
           </div>
         </div>
         <div class="rec-cat-body" id="cat-body-<?= e($ckey) ?>">
@@ -948,12 +940,13 @@ require __DIR__ . '/inc/header.php';
       if (body) {
         const isHidden = body.hidden;
         body.hidden = !isHidden;
-<<<<<<< HEAD
+        const btn = catHead.querySelector('.js-cat-btn');
         if (btn) {
           const txt = btn.querySelector('.cat-btn-txt');
           if (txt) txt.textContent = isHidden ? 'Collapse' : 'Expand';
-          btn.querySelector('svg').outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
-=======
+          const svg = btn.querySelector('svg');
+          if (svg) svg.outerHTML = isHidden ? '<?= icon('chevron-up', 13) ?>' : '<?= icon('chevron-down', 13) ?>';
+        }
         const anyOpen = Array.from(document.querySelectorAll('.rec-cat-body')).some(b => !b.hidden);
         const allCatsBtn = document.getElementById('toggleCatsAllBtn');
         if (allCatsBtn) {
@@ -962,7 +955,7 @@ require __DIR__ . '/inc/header.php';
           if (txt) txt.textContent = anyOpen ? 'Collapse categories' : 'Expand categories';
           const svg = allCatsBtn.querySelector('svg');
           if (svg) svg.outerHTML = anyOpen ? '<?= icon('chevron-up', 14) ?>' : '<?= icon('chevron-down', 14) ?>';
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
+        }
         }
       }
       return;
@@ -991,8 +984,6 @@ require __DIR__ . '/inc/header.php';
     const open = all.dataset.on !== '1';
     if (open) {
       document.querySelectorAll('.rec-cat-body').forEach(b => b.hidden = false);
-<<<<<<< HEAD
-=======
       const allCatsBtn = document.getElementById('toggleCatsAllBtn');
       if (allCatsBtn) {
         allCatsBtn.dataset.open = '1';
@@ -1001,7 +992,12 @@ require __DIR__ . '/inc/header.php';
         const svg = allCatsBtn.querySelector('svg');
         if (svg) svg.outerHTML = '<?= icon('chevron-up', 14) ?>';
       }
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
+      document.querySelectorAll('.js-cat-btn').forEach(btn => {
+        const txt = btn.querySelector('.cat-btn-txt');
+        if (txt) txt.textContent = 'Collapse';
+        const svg = btn.querySelector('svg');
+        if (svg) svg.outerHTML = '<?= icon('chevron-up', 13) ?>';
+      });
     }
     document.querySelectorAll('.rec-group').forEach(g => setGroup(g, open));
     all.dataset.on = open ? '1' : '0';

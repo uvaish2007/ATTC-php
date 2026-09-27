@@ -108,18 +108,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
         }
     }
 
-<<<<<<< HEAD
     // Calculate approved vs pending record counts across all record tables
-=======
-    $deptCount   = count($activeDepts);
-    $topCategory = null;
-    if (!empty($categoryCounts)) {
-        $sortedCats = $categoryCounts;
-        arsort($sortedCats);
-        $topCategory = array_key_first($sortedCats);
-    }
-
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     $approvedRecords = 0;
     $pendingRecords  = 0;
 
@@ -218,34 +207,6 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     $teamStmt->execute($teamParams);
     $registeredAccounts = (int) $teamStmt->fetchColumn();
 
-<<<<<<< HEAD
-    // Compute active departments count
-    if ($effDept) {
-        $deptCount = 1;
-    } else {
-        $deptCount = count($activeDepts);
-        if ($deptCount === 0) {
-            try {
-                $dStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
-                $deptCount = (int) $dStmt->fetchColumn();
-            } catch (\Exception $e) {
-                $deptCount = 0;
-            }
-        }
-    }
-
-    // Determine top category with highest submissions
-    $topCategory = '';
-    $maxCatCount = 0;
-    foreach ($categoryCounts as $catLabel => $cnt) {
-        if ($cnt > $maxCatCount) {
-            $maxCatCount = $cnt;
-            $topCategory = $catLabel;
-        }
-    }
-
-
-=======
     $topCategory = '—';
     if (!empty($categoryCounts)) {
         $tempCounts = $categoryCounts;
@@ -256,10 +217,13 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
     if ($effDept) {
         $deptCount = 1;
     } else {
-        $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
-        $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
+        try {
+            $deptStmt = db()->query("SELECT COUNT(DISTINCT department) FROM users WHERE department IS NOT NULL AND department != ''");
+            $deptCount = max(count($activeDepts), (int) $deptStmt->fetchColumn());
+        } catch (\Exception $e) {
+            $deptCount = count($activeDepts);
+        }
     }
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     return [
         'totalFaculty'       => $totalFaculty,
         'totalAchievements'  => $totalAchievements,

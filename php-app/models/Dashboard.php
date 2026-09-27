@@ -1,13 +1,9 @@
 <?php
 require_once __DIR__ . '/../inc/db.php';
-<<<<<<< HEAD
-require_once __DIR__ . '/Target.php';   // academic_years()
-=======
 require_once __DIR__ . '/../inc/auth.php';
-require_once __DIR__ . '/Target.php';   
+require_once __DIR__ . '/Target.php';
 require_once __DIR__ . '/Record.php';
-require_once __DIR__ . '/ExecutiveMeeting.php';   
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
+require_once __DIR__ . '/ExecutiveMeeting.php';
 
 function all_metrics(): array
 {

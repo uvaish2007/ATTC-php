@@ -18,12 +18,8 @@ if (!$isAuthorized) {
     exit;
 }
 
-<<<<<<< HEAD
 // Active academic year or requested year filter
 $academicYear = trim((string) input('year', '')) ?: active_academic_year();
-=======
-$academicYear = active_academic_year();
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $format       = strtolower(trim((string) input('format', 'pdf')));
 if (!in_array($format, ['pdf', 'excel', 'word'], true)) {
     $format = 'pdf';
@@ -118,12 +114,9 @@ foreach ($deptData as $dGroup) {
     $totalPendingCollege  += $dGroup['pending'];
 }
 
-<<<<<<< HEAD
 /* ========================================================================
    1. EXCEL EXPORT (.xlsx) — Multi-Tab Consolidated Workbook
    ===================================================================== */
-=======
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 if ($format === 'excel') {
     $sheets = [];
     $sigCols = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
@@ -132,12 +125,6 @@ if ($format === 'excel') {
     $overviewHeaders = ['S.No', 'Department Name', 'Code', 'Total Records', 'Approved', 'Pending / Under Review', 'Targets Fixed / Achieved'];
     $overviewRows = [];
 
-<<<<<<< HEAD
-=======
-    $rows[] = ['INSTITUTIONAL SUMMARY BY DEPARTMENT', '', '', '', '', '', ''];
-    $rows[] = ['S.No', 'Department Name', 'Code', 'Total Records', 'Approved', 'Pending / Under Review', 'Targets Fixed / Achieved'];
-    
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     $sIdx = 1;
     foreach ($deptData as $dGroup) {
         $tInfo = $dGroup['targets'];
@@ -154,40 +141,8 @@ if ($format === 'excel') {
     }
     $overviewRows[] = ['TOTAL', 'College Total across All Departments', count($departments) . ' Depts', $totalRecordsCollege, $totalApprovedCollege, $totalPendingCollege, ''];
 
-<<<<<<< HEAD
     foreach (report_signoff_excel_rows($sigCols, count($overviewHeaders)) as $sRow) {
         $overviewRows[] = $sRow;
-=======
-    foreach ($deptData as $dGroup) {
-        $rows[] = ['DEPARTMENT: ' . strtoupper($dGroup['full_name']) . ' (' . $dGroup['info']['code'] . ')', '', '', '', '', '', ''];
-        
-        if (empty($dGroup['records'])) {
-            $rows[] = ['—', 'No records available for the selected Academic Year (' . $academicYear . ').', '', '', $dGroup['info']['code'], '—', '—', '—'];
-        } else {
-            $rows[] = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date', 'Proof'];
-            $rNo = 1;
-            foreach ($dGroup['records'] as $r) {
-                $pfile = trim((string)($r['proof_file'] ?? ''));
-                $pType = $r['_type_key'] ?? '';
-                $pId   = (int)($r['id'] ?? 0);
-                $proofVal = ($pfile !== '')
-                    ? ['text' => 'View Proof', 'url' => record_proof_url($pType, $pId, $pfile, false, true)]
-                    : '—';
-                $rows[] = [
-                    $rNo++,
-                    $r['_title'],
-                    $r['_type_label'],
-                    $r['_person'],
-                    $dGroup['info']['code'],
-                    $r['status'],
-                    date('d/m/Y', strtotime($r['created_at'])),
-                    $proofVal,
-                ];
-            }
-            $rows[] = ['Subtotal', count($dGroup['records']) . ' records', '', '', $dGroup['info']['code'], $dGroup['approved'] . ' Approved', '', ''];
-        }
-        $rows[] = ['', '', '', '', '', '', '', ''];
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     }
 
     $overviewMeta = [
@@ -198,7 +153,6 @@ if ($format === 'excel') {
         'Report Date: ' . $today,
     ];
 
-<<<<<<< HEAD
     $sheets[] = [
         'title'   => 'College Overview',
         'headers' => $overviewHeaders,
@@ -256,11 +210,6 @@ if ($format === 'excel') {
     }
 
     $xlsxData = SimpleXlsxWriter::createMultiSheetXlsx($sheets);
-=======
-    $rows = array_merge($rows, report_signoff_rows(null, count($headers)));
-
-    $xlsxData = SimpleXlsxWriter::createXlsx($headers, $rows, 'Consolidated Report', $metaLines);
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     if ($xlsxData !== '') {
         header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         header('Content-Disposition: attachment; filename="' . $fileStem . '.xlsx"');
@@ -390,11 +339,7 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
   <?php endforeach; ?>
 
   <div style="margin-top:30px;">
-<<<<<<< HEAD
-    <?php report_signoff(['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']); ?>
-=======
     <?php report_signoff(report_signoff_columns()); ?>
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
   </div>
 
 <?php

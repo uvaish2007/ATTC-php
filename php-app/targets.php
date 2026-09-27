@@ -170,16 +170,8 @@ $isHodOrDean = $isHod || $isDean;
 // Target creation and management permissions: Academic Year lock does NOT prevent target editing
 $canCreate   = in_array($user['role'], ['HoD', 'Admin'], true);
 $canManage   = in_array($user['role'], ['Admin', 'HoD', 'Dean'], true);
-<<<<<<< HEAD
-$deptFilter   = $isHod ? ($user['department'] ?? null) : (trim((string) ($_GET['department'] ?? '')) ?: null);
-// The academic year is never a page filter a visitor picks — every role
-// sees ONLY the system-wide active year's targets (section 8). $_GET['year']
-// is intentionally never read here.
-$yearFilter   = $activeYear;
-=======
 $deptFilter   = user_department_scope($user, $_GET['department'] ?? null);
 $yearFilter   = $selectedYear;
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 $statFilter   = in_array(($_GET['status'] ?? ''), target_statuses(), true) ? $_GET['status'] : null;
 $metricFilter = trim((string) ($_GET['metric'] ?? '')) ?: null;
 
@@ -229,23 +221,12 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <div class="actions">
-<<<<<<< HEAD
-    <?php // Academic year isn't counted here any more — it's always the active
-      // system year, not a filter a visitor chose. ?>
-    <?php $tgActive = ((!$isHod && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
-=======
     <?php $tgActive = (($selectedYear !== $activeYear) ? 1 : 0) + ((user_can_choose_department($user) && $deptFilter) ? 1 : 0) + ($statFilter ? 1 : 0) + ($metricFilter ? 1 : 0); ?>
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 
     <?php
       $reportBase = array_filter([
-<<<<<<< HEAD
-          'department' => $isHod ? null : $deptFilter,
-          'year'       => $yearFilter,
-=======
           'department' => $deptFilter,
           'year'       => $selectedYear,
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
       ]);
       $reportUrl = fn(string $fmt) => e(url('meeting-report.php') . '?' . http_build_query($reportBase + ['format' => $fmt]));
     ?>
@@ -271,9 +252,6 @@ require __DIR__ . '/inc/header.php';
 <form method="get" class="fbar">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
 
-<<<<<<< HEAD
-  <?php if (!$isHod): ?>
-=======
   <label class="fb-field"><span class="fb-k">Academic Year</span>
     <select name="year" onchange="this.form.submit()">
       <?php foreach ($years as $y): ?>
@@ -285,7 +263,6 @@ require __DIR__ . '/inc/header.php';
   </label>
 
   <?php if (user_can_choose_department($user)): ?>
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
     <label class="fb-field"><span class="fb-k">Department</span>
       <select name="department" onchange="this.form.submit()">
         <option value="">All</option>

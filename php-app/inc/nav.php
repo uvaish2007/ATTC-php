@@ -11,11 +11,8 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Announcement Archive', 'path' => 'announcements-archive.php', 'icon' => 'archive'],
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Academic Year',        'path' => 'academic-years.php',       'icon' => 'calendar'],
-<<<<<<< HEAD
-=======
             ['section' => 'Workspace', 'label' => 'EM Schedule Manager',  'path' => 'em-schedule.php',          'icon' => 'clock'],
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Users',                'path' => 'users.php',                'icon' => 'users'],
@@ -54,12 +51,8 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
-<<<<<<< HEAD
-            ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals'],
-=======
             ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target'],
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],

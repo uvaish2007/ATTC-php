@@ -181,9 +181,5 @@ report_document_head('Metrics Report');
   </table>
 
 <?php
-<<<<<<< HEAD
-report_signoff(['HOD' . ($deptLabel !== 'ALL DEPARTMENTS' ? ' / ' . $deptDisplay : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL']);
-=======
 report_signoff(report_signoff_columns($deptLabel !== 'ALL DEPARTMENTS' ? $deptDisplay : null));
->>>>>>> ac1da4e95ff4ae97513194a6ace61514656c41a6
 report_document_foot();
