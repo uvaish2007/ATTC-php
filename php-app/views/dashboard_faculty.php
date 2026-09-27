@@ -1,16 +1,27 @@
 <?php
+/**
+ * Faculty dashboard.
+ * Shows only the records this user submitted - nothing from other people.
+ *
+ * Comes from dashboard.php:  $user, $data
+ */
+
 $firstName = explode(' ', trim($user['name']))[0] ?: 'there';
 $stats     = $data['stats'];
 
+// One colour per status, shared with the doughnut and its legend below.
+// Same order and same colours as the master dashboard, so the two pages
+// never disagree about what "Approved" looks like.
 $statusColours = [
     'Approved'     => '#059669',
     'Dean Pending' => '#F59E0B',
     'HOD Pending'  => '#2563EB',
-    'Submitted'    => '#7C3AED',
+    'Submitted'    => '#2563EB',
     'Rejected'     => '#DC2626',
     'Draft'        => '#6B7FA8',
 ];
 
+// label, value, icon, icon colour, small caption
 $cards = [
     ['My Submissions', $stats['totalRecords'], 'file-stack', 'brand', "Records you've filed"],
     ['Approved',       $stats['approved'],     'check',      'navy',  'Accepted records'],
@@ -25,6 +36,7 @@ $cards = [
     <div class="sub">Your submissions and their status</div>
   </div>
   <div class="actions">
+<<<<<<< HEAD
     <form method="get" class="fbar fbar-bare">
       <label class="fb-field" title="Filter by Academic Year">
         <?= icon('calendar', 14) ?><span class="fb-k">Academic Year</span>
@@ -51,12 +63,16 @@ $cards = [
       </label>
     </form>
     <a class="btn btn-primary" href="<?= e(nav_href('upload.php?reset=1')) ?>">
+=======
+    <a class="btn btn-primary" href="<?= e(nav_href('upload.php')) ?>">
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
       <?= icon('upload') ?> Submit a Record
     </a>
   </div>
 </div>
 
-<?php require __DIR__ . '/em_status_card.php'; ?>
+<?php require __DIR__ . '/em_status_card.php'; // FEAT-07 ?>
+
 
 <!-- Four counters across the top -->
 <div class="stat-grid grid-4">
@@ -73,6 +89,7 @@ $cards = [
   <?php endforeach; ?>
 
 </div>
+
 
 <div class="mt-5 grid-2-1">
 
@@ -113,6 +130,7 @@ $cards = [
     </div>
   </div>
 
+
   <!-- How many of each kind -->
   <div class="card">
     <div class="card-head">
@@ -149,6 +167,7 @@ $cards = [
 
 </div>
 
+
 <!-- Where your records stand, and what to do next -->
 <div class="mt-5 grid-1-1">
 
@@ -178,7 +197,8 @@ $cards = [
 
         <div class="donut-wrap">
           <?php
-
+            // Each status is one dash on the ring: its length is that status's
+            // share of the circle, pushed round by however much came before it.
             $radius        = 60;
             $circumference = 2 * M_PI * $radius;
             $drawn         = 0;
@@ -224,6 +244,7 @@ $cards = [
       <?php endif; ?>
     </div>
   </div>
+
 
   <div class="card">
     <div class="card-head">

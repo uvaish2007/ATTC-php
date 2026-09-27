@@ -14,6 +14,7 @@
  */
 
 require_once __DIR__ . '/inc/auth.php';
+<<<<<<< HEAD
 require_once __DIR__ . '/inc/helpers.php';
 require_once __DIR__ . '/models/Record.php';
 require_once __DIR__ . '/models/Department.php';
@@ -148,6 +149,22 @@ if ($storedName === '' || stripos($storedName, 'upload.php') !== false) {
 $ext = strtolower(pathinfo($storedName, PATHINFO_EXTENSION));
 $allowedExts = ['pdf', 'png', 'jpg', 'jpeg', 'webp', 'gif', 'doc', 'docx', 'xls', 'xlsx'];
 if (!in_array($ext, $allowedExts, true)) {
+=======
+
+// Only authenticated users can access uploaded proofs
+$user = require_login();
+
+$fileParam = trim((string) input('file'));
+if ($fileParam === '') {
+    http_response_code(400);
+    exit('No proof file specified.');
+}
+
+// Security: strip path traversal and restrict to simple filenames
+$filename = basename($fileParam);
+$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+if ($ext !== 'pdf' && $ext !== 'png' && $ext !== 'jpg' && $ext !== 'jpeg') {
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     http_response_code(403);
     exit('Invalid proof document format.');
 }
@@ -156,8 +173,13 @@ $uploadsDir = rtrim(UPLOAD_DIR, '/\\');
 $proofsDir  = $uploadsDir . '/proofs';
 
 $candidatePaths = [
+<<<<<<< HEAD
     $proofsDir . '/' . $storedName,
     $uploadsDir . '/' . $storedName,
+=======
+    $uploadsDir . '/' . $filename,
+    $proofsDir . '/' . $filename,
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 ];
 
 $filePath = null;
@@ -263,17 +285,18 @@ if (!$filePath && $ext === 'pdf') {
 
 if (!$filePath || !is_file($filePath)) {
     http_response_code(404);
-    echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Proof Unavailable - ATTS IQAC</title>';
-    echo '<style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#F8FAFC;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1E293B}';
-    echo '.card{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:32px;max-width:440px;text-align:center;box-shadow:0 4px 6px -1px rgba(0,0,0,0.05)}';
-    echo 'h1{font-size:18px;margin:0 0 8px;color:#0F172A}p{font-size:14px;color:#64748B;margin:0 0 20px;line-height:1.5}';
-    echo 'a{display:inline-block;padding:8px 16px;background:#2563EB;color:#fff;text-decoration:none;border-radius:6px;font-size:13px;font-weight:500}</style></head><body>';
-    echo '<div class="card"><h1>Proof Unavailable</h1>';
-    echo '<p>The requested proof attachment could not be found on the server. Please contact your coordinator or administrator.</p>';
-    echo '<a href="javascript:window.close()">Close Window</a></div></body></html>';
+    echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Proof Not Found</title>';
+    echo '<style>body{font-family:sans-serif;background:#F8FAFC;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#1E293B}';
+    echo '.box{background:#fff;border:1px solid #E2E8F0;border-radius:12px;padding:32px;max-width:460px;text-align:center;box-shadow:0 10px 25px rgba(0,0,0,0.05)}';
+    echo 'h2{color:#DC2626;margin-top:0}.btn{display:inline-block;padding:10px 18px;background:#2563EB;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;margin-top:16px}</style></head><body>';
+    echo '<div class="box"><h2>Proof Document Missing</h2>';
+    echo '<p>The requested proof attachment (<code>' . htmlspecialchars($filename, ENT_QUOTES) . '</code>) is not found in the upload archive.</p>';
+    echo '<p style="font-size:13px;color:#64748B">The file may not have been attached during submission or was archived. The faculty or coordinator may re-upload the proof.</p>';
+    echo '<a class="btn" href="javascript:history.back()">Go Back</a></div></body></html>';
     exit;
 }
 
+<<<<<<< HEAD
 $knownMimes = [
     'pdf'  => 'application/pdf',
     'jpg'  => 'image/jpeg',
@@ -315,6 +338,25 @@ header('X-Content-Type-Options: nosniff');
 header('Cache-Control: private, max-age=3600');
 header('X-Frame-Options: SAMEORIGIN');
 header("Content-Security-Policy: frame-ancestors 'self'");
+=======
+$mimeMap = [
+    'pdf'  => 'application/pdf',
+    'png'  => 'image/png',
+    'jpg'  => 'image/jpeg',
+    'jpeg' => 'image/jpeg',
+];
+$mimeType = $mimeMap[$ext] ?? 'application/octet-stream';
+$disposition = input('download') ? 'attachment' : 'inline';
+
+header('Content-Type: ' . $mimeType);
+header('Content-Length: ' . filesize($filePath));
+header('Content-Disposition: ' . $disposition . '; filename="' . str_replace(['"', "\r", "\n"], '', $filename) . '"');
+header('Cache-Control: private, max-age=3600');
+header('X-Content-Type-Options: nosniff');
+header('X-Frame-Options: SAMEORIGIN');
+header("Content-Security-Policy: frame-ancestors 'self'");
+
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 
 readfile($filePath);
 exit;

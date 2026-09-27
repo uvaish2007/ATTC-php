@@ -64,7 +64,11 @@ if ($format === 'excel') {
         ];
     }
 
+<<<<<<< HEAD
     $sigCols = ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'] ?? null)), 'DEAN / ACADEMICS', 'PRINCIPAL'];
+=======
+    $sigCols = ['FACULTY MEMBER', 'HOD / ' . strtoupper(department_full_name($faculty['department'])), 'DEAN / ACADEMICS', 'PRINCIPAL'];
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
         $rows[] = $sRow;
     }

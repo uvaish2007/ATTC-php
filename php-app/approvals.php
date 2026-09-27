@@ -24,6 +24,7 @@ function approvals_resolve_proof(array $r): array {
 // Handle all review, edit request, and approval actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
+<<<<<<< HEAD
 
     if (input('process_action') !== '') {
         if (!$canProcess) {
@@ -38,11 +39,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         flash($ok ? 'success' : 'error', $msg);
         redirect('/approvals.php?tab=requests');
     }    if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
+=======
+    if ($user['role'] !== 'Admin' && academic_year_is_locked($activeYear)) {
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
         flash('error', "Academic year {$activeYear} cycle is locked by Administrator. Workflow actions are frozen for all roles.");
         redirect('/approvals.php');
     }
     $action = (string) input('review_action');
 
+<<<<<<< HEAD
     // SECURITY: HoD must never be able to approve or reject records directly!
     if ($user['role'] === 'HoD' && in_array($action, ['approve', 'reject', 'approve_all'], true)) {
         flash('error', 'HoD is a reviewer only and cannot approve or reject submitted records. To request changes, use Request Edit to Dean.');
@@ -50,6 +55,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'create_edit_request' || $action === 'request_edit') {
+=======
+    if ($action === 'create_edit_request') {
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
         if (!in_array($user['role'], ['HoD', 'Admin'], true)) {
             flash('error', 'Only HoD or Admin can submit an Edit Request.');
             redirect('/approvals.php');
@@ -139,6 +147,7 @@ $search = trim((string) input('q'));
 // Department scope
 $effectiveDept = $scopeDept ?? $filterDept;
 
+// Determine active tab
 $currentTab = (string) input('tab');
 $defaultTab = match ($user['role']) {
     'Dean'        => 'requests',
@@ -153,8 +162,10 @@ if ($user['role'] === 'HoD' && $currentTab === 'pending') {
     $currentTab = 'records';
 }
 
+// Fetch records and edit requests
 $records = pending_records($effectiveDept, null, $user['role'], $activeYear);
 
+// For HoD, Dean, or Admin viewing 'records' tab: fetch all records in scope
 if ($user['role'] === 'HoD' || ($user['role'] === 'Dean' && $currentTab === 'records') || ($user['role'] === 'Admin' && $currentTab === 'records')) {
     $allDeptRecords = [];
     $targetDept = ($user['role'] === 'HoD') ? $scopeDept : $filterDept;
@@ -171,18 +182,22 @@ if ($user['role'] === 'HoD' || ($user['role'] === 'Dean' && $currentTab === 'rec
     $records = $allDeptRecords;
 }
 
+// Edit Requests list
 if ($user['role'] === 'HoD') {
     $editRequests = edit_requests_list($scopeDept, null, null, (int)$user['id']);
 } elseif ($user['role'] === 'Coordinator') {
     $editRequests = edit_requests_list($scopeDept, 'Approved', null);
 } elseif ($user['role'] === 'Dean') {
     $editRequests = edit_requests_list($filterDept, null, null);
-} else {     $editRequests = edit_requests_list($filterDept, null, null);
+} else { // Admin
+    $editRequests = edit_requests_list($filterDept, null, null);
 }
 
+// Split pending requests and history for Dean/Admin
 $pendingRequests = array_values(array_filter($editRequests, fn($er) => $er['status'] === 'Pending'));
 $historyRequests = array_values(array_filter($editRequests, fn($er) => in_array($er['status'], ['Approved', 'Rejected', 'Completed'], true)));
 
+// Coordinator & Admin Authorized Corrections list (Records approved by Dean)
 $authorizedCorrections = [];
 if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
     foreach ($types as $key => $t) {
@@ -192,6 +207,7 @@ if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
             $cr['_type_label'] = $t['label'];
             $cr['_title']      = $cr[$t['title_col']] ?? '(untitled)';
             
+            // Fetch linked edit request for complete Dean authorization details
             try {
                 $erStmt = db()->prepare("SELECT * FROM edit_requests WHERE record_id = ? AND record_type = ? ORDER BY id DESC LIMIT 1");
                 $erStmt->execute([(int)$cr['id'], $key]);
@@ -250,7 +266,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 
   <!-- Role-specific tab navigation -->
-  <div style="display:flex; flex-wrap:wrap; gap:6px; background:#F1F5F9; padding:4px; border-radius:10px; border:1px solid #E2E8F0; max-width:100%">
+  <div style="display:flex; gap:6px; background:#F1F5F9; padding:4px; border-radius:10px; border:1px solid #E2E8F0">
     <?php if ($user['role'] === 'HoD'): ?>
       <a href="?tab=records" class="btn btn-sm <?= $currentTab === 'records' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('file-text', 14) ?> Department Records (<?= count($records) ?>)
@@ -278,7 +294,7 @@ require __DIR__ . '/inc/header.php';
       <a href="?tab=history" class="btn btn-sm <?= $currentTab === 'history' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('clock', 14) ?> Decision History (<?= count($historyRequests) ?>)
       </a>
-    <?php else: ?>
+    <?php else: // Admin ?>
       <a href="?tab=pending" class="btn btn-sm <?= $currentTab === 'pending' ? 'btn-primary' : 'btn-ghost' ?>" style="font-size:12px; height:32px; border-radius:8px">
         <?= icon('check-circle', 14) ?> Pending Records
       </a>
@@ -324,7 +340,8 @@ require __DIR__ . '/inc/header.php';
         $reqList = $editRequests;
         $tabTitle = 'Dean-Approved Edit Requests';
         $tabSub   = 'Modification requests approved by Dean. You are authorized to correct and resubmit these records.';
-    } else {         $tabTitle = ($user['role'] === 'Dean') ? 'Edit Requests & Decisions' : 'Edit Requests Oversight';
+    } else { // Dean or Admin
+        $tabTitle = ($user['role'] === 'Dean') ? 'Edit Requests & Decisions' : 'Edit Requests Oversight';
         $tabSub   = 'Review requests submitted by HoDs to unlock approved records for Coordinator correction.';
         if ($reqStatusFilter === 'Pending') {
             $reqList = $pendingRequests;
@@ -412,9 +429,10 @@ require __DIR__ . '/inc/header.php';
                   </td>
                   <td style="padding:14px 16px; vertical-align:top">
                     <?php
-                      $erProof = trim((string)($er['proof_file'] ?? ''));
-                      if ($erProof === '' && !empty($er['record_type']) && !empty($er['record_id'])) {
+                      $erProof = $er['proof_file'] ?? null;
+                      if (!$erProof && !empty($er['record_type']) && !empty($er['record_id'])) {
                           $foundOrig = record_find($er['record_type'], (int)$er['record_id']);
+<<<<<<< HEAD
                           $erProof = trim((string)($foundOrig['proof_file'] ?? ''));
                       }
                       if ($erProof !== '' && stripos($erProof, 'upload.php') !== false) {
@@ -427,14 +445,22 @@ require __DIR__ . '/inc/header.php';
                       <span class="card-sub" style="color:var(--ink-muted,#64748b); font-size:11px">Proof unavailable</span>
                     <?php else: ?>
                       <?php $erProofUrl = record_proof_url($er['record_type'], (int)$er['record_id'], $erProof, false, false); ?>
+=======
+                          if ($foundOrig) {
+                              [$erProof, $erProofUrl] = approvals_resolve_proof($foundOrig);
+                          } else {
+                              $erProof = null;
+                              $erProofUrl = '';
+                          }
+                      } else {
+                          $erProofUrl = !empty($erProof) ? proof_url($erProof) : '';
+                      }
+                    ?>
+                    <?php if (!empty($erProofUrl)): ?>
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
                       <div style="display:inline-flex; align-items:center; gap:4px">
                         <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:11.5px; font-weight:600; display:inline-flex; align-items:center; gap:4px; border-radius:6px; cursor:pointer"
-                          data-url="<?= e($erProofUrl) ?>"
-                          data-title="<?= e($er['record_title'] ?? '') ?>"
-                          data-who="<?= e($er['faculty_name'] ?? '') ?>"
-                          data-dept="<?= e($er['department'] ?? '') ?>"
-                          data-label="<?= e($types[$er['record_type']]['label'] ?? $er['record_type']) ?>"
-                          onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
+                          onclick="openProofViewer(<?= e(json_encode($erProofUrl)) ?>, <?= e(json_encode($er['record_title'])) ?>, <?= e(json_encode($er['faculty_name'])) ?>, <?= e(json_encode($er['department'])) ?>, <?= e(json_encode($types[$er['record_type']]['label'] ?? $er['record_type'])) ?>)">
                           <?= icon('paperclip', 13) ?> View Proof
                         </button>
                         <a href="<?= e($erProofUrl . (strpos($erProofUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:28px; padding:0 8px; font-size:11px; display:inline-flex; align-items:center; gap:3px" title="Download proof file directly">
@@ -444,6 +470,8 @@ require __DIR__ . '/inc/header.php';
                           <?= icon('external-link', 12) ?>
                         </a>
                       </div>
+                    <?php else: ?>
+                      <span class="card-sub" style="font-size:11px">—</span>
                     <?php endif; ?>
                   </td>
                   <td style="padding:14px 16px; vertical-align:top; max-width:320px">
@@ -827,6 +855,7 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td style="vertical-align:middle">
                 <?php
+<<<<<<< HEAD
                   $pProof = trim((string)($r['proof_file'] ?? ''));
                   if ($pProof !== '' && stripos($pProof, 'upload.php') !== false) {
                       $pProof = '';
@@ -841,13 +870,14 @@ require __DIR__ . '/inc/header.php';
                     $pUrl = record_proof_url($r['_type_key'], (int)$r['id'], $pProof, false, false);
                   ?>
                   <div style="display:inline-flex; align-items:center; gap:6px">
+=======
+                  [$pProof, $pUrl] = approvals_resolve_proof($r);
+                ?>
+                <?php if (!empty($pUrl)): ?>
+                  <div style="display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap">
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
                     <button type="button" class="btn btn-sm" style="background:#EFF6FF; color:#1D4ED8; border:1px solid #BFDBFE; height:28px; padding:0 8px; font-size:12px; display:inline-flex; align-items:center; gap:4px; font-weight:600; border-radius:6px; cursor:pointer"
-                      data-url="<?= e($pUrl) ?>"
-                      data-title="<?= e($r['_title']) ?>"
-                      data-who="<?= e($who) ?>"
-                      data-dept="<?= e($r['department'] ?? '') ?>"
-                      data-label="<?= e($r['_type_label']) ?>"
-                      onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
+                      onclick="openProofViewer(<?= e(json_encode($pUrl)) ?>, <?= e(json_encode($r['_title'])) ?>, <?= e(json_encode($who)) ?>, <?= e(json_encode($r['department'] ?? '')) ?>, <?= e(json_encode($r['_type_label'])) ?>)">
                       <?= icon('paperclip', 13) ?> View Proof
                     </button>
                     <a href="<?= e($pUrl . (strpos($pUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="btn btn-outline btn-sm" style="height:28px; padding:0 8px; font-size:11.5px; display:inline-flex; align-items:center; gap:3px; font-weight:600" title="Download proof file directly">
@@ -857,6 +887,8 @@ require __DIR__ . '/inc/header.php';
                       <?= icon('external-link', 12) ?> Tab
                     </a>
                   </div>
+                <?php else: ?>
+                  <span class="card-sub">—</span>
                 <?php endif; ?>
               </td>
               <td class="card-sub" style="vertical-align:middle" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>">
@@ -1586,7 +1618,12 @@ document.getElementById('deanEditDlg').addEventListener('close', function() {
 });
 
 // Open HoD Edit Request dialog with auto-populated metadata and proof attachment
+<<<<<<< HEAD
 function openHodEditRequest(type, id, title, who, dept, year, typeLabel, proofUrl, proofName) {  document.getElementById('her-type').value = type;
+=======
+function openHodEditRequest(type, id, title, who, dept, year, typeLabel, proofUrl, proofName) {
+  document.getElementById('her-type').value = type;
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
   document.getElementById('her-id').value = id;
   document.getElementById('her-title').textContent = title || '(untitled)';
   document.getElementById('her-faculty').textContent = who || 'Faculty Member';
@@ -1667,10 +1704,7 @@ function openDecisionModal(decision, reqId, reqLabel, faculty, title, proofUrl) 
     btn.style.cssText = '';
   }
 
-  var dlg = document.getElementById('decisionDlg');
-  if (dlg && dlg.showModal) {
-    dlg.showModal();
-  }
+  document.getElementById('decisionDlg').showModal();
 }
 
 document.getElementById('decisionDlg').addEventListener('close', function() {
@@ -1735,23 +1769,26 @@ function reviewRecord(type, id, action, title, who, dept, proofUrl, proofName, t
   }
 
   if (action === 'reject') {
+<<<<<<< HEAD
     title.textContent = 'Reject Record';
+=======
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     label.textContent = 'Rejection Reason (Optional)';
     btn.textContent = 'Confirm Rejection';
     btn.className = 'btn btn-danger btn-sm';
     btn.style.cssText = 'height:34px; padding:0 16px; font-weight:600';
   } else {
+<<<<<<< HEAD
     title.textContent = currentRole === 'Coordinator' ? 'Approve & Save to Database' : 'Approve Record';
+=======
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
     label.textContent = 'Approval Remark / Instructions (Optional)';
     btn.textContent = currentRole === 'Coordinator' ? 'Approve & Save to DB' : 'Approve Record';
     btn.className = 'btn btn-sm';
     btn.style.cssText = 'background:#047857; color:#fff; font-weight:600; height:34px; padding:0 16px';
   }
 
-  var dlg = document.getElementById('reviewDlg');
-  if (dlg && dlg.showModal) {
-    dlg.showModal();
-  }
+  document.getElementById('reviewDlg').showModal();
 }
 
 function closeReviewDlg() {
@@ -1834,6 +1871,7 @@ function acknowledgeReview(type, id) {
   form.submit();
 }
 
+// Bulk approve for Coordinator / Admin
 function approveAll(ev, dept, n) {
   ev.preventDefault();
   ev.stopPropagation();
@@ -1845,9 +1883,8 @@ function approveAll(ev, dept, n) {
 
 // Proof Viewer functions
 function openProofViewer(url, title, who, dept, typeLabel) {
-  if (!url || url.indexOf('upload.php') !== -1) return;
   document.getElementById('pv-title').textContent = title || 'Proof Attachment';
-  document.getElementById('pv-type').textContent = typeLabel || 'Document';
+  document.getElementById('pv-type').textContent = typeLabel || 'PDF';
   var metaParts = [];
   if (who) metaParts.push(who);
   if (dept) metaParts.push('Dept: ' + dept);
@@ -1859,30 +1896,22 @@ function openProofViewer(url, title, who, dept, typeLabel) {
   var loader = document.getElementById('pv-loader');
   if (loader) {
     loader.style.display = 'flex';
+    setTimeout(function() {
+      loader.style.display = 'none';
+    }, 350);
   }
 
   var frame = document.getElementById('pv-frame');
   frame.src = url;
 
-  var dlg = document.getElementById('proofDlg');
-  if (dlg) {
-    if (typeof dlg.showModal === 'function') {
-      dlg.showModal();
-    } else {
-      dlg.setAttribute('open', '');
-    }
-  }
-
-  // Safety fallback if iframe load event doesn't fire for PDF plugins
-  setTimeout(function() {
-    if (loader) loader.style.display = 'none';
-  }, 1500);
+  document.getElementById('proofDlg').showModal();
 }
 
 function closeProofViewer() {
   var dlg = document.getElementById('proofDlg');
   var frame = document.getElementById('pv-frame');
   if (frame) frame.src = '';
+<<<<<<< HEAD
   if (dlg) {
     if (typeof dlg.close === 'function') {
       dlg.close();
@@ -1915,5 +1944,14 @@ if (proofDlgEl) {
     if (frame) frame.src = '';
   });
 }</script>
+=======
+  if (dlg) dlg.close();
+}
+
+document.getElementById('proofDlg').addEventListener('close', function() {
+  document.getElementById('pv-frame').src = '';
+});
+</script>
+>>>>>>> d9afdd10e230ecbc2906ca35576f34d17f2467d1
 
 <?php require __DIR__ . '/inc/footer.php'; ?>
