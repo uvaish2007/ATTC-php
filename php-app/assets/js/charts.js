@@ -56,12 +56,18 @@
       if (chart.config.type !== 'bar') { return; }
       if (chart.options.attsHideValues) { return; }
 
+      var isHorizontal = chart.config.options && chart.config.options.indexAxis === 'y';
       var ctx = chart.ctx;
       ctx.save();
       ctx.font = '700 11px ' + FONT;
       ctx.fillStyle = INK_MUTED;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'bottom';
+      if (isHorizontal) {
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+      } else {
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+      }
 
       chart.data.datasets.forEach(function (dataset, di) {
         var meta = chart.getDatasetMeta(di);
@@ -69,7 +75,11 @@
         meta.data.forEach(function (bar, i) {
           var value = dataset.data[i];
           if (value === null || value === undefined || value === 0) { return; }
-          ctx.fillText(String(value), bar.x, bar.y - 5);
+          if (isHorizontal) {
+            ctx.fillText(String(value), bar.x + 6, bar.y);
+          } else {
+            ctx.fillText(String(value), bar.x, bar.y - 5);
+          }
         });
       });
       ctx.restore();
@@ -146,65 +156,131 @@
       if (!canvas) { return null; }
       opts = opts || {};
 
-      if (!hasData(opts.data)) { return drawEmpty(canvas, opts.empty); }
+      var existingChart = Chart.getChart(canvas);
+      if (existingChart) {
+        existingChart.destroy();
+      }
+
+      var hasAnyData = false;
+      if (opts.datasets && opts.datasets.length) {
+        hasAnyData = opts.datasets.some(function (ds) { return hasData(ds.data); });
+      } else {
+        hasAnyData = hasData(opts.data);
+      }
+
+      if (!hasAnyData) { return drawEmpty(canvas, opts.empty); }
 
       var horizontal = opts.horizontal === true;
+      var isStacked = opts.stacked === true;
+
+      var scalesConfig = horizontal ? {
+        x: {
+          stacked: isStacked,
+          beginAtZero: true,
+          grid: { color: SOFT, drawTicks: false, drawBorder: false, borderDash: [3, 3] },
+          ticks: {
+            color: INK_FAINT,
+            font: { size: 10.5 },
+            precision: 0
+          }
+        },
+        y: {
+          stacked: isStacked,
+          grid: { display: false, drawBorder: true, borderColor: HAIRLINE },
+          ticks: {
+            color: INK_MUTED,
+            font: { size: 11, weight: '600' },
+            padding: 8,
+            autoSkip: false,
+            callback: function (value) {
+              var text = this.getLabelForValue(value);
+              return (typeof text === 'string' && text.length > 20) ? text.slice(0, 18) + '…' : text;
+            }
+          }
+        }
+      } : {
+        x: {
+          stacked: isStacked,
+          grid: { display: false, drawBorder: true, borderColor: HAIRLINE },
+          ticks: {
+            color: INK_FAINT,
+            font: { size: 11, weight: '600' },
+            maxRotation: opts.maxRotation !== undefined ? opts.maxRotation : 0,
+            autoSkip: opts.autoSkip !== undefined ? opts.autoSkip : false,
+            callback: function (value) {
+              var text = this.getLabelForValue(value);
+              return text.length > 14 ? text.slice(0, 13) + '…' : text;
+            }
+          }
+        },
+        y: {
+          stacked: isStacked,
+          beginAtZero: true,
+          grid: { color: SOFT, drawTicks: false, drawBorder: false, borderDash: [3, 3] },
+          ticks: {
+            color: INK_FAINT,
+            font: { size: 11 },
+            padding: 8,
+            precision: 0
+          }
+        }
+      };
+
+      var chartDatasets = opts.datasets || [{
+        data: opts.data,
+        backgroundColor: colours(opts.data.length, opts.colors),
+        hoverBackgroundColor: colours(opts.data.length, opts.colors),
+        borderRadius: horizontal
+          ? { topLeft: 0, topRight: 6, bottomLeft: 0, bottomRight: 6 }
+          : { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
+        borderSkipped: false,
+        maxBarThickness: opts.maxBarThickness || (horizontal ? 24 : 38),
+        hoverBorderColor: 'transparent'
+      }];
+
+      var legendConfig = (opts.legend !== false && (opts.legend === true || isStacked || opts.datasets)) ? {
+        display: true,
+        position: opts.legendPosition || 'top',
+        align: 'end',
+        labels: {
+          color: INK_MUTED,
+          boxWidth: 9,
+          boxHeight: 9,
+          usePointStyle: true,
+          pointStyle: 'circle',
+          padding: 12,
+          font: { size: 11, weight: '600' }
+        }
+      } : { display: false };
 
       return new Chart(canvas, {
         type: 'bar',
         data: {
           labels: opts.labels,
-          datasets: [{
-            data: opts.data,
-            backgroundColor: colours(opts.data.length, opts.colors),
-            hoverBackgroundColor: colours(opts.data.length, opts.colors),
-            borderRadius: { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
-            borderSkipped: false,
-            maxBarThickness: 38,
-            hoverBorderColor: 'transparent'
-          }]
+          datasets: chartDatasets
         },
         options: {
           indexAxis: horizontal ? 'y' : 'x',
           responsive: true,
           maintainAspectRatio: false,
-          layout: { padding: { top: 18 } },
-          attsHideValues: opts.hideValues === true,
+          layout: { padding: horizontal ? { right: 36, left: (opts.paddingLeft !== undefined ? opts.paddingLeft : 8), top: 4, bottom: 4 } : { top: 18, left: 4, right: 4, bottom: 4 } },
+          attsHideValues: opts.hideValues === true || isStacked,
           plugins: {
+            legend: legendConfig,
             tooltip: {
               callbacks: {
                 label: function (ctx) {
+                  if (typeof opts.tooltipCallback === 'function') {
+                    return opts.tooltipCallback(ctx);
+                  }
                   var noun = opts.unit || 'records';
-                  return ctx.raw + ' ' + noun;
+                  var prefix = ctx.dataset && ctx.dataset.label ? (ctx.dataset.label + ': ') : '';
+                  return prefix + ctx.raw + ' ' + noun;
                 }
               }
             }
           },
-          scales: {
-            x: {
-              grid: { display: false, drawBorder: true, borderColor: HAIRLINE },
-              ticks: {
-                color: INK_FAINT,
-                font: { size: 11, weight: '600' },
-                maxRotation: 0,
-                autoSkip: false,
-                callback: function (value) {
-                  var text = this.getLabelForValue(value);
-                  return text.length > 14 ? text.slice(0, 13) + '…' : text;
-                }
-              }
-            },
-            y: {
-              beginAtZero: true,
-              grid: { color: SOFT, drawTicks: false, drawBorder: false, borderDash: [3, 3] },
-              ticks: {
-                color: INK_FAINT,
-                font: { size: 11 },
-                padding: 8,
-                precision: 0
-              }
-            }
-          }
+          scales: scalesConfig
         }
       });
     },
@@ -213,6 +289,11 @@
       canvas = typeof canvas === 'string' ? document.getElementById(canvas) : canvas;
       if (!canvas) { return null; }
       opts = opts || {};
+
+      var existingChart = Chart.getChart(canvas);
+      if (existingChart) {
+        existingChart.destroy();
+      }
 
       if (!hasData(opts.data)) { return drawEmpty(canvas, opts.empty); }
 

@@ -1024,7 +1024,10 @@ function edit_request_review(int $requestId, string $decision, ?string $comment,
                 decision_by_name = ?,
                 decision_role = ?,
                 decision_comment = ?,
-                decided_at = NOW()
+                decided_at = NOW(),
+                processed_by = ?,
+                processed_at = NOW(),
+                admin_comments = ?
              WHERE id = ?"
         );
         $stmt->execute([
@@ -1032,6 +1035,8 @@ function edit_request_review(int $requestId, string $decision, ?string $comment,
             (int)$user['id'],
             $user['name'] ?? 'Dean',
             $user['role'],
+            $comment ?: null,
+            (int)$user['id'],
             $comment ?: null,
             $requestId,
         ]);
