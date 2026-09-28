@@ -66,62 +66,11 @@ $facStmt = db()->prepare($facSql);
 $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
-<<<<<<< HEAD
+// ---- Fetch Data ---------------------------------------------------------
 $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
 $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
-
-// Sort department comparison descending by total achievements
-$sortedDeptComp = $deptComp;
-usort($sortedDeptComp, fn($a, $b) => (int)$b['total'] <=> (int)$a['total']);
-$activeDeptComp = array_values(array_filter($sortedDeptComp, fn($d) => (int)$d['total'] > 0));
-$topDept = (!empty($sortedDeptComp) && (int)$sortedDeptComp[0]['total'] > 0) ? $sortedDeptComp[0] : null;
-$totalDeptRecords = (int) array_sum(array_column($deptComp, 'total'));
-$activeDeptsCount = count($activeDeptComp);
-$totalDeptsCount = count($deptComp);
-
-$catMap = $summary['categoryCounts'] ?? [];
-$catIcons = [
-    'Journal Publication'     => ['ic' => 'book-open',  'cls' => 'blue',   'color' => '#2563EB'],
-    'Conference Publication'  => ['ic' => 'users',      'cls' => 'green',  'color' => '#059669'],
-    'Book / Book Chapter'     => ['ic' => 'file-text',  'cls' => 'orange', 'color' => '#FF4F01'],
-    'Events Organized'        => ['ic' => 'calendar',   'cls' => 'red',    'color' => '#DC2626'],
-    'FDP / Workshop / Seminar'=> ['ic' => 'graduation', 'cls' => 'purple', 'color' => '#7C3AED'],
-    'Training Programmes'     => ['ic' => 'briefcase',  'cls' => 'purple', 'color' => '#9333EA'],
-    'Patents & Copyrights'    => ['ic' => 'shield',     'cls' => 'teal',   'color' => '#0D9488'],
-    'SWAYAM-NPTEL Courses'    => ['ic' => 'award',      'cls' => 'blue',   'color' => '#0284C7'],
-    'Online Courses'          => ['ic' => 'graduation', 'cls' => 'green',  'color' => '#10B981'],
-    'MoUs Signed'             => ['ic' => 'link',       'cls' => 'gray',   'color' => '#4F46E5'],
-];
-
-$categoryBreakdown = [];
-foreach ($allCategories as $catKey => $meta) {
-    $cLabel = $meta['label'];
-    $cnt = (int) ($catMap[$cLabel] ?? 0);
-    $cStyle = $catIcons[$cLabel] ?? ['ic' => 'layers', 'cls' => 'gray', 'color' => '#64748B'];
-    $categoryBreakdown[] = [
-        'key'   => $catKey,
-        'label' => $cLabel,
-        'group' => $meta['group'],
-        'table' => $meta['table'],
-        'count' => $cnt,
-        'color' => $cStyle['color'],
-        'icon'  => $cStyle['ic'],
-        'cls'   => $cStyle['cls'],
-    ];
-}
-$sortedCatBreakdown = $categoryBreakdown;
-usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
-$activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
-
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
-=======
-// ---- Fetch Data ---------------------------------------------------------
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
-$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
->>>>>>> e0ddfb7d6396e7d7cb6c53a8e1b1ba6bca6b193a
 
 $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
 $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
