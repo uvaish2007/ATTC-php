@@ -86,6 +86,11 @@ if ($format === 'word') {
         (int) $grand['Draft']
     ];
 
+    $sigCols = ['HOD' . ($deptLabel !== 'ALL DEPARTMENTS' ? ' / ' . $deptDisplay : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
+        $exportRows[] = $sRow;
+    }
+
     $metaLines = [
         'MOHAMED SATHAK ENGINEERING COLLEGE',
         'METRICS SUMMARY REPORT',

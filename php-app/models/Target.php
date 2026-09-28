@@ -664,9 +664,8 @@ function target_record_count(array $target, ?string $from = null, ?string $to = 
         return null;
     }
 
-    $validStatus = record_requires_approval($type) ? 'Approved' : 'Submitted';
-    $sql  = "SELECT COUNT(*) FROM `$table` WHERE status = ?";
-    $args = [$validStatus];
+    $sql  = "SELECT COUNT(*) FROM `$table` WHERE status = 'Approved'";
+    $args = [];
 
     if (in_array('department', $cols, true) && !empty($target['department'])) {
         $sql .= ' AND department = ?';
@@ -719,14 +718,13 @@ function target_approved_records(array $target): array
     $hasDept = in_array('department', $cols, true);
     $hasYear = in_array('academic_year', $cols, true);
 
-    $validStatus = record_requires_approval($type) ? 'Approved' : 'Submitted';
     $sql = "SELECT r.*, u.name AS approver_name, u.role AS approver_role,
                    creator.name AS creator_name, creator.email AS creator_email
             FROM `{$table}` r
             LEFT JOIN users u ON r.approved_by = u.id
             LEFT JOIN users creator ON r.created_by = creator.id
-            WHERE r.status = ?";
-    $args = [$validStatus];
+            WHERE r.status = 'Approved'";
+    $args = [];
 
     if ($hasDept && !empty($target['department'])) {
         $sql .= ' AND r.department = ?';
@@ -920,7 +918,7 @@ function academic_year_summary_stats(string $year): array
     $totalRecords = 0;
     $approvedRecords = 0;
 
-    foreach ($types as $key => $t) {
+    foreach ($types as $t) {
         $table = $t['table'];
         $cols = target_record_table_columns($table);
         if (!in_array('academic_year', $cols, true)) {
@@ -928,8 +926,7 @@ function academic_year_summary_stats(string $year): array
         }
 
         try {
-            $validCond = record_requires_approval($key) ? "status='Approved'" : "status='Submitted'";
-            $stmt = db()->prepare("SELECT COUNT(*) as total, SUM(CASE WHEN {$validCond} THEN 1 ELSE 0 END) as approved FROM `{$table}` WHERE academic_year = ?");
+            $stmt = db()->prepare("SELECT COUNT(*) as total, SUM(CASE WHEN status='Approved' THEN 1 ELSE 0 END) as approved FROM `{$table}` WHERE academic_year = ?");
             $stmt->execute([$year]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             $totalRecords += (int) ($row['total'] ?? 0);

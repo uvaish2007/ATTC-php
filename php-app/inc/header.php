@@ -26,7 +26,7 @@ $navItems = navigation_for($user['role']);
 $groups   = group_navigation($navItems);
 
 require_once __DIR__ . '/../models/EditRequest.php';
-require_once __DIR__ . '/../models/PasswordResetRequest.php';   
+require_once __DIR__ . '/../models/PasswordResetRequest.php';
 $badgeCounts = [
     'approvals'     => pending_approvals_count($user),
     'announcements' => unread_announcements_count($user),

@@ -78,6 +78,9 @@ function edit_request_has_active(string $recordType, int $recordId): bool
     }
 }
 
+/**
+ * Create a new structured edit request ticket.
+ */
 if (!function_exists('edit_request_create')) {
 function edit_request_create(array $data): array
 {

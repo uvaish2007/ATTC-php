@@ -294,7 +294,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
 
           <div class="field">
             <label for="email">Email or Username</label>
-            <input class="input" type="text" id="email" name="email" placeholder="you@college.edu or username (e.g. admin)"
+            <input class="input" type="text" id="email" name="email" placeholder="you@college.edu"
                    autocomplete="username" value="<?= e($email) ?>" required>
           </div>
 
@@ -309,7 +309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
             </div>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-block" id="step2SubmitBtn" style="height:46px; margin-top:8px">
+          <button type="submit" class="btn btn-primary btn-block" id="step2SubmitBtn" style="height:46px; margin-top:16px">
             Login
           </button>
         </div>
@@ -451,6 +451,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
       passwordInput.focus();
     });
   }
+
 
   loginForm.addEventListener('submit', (e) => {
     // If step 1 (role picker) is still showing, the user pressed Enter before
