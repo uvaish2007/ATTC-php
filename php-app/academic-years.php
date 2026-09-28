@@ -317,12 +317,15 @@ require __DIR__ . '/inc/header.php';
         <div class="card-sub">Recording a finished Executive Meeting locks <strong><?= e($selectedYear) ?></strong> for every role. You can reopen it later; the meeting stays on record.</div>
       </div>
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <?php ?>
         <a class="btn btn-secondary btn-sm"
            href="<?= e(url('executive-meeting-report.php') . '?' . http_build_query(['academic_year' => $selectedYear])) ?>"
            title="Filter and present the Executive Meeting report for <?= e($selectedYear) ?>">
           <?= icon('presentation', 14) ?> Present meeting report
         </a>
+        <button type="button" class="btn <?= $isLocked ? 'btn-outline' : 'btn-danger' ?> btn-sm" id="btnToggleMeeting" onclick="toggleMeetingBox()" style="display:inline-flex; align-items:center; gap:6px; font-weight:600">
+          <span id="btnToggleMeetingIcon"><?= icon('plus', 14) ?></span>
+          <span id="btnToggleMeetingText"><?= $isLocked ? 'Record Meeting' : 'Record Meeting & Lock' ?></span>
+        </button>
         <?php if ($isLocked): ?>
           <span class="ay-pill locked"><?= icon('lock', 12) ?> Locked</span>
         <?php else: ?>
@@ -343,38 +346,71 @@ require __DIR__ . '/inc/header.php';
         </div>
       <?php endif; ?>
 
-      <?php 
-?>
-      <?php if ($isLocked): ?><details class="ay-more" id="meetFormWrap"><summary><?= icon('chevron', 14) ?> Record another meeting for <?= e($selectedYear) ?></summary><?php endif; ?>
-      <form method="post" class="ay-meet-form"
-            onsubmit="return confirm(<?= e(json_encode($isLocked ? 'Record this Executive Meeting for ' . $selectedYear . '?' : 'Record this Executive Meeting and lock ' . $selectedYear . ' for all roles?')) ?>);">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="finish_executive_meeting">
-        <input type="hidden" name="academic_year" value="<?= e($selectedYear) ?>">
-        <div class="field">
-          <label for="meeting_number">Meeting number <span class="req">*</span></label>
-          <input type="text" class="input" id="meeting_number" name="meeting_number" value="<?= $selectedNextMeetingNum ?>"
-                 placeholder="e.g. 3" maxlength="50" required <?= $meetingsReady ? '' : 'disabled' ?>>
+      <!-- Compact Collapsible Meeting Box -->
+      <details class="ay-meet-box" id="meetFormWrap">
+        <summary>
+          <div style="display:flex; align-items:center; gap:10px">
+            <span class="dept-arrow-badge" style="width:28px; height:28px; border-radius:6px; background:#F1F5F9; color:#475569; display:inline-flex; align-items:center; justify-content:center; transition:transform 0.2s ease">
+              <?= icon('chevron-right', 15) ?>
+            </span>
+            <span style="height:26px; padding:0 8px; border-radius:6px; background:#EFF6FF; border:1px solid #BFDBFE; color:#1D4ED8; font-size:11px; font-weight:700; display:inline-flex; align-items:center; gap:4px">
+              <?= icon('calendar', 12) ?> Meeting #<?= $selectedNextMeetingNum ?>
+            </span>
+            <strong style="font-size:14px; font-weight:700; color:#0F172A">
+              <?= $isLocked ? 'Record another Executive Meeting' : 'Record Executive Meeting & Lock Cycle' ?>
+            </strong>
+            <span class="card-sub" style="font-size:12px; color:#64748B">
+              (<?= e($selectedYear) ?>)
+            </span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:8px">
+            <span class="dept-toggle-pill">
+              <span class="ay-meet-open-lbl">Open Box</span>
+              <span class="ay-meet-close-lbl">Close Box</span>
+              <span class="dept-toggle-icon"><?= icon('chevron-down', 13) ?></span>
+            </span>
+          </div>
+        </summary>
+
+        <div style="padding:18px 20px; border-top:1px solid #E2E8F0; background:#F8FAFC">
+          <form method="post" class="ay-meet-form"
+                onsubmit="return confirm(<?= e(json_encode($isLocked ? 'Record this Executive Meeting for ' . $selectedYear . '?' : 'Record this Executive Meeting and lock ' . $selectedYear . ' for all roles?')) ?>);">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="finish_executive_meeting">
+            <input type="hidden" name="academic_year" value="<?= e($selectedYear) ?>">
+            <div class="field">
+              <label for="meeting_number" style="font-size:12.5px; font-weight:600; color:#334155; margin-bottom:5px; display:block">
+                Meeting number <span class="req" style="color:#DC2626">*</span>
+              </label>
+              <input type="text" class="input" id="meeting_number" name="meeting_number" value="<?= $selectedNextMeetingNum ?>"
+                     placeholder="e.g. 3" maxlength="50" required <?= $meetingsReady ? '' : 'disabled' ?>>
+            </div>
+            <div class="field">
+              <label for="meeting_date" style="font-size:12.5px; font-weight:600; color:#334155; margin-bottom:5px; display:block">
+                Date finished <span class="req" style="color:#DC2626">*</span>
+              </label>
+              <input type="date" class="input" id="meeting_date" name="meeting_date" value="<?= e($today->format('Y-m-d')) ?>"
+                     max="<?= e($today->format('Y-m-d')) ?>" required <?= $meetingsReady ? '' : 'disabled' ?>>
+            </div>
+            <div class="field ay-f-notes">
+              <label for="meeting_notes" style="font-size:12.5px; font-weight:600; color:#334155; margin-bottom:5px; display:block">
+                Minutes / remarks <span class="faint" style="color:#64748B; font-weight:400">(optional)</span>
+              </label>
+              <input type="text" class="input" id="meeting_notes" name="notes" maxlength="1000"
+                     placeholder="e.g. Committee reviewed semester targets; audits complete." <?= $meetingsReady ? '' : 'disabled' ?>>
+            </div>
+            <div class="ay-f-go">
+              <button type="submit" class="btn <?= $isLocked ? 'btn-secondary' : 'btn-danger' ?>" <?= $meetingsReady ? '' : 'disabled' ?> style="font-weight:600">
+                <?= icon($isLocked ? 'check' : 'lock', 15) ?> <?= $isLocked ? 'Record meeting' : 'Finish &amp; lock ' . e($selectedYear) ?>
+              </button>
+            </div>
+          </form>
+          <p class="ay-form-note" style="margin:10px 0 0; font-size:11.5px; color:#64748B">
+            Next number suggested from the meetings already recorded. The date can't be later than today.
+          </p>
         </div>
-        <div class="field">
-          <label for="meeting_date">Date finished <span class="req">*</span></label>
-          <input type="date" class="input" id="meeting_date" name="meeting_date" value="<?= e($today->format('Y-m-d')) ?>"
-                 max="<?= e($today->format('Y-m-d')) ?>" required <?= $meetingsReady ? '' : 'disabled' ?>>
-        </div>
-        <div class="field ay-f-notes">
-          <label for="meeting_notes">Minutes / remarks <span class="faint">(optional)</span></label>
-          <input type="text" class="input" id="meeting_notes" name="notes" maxlength="1000"
-                 placeholder="e.g. Committee reviewed semester targets; audits complete." <?= $meetingsReady ? '' : 'disabled' ?>>
-        </div>
-        <div class="ay-f-go">
-          <button type="submit" class="btn <?= $isLocked ? 'btn-secondary' : 'btn-danger' ?>" <?= $meetingsReady ? '' : 'disabled' ?>>
-            <?= icon($isLocked ? 'check' : 'lock', 15) ?> <?= $isLocked ? 'Record meeting' : 'Finish &amp; lock ' . e($selectedYear) ?>
-          </button>
-        </div>
-      </form>
-      <?php if ($isLocked): ?></details><?php else: ?>
-        <p class="ay-form-note">Next number suggested from the meetings already recorded. The date can't be later than today.</p>
-      <?php endif; ?>
+      </details>
 
       <div class="ay-section-title">Meetings for <?= e($selectedYear) ?> <span><?= $selectedExecCount ?> recorded · audit trail</span></div>
       <?php if ($selectedExecCount === 0): ?>
@@ -759,6 +795,31 @@ function switchAyTab(tab) {
   } catch (e) {}
 }
 
+function updateMeetingBoxButtonState() {
+  var wrap = document.getElementById('meetFormWrap');
+  var btnText = document.getElementById('btnToggleMeetingText');
+  var btnIcon = document.getElementById('btnToggleMeetingIcon');
+  if (!wrap || !btnText) return;
+  var isOpen = wrap.open;
+  var isLocked = <?= json_encode($isLocked) ?>;
+  btnText.textContent = isOpen ? 'Close Box' : (isLocked ? 'Record Meeting' : 'Record Meeting & Lock');
+  if (btnIcon) {
+    btnIcon.innerHTML = isOpen ? '<?= icon('x', 14) ?>' : '<?= icon('plus', 14) ?>';
+  }
+}
+
+function toggleMeetingBox() {
+  var wrap = document.getElementById('meetFormWrap');
+  if (!wrap) return;
+  wrap.open = !wrap.open;
+  if (wrap.open) {
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    var f = document.getElementById('meeting_number');
+    if (f) setTimeout(function () { f.focus(); f.select(); }, 200);
+  }
+  updateMeetingBoxButtonState();
+}
+
 function openExecMeetingForm() {
   switchAyTab('overview');
   var wrap = document.getElementById('meetFormWrap');
@@ -767,6 +828,12 @@ function openExecMeetingForm() {
   if (box) box.scrollIntoView({ behavior: 'smooth', block: 'start' });
   var f = document.getElementById('meeting_number');
   if (f) setTimeout(function () { f.focus(); f.select(); }, 350);
+  updateMeetingBoxButtonState();
+}
+
+var meetFormWrapEl = document.getElementById('meetFormWrap');
+if (meetFormWrapEl) {
+  meetFormWrapEl.addEventListener('toggle', updateMeetingBoxButtonState);
 }
 
 function openUnlockModal(year, tab) {

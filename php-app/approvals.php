@@ -431,9 +431,10 @@ require __DIR__ . '/inc/header.php';
                         </div>
                       <?php endif; ?>
                     </div>
-                    <?php if (!empty($er['decision_comment'])): ?>
+                    <?php $deanNote = $er['decision_comment'] ?? $er['admin_comments'] ?? ''; ?>
+                    <?php if (!empty($deanNote)): ?>
                       <div style="font-size:11.5px; margin-top:6px; color:#1E40AF; background:#EFF6FF; padding:6px 10px; border-radius:6px; border:1px solid #BFDBFE">
-                        <strong>Dean Note:</strong> <?= e($er['decision_comment']) ?>
+                        <strong>Dean Note:</strong> <?= e($deanNote) ?>
                       </div>
                     <?php endif; ?>
                   </td>
@@ -478,17 +479,20 @@ require __DIR__ . '/inc/header.php';
                         <span class="badge" style="background:#FEF2F2; color:#B91C1C; border:1px solid #FECACA; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
                           <?= icon('x-circle', 14) ?> Rejected
                         </span>
-                        <span style="font-size:11px; color:#64748B"><?= e(time_ago($er['decided_at'])) ?></span>
+                        <?php $rejTime = $er['decided_at'] ?? $er['processed_at'] ?? $er['updated_at'] ?? null; ?>
+                        <span style="font-size:11px; color:#64748B"><?= e($rejTime ? time_ago($rejTime) : '') ?></span>
                       </div>
                     <?php elseif ($er['status'] === 'Completed'): ?>
                       <div style="display:inline-flex; flex-direction:column; align-items:flex-end; gap:3px">
                         <span class="badge" style="background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE; font-size:12px; font-weight:700; padding:6px 12px; border-radius:6px; display:inline-flex; align-items:center; gap:5px">
                           <?= icon('check', 14) ?> Corrected &amp; Resubmitted
                         </span>
-                        <span style="font-size:11px; color:#64748B"><?= e(time_ago($er['completed_at'] ?? $er['decided_at'])) ?></span>
+                        <?php $compTime = $er['completed_at'] ?? $er['decided_at'] ?? $er['processed_at'] ?? $er['updated_at'] ?? null; ?>
+                        <span style="font-size:11px; color:#64748B"><?= e($compTime ? time_ago($compTime) : '') ?></span>
                       </div>
                     <?php else: ?>
-                      <span style="font-size:12px; color:#64748B"><?= e($er['decided_at'] ? date('d M Y', strtotime($er['decided_at'])) : '—') ?></span>
+                      <?php $dTime = $er['decided_at'] ?? $er['processed_at'] ?? null; ?>
+                      <span style="font-size:12px; color:#64748B"><?= e(!empty($dTime) ? date('d M Y', strtotime($dTime)) : '—') ?></span>
                     <?php endif; ?>
                   </td>
                 </tr>
@@ -637,10 +641,12 @@ require __DIR__ . '/inc/header.php';
                     <span class="badge badge-<?= status_class($hr['status']) ?>"><?= e($hr['status']) ?></span>
                   </td>
                   <td style="padding:12px 16px; font-size:12.5px; color:#334155">
-                    <?= e($hr['decision_comment'] ?: '—') ?>
+                    <?php $hrComment = $hr['decision_comment'] ?? $hr['admin_comments'] ?? null; ?>
+                    <?= e(!empty($hrComment) ? $hrComment : '—') ?>
                   </td>
                   <td style="padding:12px 16px; font-size:12px; color:#64748B">
-                    <?= e($hr['decided_at'] ? date('d M Y, h:i A', strtotime($hr['decided_at'])) : '—') ?>
+                    <?php $hrDecidedAt = $hr['decided_at'] ?? $hr['processed_at'] ?? $hr['updated_at'] ?? null; ?>
+                    <?= e(!empty($hrDecidedAt) ? date('d M Y, h:i A', strtotime($hrDecidedAt)) : '—') ?>
                   </td>
                 </tr>
               <?php endforeach; ?>
@@ -700,7 +706,7 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
 
-    <label class="fb-field fb-grow"><span class="fb-k">Search</span>
+    <label class="fb-field fb-grow fb-search"><span class="fb-k">Search</span>
       <input type="text" name="q" value="<?= e($search) ?>" placeholder="Search title, faculty or department...">
     </label>
 
@@ -732,22 +738,58 @@ require __DIR__ . '/inc/header.php';
       ksort($byDept);
     ?>
 
+    <?php
+      $openByDefault = ($activeCount > 0 && count($byDept) === 1);
+    ?>
+
+    <!-- Department Toolbar: count + expand/collapse all -->
+    <div class="ug-toolbar" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px">
+      <span class="ug-caption" style="display:inline-flex; align-items:center; gap:8px; font-size:13px; font-weight:600; color:#475569">
+        <?= icon('building', 15) ?> Grouped by department &middot; <?= count($byDept) ?> <?= count($byDept) === 1 ? 'department' : 'departments' ?> (<?= count($records) ?> <?= count($records) === 1 ? 'record' : 'records' ?> total)
+      </span>
+      <div style="display:flex; align-items:center; gap:8px">
+        <button type="button" class="btn btn-ghost btn-sm" id="deptToggle" style="font-size:12px; height:30px; display:inline-flex; align-items:center; gap:6px; border:1px solid #E2E8F0; border-radius:6px; background:#fff">
+          <span id="deptToggleIcon" style="display:inline-flex; transition:transform 0.2s ease"><?= icon('chevron-down', 13) ?></span>
+          <span id="deptToggleText"><?= $openByDefault ? 'Collapse all' : 'Expand all' ?></span>
+        </button>
+      </div>
+    </div>
+
     <?php foreach ($byDept as $deptName => $deptRecs): ?>
-      <details class="acc-group" open style="margin-bottom:14px">
-        <summary class="acc-summary" style="display:flex; justify-content:space-between; align-items:center">
-          <div style="display:flex; align-items:center; gap:8px">
-            <?= icon('building', 16) ?>
-            <strong><?= e($deptName) ?></strong>
-            <span class="badge badge-info" style="font-size:11px"><?= count($deptRecs) ?> under review</span>
-          </div>
-          <?php if (in_array($user['role'], ['Coordinator', 'Admin'], true) && !$isYearLocked): ?>
-            <div style="display:inline-flex; gap:6px" onclick="event.stopPropagation()">
-              <button class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:600; height:28px; padding:0 8px; font-size:11.5px"
-                onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)">
-                <?= icon('check-circle', 12) ?> Approve Department Submissions
-              </button>
+      <?php $deptKey = preg_replace('/[^a-z0-9]+/i', '-', strtolower($deptName)); ?>
+      <details class="dept-group" id="dept-<?= e($deptKey) ?>" data-dept-key="<?= e($deptKey) ?>" <?= $openByDefault ? 'open' : '' ?>>
+        <summary>
+          <div class="dept-summary-left">
+            <span class="dept-arrow-badge" title="Click arrow to toggle department records">
+              <?= icon('chevron-right', 15) ?>
+            </span>
+            <span class="dept-code-pill">
+              <?= e(mb_strtoupper(mb_substr($deptName, 0, 4))) ?>
+            </span>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0">
+              <strong class="dept-title-name"><?= e($deptName) ?></strong>
+              <span class="badge badge-info dept-count-pill">
+                <?= count($deptRecs) ?> under review
+              </span>
             </div>
-          <?php endif; ?>
+          </div>
+
+          <div class="dept-summary-right">
+            <?php if (in_array($user['role'], ['Coordinator', 'Admin'], true) && !$isYearLocked): ?>
+              <div style="display:inline-flex; gap:6px" onclick="event.stopPropagation()">
+                <button type="button" class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:600; height:28px; padding:0 10px; font-size:11.5px; border-radius:6px; display:inline-flex; align-items:center; gap:4px"
+                  onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)">
+                  <?= icon('check-circle', 12) ?> Approve Department Submissions
+                </button>
+              </div>
+            <?php endif; ?>
+
+            <span class="dept-toggle-pill">
+              <span class="dept-label-show">Show Records</span>
+              <span class="dept-label-hide">Hide Records</span>
+              <span class="dept-toggle-icon"><?= icon('chevron-down', 13) ?></span>
+            </span>
+          </div>
         </summary>
         <div class="table-wrap"><table class="data">
           <thead><tr>
@@ -1279,6 +1321,64 @@ if (proofDlgEl) {
     var frame = document.getElementById('pv-frame');
     if (frame) frame.src = '';
   });
-}</script>
+}
+
+// Department accordion logic with Expand/Collapse All and session persistence
+(function() {
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.dept-group'));
+  var toggleBtn = document.getElementById('deptToggle');
+  var toggleText = document.getElementById('deptToggleText');
+  var toggleIcon = document.getElementById('deptToggleIcon');
+  if (!groups.length) return;
+
+  var KEY = 'atts.approvals.open_depts';
+
+  try {
+    var saved = sessionStorage.getItem(KEY);
+    if (saved !== null) {
+      var openList = JSON.parse(saved);
+      groups.forEach(function(g) {
+        var key = g.getAttribute('data-dept-key');
+        g.open = openList.indexOf(key) !== -1;
+      });
+    }
+  } catch (e) {}
+
+  function saveState() {
+    try {
+      var openList = groups.filter(function(g) { return g.open; })
+                           .map(function(g) { return g.getAttribute('data-dept-key'); });
+      sessionStorage.setItem(KEY, JSON.stringify(openList));
+    } catch (e) {}
+  }
+
+  function updateToggleState() {
+    var anyOpen = groups.some(function(g) { return g.open; });
+    if (toggleText) {
+      toggleText.textContent = anyOpen ? 'Collapse all' : 'Expand all';
+    }
+    if (toggleIcon) {
+      toggleIcon.style.transform = anyOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+    }
+    saveState();
+  }
+
+  groups.forEach(function(g) {
+    g.addEventListener('toggle', updateToggleState);
+  });
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', function() {
+      var anyOpen = groups.some(function(g) { return g.open; });
+      groups.forEach(function(g) {
+        g.open = !anyOpen;
+      });
+      updateToggleState();
+    });
+  }
+
+  updateToggleState();
+})();
+</script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

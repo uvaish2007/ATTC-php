@@ -27,6 +27,19 @@ function edit_requests_table_init(): void
         `processed_by` INT NULL,
         `processed_at` DATETIME NULL,
         `admin_comments` TEXT NULL,
+        `decision_comment` TEXT NULL,
+        `decided_at` DATETIME NULL,
+        `completed_at` DATETIME NULL,
+        `decision_by` INT NULL,
+        `decision_by_name` VARCHAR(150) NULL,
+        `decision_role` VARCHAR(50) NULL,
+        `authorized_coordinator_id` INT NULL,
+        `proof_file` VARCHAR(255) NULL,
+        `specific_field` VARCHAR(100) NULL,
+        `current_value` TEXT NULL,
+        `requested_value` TEXT NULL,
+        `requested_by_name` VARCHAR(150) NULL,
+        `requested_by_role` VARCHAR(50) NOT NULL DEFAULT 'HoD',
         `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
         `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX `idx_record` (`record_type`, `record_id`),
@@ -37,6 +50,16 @@ function edit_requests_table_init(): void
 
     try {
         db()->exec($sql);
+
+        // Check if decision_comment / decided_at exist, add them if missing
+        $check = db()->query("SHOW COLUMNS FROM `edit_requests` LIKE 'decision_comment'");
+        if (!$check || !$check->fetch()) {
+            db()->exec("ALTER TABLE `edit_requests` ADD COLUMN `decision_comment` TEXT NULL AFTER `admin_comments`");
+            db()->exec("ALTER TABLE `edit_requests` ADD COLUMN `decided_at` DATETIME NULL AFTER `processed_at`");
+            db()->exec("ALTER TABLE `edit_requests` ADD COLUMN `completed_at` DATETIME NULL AFTER `decided_at`");
+            db()->exec("UPDATE `edit_requests` SET `decision_comment` = `admin_comments`, `decided_at` = `processed_at` WHERE `decision_comment` IS NULL");
+        }
+
         $initialized = true;
     } catch (\PDOException $e) {
         error_log('edit_requests_table_init failed: ' . $e->getMessage());
@@ -258,8 +281,8 @@ function edit_request_process(int $id, string $action, ?string $adminComments, i
             $newRecordStatus = 'Unlocked for Edit';
             $remark = "Edit allowed by {$userRole}" . ($adminCommentsTrimmed ? ": {$adminCommentsTrimmed}" : '');
 
-            $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = ?, `processed_by` = ?, `processed_at` = NOW(), `admin_comments` = ?, `updated_at` = NOW() WHERE `id` = ?");
-            $stmt->execute([$newTicketStatus, $processedBy, $adminCommentsTrimmed ?: null, $id]);
+            $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = ?, `processed_by` = ?, `processed_at` = NOW(), `admin_comments` = ?, `decision_comment` = ?, `decided_at` = NOW(), `decision_by` = ?, `updated_at` = NOW() WHERE `id` = ?");
+            $stmt->execute([$newTicketStatus, $processedBy, $adminCommentsTrimmed ?: null, $adminCommentsTrimmed ?: null, $processedBy, $id]);
 
             $stmtRec = $pdo->prepare("UPDATE `{$table}` SET `status` = ?, `review_remark` = ?, `updated_at` = NOW() WHERE `id` = ?");
             $stmtRec->execute([$newRecordStatus, $remark, $recordId]);
@@ -271,8 +294,8 @@ function edit_request_process(int $id, string $action, ?string $adminComments, i
             $newRecordStatus = 'Approved'; 
             $remark = "Edit request rejected by {$userRole}" . ($adminCommentsTrimmed ? ": {$adminCommentsTrimmed}" : '');
 
-            $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = ?, `processed_by` = ?, `processed_at` = NOW(), `admin_comments` = ?, `updated_at` = NOW() WHERE `id` = ?");
-            $stmt->execute([$newTicketStatus, $processedBy, $adminCommentsTrimmed ?: null, $id]);
+            $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = ?, `processed_by` = ?, `processed_at` = NOW(), `admin_comments` = ?, `decision_comment` = ?, `decided_at` = NOW(), `decision_by` = ?, `updated_at` = NOW() WHERE `id` = ?");
+            $stmt->execute([$newTicketStatus, $processedBy, $adminCommentsTrimmed ?: null, $adminCommentsTrimmed ?: null, $processedBy, $id]);
 
             $stmtRec = $pdo->prepare("UPDATE `{$table}` SET `status` = ?, `review_remark` = ?, `updated_at` = NOW() WHERE `id` = ?");
             $stmtRec->execute([$newRecordStatus, $remark, $recordId]);
@@ -280,7 +303,7 @@ function edit_request_process(int $id, string $action, ?string $adminComments, i
             $pdo->commit();
             return [true, "Edit Request #ER-{$id} rejected."];
         } elseif ($action === 'complete') {
-            $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = 'Completed', `updated_at` = NOW() WHERE `id` = ?");
+            $stmt = $pdo->prepare("UPDATE `edit_requests` SET `status` = 'Completed', `completed_at` = NOW(), `updated_at` = NOW() WHERE `id` = ?");
             $stmt->execute([$id]);
             $pdo->commit();
             return [true, "Edit Request #ER-{$id} marked as Completed."];

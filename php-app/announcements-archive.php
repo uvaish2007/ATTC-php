@@ -238,83 +238,100 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       </div>
-      <div class="table-wrap">
-        <table class="data">
-          <thead>
-            <tr>
-              <th style="width:80px">Orig. ID</th>
-              <th>Announcement</th>
-              <th style="width:130px">Category</th>
-              <th style="width:150px">Department</th>
-              <th style="width:135px">Expired</th>
-              <th style="width:135px">Archived</th>
-              <th style="width:105px">State</th>
-              <th style="width:170px" class="num">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-          <?php foreach ($list['rows'] as $row): ?>
-            <?php
-              $archiveId  = (int) $row['archive_id'];
-              $originalId = (int) $row['original_announcement_id'];
-              $restored   = $row['restore_status'] === 'Restored';
-              $files      = $attachments[$originalId] ?? [];
+      <style>
+        .archive-list { display:flex; flex-direction:column; gap:0; }
+        .archive-item {
+          display:grid;
+          grid-template-columns:1fr auto;
+          align-items:center;
+          gap:8px 16px;
+          padding:14px 18px;
+          border-bottom:1px solid var(--hairline);
+          transition:background var(--dur) var(--ease);
+        }
+        .archive-item:last-child { border-bottom:none; }
+        .archive-item:hover { background:var(--navy-50); }
+        .archive-item-main { display:flex; flex-direction:column; gap:4px; min-width:0; }
+        .archive-item-title {
+          font-weight:600; font-size:13.5px; color:var(--ink);
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .archive-item-excerpt {
+          font-size:12px; color:var(--ink-faint); line-height:1.4;
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        .archive-item-meta {
+          display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px;
+          font-size:11.5px; color:var(--ink-muted); margin-top:2px;
+        }
+        .archive-item-meta .sep { color:var(--hairline); }
+        .archive-item-action { flex-shrink:0; }
+        @media (max-width:600px) {
+          .archive-item { grid-template-columns:1fr; }
+          .archive-item-action { justify-self:start; margin-top:6px; }
+        }
+      </style>
+      <div class="archive-list">
+        <?php foreach ($list['rows'] as $row): ?>
+          <?php
+            $archiveId  = (int) $row['archive_id'];
+            $originalId = (int) $row['original_announcement_id'];
+            $restored   = $row['restore_status'] === 'Restored';
+            $files      = $attachments[$originalId] ?? [];
 
-              $payload = [
-                  'archive_id'   => $archiveId,
-                  'original_id'  => $originalId,
-                  'title'        => (string) $row['title'],
-                  'body'         => (string) $row['body'],
-                  'category'     => (string) $row['category'],
-                  'priority'     => (string) $row['priority'],
-                  'audience'     => (string) $row['audience'],
-                  'department'   => (string) ($row['department'] ?: 'All departments'),
-                  'status'       => (string) $row['original_status'],
-                  'published'    => $fmt($row['publish_at'] ?? null),
-                  'expires'      => $fmt($row['expires_at'] ?? null),
-                  'created'      => $fmt($row['created_at'] ?? null),
-                  'archived'     => $fmt($row['archived_at'] ?? null),
-                  'author'       => (string) ($row['created_by_name'] ?: 'Unknown'),
-                  'views'        => (int) $row['views'],
-                  'require_read' => (int) $row['require_read'] ? 'Yes' : 'No',
-                  'restored'     => $restored,
-                  'restored_at'  => $fmt($row['restored_at'] ?? null),
-                  'restored_by'  => (string) ($row['restored_by_name'] ?: ''),
-                  'restored_id'  => (int) ($row['restored_announcement_id'] ?? 0),
-                  'live'         => (int) $row['original_exists'] > 0,
-                  'needs_expiry' => announcement_archive_needs_expiry($row),
-                  'files'        => array_map(static fn($f) => [
-                      'id'   => (int) $f['id'],
-                      'name' => (string) $f['file_name'],
-                      'size' => human_size((int) $f['size_bytes']),
-                  ], $files),
-              ];
-            ?>
-            <tr id="ar-<?= $archiveId ?>">
-              <td class="tabular">#<?= $originalId ?></td>
-              <td>
-                <div class="min-w-0">
-                  <div class="truncate" style="font-weight:600" title="<?= e($row['title']) ?>"><?= e($row['title']) ?></div>
-                  <div class="card-sub truncate"><?= e(excerpt((string) $row['body'], 90)) ?></div>
-                </div>
-              </td>
-              <td><span class="badge badge-neutral"><?= e($row['category']) ?></span></td>
-              <td class="card-sub"><?= e($row['department'] ?: 'All departments') ?></td>
-              <td class="card-sub tabular"><?= e($fmt($row['expires_at'] ?? null)) ?></td>
-              <td class="card-sub tabular"><?= e($fmt($row['archived_at'] ?? null)) ?></td>
-              <td>
-                <span class="badge badge-<?= $restored ? 'success' : 'warning' ?>"><?= $restored ? 'Restored' : 'Archived' ?></span>
-              </td>
-              <td class="num">
-                <button type="button" class="btn btn-<?= $restored ? 'outline' : 'primary' ?> btn-sm"
-                        onclick='archiveDetails(<?= htmlspecialchars(json_encode($payload, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>)'>
-                  View Details
-                </button>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-          </tbody>
-        </table>
+            $payload = [
+                'archive_id'   => $archiveId,
+                'original_id'  => $originalId,
+                'title'        => (string) $row['title'],
+                'body'         => (string) $row['body'],
+                'category'     => (string) $row['category'],
+                'priority'     => (string) $row['priority'],
+                'audience'     => (string) $row['audience'],
+                'department'   => (string) ($row['department'] ?: 'All departments'),
+                'status'       => (string) $row['original_status'],
+                'published'    => $fmt($row['publish_at'] ?? null),
+                'expires'      => $fmt($row['expires_at'] ?? null),
+                'created'      => $fmt($row['created_at'] ?? null),
+                'archived'     => $fmt($row['archived_at'] ?? null),
+                'author'       => (string) ($row['created_by_name'] ?: 'Unknown'),
+                'views'        => (int) $row['views'],
+                'require_read' => (int) $row['require_read'] ? 'Yes' : 'No',
+                'restored'     => $restored,
+                'restored_at'  => $fmt($row['restored_at'] ?? null),
+                'restored_by'  => (string) ($row['restored_by_name'] ?: ''),
+                'restored_id'  => (int) ($row['restored_announcement_id'] ?? 0),
+                'live'         => (int) $row['original_exists'] > 0,
+                'needs_expiry' => announcement_archive_needs_expiry($row),
+                'files'        => array_map(static fn($f) => [
+                    'id'   => (int) $f['id'],
+                    'name' => (string) $f['file_name'],
+                    'size' => human_size((int) $f['size_bytes']),
+                ], $files),
+            ];
+          ?>
+          <div class="archive-item" id="ar-<?= $archiveId ?>">
+            <div class="archive-item-main">
+              <div class="archive-item-title" title="<?= e($row['title']) ?>"><?= e($row['title']) ?></div>
+              <div class="archive-item-excerpt"><?= e(excerpt((string) $row['body'], 100)) ?></div>
+              <div class="archive-item-meta">
+                <span class="badge badge-neutral" style="font-size:10.5px;padding:2px 8px"><?= e($row['category']) ?></span>
+                <span><?= e($row['department'] ?: 'All departments') ?></span>
+                <span class="sep">·</span>
+                <span>Expired <?= e($fmt($row['expires_at'] ?? null)) ?></span>
+                <span class="sep">·</span>
+                <span>Archived <?= e($fmt($row['archived_at'] ?? null)) ?></span>
+                <span class="sep">·</span>
+                <span class="badge badge-<?= $restored ? 'success' : 'warning' ?>" style="font-size:10.5px;padding:2px 8px"><?= $restored ? 'Restored' : 'Archived' ?></span>
+              </div>
+            </div>
+            <div class="archive-item-action">
+              <button type="button" class="btn btn-<?= $restored ? 'outline' : 'primary' ?> btn-sm"
+                      onclick='archiveDetails(<?= htmlspecialchars(json_encode($payload, JSON_UNESCAPED_UNICODE), ENT_QUOTES) ?>)'>
+                View Details
+              </button>
+            </div>
+          </div>
+        <?php endforeach; ?>
       </div>
     </div>
 
