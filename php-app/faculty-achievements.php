@@ -66,9 +66,8 @@ $facStmt = db()->prepare($facSql);
 $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
-<<<<<<< HEAD
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
+$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
+$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
 
 // Sort department comparison descending by total achievements
 $sortedDeptComp = $deptComp;
@@ -113,15 +112,8 @@ $sortedCatBreakdown = $categoryBreakdown;
 usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
 $activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
 
-$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
-=======
-// ---- Fetch Data ---------------------------------------------------------
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
->>>>>>> e0ddfb7d6396e7d7cb6c53a8e1b1ba6bca6b193a
 
 $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
 $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
