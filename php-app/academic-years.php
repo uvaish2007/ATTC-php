@@ -112,7 +112,7 @@ $selectedDeptTargets = [];
 try {
     $stmt = db()->prepare(
         "SELECT department, COUNT(*) AS total_targets,
-                SUM(status = 'Approved')          AS approved_targets,
+                SUM(status = 'Approved')          AS approved_taso that shod bergets,
                 SUM(status = 'Dean Pending')      AS pending_targets,
                 SUM(status = 'Changes Requested') AS returned_targets,
                 SUM(status = 'Draft')             AS draft_targets

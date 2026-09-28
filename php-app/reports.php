@@ -394,7 +394,7 @@ require __DIR__ . '/inc/header.php';
         </div>
         <div class="hero-card-actions">
           <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>">
-            <?= icon('download') ?> Download Excel (Multi-Tab)
+            <?= icon('download') ?> Download Excel
           </a>
           <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">
             <?= icon('file-text', 14) ?> Download PDF
@@ -634,7 +634,7 @@ require __DIR__ . '/inc/header.php';
             <div class="tmpl-report-sub">Full college data &middot; Multi-tab Excel / Grouped PDF &amp; Word &middot; All <?= count($departments) ?> departments</div>
           </div>
           <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>"><?= icon('download') ?> Excel (Multi-Tab)</a>
+            <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>"><?= icon('download') ?> Excel</a>
             <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word' . ($year ? '&year=' . urlencode($year) : ''))) ?>">Word</a>
             <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">PDF</a>
           </div>

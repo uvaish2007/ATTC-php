@@ -15,13 +15,37 @@ $isOversight = user_can_choose_department($user);
 $department  = user_department_scope($user, input('department'));
 
 require_once __DIR__ . '/models/ExecutiveMeeting.php';
+require_once __DIR__ . '/models/Setting.php';
 
 $rawYear  = input('academic_year') ?: input('year');
 $emCtx    = em_resolve_filter_context($rawYear, input('em'));
 $year     = $emCtx['year'];
 $em       = $emCtx['em'];
 $emWindow = $emCtx['window'];
-$columns = template_columns();
+$columns  = template_columns();
+
+$tplMode = active_report_template();
+if ($tplMode === 'compact') {
+    $hasAchieved = false;
+    $filteredCols = [];
+    foreach ($columns as $c) {
+        $field = $c['field'] ?? '';
+        $colKey = $c['col_key'] ?? '';
+        if (in_array($field, ['achieved_p1', 'achieved_p2', 'achieved_value'], true) || in_array($colKey, ['achieved_from', 'achieved_during'], true)) {
+            if (!$hasAchieved) {
+                $c['label'] = 'Achieved';
+                $c['field'] = 'achieved_value';
+                $c['width'] = 14;
+                $filteredCols[] = $c;
+                $hasAchieved = true;
+            }
+        } else {
+            $filteredCols[] = $c;
+        }
+    }
+    $columns = $filteredCols;
+}
+
 $rows    = template_rows();
 $today   = date('d.m.Y');
 $span    = max(1, count($columns));
@@ -47,7 +71,7 @@ $norm = function ($s): string {
 $buildByMetric = function (?string $dept) use ($norm, $year): array {
     $index = [];
     if ($dept !== null) {
-        foreach (target_report_items($dept) as $t) {
+        foreach (target_report_items($dept, $year) as $t) {
             $key = $norm($t['metric']);
             if ($key !== '' && !isset($index[$key])) {
                 $index[$key] = $t;
