@@ -112,7 +112,107 @@
     }
   };
 
-  Chart.register(barValues, donutCentre);
+  function roundedRectPath(ctx, x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+  }
+
+  function firstVisibleMeta(chart) {
+    for (var d = 0; d < chart.data.datasets.length; d++) {
+      if (chart.isDatasetVisible(d)) { return chart.getDatasetMeta(d); }
+    }
+    return null;
+  }
+
+  // Soft full-width track behind each horizontal bar row.
+  var barTrack = {
+    id: 'attsBarTrack',
+    beforeDatasetsDraw: function (chart) {
+      if (!chart.options.attsTrack || chart.config.type !== 'bar') { return; }
+      if (chart.options.indexAxis !== 'y') { return; }
+      var meta = firstVisibleMeta(chart);
+      if (!meta) { return; }
+
+      var area = chart.chartArea;
+      var ctx = chart.ctx;
+      ctx.save();
+      ctx.fillStyle = chart.options.attsTrack === true ? '#F3F5FA' : chart.options.attsTrack;
+      meta.data.forEach(function (bar) {
+        var h = bar.height;
+        if (!h) { return; }
+        roundedRectPath(ctx, area.left, bar.y - h / 2, area.right - area.left, h, 6);
+        ctx.fill();
+      });
+      ctx.restore();
+    }
+  };
+
+  // Sum of visible stacked segments, printed at the end of each bar.
+  var stackTotals = {
+    id: 'attsStackTotals',
+    afterDatasetsDraw: function (chart) {
+      if (!chart.options.attsStackTotals || chart.config.type !== 'bar') { return; }
+      var horizontal = chart.options.indexAxis === 'y';
+      var labels = chart.data.labels || [];
+      var ctx = chart.ctx;
+
+      ctx.save();
+      ctx.font = '800 11.5px ' + FONT;
+      ctx.fillStyle = INK;
+      ctx.textAlign = horizontal ? 'left' : 'center';
+      ctx.textBaseline = horizontal ? 'middle' : 'bottom';
+
+      for (var i = 0; i < labels.length; i++) {
+        var total = 0, edge = null, cross = null;
+        chart.data.datasets.forEach(function (ds, di) {
+          if (!chart.isDatasetVisible(di)) { return; }
+          var v = Number(ds.data[i]) || 0;
+          if (v <= 0) { return; }
+          total += v;
+          var bar = chart.getDatasetMeta(di).data[i];
+          if (!bar) { return; }
+          if (horizontal) {
+            edge = edge === null ? bar.x : Math.max(edge, bar.x);
+            cross = bar.y;
+          } else {
+            edge = edge === null ? bar.y : Math.min(edge, bar.y);
+            cross = bar.x;
+          }
+        });
+        if (!total || edge === null) { continue; }
+        if (horizontal) { ctx.fillText(String(total), edge + 8, cross); }
+        else { ctx.fillText(String(total), cross, edge - 6); }
+      }
+      ctx.restore();
+    }
+  };
+
+  // Split a long axis label over two lines instead of cutting it short.
+  function wrapLabel(text, maxLen) {
+    if (typeof text !== 'string' || text.length <= maxLen) { return text; }
+    var words = text.split(/\s+/);
+    var line1 = '';
+    while (words.length && (line1 + ' ' + words[0]).trim().length <= maxLen) {
+      line1 = (line1 + ' ' + words.shift()).trim();
+    }
+    if (!line1) { line1 = words.shift(); }
+    var line2 = words.join(' ');
+    if (!line2) { return line1; }
+    if (line2.length > maxLen) { line2 = line2.slice(0, maxLen - 1) + '…'; }
+    return [line1, line2];
+  }
+
+  Chart.register(barValues, donutCentre, barTrack, stackTotals);
 
   function colours(count, given) {
     var source = PALETTE;
@@ -172,6 +272,7 @@
 
       var horizontal = opts.horizontal === true;
       var isStacked = opts.stacked === true;
+      var rounded = opts.rounded === true;
 
       var scalesConfig = horizontal ? {
         x: {
@@ -181,19 +282,28 @@
           ticks: {
             color: INK_FAINT,
             font: { size: 10.5 },
+            padding: 6,
             precision: 0
-          }
+          },
+          title: opts.valueAxisTitle ? {
+            display: true,
+            text: opts.valueAxisTitle,
+            color: INK_FAINT,
+            font: { size: 10.5, weight: '600' },
+            padding: { top: 8 }
+          } : { display: false }
         },
         y: {
           stacked: isStacked,
-          grid: { display: false, drawBorder: true, borderColor: HAIRLINE },
+          grid: { display: false, drawBorder: !opts.track, borderColor: HAIRLINE },
           ticks: {
             color: INK_MUTED,
-            font: { size: 11, weight: '600' },
-            padding: 8,
+            font: { size: 11.5, weight: '600' },
+            padding: 10,
             autoSkip: false,
             callback: function (value) {
               var text = this.getLabelForValue(value);
+              if (opts.wrapLabels) { return wrapLabel(text, opts.labelMaxLength || 18); }
               return (typeof text === 'string' && text.length > 20) ? text.slice(0, 18) + '…' : text;
             }
           }
@@ -230,13 +340,46 @@
         data: opts.data,
         backgroundColor: colours(opts.data.length, opts.colors),
         hoverBackgroundColor: colours(opts.data.length, opts.colors),
-        borderRadius: horizontal
+        borderRadius: rounded ? 6 : (horizontal
           ? { topLeft: 0, topRight: 6, bottomLeft: 0, bottomRight: 6 }
-          : { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 },
+          : { topLeft: 6, topRight: 6, bottomLeft: 0, bottomRight: 0 }),
         borderSkipped: false,
         maxBarThickness: opts.maxBarThickness || (horizontal ? 24 : 38),
         hoverBorderColor: 'transparent'
       }];
+
+      // Stacked + rounded: only the outermost visible segments of each bar get
+      // rounded ends, and a thin surface-coloured seam separates segments.
+      if (isStacked && rounded) {
+        var segmentEdges = function (ctx) {
+          var chart = ctx.chart, i = ctx.dataIndex, first = -1, last = -1;
+          chart.data.datasets.forEach(function (ds, k) {
+            if (!chart.isDatasetVisible(k) || !(Number(ds.data[i]) > 0)) { return; }
+            if (first < 0) { first = k; }
+            last = k;
+          });
+          return { first: ctx.datasetIndex === first, last: ctx.datasetIndex === last };
+        };
+        chartDatasets = chartDatasets.map(function (ds) {
+          return Object.assign({
+            borderSkipped: false,
+            borderColor: SURFACE,
+            hoverBorderColor: SURFACE,
+            borderWidth: function (ctx) {
+              if (segmentEdges(ctx).last) { return 0; }
+              return horizontal ? { right: 2, left: 0, top: 0, bottom: 0 } : { top: 2, left: 0, right: 0, bottom: 0 };
+            },
+            borderRadius: function (ctx) {
+              var e = segmentEdges(ctx), r = 6;
+              return horizontal
+                ? { topLeft: e.first ? r : 0, bottomLeft: e.first ? r : 0, topRight: e.last ? r : 0, bottomRight: e.last ? r : 0 }
+                : { bottomLeft: e.first ? r : 0, bottomRight: e.first ? r : 0, topLeft: e.last ? r : 0, topRight: e.last ? r : 0 };
+            },
+            barPercentage: 0.72,
+            categoryPercentage: 0.86
+          }, ds);
+        });
+      }
 
       var legendConfig = (opts.legend !== false && (opts.legend === true || isStacked || opts.datasets)) ? {
         display: true,
@@ -265,19 +408,37 @@
           maintainAspectRatio: false,
           layout: { padding: horizontal ? { right: 36, left: (opts.paddingLeft !== undefined ? opts.paddingLeft : 8), top: 4, bottom: 4 } : { top: 18, left: 4, right: 4, bottom: 4 } },
           attsHideValues: opts.hideValues === true || isStacked,
+          attsTrack: opts.track || false,
+          attsStackTotals: isStacked && opts.showTotals === true,
+          interaction: (isStacked && opts.tooltipAll) ? { mode: 'index', axis: horizontal ? 'y' : 'x', intersect: false } : undefined,
           plugins: {
             legend: legendConfig,
             tooltip: {
+              displayColors: isStacked && opts.tooltipAll === true,
+              usePointStyle: true,
+              boxWidth: 8,
+              boxHeight: 8,
+              boxPadding: 5,
+              filter: (isStacked && opts.tooltipAll) ? function (item) { return Number(item.raw) > 0; } : undefined,
               callbacks: {
+                footer: (isStacked && opts.tooltipAll) ? function (items) {
+                  var sum = items.reduce(function (a, it) { return a + (Number(it.raw) || 0); }, 0);
+                  return 'Total: ' + sum + ' ' + (opts.unit || 'records');
+                } : undefined,
                 label: function (ctx) {
                   if (typeof opts.tooltipCallback === 'function') {
                     return opts.tooltipCallback(ctx);
                   }
                   var noun = opts.unit || 'records';
                   var prefix = ctx.dataset && ctx.dataset.label ? (ctx.dataset.label + ': ') : '';
+                  if (isStacked && opts.tooltipAll) { return ' ' + prefix + ctx.raw; }
                   return prefix + ctx.raw + ' ' + noun;
-                }
-              }
+                },
+                labelPointStyle: function () { return { pointStyle: 'circle', rotation: 0 }; }
+              },
+              footerColor: INK,
+              footerFont: { family: FONT, size: 11.5, weight: '700' },
+              footerMarginTop: 7
             }
           },
           scales: scalesConfig
