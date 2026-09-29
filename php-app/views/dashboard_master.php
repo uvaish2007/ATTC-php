@@ -61,7 +61,17 @@ if ($user['role'] === 'HoD') {
     $unlockedCount = 0;
     foreach (record_types() as $k => $t) {
         try {
-            $unlockedCount += (int) db()->query("SELECT COUNT(*) FROM `{$t['table']}` WHERE status = 'Unlocked for Edit' AND (department = " . db()->quote($coordDept) . " OR REPLACE(department, ' ', '') = REPLACE(" . db()->quote($coordDept) . ", ' ', ''))")->fetchColumn();
+            $deptVars = department_variants($coordDept);
+            if (!empty($deptVars)) {
+                $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+                $stmt = db()->prepare("SELECT COUNT(*) FROM `{$t['table']}` WHERE status = 'Unlocked for Edit' AND department IN ($inPh)");
+                $stmt->execute($deptVars);
+                $unlockedCount += (int) $stmt->fetchColumn();
+            } else {
+                $stmt = db()->prepare("SELECT COUNT(*) FROM `{$t['table']}` WHERE status = 'Unlocked for Edit' AND department = ?");
+                $stmt->execute([$coordDept]);
+                $unlockedCount += (int) $stmt->fetchColumn();
+            }
         } catch (\PDOException $e) {}
     }
 

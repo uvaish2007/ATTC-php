@@ -66,11 +66,62 @@ $facStmt = db()->prepare($facSql);
 $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
+<<<<<<< HEAD
 // ---- Fetch Data ---------------------------------------------------------
 $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
 $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
 $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
+=======
+$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
+$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
+
+// Sort department comparison descending by total achievements
+$sortedDeptComp = $deptComp;
+usort($sortedDeptComp, fn($a, $b) => (int)$b['total'] <=> (int)$a['total']);
+$activeDeptComp = array_values(array_filter($sortedDeptComp, fn($d) => (int)$d['total'] > 0));
+$topDept = (!empty($sortedDeptComp) && (int)$sortedDeptComp[0]['total'] > 0) ? $sortedDeptComp[0] : null;
+$totalDeptRecords = (int) array_sum(array_column($deptComp, 'total'));
+$activeDeptsCount = count($activeDeptComp);
+$totalDeptsCount = count($deptComp);
+
+$catMap = $summary['categoryCounts'] ?? [];
+$catIcons = [
+    'Journal Publication'     => ['ic' => 'book-open',  'cls' => 'blue',   'color' => '#2563EB'],
+    'Conference Publication'  => ['ic' => 'users',      'cls' => 'green',  'color' => '#059669'],
+    'Book / Book Chapter'     => ['ic' => 'file-text',  'cls' => 'orange', 'color' => '#FF4F01'],
+    'Events Organized'        => ['ic' => 'calendar',   'cls' => 'red',    'color' => '#DC2626'],
+    'FDP / Workshop / Seminar'=> ['ic' => 'graduation', 'cls' => 'purple', 'color' => '#7C3AED'],
+    'Training Programmes'     => ['ic' => 'briefcase',  'cls' => 'purple', 'color' => '#9333EA'],
+    'Patents & Copyrights'    => ['ic' => 'shield',     'cls' => 'teal',   'color' => '#0D9488'],
+    'SWAYAM-NPTEL Courses'    => ['ic' => 'award',      'cls' => 'blue',   'color' => '#0284C7'],
+    'Online Courses'          => ['ic' => 'graduation', 'cls' => 'green',  'color' => '#10B981'],
+    'MoUs Signed'             => ['ic' => 'link',       'cls' => 'gray',   'color' => '#4F46E5'],
+];
+
+$categoryBreakdown = [];
+foreach ($allCategories as $catKey => $meta) {
+    $cLabel = $meta['label'];
+    $cnt = (int) ($catMap[$cLabel] ?? 0);
+    $cStyle = $catIcons[$cLabel] ?? ['ic' => 'layers', 'cls' => 'gray', 'color' => '#64748B'];
+    $categoryBreakdown[] = [
+        'key'   => $catKey,
+        'label' => $cLabel,
+        'group' => $meta['group'],
+        'table' => $meta['table'],
+        'count' => $cnt,
+        'color' => $cStyle['color'],
+        'icon'  => $cStyle['ic'],
+        'cls'   => $cStyle['cls'],
+    ];
+}
+$sortedCatBreakdown = $categoryBreakdown;
+usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
+$activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
+
+$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
+$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
+>>>>>>> d4a2f7330602732a9b290d2208c49b4b1cbcfd72
 
 $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
 $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
@@ -440,31 +491,80 @@ require __DIR__ . '/inc/header.php';
     gap: 8px;
     flex-wrap: wrap;
   }
+  .dept-dist-card {
+    padding: 18px 20px 20px;
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(19, 29, 59, 0.04), 0 4px 16px rgba(19, 29, 59, 0.04);
+  }
+  .dept-dist-head {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 14px;
+  }
+  .dept-dist-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .dept-dist-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #FFF1EA;
+    color: #FF4F01;
+    flex-shrink: 0;
+  }
+  .dept-dist-card .analytics-chart-title { font-size: 14px; }
+  .dept-chart-frame {
+    padding: 14px 16px 8px 6px;
+    background: linear-gradient(180deg, #FBFCFE 0%, #FFFFFF 100%);
+    border: 1px solid #EEF1F6;
+    border-radius: 12px;
+  }
   .dept-chart-legend {
     display: flex;
     align-items: center;
-    justify-content: center;
     flex-wrap: wrap;
-    gap: 12px 18px;
-    padding: 10px 14px;
-    margin-top: 14px;
-    background: #F8FAFC;
-    border: 1px solid #E2E8F0;
-    border-radius: 8px;
-    font-size: 11.5px;
-    color: var(--ink-muted, #5A6785);
+    gap: 8px;
+    margin-bottom: 14px;
   }
   .dept-legend-item {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
+    padding: 5px 10px 5px 9px;
+    background: #fff;
+    border: 1px solid #E6EAF2;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 11.5px;
     font-weight: 600;
+    color: var(--ink, #131D3B);
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
   }
+  .dept-legend-item:hover { background: #F8FAFC; border-color: #CBD5E1; }
+  .dept-legend-item:focus-visible { outline: 2px solid #FF4F01; outline-offset: 2px; }
+  .dept-legend-item.is-off { opacity: 0.45; }
+  .dept-legend-item.is-off .dept-legend-dot { background: #CBD5E1 !important; }
+  .dept-legend-item.is-off .dept-legend-name { text-decoration: line-through; }
   .dept-legend-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 3px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
     flex-shrink: 0;
+  }
+  .dept-legend-count {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-muted, #5A6785);
+    background: #F1F5F9;
+    padding: 1px 7px;
+    border-radius: 999px;
   }
   .dept-leaderboard-bar {
     display: flex;
@@ -472,8 +572,14 @@ require __DIR__ . '/inc/header.php';
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 14px;
-    padding-top: 12px;
-    border-top: 1px solid #F1F5F9;
+  }
+  .dept-leaderboard-label {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted, #5A6785);
+    margin-right: 4px;
   }
   .dept-chip {
     display: inline-flex;
@@ -648,27 +754,76 @@ require __DIR__ . '/inc/header.php';
     color: var(--brand, #FF4F01);
   }
 
-  /* Compact Performance Matrix Styling - Zero Horizontal Slide Bar */
+  /* Performance Matrix (faculty + student) — compact, no horizontal scroll */
+  .matrix-card {
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(19, 29, 59, 0.04), 0 6px 18px rgba(19, 29, 59, 0.05);
+  }
+  .matrix-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .matrix-heading {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+  }
+  .matrix-head-icon {
+    flex: 0 0 auto;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #FFF1EA;
+    color: #FF4F01;
+  }
+  .matrix-head-icon.is-navy {
+    background: #EEF2FF;
+    color: #3B4BC8;
+  }
+  .matrix-heading .card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .matrix-count {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 8px;
+    border-radius: 999px;
+    background: #F1F4F9;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
   .matrix-wrap {
-    max-height: 480px;
+    max-height: 520px;
     overflow-y: auto !important;
     overflow-x: hidden !important;
-    border: 1px solid var(--hairline, #E2E8F0);
-    border-radius: 8px;
+    border: 1px solid #EEF1F6;
+    border-radius: 12px;
     background: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   }
   .matrix-wrap::-webkit-scrollbar {
-    width: 5px;
+    width: 6px;
     height: 0px !important;
     display: block;
   }
   .matrix-wrap::-webkit-scrollbar-track {
-    background: #F8FAFC;
+    background: transparent;
   }
   .matrix-wrap::-webkit-scrollbar-thumb {
-    background: #CBD5E1;
-    border-radius: 4px;
+    background: #D5DCE6;
+    border-radius: 6px;
   }
   .matrix-wrap::-webkit-scrollbar-thumb:hover {
     background: #94A3B8;
@@ -678,7 +833,8 @@ require __DIR__ . '/inc/header.php';
     min-width: 0 !important;
     max-width: 100% !important;
     table-layout: fixed !important;
-    border-collapse: collapse !important;
+    border-collapse: separate !important;
+    border-spacing: 0 !important;
     font-size: 11.5px !important;
     margin: 0 !important;
   }
@@ -686,97 +842,240 @@ require __DIR__ . '/inc/header.php';
     position: sticky;
     top: 0;
     z-index: 10;
-    background: #F8FAFC !important;
-    font-size: 10px !important;
+    background: #FAFBFD !important;
+    font-size: 9.5px !important;
     font-weight: 700 !important;
     text-transform: uppercase !important;
-    letter-spacing: 0.03em !important;
-    color: #475569 !important;
-    padding: 7px 2px !important;
-    border-bottom: 2px solid #E2E8F0 !important;
+    letter-spacing: 0.06em !important;
+    color: #64748B !important;
+    padding: 10px 2px 9px !important;
+    line-height: 14px !important;
+    border-bottom: 1px solid #E6EAF2 !important;
     white-space: nowrap !important;
     text-align: center !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
   }
+  /* Category columns carry a thin colour key under their heading */
+  table.matrix-table thead th.mx-cat {
+    box-shadow: inset 0 -2px 0 var(--c, #CBD5E1);
+  }
   table.matrix-table thead th.text-start {
     text-align: left !important;
-    padding-left: 6px !important;
+    padding-left: 10px !important;
   }
   table.matrix-table tbody td {
-    padding: 5px 2px !important;
+    padding: 7px 2px !important;
     font-size: 11.5px !important;
     vertical-align: middle !important;
-    border-bottom: 1px solid #F1F5F9 !important;
+    border-bottom: 1px solid #F2F4F8 !important;
     overflow: hidden !important;
     text-overflow: ellipsis !important;
     white-space: nowrap !important;
+    transition: background 0.12s ease;
   }
-  table.matrix-table tbody tr:hover {
-    background: #F8FAFC !important;
+  table.matrix-table tbody tr.drill-row:hover td {
+    background: #FAFBFF !important;
   }
+  table.matrix-table tbody tr.drill-row:hover td:first-child {
+    box-shadow: inset 3px 0 0 #FF4F01;
+  }
+  table.matrix-table tbody tr.drill-row:hover .mx-name {
+    color: #FF4F01;
+  }
+
+  /* Department group rows */
+  table.matrix-table tbody tr.mx-group td {
+    position: sticky;
+    top: 33px;
+    z-index: 5;
+    padding: 0 !important;
+    background: #F6F8FB !important;
+    border-top: 1px solid #E6EAF2 !important;
+    border-bottom: 1px solid #E6EAF2 !important;
+  }
+  .mx-group-inner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px;
+    box-shadow: inset 3px 0 0 #131D3B;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: #1E293B;
+    min-width: 0;
+  }
+  .mx-group-inner svg {
+    color: #64748B;
+    flex: 0 0 auto;
+  }
+  .mx-group-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+  }
+  .mx-group-chip {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    height: 18px;
+    padding: 0 7px;
+    border-radius: 999px;
+    background: #ffffff;
+    border: 1px solid #E2E8F0;
+    color: #64748B;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .mx-group-total {
+    margin-left: auto;
+    flex: 0 0 auto;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: #64748B;
+  }
+  .mx-group-total b {
+    color: #E04400;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Person cell: initials avatar + name + meta line */
+  .mx-person {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 0;
+    padding-left: 8px;
+  }
+  .mx-avatar {
+    flex: 0 0 auto;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    color: var(--c, #475569);
+    background: #F1F4F9;
+    background: color-mix(in srgb, var(--c, #475569) 13%, #ffffff);
+  }
+  .mx-person-text {
+    min-width: 0;
+    line-height: 1.25;
+  }
+  .mx-name {
+    font-weight: 650;
+    color: var(--ink, #131D3B);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: color 0.12s ease;
+  }
+  .mx-meta {
+    font-size: 10px;
+    color: #8A94A8;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mx-muted {
+    font-size: 11px;
+    color: #64748B;
+    padding-left: 8px !important;
+  }
+  .mx-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 10.5px;
+    color: #475569;
+    padding-left: 8px !important;
+  }
+
+  /* Count cells */
   .matrix-cell-num {
     text-align: center !important;
     font-variant-numeric: tabular-nums !important;
   }
   .matrix-zero {
-    color: #CBD5E1 !important;
-    font-weight: 400 !important;
+    color: #D5DCE6 !important;
+    font-weight: 500 !important;
     font-size: 11px !important;
   }
   .matrix-val {
-    font-weight: 700 !important;
-    color: #0F172A !important;
-    font-size: 11.5px !important;
-  }
-  .matrix-total {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     min-width: 22px;
     height: 20px;
-    padding: 0 4px;
+    padding: 0 5px;
+    border-radius: 6px;
+    font-weight: 700 !important;
+    font-size: 11.5px !important;
+    color: var(--c, #0F172A) !important;
+    background: #F1F4F9;
+    background: color-mix(in srgb, var(--c, #0F172A) 11%, #ffffff);
+  }
+  .matrix-total {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 26px;
+    height: 22px;
+    padding: 0 6px;
     border-radius: 999px;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 11.5px;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
-    background: #F1F5F9;
-    color: #64748B;
+    background: #F4F6FA;
+    color: #A0AABB;
   }
   .matrix-total.is-active {
-    background: #FFF1EB !important;
-    color: #E04400 !important;
-    border: 1px solid #FFCBB3 !important;
+    background: #FF4F01 !important;
+    color: #ffffff !important;
+    box-shadow: 0 2px 6px rgba(255, 79, 1, 0.25);
   }
+
+  /* Row actions */
   .matrix-actions {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: 3px;
+    gap: 4px;
     width: 100%;
     white-space: nowrap;
   }
   .matrix-btn {
-    height: 23px !important;
-    line-height: 23px !important;
-    padding: 0 6px !important;
+    height: 24px !important;
+    line-height: 24px !important;
+    padding: 0 8px !important;
     font-size: 10.5px !important;
-    font-weight: 600 !important;
-    border-radius: 5px !important;
+    font-weight: 700 !important;
+    border-radius: 7px !important;
     display: inline-flex !important;
     align-items: center !important;
-    gap: 3px !important;
+    gap: 4px !important;
     white-space: nowrap !important;
-    border: none !important;
+    border: 1px solid transparent !important;
     text-decoration: none !important;
     cursor: pointer !important;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+  }
+  .matrix-btn:hover {
+    transform: translateY(-1px);
   }
   .matrix-btn-primary {
-    background: #FF4F01 !important;
-    color: #ffffff !important;
+    background: #FFF1EA !important;
+    color: #E04400 !important;
+    border-color: #FFD9C6 !important;
   }
   .matrix-btn-primary:hover {
-    background: #E04400 !important;
+    background: #FF4F01 !important;
+    border-color: #FF4F01 !important;
     color: #ffffff !important;
   }
   .matrix-btn-navy {
@@ -784,13 +1083,13 @@ require __DIR__ . '/inc/header.php';
     color: #ffffff !important;
   }
   .matrix-btn-navy:hover {
-    background: #1E293B !important;
+    background: #26345F !important;
     color: #ffffff !important;
   }
   .matrix-btn-outline {
     background: #ffffff !important;
-    color: #334155 !important;
-    border: 1px solid #CBD5E1 !important;
+    color: #475569 !important;
+    border-color: #E2E8F0 !important;
   }
   .matrix-btn-outline:hover {
     background: #F1F5F9 !important;
@@ -1053,30 +1352,43 @@ require __DIR__ . '/inc/header.php';
         </div>
       </div>
 
-      <div class="analytics-chart-card">
-        <div class="analytics-chart-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-          <div>
-            <div class="analytics-chart-title"><?= icon('bar-chart', 14) ?> Department Achievement Distribution</div>
-            <div class="analytics-chart-sub">Ranked faculty contributions by department &amp; category breakdown</div>
+      <div class="analytics-chart-card dept-dist-card">
+        <div class="analytics-chart-head dept-dist-head">
+          <div class="dept-dist-heading">
+            <span class="dept-dist-icon"><?= icon('bar-chart', 16) ?></span>
+            <div>
+              <div class="analytics-chart-title">Department Achievement Distribution</div>
+              <div class="analytics-chart-sub">Ranked faculty contributions by department &amp; category breakdown</div>
+            </div>
           </div>
-          <div class="dept-chart-controls" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div class="dept-chart-controls">
+            <!-- View: Category mix vs Total -->
+            <div class="pill-toggle-group">
+              <button type="button" class="btn-pill active" id="btnDeptTypeStacked" onclick="setDeptChartType('stacked')">Category Mix</button>
+              <button type="button" class="btn-pill" id="btnDeptTypeTotal" onclick="setDeptChartType('total')">Total</button>
+            </div>
             <!-- Filter: Active vs All -->
             <div class="pill-toggle-group">
-              <button type="button" class="btn-pill active" id="btnDeptFilterActive" onclick="setDeptChartFilter('active')">Active Only (<?= $activeDeptsCount ?>)</button>
-              <button type="button" class="btn-pill" id="btnDeptFilterAll" onclick="setDeptChartFilter('all')">All Depts (<?= $totalDeptsCount ?>)</button>
+              <button type="button" class="btn-pill active" id="btnDeptFilterActive" onclick="setDeptChartFilter('active')">Active (<?= $activeDeptsCount ?>)</button>
+              <button type="button" class="btn-pill" id="btnDeptFilterAll" onclick="setDeptChartFilter('all')">All (<?= $totalDeptsCount ?>)</button>
             </div>
           </div>
         </div>
 
         <!-- 1A. Analytic View: Chart.js Bar Chart -->
         <div id="deptAnalyticsView">
-          <div class="analytics-chart-body" id="deptChartContainer" style="height:280px; position:relative;">
-            <canvas id="deptCompChart"></canvas>
+          <!-- Stacked View: interactive category legend (built in JS) -->
+          <div id="deptLegendBar" class="dept-chart-legend" role="group" aria-label="Toggle categories"></div>
+
+          <div class="dept-chart-frame">
+            <div class="analytics-chart-body" id="deptChartContainer" style="height:280px; position:relative;">
+              <canvas id="deptCompChart"></canvas>
+            </div>
           </div>
 
           <!-- Total View: Leaderboard Chips -->
           <div id="deptLeaderboardBar" class="dept-leaderboard-bar" style="display:none;">
-            <span style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--muted,#5A6785); margin-right:4px;">Department Ranking:</span>
+            <span class="dept-leaderboard-label">Department Ranking</span>
             <?php foreach ($activeDeptComp as $idx => $dc): ?>
               <?php $pct = $totalDeptRecords > 0 ? round(($dc['total'] / $totalDeptRecords) * 100, 1) : 0; ?>
               <div class="dept-chip <?= $idx < 3 ? 'rank-' . ($idx + 1) : '' ?>" title="<?= e($dc['department']) ?>: <?= (int)$dc['total'] ?> verified achievements (<?= $pct ?>%)">
@@ -1086,23 +1398,6 @@ require __DIR__ . '/inc/header.php';
                 <span style="font-size:10.5px; color:var(--ink-faint,#8B96AE);">(<?= $pct ?>%)</span>
               </div>
             <?php endforeach; ?>
-          </div>
-
-          <!-- Stacked View: Legend Bar with Breakdown/Total toggle -->
-          <div id="deptLegendBar" class="dept-chart-legend" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center;">
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#2563EB;"></span> Publications</span>
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#059669;"></span> Conferences</span>
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#FF4F01;"></span> Books</span>
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#DC2626;"></span> Events</span>
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#7C3AED;"></span> Training</span>
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#0D9488;"></span> Patents</span>
-              <span class="dept-legend-item"><span class="dept-legend-dot" style="background:#64748B;"></span> Other</span>
-            </div>
-            <div class="pill-toggle-group" style="scale:0.88; transform-origin:right center;">
-              <button type="button" class="btn-pill" id="btnDeptTypeTotal" onclick="setDeptChartType('total')">Total Bar</button>
-              <button type="button" class="btn-pill active" id="btnDeptTypeStacked" onclick="setDeptChartType('stacked')">Category Mix</button>
-            </div>
           </div>
         </div>
 
@@ -1274,14 +1569,35 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
+<?php
+// Shared cell renderers for the faculty and student matrices.
+$mxCell = static function ($value, string $color): string {
+    $value = (int) $value;
+    return $value > 0
+        ? '<span class="matrix-val" style="--c:' . $color . ';">' . $value . '</span>'
+        : '<span class="matrix-zero">&ndash;</span>';
+};
+$mxAvatar = static function (string $name): string {
+    $palette = ['#2563EB', '#10B981', '#FF4F01', '#E11D48', '#7C3AED', '#0891B2', '#D97706', '#131D3B'];
+    $clean   = trim(preg_replace('/^(prof|dr|mr|mrs|ms|miss)\.?\s+/i', '', trim($name)));
+    $words   = preg_split('/[^\p{L}\p{N}]+/u', $clean, -1, PREG_SPLIT_NO_EMPTY) ?: ['?'];
+    $initials = mb_strtoupper(mb_substr($words[0], 0, 1) . (isset($words[1]) ? mb_substr($words[1], 0, 1) : ''));
+    $color   = $palette[abs(crc32($clean)) % count($palette)];
+    return '<span class="mx-avatar" style="--c:' . $color . ';" aria-hidden="true">' . e($initials) . '</span>';
+};
+?>
+
 <!-- Section 3: Highest Achievement Contributors & Main Performance Matrix -->
 <div class="mt-5 grid-2-1 gap-5" style="display:grid; grid-template-columns: 2fr 1fr; gap:20px;">
   <!-- Main Faculty Achievement Table Card -->
-  <div class="card" style="grid-column: span 2;">
-    <div class="card-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-      <div>
-        <div class="card-title"><?= icon('users', 16) ?> Faculty Achievement Performance Matrix</div>
-        <div class="card-sub"><?= count($facGrid) ?> faculty members &middot; Click any row to view full detailed records</div>
+  <div class="card matrix-card" style="grid-column: span 2;">
+    <div class="card-head matrix-head">
+      <div class="matrix-heading">
+        <span class="matrix-head-icon"><?= icon('users', 16) ?></span>
+        <div>
+          <div class="card-title">Faculty Achievement Performance Matrix <span class="matrix-count"><?= count($facGrid) ?></span></div>
+          <div class="card-sub">Faculty grouped by department &middot; Click any row to open the full record</div>
+        </div>
       </div>
 
       <!-- Quick Search Input -->
@@ -1309,36 +1625,36 @@ require __DIR__ . '/inc/header.php';
       <?php else: ?>
         <div class="matrix-wrap">
           <table class="data wide sortable matrix-table" id="facTable">
+            <?php
+              // Same palette as the Department Achievement Distribution chart.
+              $facCols = [
+                  'journals'    => ['Jour.',   'Journals',                '#2563EB'],
+                  'conferences' => ['Conf.',   'Conferences',             '#10B981'],
+                  'books'       => ['Books',   'Books / Chapters',        '#FF4F01'],
+                  'events'      => ['Events',  'Events / Workshops',      '#E11D48'],
+                  'training'    => ['Train.',  'FDP / Training Programs', '#7C3AED'],
+                  'patents'     => ['Patents', 'Patents Filed / Granted', '#0891B2'],
+                  'other'       => ['Other',   'Other Achievements',      '#64748B'],
+              ];
+            ?>
             <colgroup>
-              <col style="width: 3%;">
-              <col style="width: 21%;">
-              <col style="width: 12%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5.4%;">
-              <col style="width: 13.6%;">
-              <col style="width: 10%;">
+              <col style="width: 3.5%;">
+              <col style="width: 22%;">
+              <col style="width: 11%;">
+              <?php foreach ($facCols as $_): ?><col style="width: 5%;"><?php endforeach; ?>
+              <col style="width: 5.5%;">
+              <col style="width: 23%;">
             </colgroup>
             <thead>
               <tr>
                 <th style="text-align:center;">#</th>
                 <th class="text-start">Faculty Member</th>
                 <th class="text-start">Department</th>
-                <th class="num" title="Journals">Jour.</th>
-                <th class="num" title="Conferences">Conf.</th>
-                <th class="num" title="Books / Chapters">Books</th>
-                <th class="num" title="Events / Workshops">Events</th>
-                <th class="num" title="FDP / Training Programs">Train.</th>
-                <th class="num" title="Patents Filed / Granted">Patents</th>
-                <th class="num" title="Other Achievements">Other</th>
+                <?php foreach ($facCols as [$short, $long, $color]): ?>
+                  <th class="num mx-cat" style="--c:<?= $color ?>;" title="<?= e($long) ?>"><?= e($short) ?></th>
+                <?php endforeach; ?>
                 <th class="num" title="Total Achievements">Total</th>
-                <th style="text-align:center;">Report</th>
-                <th style="text-align:center;">Presentation</th>
+                <th style="text-align:center;">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1363,46 +1679,45 @@ require __DIR__ . '/inc/header.php';
                 $sno = 1;
               ?>
               <?php foreach ($groupedGrid as $deptName => $deptFaculty): ?>
-                <tr style="background:#F1F5F9; border-top:1px solid #CBD5E1; border-bottom:1px solid #CBD5E1;">
-                  <td colspan="13" style="padding:6px 10px !important; font-weight:700; color:#1E293B; font-size:12px;">
-                    <?= icon('building', 13) ?> Department: <?= e($deptName) ?>
-                    <span class="badge badge-neutral" style="margin-left:6px; font-size:10.5px; padding:1px 6px;"><?= count($deptFaculty) ?> faculty</span>
+                <tr class="mx-group">
+                  <td colspan="12">
+                    <div class="mx-group-inner">
+                      <?= icon('building', 13) ?>
+                      <span class="mx-group-name" title="<?= e($deptName) ?>"><?= e($deptName) ?></span>
+                      <span class="mx-group-chip"><?= count($deptFaculty) ?> faculty</span>
+                      <span class="mx-group-total"><b><?= array_sum(array_map(static fn($r) => (int) $r['total'], $deptFaculty)) ?></b> records</span>
+                    </div>
                   </td>
                 </tr>
                 <?php foreach ($deptFaculty as $f): ?>
                   <tr class="drill-row" onclick="location.href='individual-faculty-report.php?id=<?= (int) $f['id'] ?>'" style="cursor:pointer;" title="Click to view <?= e($f['name']) ?>'s Individual Faculty Achievement Report">
                     <td class="faint matrix-cell-num"><?= $sno++ ?></td>
-                    <td class="text-start" style="padding-left: 6px !important;">
-                      <div class="fw-500 truncate" style="font-weight:600; color:var(--ink,#131D3B); font-size:12px;" title="<?= e($f['name']) ?>"><?= e($f['name']) ?></div>
-                      <div class="card-sub truncate" style="font-size:10px; color:var(--ink-muted,#5A6785);"><?= e($f['designation']) ?> &middot; <?= e($f['employee_id']) ?></div>
+                    <td class="text-start">
+                      <div class="mx-person">
+                        <?= $mxAvatar((string) $f['name']) ?>
+                        <div class="mx-person-text">
+                          <div class="mx-name" title="<?= e($f['name']) ?>"><?= e($f['name']) ?></div>
+                          <div class="mx-meta"><?= e($f['designation']) ?> &middot; <?= e($f['employee_id']) ?></div>
+                        </div>
+                      </div>
                     </td>
-                    <td class="faint text-start" style="font-size:11px; padding-left: 6px !important;" title="<?= e($f['department']) ?>">
+                    <td class="text-start mx-muted" title="<?= e($f['department']) ?>">
                       <div class="truncate"><?= e($f['department']) ?></div>
                     </td>
-                    <td class="matrix-cell-num"><?= (int) $f['journals'] > 0 ? '<span class="matrix-val">' . (int) $f['journals'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $f['conferences'] > 0 ? '<span class="matrix-val">' . (int) $f['conferences'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $f['books'] > 0 ? '<span class="matrix-val">' . (int) $f['books'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $f['events'] > 0 ? '<span class="matrix-val">' . (int) $f['events'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $f['training'] > 0 ? '<span class="matrix-val">' . (int) $f['training'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $f['patents'] > 0 ? '<span class="matrix-val">' . (int) $f['patents'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $f['other'] > 0 ? '<span class="matrix-val">' . (int) $f['other'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
+                    <?php foreach ($facCols as $key => [, , $color]): ?>
+                      <td class="matrix-cell-num"><?= $mxCell($f[$key], $color) ?></td>
+                    <?php endforeach; ?>
                     <td class="matrix-cell-num">
-                      <span class="matrix-total <?= (int) $f['total'] > 0 ? 'is-active' : '' ?>">
-                        <?= (int) $f['total'] ?>
-                      </span>
+                      <span class="matrix-total <?= (int) $f['total'] > 0 ? 'is-active' : '' ?>"><?= (int) $f['total'] ?></span>
                     </td>
                     <td style="text-align:center;" onclick="event.stopPropagation();">
-                      <div class="matrix-actions" style="justify-content:center;">
+                      <div class="matrix-actions">
                         <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?>" class="matrix-btn matrix-btn-primary" title="View Individual Faculty Report">
                           <?= icon('file-text', 11) ?> Report
                         </a>
                         <a href="<?= e(url('faculty-details-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?><?= $em !== 'all' ? '&em=' . urlencode($em) : '' ?>" target="_blank" rel="noopener" class="matrix-btn matrix-btn-outline" title="Open <?= e($f['name']) ?>'s Faculty Details as an A4 document">
-                          <?= icon('user', 11) ?> PDF
+                          <?= icon('download', 11) ?> PDF
                         </a>
-                      </div>
-                    </td>
-                    <td style="text-align:center;" onclick="event.stopPropagation();">
-                      <div class="matrix-actions" style="justify-content:center;">
                         <?php
                           $facPresQ = ['id' => (int) $f['id'], 'from' => 'faculty-achievements'];
                           if (!empty($academicYear)) $facPresQ['academic_year'] = $academicYear;
@@ -1427,11 +1742,14 @@ require __DIR__ . '/inc/header.php';
 </div>
 
 <!-- Section 4: Student Achievement Performance Matrix (Dedicated Data Matrix Box) -->
-<div class="mt-5 card">
-  <div class="card-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
-    <div>
-      <div class="card-title"><?= icon('graduation', 16) ?> Student Achievement Performance Matrix</div>
-      <div class="card-sub"><?= count($studGrid) ?> student profiles &middot; Consolidated student achievements across active categories</div>
+<div class="mt-5 card matrix-card">
+  <div class="card-head matrix-head">
+    <div class="matrix-heading">
+      <span class="matrix-head-icon is-navy"><?= icon('graduation', 16) ?></span>
+      <div>
+        <div class="card-title">Student Achievement Performance Matrix <span class="matrix-count"><?= count($studGrid) ?></span></div>
+        <div class="card-sub">Students grouped by department &middot; Click any row to open the full record</div>
+      </div>
     </div>
 
     <!-- Student Quick Search Input -->
@@ -1502,22 +1820,26 @@ require __DIR__ . '/inc/header.php';
       <?php else: ?>
         <div class="matrix-wrap" style="margin-top:14px;">
           <table class="data wide sortable matrix-table" id="studTable">
+            <?php
+              $studCols = [
+                  'nptel'          => ['NPTEL',   'NPTEL Certifications',     '#2563EB'],
+                  'internships'    => ['Intern',  'Internships',              '#10B981'],
+                  'placements'     => ['Place',   'Placements',               '#FF4F01'],
+                  'online_courses' => ['Course',  'Online Courses',           '#0891B2'],
+                  'achievements'   => ['Achieve', 'Student Achievements',     '#D97706'],
+                  'participation'  => ['Partic',  'Student Participations',   '#E11D48'],
+                  'training'       => ['Train',   'Summer / Winter Training', '#7C3AED'],
+                  'other'          => ['Other',   'Other Achievements',       '#64748B'],
+              ];
+            ?>
             <colgroup>
-              <col style="width: 3%;">
-              <col style="width: 15%;">
-              <col style="width: 11%;">
-              <col style="width: 8.5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5.2%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5%;">
-              <col style="width: 5.3%;">
-              <col style="width: 8%;">
+              <col style="width: 3.5%;">
+              <col style="width: 18%;">
+              <col style="width: 10.5%;">
               <col style="width: 9%;">
+              <?php foreach ($studCols as $_): ?><col style="width: 5%;"><?php endforeach; ?>
+              <col style="width: 5.5%;">
+              <col style="width: 13.5%;">
             </colgroup>
             <thead>
               <tr>
@@ -1525,17 +1847,11 @@ require __DIR__ . '/inc/header.php';
                 <th class="text-start">Student</th>
                 <th class="text-start">Register No</th>
                 <th class="text-start">Department</th>
-                <th class="num" title="NPTEL Certifications">NPTEL</th>
-                <th class="num" title="Internships">Intern</th>
-                <th class="num" title="Placements">Place</th>
-                <th class="num" title="Online Courses">Course</th>
-                <th class="num" title="Student Achievements">Achieve</th>
-                <th class="num" title="Student Participations">Partic</th>
-                <th class="num" title="Summer / Winter Training">Train</th>
-                <th class="num" title="Other Achievements">Other</th>
+                <?php foreach ($studCols as [$short, $long, $color]): ?>
+                  <th class="num mx-cat" style="--c:<?= $color ?>;" title="<?= e($long) ?>"><?= e($short) ?></th>
+                <?php endforeach; ?>
                 <th class="num" title="Total Achievements">Total</th>
-                <th style="text-align:center;">Report</th>
-                <th style="text-align:center;">Presentation</th>
+                <th style="text-align:center;">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -1548,10 +1864,14 @@ require __DIR__ . '/inc/header.php';
                 $studSno = 1;
               ?>
               <?php foreach ($groupedStudGrid as $deptName => $deptStudents): ?>
-                <tr style="background:#F1F5F9; border-top:1px solid #CBD5E1; border-bottom:1px solid #CBD5E1;">
-                  <td colspan="15" style="padding:6px 10px !important; font-weight:700; color:#1E293B; font-size:12px;">
-                    <?= icon('building', 13) ?> Department: <?= e($deptName) ?>
-                    <span class="badge badge-neutral" style="margin-left:6px; font-size:10.5px; padding:1px 6px;"><?= count($deptStudents) ?> <?= count($deptStudents) === 1 ? 'student' : 'students' ?></span>
+                <tr class="mx-group">
+                  <td colspan="14">
+                    <div class="mx-group-inner">
+                      <?= icon('building', 13) ?>
+                      <span class="mx-group-name" title="<?= e($deptName) ?>"><?= e($deptName) ?></span>
+                      <span class="mx-group-chip"><?= count($deptStudents) ?> <?= count($deptStudents) === 1 ? 'student' : 'students' ?></span>
+                      <span class="mx-group-total"><b><?= array_sum(array_map(static fn($r) => (int) $r['total'], $deptStudents)) ?></b> records</span>
+                    </div>
                   </td>
                 </tr>
                 <?php foreach ($deptStudents as $s): ?>
@@ -1574,37 +1894,31 @@ require __DIR__ . '/inc/header.php';
                   ?>
                   <tr class="drill-row" style="cursor:pointer;" title="Click to view <?= e($s['student_name']) ?>'s Individual Student Achievement Report" onclick="location.href='<?= e($studReportUrl) ?>'">
                     <td class="faint matrix-cell-num"><?= $studSno++ ?></td>
-                    <td class="text-start" style="padding-left: 6px !important;">
-                      <div class="fw-500 truncate" style="font-weight:600; color:var(--ink,#131D3B); font-size:12px;" title="<?= e($s['student_name']) ?>"><?= e($s['student_name']) ?></div>
+                    <td class="text-start">
+                      <div class="mx-person">
+                        <?= $mxAvatar((string) $s['student_name']) ?>
+                        <div class="mx-person-text">
+                          <div class="mx-name" title="<?= e($s['student_name']) ?>"><?= e($s['student_name']) ?></div>
+                        </div>
+                      </div>
                     </td>
-                    <td class="faint text-start" style="font-family:monospace; font-size:11px; padding-left: 4px !important;" title="<?= e($s['reg_no']) ?>">
+                    <td class="text-start mx-mono" title="<?= e($s['reg_no']) ?>">
                       <div class="truncate"><?= e($s['reg_no']) ?></div>
                     </td>
-                    <td class="faint text-start" style="font-size:11px; padding-left: 4px !important;" title="<?= e($s['department']) ?>">
+                    <td class="text-start mx-muted" title="<?= e($s['department']) ?>">
                       <div class="truncate"><?= e($s['department']) ?></div>
                     </td>
-                    <td class="matrix-cell-num"><?= (int) $s['nptel'] > 0 ? '<span class="matrix-val">' . (int) $s['nptel'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['internships'] > 0 ? '<span class="matrix-val">' . (int) $s['internships'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['placements'] > 0 ? '<span class="matrix-val">' . (int) $s['placements'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['online_courses'] > 0 ? '<span class="matrix-val">' . (int) $s['online_courses'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['achievements'] > 0 ? '<span class="matrix-val">' . (int) $s['achievements'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['participation'] > 0 ? '<span class="matrix-val">' . (int) $s['participation'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['training'] > 0 ? '<span class="matrix-val">' . (int) $s['training'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
-                    <td class="matrix-cell-num"><?= (int) $s['other'] > 0 ? '<span class="matrix-val">' . (int) $s['other'] . '</span>' : '<span class="matrix-zero">0</span>' ?></td>
+                    <?php foreach ($studCols as $key => [, , $color]): ?>
+                      <td class="matrix-cell-num"><?= $mxCell($s[$key], $color) ?></td>
+                    <?php endforeach; ?>
                     <td class="matrix-cell-num">
-                      <span class="matrix-total <?= (int) $s['total'] > 0 ? 'is-active' : '' ?>">
-                        <?= (int) $s['total'] ?>
-                      </span>
+                      <span class="matrix-total <?= (int) $s['total'] > 0 ? 'is-active' : '' ?>"><?= (int) $s['total'] ?></span>
                     </td>
                     <td style="text-align:center;" onclick="event.stopPropagation();">
-                      <div class="matrix-actions" style="justify-content:center;">
+                      <div class="matrix-actions">
                         <a href="<?= e($studReportUrl) ?>" class="matrix-btn matrix-btn-primary" title="View Individual Student Report">
                           <?= icon('file-text', 11) ?> Report
                         </a>
-                      </div>
-                    </td>
-                    <td style="text-align:center;" onclick="event.stopPropagation();">
-                      <div class="matrix-actions" style="justify-content:center;">
                         <a href="<?= e($studPresentUrl) ?>" class="matrix-btn matrix-btn-navy" title="Present Student Report">
                           <?= icon('play-circle', 11) ?> Present
                         </a>
@@ -1761,6 +2075,42 @@ const deptDataAll = <?= json_encode($sortedDeptComp ?? []) ?>;
 const deptDataActive = <?= json_encode($activeDeptComp ?? []) ?>;
 let deptFilter = 'active';
 let deptType = 'stacked';
+const deptHiddenCats = new Set();
+
+const DEPT_CATEGORIES = [
+  { key: 'publications', label: 'Publications', color: '#2563EB' },
+  { key: 'conferences',  label: 'Conferences',  color: '#10B981' },
+  { key: 'books',        label: 'Books',        color: '#FF4F01' },
+  { key: 'events',       label: 'Events',       color: '#E11D48' },
+  { key: 'training',     label: 'Training',     color: '#7C3AED' },
+  { key: 'patents',      label: 'Patents',      color: '#0891B2' },
+  { key: 'other',        label: 'Other',        color: '#94A3B8' }
+];
+
+function renderDeptLegend(list) {
+  const bar = document.getElementById('deptLegendBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  DEPT_CATEGORIES.forEach(cat => {
+    const total = list.reduce((sum, d) => sum + (Number(d[cat.key]) || 0), 0);
+    if (!total) return;
+    const off = deptHiddenCats.has(cat.key);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'dept-legend-item' + (off ? ' is-off' : '');
+    btn.setAttribute('aria-pressed', off ? 'false' : 'true');
+    btn.title = (off ? 'Show ' : 'Hide ') + cat.label;
+    btn.innerHTML = '<span class="dept-legend-dot" style="background:' + cat.color + '"></span>'
+      + '<span class="dept-legend-name">' + cat.label + '</span>'
+      + '<span class="dept-legend-count">' + total + '</span>';
+    btn.addEventListener('click', () => {
+      if (deptHiddenCats.has(cat.key)) deptHiddenCats.delete(cat.key);
+      else deptHiddenCats.add(cat.key);
+      renderDeptChart();
+    });
+    bar.appendChild(btn);
+  });
+}
 
 function setDeptChartFilter(filter) {
   deptFilter = filter;
@@ -1779,12 +2129,14 @@ function setDeptChartType(type) {
   const btnTot = document.getElementById('btnDeptTypeTotal');
   const btnStk = document.getElementById('btnDeptTypeStacked');
   const lbBar = document.getElementById('deptLeaderboardBar');
+  const lgBar = document.getElementById('deptLegendBar');
 
   if (btnTot && btnStk) {
     btnTot.classList.toggle('active', type === 'total');
     btnStk.classList.toggle('active', type === 'stacked');
   }
   if (lbBar) lbBar.style.display = (type === 'total') ? 'flex' : 'none';
+  if (lgBar) lgBar.style.display = (type === 'stacked') ? 'flex' : 'none';
   renderDeptChart();
 }
 
@@ -1793,38 +2145,47 @@ function renderDeptChart() {
   const container = document.getElementById('deptChartContainer');
   if (!container || !list || !list.length) return;
 
-  const h = deptFilter === 'active' ? Math.max(260, list.length * 48) : Math.max(420, list.length * 28);
+  const isActive = deptFilter === 'active';
+  const h = isActive ? Math.max(240, list.length * 52 + 40) : Math.max(420, list.length * 30 + 40);
   container.style.height = h + 'px';
 
+  const common = {
+    labels: list.map(d => d.department),
+    horizontal: true,
+    rounded: true,
+    track: true,
+    wrapLabels: isActive,
+    labelMaxLength: 20,
+    paddingLeft: 4,
+    valueAxisTitle: 'Verified records',
+    unit: 'records',
+    empty: 'No department achievements found'
+  };
+
   if (deptType === 'total') {
-    ATTS.charts.bar('deptCompChart', {
-      labels: list.map(d => d.department),
+    ATTS.charts.bar('deptCompChart', Object.assign({}, common, {
       data: list.map(d => d.total),
-      colors: '#FF4F01',
-      horizontal: true,
-      maxBarThickness: deptFilter === 'active' ? 26 : 18,
-      unit: 'records',
-      empty: 'No department achievements found'
-    });
+      // Top three departments in full brand orange, the rest softened.
+      colors: list.map((d, i) => i < 3 ? '#FF4F01' : '#FFA27A'),
+      maxBarThickness: isActive ? 26 : 16
+    }));
   } else {
-    const datasets = [
-      { label: 'Publications', data: list.map(d => d.publications), backgroundColor: '#2563EB', maxBarThickness: 24 },
-      { label: 'Conferences',  data: list.map(d => d.conferences),  backgroundColor: '#059669', maxBarThickness: 24 },
-      { label: 'Books',        data: list.map(d => d.books),        backgroundColor: '#FF4F01', maxBarThickness: 24 },
-      { label: 'Events',       data: list.map(d => d.events),       backgroundColor: '#DC2626', maxBarThickness: 24 },
-      { label: 'Training',     data: list.map(d => d.training),     backgroundColor: '#7C3AED', maxBarThickness: 24 },
-      { label: 'Patents',      data: list.map(d => d.patents),      backgroundColor: '#0D9488', maxBarThickness: 24 },
-      { label: 'Other',        data: list.map(d => d.other),        backgroundColor: '#64748B', maxBarThickness: 24 }
-    ];
-    ATTS.charts.bar('deptCompChart', {
-      labels: list.map(d => d.department),
+    renderDeptLegend(list);
+    const datasets = DEPT_CATEGORIES.map(cat => ({
+      label: cat.label,
+      data: list.map(d => Number(d[cat.key]) || 0),
+      backgroundColor: cat.color,
+      hoverBackgroundColor: cat.color,
+      maxBarThickness: isActive ? 26 : 16,
+      hidden: deptHiddenCats.has(cat.key)
+    }));
+    ATTS.charts.bar('deptCompChart', Object.assign({}, common, {
       stacked: true,
-      horizontal: true,
       datasets: datasets,
       legend: false,
-      unit: 'records',
-      empty: 'No department achievements found'
-    });
+      showTotals: true,
+      tooltipAll: true
+    }));
   }
 }
 

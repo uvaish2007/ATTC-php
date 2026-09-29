@@ -90,6 +90,18 @@ $reportTitle = strtoupper($typeLabel);
 // The columns, in order. Same for every format.
 $columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date', 'Proof'];
 
+function csv_line($handle, array $fields): void
+{
+    $safeFields = array_map(function ($field) {
+        $str = (string) $field;
+        if (isset($str[0]) && in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $str;
+        }
+        return $str;
+    }, $fields);
+    fputcsv($handle, $safeFields, ',', '"', '');
+}
+
 /** Build one row of values for a record. */
 function export_row(array $record, int $serial, string $format = 'csv'): array
 {

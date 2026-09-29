@@ -291,13 +291,15 @@ form.flex > label { display:flex; align-items:center; gap:6px; white-space:nowra
   transition:transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease),
              border-color var(--dur) var(--ease);
 }
+/* Hover accent: a thick #FF4F01 bar sweeps in along the top edge, left to right */
 .stat::before {
-  content:""; position:absolute; inset:0 0 auto 0; height:2px;
-  background:linear-gradient(90deg,var(--orange-500),var(--orange-300));
+  content:""; position:absolute; inset:0 0 auto 0; height:4px; z-index:1;
+  background:#FF4F01; box-shadow:0 1px 8px rgba(255,79,1,.45);
   transform:scaleX(0); transform-origin:left;
-  transition:transform var(--dur-slow) var(--ease-out);
+  transition:transform .5s var(--ease-out);
+  pointer-events:none;
 }
-.stat:hover { transform:translateY(-2px); box-shadow:var(--shadow-card-hover); border-color:var(--navy-100); }
+.stat:hover { transform:translateY(-2px); box-shadow:var(--shadow-card-hover), 0 8px 22px -12px rgba(255,79,1,.35); border-color:#FFD9C6; }
 .stat:hover::before { transform:scaleX(1); }
 .stat-top { display:flex; align-items:center; justify-content:space-between; gap:8px; min-height:34px; }
 .stat-label { font-size:13px; font-weight:500; color:var(--ink-muted); line-height:1.3;
@@ -1147,8 +1149,20 @@ dialog.modal.priority-important .modal-head {
 #ugToggle svg { transition:transform var(--dur) var(--ease-out); }
 #ugToggle.is-collapsed svg { transform:rotate(-90deg); }
 
-.ug-group { margin-bottom:12px; }
+.ug-group { margin-bottom:12px; position:relative;
+  transition:transform var(--dur) var(--ease-out), box-shadow var(--dur) var(--ease), border-color var(--dur) var(--ease); }
+.ug-group::before {
+  content:""; position:absolute; inset:0 0 auto 0; height:4px; z-index:2;
+  background:#FF4F01; box-shadow:0 1px 8px rgba(255,79,1,.45);
+  transform:scaleX(0); transform-origin:left;
+  transition:transform .5s var(--ease-out);
+  pointer-events:none;
+}
 .tg-group.ug-group[open] { box-shadow:var(--shadow-card); }
+.tg-group.ug-group:hover { transform:translateY(-1px); border-color:#FFD9C6;
+  box-shadow:var(--shadow-card-hover), 0 8px 22px -12px rgba(255,79,1,.35); }
+.tg-group.ug-group[open]:hover { transform:none; }   /* an expanded list shouldn't jump under the cursor */
+.ug-group:hover::before { transform:scaleX(1); }
 .ug-group > summary { gap:14px; padding:13px 16px 13px 16px; transition:background var(--dur) var(--ease); }
 
 .ug-code {
