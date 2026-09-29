@@ -163,7 +163,7 @@ function target_owns(array $target, array $user): bool
         return true;
     }
     return ($user['department'] ?? null) !== null
-        && ($target['department'] ?? null) === $user['department'];
+        && department_names_match($target['department'] ?? '', $user['department']);
 }
 
 function target_can_edit(array $target, array $user): bool
@@ -392,7 +392,7 @@ function target_update(int $id, array $user, string $department, string $academi
     // Department scope check: HoD/Coordinator can never edit outside their assigned department
     if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
         $userDept = $user['department'] ?? '';
-        if ($userDept === '' || ($existing['department'] ?? '') !== $userDept) {
+        if ($userDept === '' || !department_names_match($existing['department'] ?? '', $userDept)) {
             return [false, 'You do not have permission to edit targets outside your department.'];
         }
     }
@@ -469,7 +469,7 @@ function target_submit(int $id, array $user): array
 
     if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
         $userDept = $user['department'] ?? '';
-        if ($userDept === '' || ($existing['department'] ?? '') !== $userDept) {
+        if ($userDept === '' || !department_names_match($existing['department'] ?? '', $userDept)) {
             return [false, 'You do not have permission to submit targets outside your department.'];
         }
     }

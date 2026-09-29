@@ -129,11 +129,11 @@ function pending_approvals_count(array $user): int
     }
 
     if ($role === 'Coordinator') {
-        $targetStatuses = ['Submitted', 'Unlocked for Edit'];
+        $targetStatuses = ['Submitted', 'Unlocked for Edit', 'Resubmitted'];
     } elseif ($role === 'Dean') {
         $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {   
-        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Unlocked for Edit'];
+        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Unlocked for Edit', 'Resubmitted'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
@@ -145,8 +145,15 @@ function pending_approvals_count(array $user): int
             $sql    = "SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)";
             $params = $targetStatuses;
             if ($scopeDept !== null) {
-                $sql     .= ' AND department = ?';
-                $params[] = $scopeDept;
+                $deptVars = department_variants($scopeDept);
+                if (!empty($deptVars)) {
+                    $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+                    $sql     .= " AND department IN ($inPh)";
+                    $params = array_merge($params, $deptVars);
+                } else {
+                    $sql     .= ' AND department = ?';
+                    $params[] = $scopeDept;
+                }
             }
             if (in_array('academic_year', target_record_table_columns($table), true)) {
                 $sql     .= ' AND academic_year = ?';

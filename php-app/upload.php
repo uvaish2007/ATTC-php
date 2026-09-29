@@ -7,6 +7,7 @@ require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/ExecutiveMeeting.php';   
 require_once __DIR__ . '/models/UploadFlow.php';         
 require_once __DIR__ . '/inc/compression.php';
+require_once __DIR__ . '/inc/inst_upload_handler.php'; // Institutional achievement handler
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
@@ -119,7 +120,7 @@ if (upload_flow_applies($user)) {
         $flowEditRec = edit_request_original_record($flowEditType, $flowEditId);
         if ($flowEditRec) {
             $recYear = $flowEditRec['academic_year'] ?? active_academic_year();
-            $recDt   = upload_flow_data_type_of($flowEditType) ?? 'faculty';
+            $recDt   = upload_flow_data_type_of($flowEditType);
             upload_flow_store($user, ['year' => $recYear, 'data_type' => $recDt]);
         }
     }
@@ -137,12 +138,6 @@ if (upload_flow_applies($user)) {
     }
     $flowState = upload_flow_state($user);
 
-    // Faculty only ever upload Faculty Data, so that choice is made for them.
-    if ($isFacultyHome && $flowState['year'] !== null && $flowState['data_type'] !== 'faculty') {
-        upload_flow_store($user, ['data_type' => 'faculty']);
-        $flowState['data_type'] = 'faculty';
-    }
-
     if ($isPost && isset($_POST['upload_flow_step'])) {
         if ($_POST['upload_flow_step'] === 'year') {
             [$ok, $error] = upload_flow_choose_year($user, $_POST['academic_year'] ?? '');
@@ -150,16 +145,14 @@ if (upload_flow_applies($user)) {
                 flash('error', $error);
                 redirect('/upload.php');
             }
+            $backType = (string) ($_POST['return_type'] ?? '');
+            if ($backType !== '' && isset($types[$backType])) {
+                redirect('/upload.php?type=' . urlencode($backType));
+            }
             if ($isFacultyHome) {
-                upload_flow_store($user, ['data_type' => 'faculty']);
-                $backType = (string) ($_POST['return_type'] ?? '');
-                redirect('/upload.php?type=' . urlencode(in_array($backType, upload_flow_faculty_types(), true)
-                    ? $backType : upload_flow_faculty_types()[0]));
+                redirect('/upload.php?type=' . urlencode(array_keys($types)[0] ?? 'journal'));
             }
             redirect('/upload.php?step=data-type');
-        }
-        if ($isFacultyHome) {
-            redirect('/upload.php');
         }
         if ($_POST['upload_flow_step'] === 'data_type') {
             [$ok, $error] = upload_flow_choose_data_type($user, $_POST['data_type'] ?? '');
@@ -181,9 +174,10 @@ if (upload_flow_applies($user)) {
                     flash('error', "Academic year {$flowState['stale_year']} is no longer open for uploads. Switched to the current academic year.");
                 }
                 $homeYear = in_array($activeYear, upload_flow_years(), true) ? $activeYear : (upload_flow_years()[0] ?? $activeYear);
-                upload_flow_store($user, ['year' => $homeYear, 'data_type' => 'faculty']);
+                upload_flow_store($user, ['year' => $homeYear, 'data_type' => null]);
             }
-            redirect('/upload.php?type=' . urlencode(upload_flow_faculty_types()[0]));
+            $firstType = array_keys($types)[0] ?? 'journal';
+            redirect('/upload.php?type=' . urlencode($firstType));
         }
         if (($_GET['step'] ?? '') === 'data-type' && $flowState['year'] !== null) {
             $uploadFlowStep = 'data_type';
@@ -205,52 +199,54 @@ if (upload_flow_applies($user)) {
             $flowState['year'] = $activeYear;
             upload_flow_store($user, ['year' => $activeYear]);
         }
-        if ($flowState['data_type'] === null) {
-            $dType = upload_flow_data_type_of($directType) ?: 'faculty';
+        $dType = upload_flow_data_type_of($directType);
+        if ($dType !== null && $flowState['data_type'] === null) {
             $flowState['data_type'] = $dType;
             upload_flow_store($user, ['data_type' => $dType]);
         }
     }
 
-    // The form, or a record submitted from it: both choices must be in place.
     if ($flowState['year'] === null) {
-        flash('error', $flowState['stale_year'] !== null
-            ? "Academic year {$flowState['stale_year']} is no longer open for uploads. Please select the academic year again."
-            : 'Please select an Academic Year to continue.');
-        redirect('/upload.php');
-    }
-    if ($flowState['data_type'] === null) {
-        flash('error', 'Please choose Faculty Data or Student Data before uploading data.');
-        redirect('/upload.php?step=data-type');
+        $flowState['year'] = $activeYear;
+        upload_flow_store($user, ['year' => $activeYear]);
     }
 
-    $flowDefs   = upload_flow_data_types();
-    $uploadFlow = $flowState + ['label' => $flowDefs[$flowState['data_type']]['label'],
-                                'icon'  => $flowDefs[$flowState['data_type']]['icon']];
+    $flowDefs = upload_flow_data_types();
+    if ($flowState['data_type'] !== null && isset($flowDefs[$flowState['data_type']])) {
+        $uploadFlow = $flowState + [
+            'label' => $flowDefs[$flowState['data_type']]['label'],
+            'icon'  => $flowDefs[$flowState['data_type']]['icon'],
+        ];
+        $typeKeys = $flowDefs[$flowState['data_type']]['types'];
+    } else {
+        $uploadFlow = [
+            'year'      => $flowState['year'],
+            'data_type' => null,
+            'label'     => null,
+            'icon'      => 'folder',
+            'return_to' => $flowState['return_to'] ?? null,
+        ];
+        $typeKeys = array_keys($types);
+    }
 
-    // Only the chosen data type's record types can be opened or submitted.
-    $typeKeys  = $flowDefs[$flowState['data_type']]['types'];
     $askedType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
-    if ($isFacultyHome) {
-        $typeKeys = upload_flow_faculty_types();
-        // A record uploaded before student types left the faculty list stays editable.
-        if ($flowEditId > 0 && $askedType === $flowEditType && isset($types[$askedType]) && !in_array($askedType, $typeKeys, true)) {
-            $typeKeys[] = $askedType;
-        }
+    if ($askedType !== '' && isset($types[$askedType])) {
         if (!in_array($askedType, $typeKeys, true)) {
-            flash('error', isset($types[$askedType])
-                ? $types[$askedType]['label'] . ' is not part of faculty uploads.'
-                : 'Invalid record type.');
-            redirect('/upload.php');
+            $newDType = upload_flow_data_type_of($askedType);
+            upload_flow_store($user, ['data_type' => $newDType]);
+            $flowState['data_type'] = $newDType;
+            if ($newDType !== null && isset($flowDefs[$newDType])) {
+                $uploadFlow['data_type'] = $newDType;
+                $uploadFlow['label']     = $flowDefs[$newDType]['label'];
+                $uploadFlow['icon']      = $flowDefs[$newDType]['icon'];
+                $typeKeys                = $flowDefs[$newDType]['types'];
+            } else {
+                $uploadFlow['data_type'] = null;
+                $uploadFlow['label']     = null;
+                $uploadFlow['icon']      = 'folder';
+                $typeKeys                = array_keys($types);
+            }
         }
-    }
-    if (!in_array($askedType, $typeKeys, true)) {
-        $belongsTo = upload_flow_data_type_of($askedType);
-        flash('error', $belongsTo !== null
-            ? $types[$askedType]['label'] . ' is part of ' . $flowDefs[$belongsTo]['label'] . '. You are uploading '
-                . $uploadFlow['label'] . ' for ' . $uploadFlow['year'] . '. Use "Back to Data Type" to switch.'
-            : 'Invalid record type.');
-        redirect('/upload.php?type=' . urlencode($typeKeys[0]));
     }
 }
 
@@ -484,7 +480,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         ],
     ];
 
-    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+    if (!user_can_choose_department($user) && !empty($user['department'])) {
         $_POST['department'] = $user['department'];
     }
     $validationErrors = [];
@@ -517,6 +513,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
                 $validationErrors[] = "{$fLabel} must be a number greater than 0.";
             }
         }
+    }
+
+    // ── Institutional types bypass the exam_session check and generic handler ──
+    if (str_starts_with($type, 'inst_')) {
+        inst_handle_post($user, $types, $activeYear);
+        // inst_handle_post always redirects; this line is a safety fallback:
+        redirect('/upload.php?type=' . $type);
     }
 
     if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
@@ -645,7 +648,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         $placeholders[] = '?';
     }
 
-        if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+        if (!user_can_choose_department($user) && !empty($user['department'])) {
             $_POST['department'] = $user['department'];
         }
 
@@ -817,31 +820,29 @@ require __DIR__ . '/inc/header.php';
         <span class="badge badge-primary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
           <?= icon('calendar', 14) ?> Academic Year: <strong><?= e($uploadFlow['year']) ?></strong>
         </span>
-        <span class="badge badge-secondary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
-          <?= icon($uploadFlow['icon'] ?? 'folder', 14) ?> Scope: <strong><?= e($uploadFlow['label']) ?></strong>
-        </span>
+        <?php if (!empty($uploadFlow['label'])): ?>
+          <span class="badge badge-secondary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
+            <?= icon($uploadFlow['icon'] ?? 'folder', 14) ?> Scope: <strong><?= e($uploadFlow['label']) ?></strong>
+          </span>
+        <?php endif; ?>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <?php if (upload_flow_is_faculty($user)): ?>
-          <form method="post" action="<?= e(url('upload.php')) ?>" style="display:flex;align-items:center;gap:8px;margin:0">
-            <?= csrf_field() ?>
-            <input type="hidden" name="upload_flow_step" value="year">
-            <input type="hidden" name="return_type" value="<?= e($selectedType) ?>">
-            <label for="facultyYear" style="font-size:12px;font-weight:600;color:var(--ink-muted,#64748b)">Change year</label>
-            <select class="select" id="facultyYear" name="academic_year" onchange="this.form.submit()" style="height:32px;font-size:12px;padding:0 28px 0 10px;border-radius:8px;width:auto">
-              <?php foreach (upload_flow_years() as $y): ?>
-                <option value="<?= e($y) ?>" <?= $uploadFlow['year'] === $y ? 'selected' : '' ?>>
-                  <?= e($y . ($y === $activeYear ? ' (Active)' : '') . (academic_year_is_locked($y) ? ' — Locked' : '')) ?>
-                </option>
-              <?php endforeach; ?>
-            </select>
-          </form>
-        <?php else: ?>
+        <form method="post" action="<?= e(url('upload.php')) ?>" style="display:flex;align-items:center;gap:8px;margin:0">
+          <?= csrf_field() ?>
+          <input type="hidden" name="upload_flow_step" value="year">
+          <input type="hidden" name="return_type" value="<?= e($selectedType) ?>">
+          <label for="flowYear" style="font-size:12px;font-weight:600;color:var(--ink-muted,#64748b)">Academic Year</label>
+          <select class="select" id="flowYear" name="academic_year" onchange="this.form.submit()" style="height:32px;font-size:12px;padding:0 28px 0 10px;border-radius:8px;width:auto">
+            <?php foreach (upload_flow_years() as $y): ?>
+              <option value="<?= e($y) ?>" <?= $uploadFlow['year'] === $y ? 'selected' : '' ?>>
+                <?= e($y . ($y === $activeYear ? ' (Active)' : '') . (academic_year_is_locked($y) ? ' — Locked' : '')) ?>
+              </option>
+            <?php endforeach; ?>
+          </select>
+        </form>
+        <?php if (!empty($uploadFlow['data_type'])): ?>
           <a href="<?= e(url('upload.php?step=data-type')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
-            <?= icon('arrow-left', 14) ?> Change Data Type
-          </a>
-          <a href="<?= e(url('upload.php?reset=1')) ?>" class="btn btn-ghost btn-sm" style="font-size:12px">
-            Change Academic Year
+            <?= icon('arrow-left', 14) ?> Filter Data Type
           </a>
         <?php endif; ?>
       </div>
@@ -1302,8 +1303,19 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
       <?php endif; ?>
 
+<<<<<<< HEAD
         <!-- Proof / attachment — carried onto the report (Journal places it above its link fields) -->
         <?php if ($selectedType !== 'journal') render_proof_field($editRecord); ?>
+=======
+      <?php require __DIR__ . '/inc/inst_upload_forms.php'; ?>
+
+        <!-- Proof / attachment (optional) — carried onto the report -->
+        <div class="field" style="grid-column:span 2">
+          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
+          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
+          <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
+        </div>
+>>>>>>> d4a2f7330602732a9b290d2208c49b4b1cbcfd72
       </div>
       </fieldset>
 

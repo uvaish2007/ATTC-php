@@ -3,7 +3,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/inc/report_layout.php';      
 require_once __DIR__ . '/models/FacultyAchievement.php';
 
-$user = require_role(['Faculty', 'Coordinator', 'HoD']);
+$user = require_role(['Faculty', 'Coordinator', 'HoD', 'Dean', 'Admin', 'Director', 'Principal']);
 
 // The subject of the report is the session user — never a request parameter.
 $facultyId = (int) $user['id'];
