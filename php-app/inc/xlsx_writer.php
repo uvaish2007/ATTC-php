@@ -1,50 +1,60 @@
 <?php
+/**
+ * SimpleXlsxWriter - Pure PHP XLSX generator with ZIP/XML support.
+ *
+ * Generates standards-compliant Excel (.xlsx) files without any external
+ * dependencies (ZipArchive or Pure-PHP fallback).
+ */
+
 class SimpleZipWriter
 {
+    private string $data = '';
     private array $entries = [];
-    private string $data   = '';
 
     public function addFromString(string $name, string $content): void
     {
-        $crc     = crc32($content);
+        $name    = str_replace('\\', '/', $name);
         $rawSize = strlen($content);
+        $crc     = crc32($content);
 
-        $method     = 0;
-        $compressed = $content;
-        $deflated   = @gzdeflate($content, 6);
+        $deflated = gzdeflate($content);
         if ($deflated !== false && strlen($deflated) < $rawSize) {
-            $method     = 8;
-            $compressed = $deflated;
+            $comp     = $deflated;
+            $method   = 8;
+            $compSize = strlen($comp);
+        } else {
+            $comp     = $content;
+            $method   = 0;
+            $compSize = $rawSize;
         }
 
-        [$dosTime, $dosDate] = self::dosTimestamp();
+        $offset = strlen($this->data);
+        [$time, $date] = self::dosTimestamp();
+
+        $local = pack('VvvvvvVVVvv',
+            0x04034b50,                        20,                                0,                                 $method,
+            $time,                             $date,                             $crc,                              $compSize,
+            $rawSize,                          strlen($name),                     0
+        ) . $name . $comp;
+
+        $this->data .= $local;
 
         $this->entries[] = [
             'name'     => $name,
-            'offset'   => strlen($this->data),
-            'crc'      => $crc,
             'method'   => $method,
-            'compSize' => strlen($compressed),
+            'time'     => $time,
+            'date'     => $date,
+            'crc'      => $crc,
+            'compSize' => $compSize,
             'rawSize'  => $rawSize,
-            'time'     => $dosTime,
-            'date'     => $dosDate,
+            'offset'   => $offset,
         ];
-
-        $this->data .= pack('VvvvvvVVVvv',
-            0x04034b50,                        20,                                0,                                 $method,
-            $dosTime,
-            $dosDate,
-            $crc,
-            strlen($compressed),
-            $rawSize,
-            strlen($name),
-            0                              ) . $name . $compressed;
     }
 
     public function getContents(): string
     {
-        $central      = '';
         $centralStart = strlen($this->data);
+        $central      = '';
 
         foreach ($this->entries as $e) {
             $central .= pack('VvvvvvvVVVvvvvvVV',
@@ -81,69 +91,125 @@ class SimpleZipWriter
 
 class SimpleXlsxWriter
 {
+    /**
+     * Generate a single-sheet XLSX workbook.
+     */
     public static function createXlsx(array $headers, array $rows, string $sheetTitle = 'Report', array $meta = []): string
     {
+        return self::createMultiSheetXlsx([
+            [
+                'title'   => $sheetTitle,
+                'headers' => $headers,
+                'rows'    => $rows,
+                'meta'    => $meta,
+            ]
+        ]);
+    }
+
+    /**
+     * Generate a multi-tab/multi-sheet XLSX workbook.
+     *
+     * @param array $sheets Array of sheet specifications:
+     *   [
+     *     [
+     *       'title'   => 'Overview', // Tab name, max 31 chars
+     *       'headers' => ['Col 1', 'Col 2', ...],
+     *       'rows'    => [...],
+     *       'meta'    => ['Report Title', 'Date: ...'],
+     *     ],
+     *     ...
+     *   ]
+     * @return string Raw binary XLSX data
+     */
+    public static function createMultiSheetXlsx(array $sheets): string
+    {
+        if (empty($sheets)) {
+            return '';
+        }
+
         $zip = new SimpleZipWriter();
+        $sheetCount = count($sheets);
 
-        $colWidths = [];
-        $cCount = count($headers);
-        foreach ($rows as $r) {
-            if (is_array($r)) {
-                $cCount = max($cCount, count($r));
-            }
+        // 1. [Content_Types].xml
+        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' . "\n" .
+            '  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' . "\n" .
+            '  <Default Extension="xml" ContentType="application/xml"/>' . "\n" .
+            '  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' . "\n" .
+            '  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' . "\n";
+        for ($i = 1; $i <= $sheetCount; $i++) {
+            $contentTypes .= "  <Override PartName=\"/xl/worksheets/sheet{$i}.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>\n";
         }
-        $cCount = max(1, $cCount);
-
-        for ($i = 0; $i < $cCount; $i++) {
-            $maxLen = 10;
-            if (isset($headers[$i])) {
-                $maxLen = max($maxLen, mb_strlen((string)$headers[$i]));
-            }
-            foreach ($rows as $r) {
-                if (isset($r[$i])) {
-                    $valStr = is_array($r[$i]) ? (string)($r[$i]['text'] ?? '') : (string)$r[$i];
-                    $lines = explode("\n", $valStr);
-                    foreach ($lines as $line) {
-                        $maxLen = max($maxLen, mb_strlen($line));
-                    }
-                }
-            }
-            $colWidths[$i] = min(60, max(10, $maxLen + 3));
-        }
-
-        $contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-  <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>';
+        $contentTypes .= '</Types>';
         $zip->addFromString('[Content_Types].xml', $contentTypes);
 
-        $rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
-</Relationships>';
-        $zip->addFromString('_rels/.rels', $rels);
+        // 2. _rels/.rels
+        $rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . "\n" .
+            '  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' . "\n" .
+            '</Relationships>';
+        $zip->addFromString('_rels/.rels', $rootRels);
 
-        $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>';
+        // 3. xl/_rels/workbook.xml.rels
+        $wbRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . "\n" .
+            '  <Relationship Id="rIdStyles" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>';
+        for ($i = 1; $i <= $sheetCount; $i++) {
+            $wbRels .= "\n  <Relationship Id=\"rId{$i}\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet{$i}.xml\"/>";
+        }
+        $wbRels .= "\n</Relationships>";
         $zip->addFromString('xl/_rels/workbook.xml.rels', $wbRels);
 
-        $sheetNameClean = self::sanitizeXml(mb_substr($sheetTitle, 0, 31));
+        // 4. xl/workbook.xml
+        $usedTitles = [];
         $workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>
-    <sheet name="' . $sheetNameClean . '" sheetId="1" r:id="rId1"/>
-  </sheets>
-</workbook>';
+  <sheets>';
+        $sheetIdx = 1;
+        foreach ($sheets as $sh) {
+            $rawTitle = trim((string)($sh['title'] ?? 'Sheet' . $sheetIdx));
+            $cleanTitle = preg_replace('/[\\\\\\/\?\*\:\[\]]/', '', $rawTitle);
+            $cleanTitle = trim($cleanTitle) ?: 'Sheet' . $sheetIdx;
+            $cleanTitle = mb_substr($cleanTitle, 0, 31);
+
+            $uniqueTitle = $cleanTitle;
+            $tSuffix = 1;
+            while (isset($usedTitles[strtolower($uniqueTitle)])) {
+                $uniqueTitle = mb_substr($cleanTitle, 0, 28) . '_' . ($tSuffix++);
+            }
+            $usedTitles[strtolower($uniqueTitle)] = true;
+
+            $workbook .= "\n    <sheet name=\"" . self::sanitizeXml($uniqueTitle) . "\" sheetId=\"{$sheetIdx}\" r:id=\"rId{$sheetIdx}\"/>";
+            $sheetIdx++;
+        }
+        $workbook .= "\n  </sheets>\n</workbook>";
         $zip->addFromString('xl/workbook.xml', $workbook);
 
-        $styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        // 5. xl/styles.xml
+        $styles = self::getStylesXml();
+        $zip->addFromString('xl/styles.xml', $styles);
+
+        // 6. Each worksheet: xl/worksheets/sheet{N}.xml
+        $sheetNum = 1;
+        foreach ($sheets as $sh) {
+            $headers = $sh['headers'] ?? [];
+            $rows    = $sh['rows'] ?? [];
+            $meta    = $sh['meta'] ?? [];
+
+            $built = self::buildWorksheetXmlAndRels($headers, $rows, $meta);
+            $zip->addFromString("xl/worksheets/sheet{$sheetNum}.xml", $built['xml']);
+            if (!empty($built['rels'])) {
+                $zip->addFromString("xl/worksheets/_rels/sheet{$sheetNum}.xml.rels", $built['rels']);
+            }
+            $sheetNum++;
+        }
+
+        return $zip->getContents();
+    }
+
+    public static function getStylesXml(): string
+    {
+        return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="5">
     <font><sz val="11"/><name val="Calibri"/></font>
@@ -182,7 +248,35 @@ class SimpleXlsxWriter
     <cellStyle name="Normal" xfId="0" builtinId="0"/>
   </cellStyles>
 </styleSheet>';
-        $zip->addFromString('xl/styles.xml', $styles);
+    }
+
+    public static function buildWorksheetXmlAndRels(array $headers, array $rows, array $meta = []): array
+    {
+        $colWidths = [];
+        $cCount = count($headers);
+        foreach ($rows as $r) {
+            if (is_array($r)) {
+                $cCount = max($cCount, count($r));
+            }
+        }
+        $cCount = max(1, $cCount);
+
+        for ($i = 0; $i < $cCount; $i++) {
+            $maxLen = 10;
+            if (isset($headers[$i])) {
+                $maxLen = max($maxLen, mb_strlen((string)$headers[$i]));
+            }
+            foreach ($rows as $r) {
+                if (isset($r[$i])) {
+                    $valStr = is_array($r[$i]) ? (string)($r[$i]['text'] ?? '') : (string)$r[$i];
+                    $lines = explode("\n", $valStr);
+                    foreach ($lines as $line) {
+                        $maxLen = max($maxLen, mb_strlen($line));
+                    }
+                }
+            }
+            $colWidths[$i] = min(60, max(10, $maxLen + 3));
+        }
 
         $colsXml = '<cols>';
         foreach ($colWidths as $ci => $w) {
@@ -210,6 +304,7 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
+        // Header Row
         if (!empty($headers)) {
             $sheetData .= '<row r="' . $rIdx . '" ht="24" customHeight="1">';
             $cIdx = 0;
@@ -222,6 +317,7 @@ class SimpleXlsxWriter
             $rIdx++;
         }
 
+        // Data Rows
         foreach ($rows as $row) {
             $sheetData .= '<row r="' . $rIdx . '">';
             $cIdx = 0;
@@ -257,6 +353,7 @@ class SimpleXlsxWriter
         }
 
         $hyperlinksXml = '';
+        $relsXml = '';
         if (!empty($hyperlinks)) {
             $hyperlinksXml = '<hyperlinks>';
             foreach ($hyperlinks as $h) {
@@ -264,13 +361,12 @@ class SimpleXlsxWriter
             }
             $hyperlinksXml .= '</hyperlinks>';
 
-            $sheet1Rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
+            $relsXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' . "\n" .
                 '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' . "\n";
             foreach ($hyperlinks as $h) {
-                $sheet1Rels .= '  <Relationship Id="' . $h['rId'] . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' . self::sanitizeXml($h['url']) . '" TargetMode="External"/>' . "\n";
+                $relsXml .= '  <Relationship Id="' . $h['rId'] . '" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="' . self::sanitizeXml($h['url']) . '" TargetMode="External"/>' . "\n";
             }
-            $sheet1Rels .= '</Relationships>';
-            $zip->addFromString('xl/worksheets/_rels/sheet1.xml.rels', $sheet1Rels);
+            $relsXml .= '</Relationships>';
         }
 
         $sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -279,9 +375,14 @@ class SimpleXlsxWriter
   <sheetData>' . $sheetData . '</sheetData>
   ' . $hyperlinksXml . '
 </worksheet>';
-        $zip->addFromString('xl/worksheets/sheet1.xml', $sheet);
 
-        return $zip->getContents();
+        return ['xml' => $sheet, 'rels' => $relsXml];
+    }
+
+    public static function buildWorksheetXml(array $headers, array $rows, array $meta = []): string
+    {
+        $res = self::buildWorksheetXmlAndRels($headers, $rows, $meta);
+        return $res['xml'];
     }
 
     private static function sanitizeXml(string $str): string

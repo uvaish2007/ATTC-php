@@ -24,7 +24,7 @@ $settingsPwPending = password_reset_requests_pending_count();
        style="display:inline-flex;align-items:center;gap:8px;text-decoration:none">
       <span><?= e($settingsItem['label']) ?></span>
       <?php if ($settingsKey === 'password' && $settingsPwPending > 0): ?>
-        <span class="tab-count" style="background:#FEF3C7;color:#92400E;font-weight:700"><?= (int) $settingsPwPending ?></span>
+        <span class="tab-count" style="<?= $settingsTab === 'password' ? 'background:#FEF2E9;color:#FF4F01;font-weight:700;' : 'background:#FEF3C7;color:#92400E;font-weight:700;' ?>"><?= (int) $settingsPwPending ?></span>
       <?php endif; ?>
     </a>
   <?php endforeach; ?>

@@ -23,6 +23,9 @@ const MIGRATION_FILES = [
     'workflow_edit_requests.sql',
     'executive_meetings.sql',
     'department_names.sql',
+    'exam_session.sql',
+    'institutional_achievements.sql',
+    'master_accounts.sql',
 ];
 
 const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (

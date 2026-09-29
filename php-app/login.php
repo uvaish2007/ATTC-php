@@ -19,6 +19,12 @@ if (is_logged_in()) {
     if ($currUser && $currUser['role'] === 'Admin' && !admin_year_gate_passed()) {
         $showStep3 = true;
         $selectedRole = 'Admin';
+    } elseif ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        // User navigated to login page while already logged in — clear the
+        // session identity so they can pick a new role and authenticate fresh.
+        // We only unset the user key (rather than calling logout()) because
+        // the session must stay active for CSRF tokens used later on this page.
+        unset($_SESSION['user']);
     } else {
         redirect('/dashboard.php');
     }
@@ -300,7 +306,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
 
           <div class="field">
             <label for="email">Email or Username</label>
-            <input class="input" type="text" id="email" name="email" placeholder="you@college.edu or username (e.g. admin)"
+            <input class="input" type="text" id="email" name="email" placeholder="you@college.edu"
                    autocomplete="username" value="<?= e($email) ?>" required>
           </div>
 
@@ -315,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
             </div>
           </div>
 
-          <button type="submit" class="btn btn-primary btn-block" id="step2SubmitBtn" style="height:46px; margin-top:8px">
+          <button type="submit" class="btn btn-primary btn-block" id="step2SubmitBtn" style="height:46px; margin-top:16px">
             Login
           </button>
         </div>
@@ -458,7 +464,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
     });
   }
 
+
   loginForm.addEventListener('submit', (e) => {
+    // If step 1 (role picker) is still showing, the user pressed Enter before
+    // reaching the credentials form.  Block the submission and advance to
+    // step 2 instead — this prevents browser-autofilled credentials from the
+    // wrong role being sent.
+    if (step1.style.display !== 'none') {
+      e.preventDefault();
+      if (!nextBtn.disabled) {
+        nextBtn.click();
+      }
+      return;
+    }
+
     if (emailInput) emailInput.value = emailInput.value.trim();
     if (passwordInput) passwordInput.value = passwordInput.value.trim();
 

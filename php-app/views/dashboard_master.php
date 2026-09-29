@@ -757,10 +757,10 @@ if (!function_exists('dash_column_chart')) {
   .stat-grid.stat-kpi .stat-top   { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
   .stat-grid.stat-kpi .stat-ic    { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; }
   .stat-grid.stat-kpi .stat-label { font-size: 12px; font-weight: 600; color: var(--ink-muted); line-height: 1.3;
-      display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .stat-grid.stat-kpi .stat-value { font-size: 24px; line-height: 1.2; font-weight: 700; margin-top: 6px; }
   .stat-grid.stat-kpi .stat-desc  { font-size: 11px; color: var(--ink-faint); line-height: 1.4; margin-top: auto; padding-top: 4px;
-      display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .stat-grid.stat-kpi .stat-bar   { margin: 6px 0 2px; }
   @media (max-width: 1300px) { .stat-grid.stat-kpi { grid-template-columns: repeat(3, 1fr); } }
   @media (max-width: 768px)  { .stat-grid.stat-kpi { grid-template-columns: repeat(2, 1fr); } }
@@ -1103,10 +1103,16 @@ if (!function_exists('dash_column_chart')) {
       <div class="card-sub">The story of what each department contributes</div>
     </div>
     <?php if (!empty($rows)): ?>
-      <div class="story-legend">
-        <span><i style="background:#2563EB"></i>Faculty</span>
-        <span><i style="background:#FF4F01"></i>Activities</span>
-        <span><i style="background:#059669"></i>Student</span>
+      <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div class="view-toggle" data-vt="dash-dept-breakdown">
+          <button type="button" class="vt-btn" data-view="raw" aria-pressed="false">Data View</button>
+          <button type="button" class="vt-btn is-on" data-view="graph" aria-pressed="true">Analytics View</button>
+        </div>
+        <div class="story-legend">
+          <span><i style="background:#2563EB"></i>Faculty</span>
+          <span><i style="background:#FF4F01"></i>Activities</span>
+          <span><i style="background:#059669"></i>Student</span>
+        </div>
       </div>
     <?php endif; ?>
   </div>
@@ -1154,55 +1160,56 @@ if (!function_exists('dash_column_chart')) {
         $topMetricKey = array_key_first($colTot);
       ?>
 
-      <!-- The narrative: the numbers, said in a sentence -->
-      <p class="story-lead">
-        Across <b><?= count($comp) ?></b> departments and <b><?= number_format($grand) ?></b> records,
-        <b><?= e($busiest['department']) ?></b> is the most active with <b><?= (int) $busiest['total'] ?></b>.
-        <b><?= ucfirst($catMeta[$leadKey]) ?></b> lead the mix, and student records make up
-        <b><?= $studentShare ?>%</b> of all activity.
-      </p>
+      <div data-pane="graph">
+        <!-- The narrative: the numbers, said in a sentence -->
+        <p class="story-lead">
+          Across <b><?= count($comp) ?></b> departments and <b><?= number_format($grand) ?></b> records,
+          <b><?= e($busiest['department']) ?></b> is the most active with <b><?= (int) $busiest['total'] ?></b>.
+          <b><?= ucfirst($catMeta[$leadKey]) ?></b> lead the mix, and student records make up
+          <b><?= $studentShare ?>%</b> of all activity.
+        </p>
 
-      <!-- Insight chips -->
-      <div class="story-insights">
-        <div class="story-card">
-          <div class="si-ic" style="background:#FEF2E9;color:#FF4F01"><?= icon('building', 18) ?></div>
-          <div><div class="si-k">Most active</div><div class="si-v"><?= e($busiest['department']) ?></div><div class="si-sub"><?= (int) $busiest['total'] ?> records</div></div>
+        <!-- Insight chips -->
+        <div class="story-insights">
+          <div class="story-card">
+            <div class="si-ic" style="background:#FEF2E9;color:#FF4F01"><?= icon('building', 18) ?></div>
+            <div><div class="si-k">Most active</div><div class="si-v"><?= e($busiest['department']) ?></div><div class="si-sub"><?= (int) $busiest['total'] ?> records</div></div>
+          </div>
+          <div class="story-card">
+            <div class="si-ic" style="background:#EAF0FE;color:#2563EB"><?= icon('layers', 18) ?></div>
+            <div><div class="si-k">Leading area</div><div class="si-v" style="text-transform:capitalize"><?= e(explode(' ', $catMeta[$leadKey])[0]) ?></div><div class="si-sub"><?= (int) $catTotals[$leadKey] ?> records</div></div>
+          </div>
+          <div class="story-card">
+            <div class="si-ic" style="background:#E7F6EF;color:#059669"><?= icon('users', 18) ?></div>
+            <div><div class="si-k">Student share</div><div class="si-v"><?= $studentShare ?>%</div><div class="si-sub"><?= (int) $catTotals['student'] ?> student records</div></div>
+          </div>
+          <div class="story-card">
+            <div class="si-ic" style="background:#EAF0FE;color:#2563EB"><?= icon('reports', 18) ?></div>
+            <div><div class="si-k">Top metric</div><div class="si-v" style="font-size:15px"><?= e($metricLabel[$topMetricKey]) ?></div><div class="si-sub"><?= (int) $colTot[$topMetricKey] ?> records</div></div>
+          </div>
         </div>
-        <div class="story-card">
-          <div class="si-ic" style="background:#EAF0FE;color:#2563EB"><?= icon('layers', 18) ?></div>
-          <div><div class="si-k">Leading area</div><div class="si-v" style="text-transform:capitalize"><?= e(explode(' ', $catMeta[$leadKey])[0]) ?></div><div class="si-sub"><?= (int) $catTotals[$leadKey] ?> records</div></div>
-        </div>
-        <div class="story-card">
-          <div class="si-ic" style="background:#E7F6EF;color:#059669"><?= icon('users', 18) ?></div>
-          <div><div class="si-k">Student share</div><div class="si-v"><?= $studentShare ?>%</div><div class="si-sub"><?= (int) $catTotals['student'] ?> student records</div></div>
-        </div>
-        <div class="story-card">
-          <div class="si-ic" style="background:#EAF0FE;color:#2563EB"><?= icon('reports', 18) ?></div>
-          <div><div class="si-k">Top metric</div><div class="si-v" style="font-size:15px"><?= e($metricLabel[$topMetricKey]) ?></div><div class="si-sub"><?= (int) $colTot[$topMetricKey] ?> records</div></div>
-        </div>
-      </div>
 
-      <!-- Composition bars: each department's size and its faculty/activity/student mix -->
-      <div class="story-bars">
-        <?php foreach ($comp as $d): ?>
-          <?php $c = $d['cat']; ?>
-          <a class="sb-row" href="<?= e($deptUrl($d['department'])) ?>" title="Open <?= e($d['department']) ?> — <?= (int) $c['faculty'] ?> faculty · <?= (int) $c['activity'] ?> activities · <?= (int) $c['student'] ?> student">
-            <div class="sb-name"><?= e($d['department']) ?></div>
-            <div class="sb-track">
-              <div class="sb-bar" style="width:<?= round($d['total'] / $maxDeptTotal * 100, 1) ?>%">
-                <?php if ($c['faculty']): ?><span class="seg" style="flex:<?= $c['faculty'] ?>;background:#2563EB"></span><?php endif; ?>
-                <?php if ($c['activity']): ?><span class="seg" style="flex:<?= $c['activity'] ?>;background:#FF4F01"></span><?php endif; ?>
-                <?php if ($c['student']): ?><span class="seg" style="flex:<?= $c['student'] ?>;background:#059669"></span><?php endif; ?>
+        <!-- Composition bars: each department's size and its faculty/activity/student mix -->
+        <div class="story-bars">
+          <?php foreach ($comp as $d): ?>
+            <?php $c = $d['cat']; ?>
+            <a class="sb-row" href="<?= e($deptUrl($d['department'])) ?>" title="Open <?= e($d['department']) ?> — <?= (int) $c['faculty'] ?> faculty · <?= (int) $c['activity'] ?> activities · <?= (int) $c['student'] ?> student">
+              <div class="sb-name"><?= e($d['department']) ?></div>
+              <div class="sb-track">
+                <div class="sb-bar" style="width:<?= round($d['total'] / $maxDeptTotal * 100, 1) ?>%">
+                  <?php if ($c['faculty']): ?><span class="seg" style="flex:<?= $c['faculty'] ?>;background:#2563EB"></span><?php endif; ?>
+                  <?php if ($c['activity']): ?><span class="seg" style="flex:<?= $c['activity'] ?>;background:#FF4F01"></span><?php endif; ?>
+                  <?php if ($c['student']): ?><span class="seg" style="flex:<?= $c['student'] ?>;background:#059669"></span><?php endif; ?>
+                </div>
               </div>
-            </div>
-            <div class="sb-total tabular"><?= (int) $d['total'] ?></div>
-          </a>
-        <?php endforeach; ?>
+              <div class="sb-total tabular"><?= (int) $d['total'] ?></div>
+            </a>
+          <?php endforeach; ?>
+        </div>
       </div>
 
-      <!-- The exact numbers, on demand -->
-      <details class="story-detail">
-        <summary><?= icon('reports', 14) ?> Show the full per-metric table</summary>
+      <!-- The exact numbers in Data View pane -->
+      <div data-pane="raw" hidden>
         <?php
           $colTotals  = array_fill_keys(array_column($metrics, 'key'), 0);
           $grandTotal = 0;
@@ -1247,18 +1254,18 @@ if (!function_exists('dash_column_chart')) {
                   <?php endforeach; ?>
                   <td class="num tabular fw-600"><?= (int) $row['total'] ?></td>
                 </tr>
-              <?php endforeach; ?>
-            </tbody>
-            <tfoot>
-              <tr>
-                <td class="fw-600">All departments</td>
-                <?php foreach ($metrics as $metric): ?><td class="num tabular fw-600"><?= $colTotals[$metric['key']] ?: '&mdash;' ?></td><?php endforeach; ?>
-                <td class="num tabular fw-700"><?= (int) $grandTotal ?></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </details>
+            <?php endforeach; ?>
+          </tbody>
+          <tfoot>
+            <tr>
+              <td class="fw-600">All departments</td>
+              <?php foreach ($metrics as $metric): ?><td class="num tabular fw-600"><?= $colTotals[$metric['key']] ?: '&mdash;' ?></td><?php endforeach; ?>
+              <td class="num tabular fw-700"><?= (int) $grandTotal ?></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
 
     <?php endif; ?>
   </div>

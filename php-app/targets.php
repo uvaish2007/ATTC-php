@@ -3,7 +3,7 @@ require_once __DIR__ . '/inc/auth.php';
 require_once __DIR__ . '/models/Target.php';
 require_once __DIR__ . '/models/Department.php';
 
-$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean', 'Coordinator']);
+$user = require_role(['Admin', 'HoD', 'Director', 'Principal', 'Dean']);
 
 targets_deadline_ready();
 
@@ -165,7 +165,6 @@ unlock_expire_due();
 
 $isHod       = $user['role'] === 'HoD';
 $isDean      = $user['role'] === 'Dean';
-$isCoord     = $user['role'] === 'Coordinator';
 $isHodOrDean = $isHod || $isDean;
 
 // Target creation and management permissions: Academic Year lock does NOT prevent target editing
@@ -199,14 +198,14 @@ $myUnlock       = $isHodOrDean ? unlock_state($unlockDept) : null;
 $pendingUnlocks = ($user['role'] === 'Admin') ? unlock_pending_all() : [];
 $unlockHours    = unlock_default_hours();
 
-$pageTitle = 'Review Targets';
-$breadcrumb = 'Review Targets';
+$pageTitle = 'Targets';
+$breadcrumb = 'Targets';
 require __DIR__ . '/inc/header.php';
 ?>
 
 <div class="page-head">
   <div>
-    <h1>Review Targets</h1>
+    <h1>Targets</h1>
     <div class="sub">
       <?= count($targets) ?> target<?= count($targets) !== 1 ? 's' : '' ?> for Academic Year <strong><?= e($selectedYear) ?></strong>
       <?php if ($selectedYear !== $activeYear): ?>
@@ -217,7 +216,7 @@ require __DIR__ . '/inc/header.php';
       <?php if ($awaiting): ?>
         &middot; <strong><?= $awaiting ?></strong> waiting for your review
       <?php endif; ?>
-      <?php if ($isHod || $isCoord): ?>&middot; <?= e($user['department'] ?? '') ?><?php endif; ?>
+      <?php if ($isHod): ?>&middot; <?= e($user['department'] ?? '') ?><?php endif; ?>
     </div>
   </div>
 
@@ -443,7 +442,7 @@ require __DIR__ . '/inc/header.php';
       $dCol  = $dPct >= 100 ? '#10B981' : ($dPct >= 50 ? 'var(--orange-500)' : '#EF4444');
       $draftCount = count(array_filter($deptTargets, fn($x) => in_array($x['status'] ?? 'Draft', ['Draft', 'Changes Requested'], true)));
     ?>
-    <details class="card tg-group" <?= ($isHod || $isCoord) ? 'open' : '' ?>>
+    <details class="card tg-group" <?= $isHod ? 'open' : '' ?>>
       <summary class="tg-group-head">
         <span class="tg-dept"><?= icon('building', 15) ?> <?= e($deptName) ?></span>
         <span class="badge badge-neutral"><?= count($deptTargets) ?> target<?= count($deptTargets) !== 1 ? 's' : '' ?></span>

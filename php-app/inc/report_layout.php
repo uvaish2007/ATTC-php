@@ -44,48 +44,80 @@ function report_banner_datauri(): string
     return $cache[$key] = '';
 }
 
+/**
+ * Expand a department code/short name to its full name, for every report
+ * heading, meta line, "Dept" column and sign-off across the PDF/Excel/Word
+ * downloads. Matches regardless of spacing/punctuation/case, so "AI&ML",
+ * "AI & ML" and "aiml" all resolve the same way, and falls back to whatever
+ * an Admin has set up in Manage Departments before giving up and returning
+ * the value unchanged.
+ */
+if (!function_exists('department_full_name')) {
+    function department_full_name(?string $dept): string
+    {
+        $dept = trim((string) $dept);
+        if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
+            return $dept;
+        }
 
-function department_full_name(?string $dept): string
-{
-    $dept = trim((string) $dept);
-    if ($dept === '' || strcasecmp($dept, 'ALL DEPARTMENTS') === 0 || strcasecmp($dept, 'All departments') === 0) {
+        static $map = [
+            'CSE'                  => 'Computer Science and Engineering',
+            'CSBS'                 => 'Computer Science and Business Systems',
+            'AIDS'                 => 'Artificial Intelligence and Data Science',
+            'ECE'                  => 'Electronics and Communication Engineering',
+            'EEE'                  => 'Electrical and Electronics Engineering',
+            'MECH'                 => 'Mechanical Engineering',
+            'CIVIL'                => 'Civil Engineering',
+            'IT'                   => 'Information Technology',
+            'AGRI'                 => 'Agriculture Engineering',
+            'AERO'                 => 'Aeronautical Engineering',
+            'MARINE'               => 'Marine Engineering',
+            'AIML'                 => 'Artificial Intelligence and Machine Learning',
+            'CYBER'                => 'Cyber Security',
+            'CYBERSECURITY'        => 'Cyber Security',
+            'CHEM'                 => 'Chemical Engineering',
+            'ARCH'                 => 'Architecture',
+            'MCA'                  => 'Master of Computer Applications',
+            'MBA'                  => 'Master of Business Administration',
+            'SH'                   => 'Science and Humanities',
+            'SANDH'                => 'Science and Humanities',
+            'SCIENCEANDHUMANITIES' => 'Science and Humanities',
+            'BME'                  => 'Biomedical Engineering',
+            'BT'                   => 'Biotechnology',
+        ];
+
+        $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
+        if (isset($map[$key])) {
+            return $map[$key];
+        }
+
+        // Check if $dept already matches a full name in the map
+        foreach ($map as $k => $fullName) {
+            if (strcasecmp($dept, $fullName) === 0) {
+                return $fullName;
+            }
+        }
+
+        // Not a known abbreviation — check the Admin-managed department list, in
+        // case it already carries a fuller name than either the code or what was
+        // stored on the record.
+        require_once __DIR__ . '/../models/Department.php';
+        foreach (departments_all() as $d) {
+            $codeKey = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$d['code']));
+            $nameKey = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', (string)$d['name']));
+            if ($key === $codeKey || $key === $nameKey) {
+                if (isset($map[$codeKey])) {
+                    return $map[$codeKey];
+                }
+                if (isset($map[$nameKey])) {
+                    return $map[$nameKey];
+                }
+                return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
+            }
+        }
+
         return $dept;
     }
-
-    static $map = [
-        'CSE'           => 'Computer Science and Engineering',
-        'CSBS'          => 'Computer Science and Business Systems',
-        'AIDS'          => 'Artificial Intelligence and Data Science',
-        'ECE'           => 'Electronics and Communication Engineering',
-        'EEE'           => 'Electrical and Electronics Engineering',
-        'MECH'          => 'Mechanical Engineering',
-        'CIVIL'         => 'Civil Engineering',
-        'IT'            => 'Information Technology',
-        'AGRI'          => 'Agriculture Engineering',
-        'AERO'          => 'Aeronautical Engineering',
-        'MARINE'        => 'Marine Engineering',
-        'AIML'          => 'Artificial Intelligence and Machine Learning',
-        'CYBER'         => 'Cyber Security',
-        'CYBERSECURITY' => 'Cyber Security',
-        'CHEM'          => 'Chemical Engineering',
-        'ARCH'          => 'Architecture',
-        'MCA'           => 'Master of Computer Applications',
-        'MBA'           => 'Master of Business Administration',
-    ];
-
-    $key = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $dept));
-    if (isset($map[$key])) {
-        return $map[$key];
-    }
-
-    require_once __DIR__ . '/../models/Department.php';
-    foreach (departments_all() as $d) {
-        if (strcasecmp($d['code'], $dept) === 0 || strcasecmp($d['name'], $dept) === 0) {
-            return mb_strlen($d['name']) >= mb_strlen($d['code']) ? $d['name'] : $d['code'];
-        }
-    }
-
-    return $dept;
 }
 
 function report_year_duration(?string $year): array
@@ -99,10 +131,7 @@ function report_year_duration(?string $year): array
 
 function report_document_head(string $docTitle, string $orientation = 'portrait'): void
 {
-    $GLOBALS['REPORT_ORIENTATION'] = $orientation;
     $size = $orientation === 'landscape' ? 'A4 landscape' : 'A4';
-    $msoSize = $orientation === 'landscape' ? '841.9pt 595.3pt' : '595.3pt 841.9pt';
-    $msoOrientation = $orientation === 'landscape' ? 'landscape' : 'portrait';
     ?>
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
 <head>
@@ -112,8 +141,6 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
     <w:Zoom>100</w:Zoom><w:DoNotOptimizeForBrowser/></w:WordDocument></xml><![endif]-->
   <style>
     @page { size: <?= $size ?>; margin: 1.4cm 1.2cm; }
-    @page WordSection1 { size: <?= $msoSize ?>; mso-page-orientation: <?= $msoOrientation ?>; margin: 1.4cm 1.2cm; }
-    div.WordSection1 { page: WordSection1; }
     /* Force background colours (e.g. the green "achieved" cells) to actually
        print — browsers drop them by default, which turned white-on-green data
        cells into invisible white-on-white. */
@@ -122,8 +149,7 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
 
     /* ---- Letterhead ---- */
     .rpt-head    { text-align:center; }
-    .rpt-banner-wrap { width:100%; max-width:100%; margin:0 auto 4px; text-align:center; }
-    .rpt-banner  { width:100%; max-width:<?= $orientation === 'landscape' ? '850px' : '680px' ?>; height:auto; display:inline-block; margin:0 auto; }
+    .rpt-banner  { width:100%; max-width:100%; height:auto; display:block; margin:0 auto 4px; }
     .rpt-head .inst  { font-size: 15pt; font-weight: bold; letter-spacing:.5px; }
     .rpt-head .title { font-size: 13pt; font-weight: bold; margin-top: 6px; text-transform: uppercase; }
     .rpt-head .subtitle { font-size: 12pt; font-weight: bold; margin-top: 3px; }
@@ -150,7 +176,6 @@ function report_document_head(string $docTitle, string $orientation = 'portrait'
   </style>
 </head>
 <body>
-<div class="WordSection1">
 <?php
 }
 
@@ -175,18 +200,10 @@ function report_banner_img(int $width = 680, string $extraStyle = ''): string
 function report_letterhead(string $title, array $meta = [], array $headingLines = []): void
 {
     $banner = report_banner_datauri();
-    $isLandscape = (($GLOBALS['REPORT_ORIENTATION'] ?? 'portrait') === 'landscape');
-    $bannerWidth = $isLandscape ? 850 : 680;
     ?>
-  <div class="rpt-head" align="center">
+  <div class="rpt-head">
     <?php if ($banner !== ''): ?>
-      <table class="rpt-banner-wrap" align="center" border="0" cellpadding="0" cellspacing="0" style="width:100%; max-width:100%; margin:0 auto 4px auto; border-collapse:collapse; border:none; text-align:center;">
-        <tr>
-          <td align="center" style="border:none; padding:0; text-align:center;">
-            <img class="rpt-banner" src="<?= $banner ?>" alt="<?= e(REPORT_INSTITUTION) ?>" align="center" width="<?= $bannerWidth ?>" style="max-width:100%; height:auto;">
-          </td>
-        </tr>
-      </table>
+      <img class="rpt-banner" src="<?= $banner ?>" alt="<?= e(REPORT_INSTITUTION) ?>">
     <?php else: ?>
       <div class="inst"><?= e(REPORT_INSTITUTION) ?></div>
     <?php endif; ?>
@@ -374,7 +391,47 @@ function report_signoff_rows(?array $columns = null, int $width = 0): array
     return [$blank, $blank, $line];
 }
 
+/**
+ * Generate spaced signature rows to append at the end of an Excel sheet.
+ */
+function report_signoff_excel_rows(array $columns = ['HOD', 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'], int $totalCols = 7): array
+{
+    $count = count($columns);
+    if ($count === 0) {
+        return [];
+    }
+
+    $totalCols = max(1, $totalCols);
+    $sigRow = array_fill(0, max($totalCols, $count), '');
+
+    if ($count === 1) {
+        $sigRow[0] = $columns[0];
+    } else {
+        $step = max(1, (int) floor(($totalCols - 1) / ($count - 1)));
+        foreach ($columns as $idx => $label) {
+            $colPos = min($totalCols - 1, $idx * $step);
+            $sigRow[$colPos] = $label;
+        }
+    }
+
+    return [
+        array_fill(0, $totalCols, ''),
+        array_fill(0, $totalCols, ''),
+        $sigRow,
+    ];
+}
 function report_document_foot(): void
 {
-    echo "\n</div>\n</body>\n</html>";
+    echo "\n</body>\n</html>";
 }
+
+if (!function_exists('csv_line')) {
+    /**
+     * Write one line of a CSV file.
+     */
+    function csv_line($handle, array $fields): void
+    {
+        fputcsv($handle, $fields, ',', '"', '');
+    }
+}
+

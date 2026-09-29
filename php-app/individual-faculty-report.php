@@ -288,7 +288,6 @@ require __DIR__ . '/inc/header.php';
                 <th>Status</th>
                 <th>Academic Year</th>
                 <th>Submission Date</th>
-                <th style="width:100px;">Proof</th>
               </tr>
             </thead>
             <tbody>
@@ -311,21 +310,6 @@ require __DIR__ . '/inc/header.php';
                   <td><span class="badge badge-<?= status_class($item['status']) ?>"><?= e($item['status']) ?></span></td>
                   <td class="card-sub"><?= e($item['year']) ?></td>
                   <td class="card-sub"><?= date('d/m/Y', strtotime($item['created_at'])) ?></td>
-                  <td class="c">
-                    <?php
-                      $pfile = trim((string)($item['proof_file'] ?? ''));
-                      $pType = $item['type_key'] ?? '';
-                      $pId   = (int)($item['id'] ?? 0);
-                      $meta  = ($pfile !== '') ? record_proof_meta($pType, $pId, $pfile) : null;
-                    ?>
-                    <?php if ($meta): ?>
-                      <a class="btn btn-ghost btn-sm" href="<?= e($meta['view_url']) ?>" target="_blank" rel="noopener">
-                        <?= icon('paperclip', 13) ?> View Proof
-                      </a>
-                    <?php else: ?>
-                      <span class="faint">—</span>
-                    <?php endif; ?>
-                  </td>
                 </tr>
               <?php endforeach; ?>
             </tbody>

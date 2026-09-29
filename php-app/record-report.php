@@ -62,22 +62,17 @@ if ($format === 'word') {
                 $rowVal[] = (string) $serial;
             } elseif ($field === 'department') {
                 $rowVal[] = department_full_name((string) ($r[$field] ?? ''));
-            } elseif ($field === 'proof_file') {
-                $pfile = trim((string)($r['proof_file'] ?? ''));
-                if ($pfile !== '') {
-                    $rowVal[] = [
-                        'text' => 'View Proof',
-                        'url'  => record_proof_url($type, (int)$r['id'], $pfile, false, true)
-                    ];
-                } else {
-                    $rowVal[] = '—';
-                }
             } else {
                 $rowVal[] = (string) ($r[$field] ?? '');
             }
         }
         $exportRows[] = $rowVal;
         $serial++;
+    }
+
+    $sigCols = ['HOD' . ($singleDept ? ' / ' . $deptFullName : ''), 'DEAN / ACADEMICS', 'IQAC COORDINATOR', 'PRINCIPAL'];
+    foreach (report_signoff_excel_rows($sigCols, count($headers)) as $sRow) {
+        $exportRows[] = $sRow;
     }
 
     $titleLine = $spec['title'] . ($year !== null ? ' - DURING THE ACADEMIC YEAR ' . $year : ' - ALL ACADEMIC YEARS');
@@ -89,10 +84,7 @@ if ($format === 'word') {
     ];
 
     $xlsxData = class_exists('SimpleXlsxWriter')
-        ? SimpleXlsxWriter::createXlsx($headers,
-            array_merge($exportRows, report_signoff_rows(
-                report_signoff_columns($singleDept ? $deptFullName : null), count($headers))),
-            mb_substr($spec['title'], 0, 31), $metaLines)
+        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, mb_substr($spec['title'], 0, 31), $metaLines)
         : '';
 
     if (!empty($xlsxData)) {
@@ -104,8 +96,8 @@ if ($format === 'word') {
         exit;
     }
 
-    http_response_code(500);
-    exit('Failed to generate Excel spreadsheet.');
+    header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fileStem . '.xls"');
 } else {
     header('Content-Type: text/html; charset=UTF-8');
 }
@@ -154,40 +146,15 @@ report_letterhead($mainTitle, $meta, $headingLines);
           <tr>
             <?php foreach ($columns as [$label, $field]): ?>
               <?php
-                $isHtml = false;
                 if ($field === '#') {
                     $val = (string) $serial;
                 } elseif ($field === 'department') {
                     $val = department_full_name((string) ($r[$field] ?? ''));
-                } elseif ($field === 'proof_file') {
-                    $meta = record_proof_meta($type, (int)($r['id'] ?? 0), $r['proof_file'] ?? null);
-                    if ($meta) {
-                        $isHtml = true;
-                        if ($meta['is_image'] && !empty($meta['base64_data'])) {
-                            $val = '<div style="text-align:center;">'
-                                 . '<a href="' . e($meta['view_url']) . '" target="_blank" style="text-decoration:none;">'
-                                 . '<img src="' . $meta['base64_data'] . '" alt="Proof thumbnail" style="max-width:90px;max-height:60px;object-fit:contain;border:1px solid #d1d5db;border-radius:3px;display:block;margin:0 auto 3px auto;">'
-                                 . '<div style="font-size:8pt;color:#0044cc;text-decoration:underline;word-break:break-all;">' . e($meta['filename']) . '</div>'
-                                 . '<span style="font-size:7.5pt;color:#555;">(Click to view)</span>'
-                                 . '</a>'
-                                 . '</div>';
-                        } else {
-                            $extLabel = $meta['ext'] ? ' (' . strtoupper($meta['ext']) . ')' : '';
-                            $val = '<div style="text-align:center;">'
-                                 . '<a href="' . e($meta['view_url']) . '" target="_blank" style="color:#0044cc;font-weight:600;text-decoration:underline;font-size:9pt;word-break:break-all;">'
-                                 . 'View Proof' . e($extLabel)
-                                 . '</a>'
-                                 . '<div style="font-size:7.5pt;color:#666;margin-top:2px;word-break:break-all;">' . e($meta['filename']) . '</div>'
-                                 . '</div>';
-                        }
-                    } else {
-                        $val = '—';
-                    }
                 } else {
                     $val = (string) ($r[$field] ?? '');
                 }
               ?>
-              <td<?= $field === '#' ? ' class="num"' : ($field === 'proof_file' ? ' class="c"' : '') ?>><?= $isHtml ? $val : e($val) ?></td>
+              <td<?= $field === '#' ? ' class="num"' : '' ?>><?= e($val) ?></td>
             <?php endforeach; ?>
           </tr>
           <?php $serial++; ?>
