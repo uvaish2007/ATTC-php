@@ -64,7 +64,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
         $password     = trim((string) input('password'));
         $selectedRole = trim((string) input('role'));
 
-        if ($selectedRole === '') {
+        $now = time();
+        $recentFailures = array_filter($_SESSION['login_failures'] ?? [], fn($t) => $t > $now - 300);
+        if (count($recentFailures) >= 10) {
+            $error = 'Too many failed login attempts. Please wait 5 minutes before trying again.';
+        } elseif ($selectedRole === '') {
             $error = 'Please select your role before logging in.';
         } else {
             $failReason = null;
@@ -75,11 +79,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
             }
 
             if ($user) {
+                unset($_SESSION['login_failures']);
                 admin_year_gate_set();
+                $return = trim((string) input('return'));
+                if ($return !== '' && str_starts_with($return, '/') && !str_starts_with($return, '//') && !str_starts_with($return, '/\\')) {
+                    redirect($return);
+                }
                 redirect('/dashboard.php');
             } elseif ($failReason === 'deactivated') {
                 $error = 'Your account has been deactivated. Please contact an administrator.';
             } else {
+                $recentFailures[] = $now;
+                $_SESSION['login_failures'] = $recentFailures;
                 $error = 'Invalid email or password.';
             }
         }
@@ -255,6 +266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && (string) input('action') === 'passw
       <form method="post" id="loginForm">
         <?= csrf_field() ?>
         <input type="hidden" name="role" id="roleInput" value="<?= e($selectedRole) ?>">
+        <input type="hidden" name="return" value="<?= e(input('return')) ?>">
 
         <!-- Step 1: Role selector -->
         <div id="step1" class="step-content">

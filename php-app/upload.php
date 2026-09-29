@@ -468,7 +468,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         ],
     ];
 
-    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+    if (!user_can_choose_department($user) && !empty($user['department'])) {
         $_POST['department'] = $user['department'];
     }
 
@@ -625,7 +625,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $placeholders[] = '?';
     }
 
-        if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+        if (!user_can_choose_department($user) && !empty($user['department'])) {
             $_POST['department'] = $user['department'];
         }
 

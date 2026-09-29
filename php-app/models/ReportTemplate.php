@@ -101,6 +101,12 @@ function template_column_delete(int $id): array
 
 function template_move(string $table, int $id, string $dir): array
 {
+    if (!in_array($table, ['report_rows', 'report_columns'], true)) {
+        return [false, 'Invalid table.'];
+    }
+    if (!in_array($dir, ['up', 'down'], true)) {
+        return [false, 'Invalid direction.'];
+    }
     $pdo = db();
     $stmt = $pdo->prepare("SELECT id, sort_order FROM `$table` WHERE id=?");
     $stmt->execute([$id]);
@@ -126,10 +132,12 @@ function template_move(string $table, int $id, string $dir): array
 
 function template_reorder(string $table, array $ids): array
 {
+    if (!in_array($table, ['report_rows', 'report_columns'], true)) {
+        return [false, 'Invalid table.'];
+    }
     if (empty($ids)) {
         return [false, 'No items to reorder.'];
     }
-    $table = ($table === 'report_rows') ? 'report_rows' : 'report_columns';
     $pdo = db();
     $stmt = $pdo->prepare("UPDATE `$table` SET sort_order = ? WHERE id = ?");
     $pdo->beginTransaction();

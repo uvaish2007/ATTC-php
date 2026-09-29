@@ -67,7 +67,14 @@ $columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status
 
 function csv_line($handle, array $fields): void
 {
-    fputcsv($handle, $fields, ',', '"', '');
+    $safeFields = array_map(function ($field) {
+        $str = (string) $field;
+        if (isset($str[0]) && in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'" . $str;
+        }
+        return $str;
+    }, $fields);
+    fputcsv($handle, $safeFields, ',', '"', '');
 }
 
 function export_row(array $record, int $serial, string $format = 'csv'): array
