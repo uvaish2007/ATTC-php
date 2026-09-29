@@ -87,9 +87,6 @@ function upload_flow_data_types(): array
     $facultyTypes = array_values(array_filter($allTypes, fn($t) => !str_starts_with($t, 'inst_') && !in_array($t, ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation'], true)));
 
     $defs = [
-        'faculty'       => ['label' => 'FACULTY DATA', 'icon' => 'file-text', 'categories' => ['faculty', 'activity'],
-                            'description' => 'Faculty academic records',
-                            'types' => $facultyTypes],
         'student'       => ['label' => 'STUDENT DATA', 'icon' => 'users', 'categories' => ['student'],
                             'description' => 'Student academic records',
                             'types' => array_values(array_filter($studentTypes, fn($t) => in_array($t, $allTypes, true)))],
@@ -199,9 +196,6 @@ function upload_flow_choose_data_type(array $user, $dataType): array
     }
     if (empty($defs[$dataType]['types'])) {
         return [false, $defs[$dataType]['label'] . ' is not available yet.'];
-    }
-    if (upload_flow_is_faculty($user) && !in_array($dataType, ['faculty', 'institutional'], true)) {
-        return [false, 'Faculty accounts can upload Faculty Data and Institutional / Department Achievements only.'];
     }
 
     upload_flow_store($user, ['data_type' => $dataType]);

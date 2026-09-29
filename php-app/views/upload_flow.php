@@ -156,22 +156,7 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
       <?= csrf_field() ?>
       <input type="hidden" name="upload_flow_step" value="data_type">
 
-      <div class="uf-choices" style="grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));">
-        <!-- Faculty Data Card -->
-        <section class="card uf-choice">
-          <div class="uf-choice-ic brand">
-            <?= icon('file-text', 28) ?>
-          </div>
-          <h2 class="uf-choice-title">FACULTY DATA</h2>
-          <p class="uf-choice-sub">Faculty academic records</p>
-          <div class="uf-choice-foot">
-            <button type="submit" name="data_type" value="faculty" class="btn btn-primary" <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'disabled style="cursor:not-allowed;opacity:0.75;"' : '' ?>>
-              <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'LOCKED' : 'SELECT' ?>
-            </button>
-          </div>
-        </section>
-
-        <?php if (!upload_flow_is_faculty($user)): ?>
+      <div class="uf-choices" style="grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
         <!-- Student Data Card -->
         <section class="card uf-choice">
           <div class="uf-choice-ic">
@@ -185,7 +170,6 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
             </button>
           </div>
         </section>
-        <?php endif; ?>
 
         <!-- Institutional / Department Achievements Card -->
         <section class="card uf-choice">
@@ -202,9 +186,12 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
         </section>
       </div>
 
-      <div class="uf-actions center">
-        <a class="btn btn-outline" href="<?= e($ufBackUrl) ?>" style="border-radius:8px; padding:9px 26px; font-weight:600;">
+      <div class="uf-actions center" style="display:flex; justify-content:center; gap:16px; flex-wrap:wrap;">
+        <a class="btn btn-outline" href="<?= e($ufBackUrl) ?>" style="border-radius:8px; padding:9px 24px; font-weight:600;">
           <?= icon('arrow-left', 15) ?> BACK
+        </a>
+        <a class="btn btn-ghost" href="<?= e(url('upload.php?type=journal')) ?>" style="border-radius:8px; padding:9px 20px; font-weight:600; color:var(--brand,#FF4F01);">
+          All Records &amp; Forms <?= icon('chevron', 14) ?>
         </a>
       </div>
     </form>

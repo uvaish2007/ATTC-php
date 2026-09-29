@@ -26,10 +26,90 @@ function record_types(): array
         'nss'                   => ['table' => 'nss',                    'label' => 'NSS / YRC / RRC',           'title_col' => 'activity_name', 'approval_required' => true],
         'online_course'         => ['table' => 'online_courses',         'label' => 'Online Course',             'title_col' => 'course_title',  'approval_required' => true],
         'student_achievement'   => ['table' => 'student_achievements',   'label' => 'Student Achievement',       'title_col' => 'student_name',  'approval_required' => true],
-        'student_participation' => ['table' => 'student_participations', 'label' => 'Student Participation',      'title_col' => 'student_name',  'approval_required' => true],
+        'student_participation' => ['table' => 'student_participations', 'label' => 'Student Participation',     'title_col' => 'student_name',  'approval_required' => true],
         'summer_training'       => ['table' => 'summer_training',        'label' => 'Summer / Winter Training',  'title_col' => 'title',         'approval_required' => true],
         'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title',  'approval_required' => true],
         'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title',   'approval_required' => true],
+
+        // ===== INSTITUTIONAL / DEPARTMENT ACHIEVEMENT CATEGORIES =====
+        // 1. University Pass Percentage
+        'inst_pass_percentage'     => ['table' => 'inst_pass_percentage',     'label' => 'University Pass Percentage',                'title_col' => 'programme',    'approval_required' => true],
+        // 2. Rank in Anna University (College)
+        'inst_college_rank'        => ['table' => 'inst_college_rank',        'label' => 'Rank in Anna University (College)',         'title_col' => 'student_name', 'approval_required' => true],
+        // 3. University Rank (Students)
+        'inst_student_rank'        => ['table' => 'inst_student_rank',        'label' => 'University Rank (Students)',                'title_col' => 'student_name', 'approval_required' => true],
+        // 4. II & III Year Students Above 7.5 CGPA
+        'inst_student_cgpa'        => ['table' => 'inst_student_cgpa',        'label' => 'Students Above 7.5 CGPA (II & III Year)',   'title_col' => 'student_name', 'approval_required' => true],
+        // 5. Placement — Top MNCs
+        'inst_placement_mnc'       => ['table' => 'inst_placement_mnc',       'label' => 'Placement in Top MNCs',                    'title_col' => 'student_name', 'approval_required' => true],
+        // 6. Quality Publications (Scopus / SCI / Springer / UGC CARE / H-Index)
+        'inst_publications'        => ['table' => 'inst_publications',        'label' => 'Quality Publications (Scopus/SCI/Springer)', 'title_col' => 'title',        'approval_required' => true],
+        // 7. Books Publication
+        'inst_books'               => ['table' => 'inst_books',               'label' => 'Books Publication',                        'title_col' => 'book_title',   'approval_required' => true],
+        // 8. Book Chapter
+        'inst_book_chapters'       => ['table' => 'inst_book_chapters',       'label' => 'Book Chapter',                             'title_col' => 'chapter_title','approval_required' => true],
+        // 9. Patent Published / Design
+        'inst_patents_published'   => ['table' => 'inst_patents_published',   'label' => 'Patent Published / Design',                'title_col' => 'title',        'approval_required' => true],
+        // 10. Patent Granted
+        'inst_patents_granted'     => ['table' => 'inst_patents_granted',     'label' => 'Patent Granted',                           'title_col' => 'title',        'approval_required' => true],
+        // 11. Copyrights
+        'inst_copyrights'          => ['table' => 'inst_copyrights',          'label' => 'Copyrights',                               'title_col' => 'title',        'approval_required' => true],
+        // 12. Sponsored Research
+        'inst_sponsored_research'  => ['table' => 'inst_sponsored_research',  'label' => 'Sponsored Research (in Lakhs)',             'title_col' => 'project_title','approval_required' => true],
+        // 13. Consultancy Projects
+        'inst_consultancy'         => ['table' => 'inst_consultancy',         'label' => 'Consultancy Projects (in Lakhs)',           'title_col' => 'project_title','approval_required' => true],
+        // 14. Research Centre Recognition
+        'inst_research_centre'     => ['table' => 'inst_research_centre',     'label' => 'Research Centre Recognition (Anna Univ.)',  'title_col' => 'recognition_name','approval_required' => true],
+        // 15. IPR / Higher Studies / Entrepreneurship Programme
+        'inst_ipr_programmes'      => ['table' => 'inst_ipr_programmes',      'label' => 'Programme on IPR / Higher Studies / Entrepreneurship', 'title_col' => 'programme_title', 'approval_required' => true],
+        // 16. Faculty Online Certification Courses
+        'inst_faculty_certifications' => ['table' => 'inst_faculty_certifications', 'label' => 'Faculty Online Certification Courses', 'title_col' => 'course_name', 'approval_required' => true],
+        // 17. Industry Interaction / MOU / Industry Supported Lab
+        'inst_mou_interactions'    => ['table' => 'inst_mou_interactions',    'label' => 'Industry Interaction / MOU / Industry Supported Lab', 'title_col' => 'industry_name', 'approval_required' => true],
+        // 18. Student Industry Internship (4 weeks & above)
+        'inst_internships'         => ['table' => 'inst_internships',         'label' => "Student Industry Internship (4 Weeks+)",    'title_col' => 'student_name', 'approval_required' => true],
+        // 19. Summer Training (less than 4 weeks)
+        'inst_summer_trainings'    => ['table' => 'inst_summer_trainings',    'label' => 'Summer Training (Less Than 4 Weeks)',       'title_col' => 'student_name', 'approval_required' => true],
+        // 20. Quality Students Project + YouTube
+        'inst_student_projects'    => ['table' => 'inst_student_projects',    'label' => 'Quality Student Projects (YouTube)',        'title_col' => 'project_title','approval_required' => true],
+        // 21. Faculty FDP / Training / STTP / Conference
+        'inst_faculty_participations' => ['table' => 'inst_faculty_participations', 'label' => 'Faculty FDP / Training / STTP / Conference', 'title_col' => 'programme_title', 'approval_required' => true],
+        // 22. Professional Society Membership
+        'inst_society_memberships' => ['table' => 'inst_society_memberships', 'label' => 'Membership in Professional Societies',     'title_col' => 'society_name', 'approval_required' => true],
+        // 23. Newsletter
+        'inst_newsletters'         => ['table' => 'inst_newsletters',         'label' => 'Newsletter',                               'title_col' => 'title',        'approval_required' => true],
+        // 24. Student Online Certification
+        'inst_student_certifications' => ['table' => 'inst_student_certifications', 'label' => 'Student Online Certification', 'title_col' => 'student_name', 'approval_required' => true],
+        // 25. NSS Events
+        'inst_nss_events'          => ['table' => 'inst_nss_events',          'label' => 'Events Conducted by NSS',                  'title_col' => 'event_name',   'approval_required' => true],
+        // 26. Inter-Institute Events — Within State
+        'inst_inter_inst_within'   => ['table' => 'inst_inter_inst_within',   'label' => 'Inter-Institute Events — Within State',    'title_col' => 'student_name', 'approval_required' => true],
+        // 27. Inter-Institute Events — Outside State
+        'inst_inter_inst_outside'  => ['table' => 'inst_inter_inst_outside',  'label' => 'Inter-Institute Events — Outside State',   'title_col' => 'student_name', 'approval_required' => true],
+        // 28. Awards/Medals in Inter-Institute Events
+        'inst_inter_inst_awards'   => ['table' => 'inst_inter_inst_awards',   'label' => 'Awards / Medals — Inter-Institute Events', 'title_col' => 'student_name', 'approval_required' => true],
+        // 29. Value Added / Hands-On Training Courses
+        'inst_value_added_courses' => ['table' => 'inst_value_added_courses', 'label' => 'Value Added / Hands-On Training Courses',  'title_col' => 'course_name',  'approval_required' => true],
+        // 30. Sports — State Level
+        'inst_sports_state'        => ['table' => 'inst_sports_state',        'label' => 'Sports Participation — State Level',       'title_col' => 'student_name', 'approval_required' => true],
+        // 31. Sports — National Level
+        'inst_sports_national'     => ['table' => 'inst_sports_national',     'label' => 'Sports Participation — National Level',    'title_col' => 'student_name', 'approval_required' => true],
+        // 32. Innovation Events
+        'inst_innovation_events'   => ['table' => 'inst_innovation_events',   'label' => 'Innovation Events (Every Department)',     'title_col' => 'event_name',   'approval_required' => true],
+        // 33. IIC Activities
+        'inst_iic_activities'      => ['table' => 'inst_iic_activities',      'label' => 'IIC Activities',                           'title_col' => 'activity_name','approval_required' => true],
+        // 34. Website Updation
+        'inst_website_updations'   => ['table' => 'inst_website_updations',   'label' => 'Website Updation',                        'title_col' => 'update_title', 'approval_required' => true],
+        // 35. Google Rating
+        'inst_google_ratings'      => ['table' => 'inst_google_ratings',      'label' => 'Google Rating',                           'title_col' => 'department',   'approval_required' => true],
+        // 36. Startup
+        'inst_startups'            => ['table' => 'inst_startups',            'label' => 'Startup',                                 'title_col' => 'startup_name', 'approval_required' => true],
+        // 37. Alumni Chapter
+        'inst_alumni_chapters'     => ['table' => 'inst_alumni_chapters',     'label' => 'Alumni Chapter',                          'title_col' => 'chapter_name', 'approval_required' => true],
+        // 38. Awards & Recognition (Faculty/Dept), BoS, DC, QP/Key Setting
+        'inst_awards_recognitions' => ['table' => 'inst_awards_recognitions', 'label' => 'Awards & Recognition / BoS / DC / QP Setting', 'title_col' => 'title', 'approval_required' => true],
+        // 39. IIT-Bombay Spoken Tutorial
+        'inst_spoken_tutorials'    => ['table' => 'inst_spoken_tutorials',    'label' => 'IIT-Bombay Spoken Tutorial Courses',       'title_col' => 'student_name', 'approval_required' => true],
     ];
 
     try {
