@@ -64,3 +64,7 @@ coverage/
 # --- Scratch temporary cookies ---
 scratch/*cookie.txt
 
+ 
+# Archives
+*.zip
+

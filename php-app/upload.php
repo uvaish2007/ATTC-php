@@ -480,7 +480,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         ],
     ];
 
-    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+    if (!user_can_choose_department($user) && !empty($user['department'])) {
         $_POST['department'] = $user['department'];
     }
     $validationErrors = [];
@@ -635,7 +635,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         $placeholders[] = '?';
     }
 
-        if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+        if (!user_can_choose_department($user) && !empty($user['department'])) {
             $_POST['department'] = $user['department'];
         }
 
@@ -1070,8 +1070,9 @@ require __DIR__ . '/inc/header.php';
                   <?php if (!empty($activeEditRequest['requested_value'])): ?> &rarr; Requested: <span style="color:#047857; font-weight:700"><?= e($activeEditRequest['requested_value']) ?></span><?php endif; ?>
                 </div>
               <?php endif; ?>
-              <?php if (!empty($activeEditRequest['decision_comment'])): ?>
-                <div style="margin-top:4px; color:#1E40AF"><strong>Dean Authorization Note:</strong> <?= e($activeEditRequest['decision_comment']) ?></div>
+              <?php $authNote = $activeEditRequest['decision_comment'] ?? $activeEditRequest['admin_comments'] ?? ''; ?>
+              <?php if (!empty($authNote)): ?>
+                <div style="margin-top:4px; color:#1E40AF"><strong>Dean Authorization Note:</strong> <?= e($authNote) ?></div>
               <?php endif; ?>
             <?php else: ?>
               <div><?= e($editRecord['review_remark'] ?: 'Dean has authorized editing for this record.') ?></div>

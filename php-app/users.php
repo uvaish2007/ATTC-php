@@ -21,11 +21,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         [$ok, $msg] = user_create((string)input('name'),(string)input('email'),(string)input('password'),(string)input('role'),(string)input('department'),(string)input('phone'));
         flash($ok ? 'success' : 'error', $msg);
     } elseif ($action === 'update') {
-        [$ok, $msg] = user_update((int)input('id'),(string)input('name'),(string)input('email'),(string)input('role'),(string)input('department'),(string)input('phone'),(int)input('status'));
-        flash($ok ? 'success' : 'error', $msg);
+        $updId = (int) input('id');
+        $updRole = (string) input('role');
+        $updStatus = (int) input('status');
+        if ($updId === (int) $user['id'] && ($updStatus !== 1 || $updRole !== 'Admin')) {
+            flash('error', 'You cannot deactivate your own account or remove your own Administrator role.');
+        } else {
+            [$ok, $msg] = user_update($updId, (string)input('name'),(string)input('email'), $updRole, (string)input('department'),(string)input('phone'), $updStatus);
+            flash($ok ? 'success' : 'error', $msg);
+        }
     } elseif ($action === 'delete') {
-        [$ok, $msg] = user_delete((int) input('id'));
-        flash($ok ? 'success' : 'error', $msg);
+        $delId = (int) input('id');
+        if ($delId === (int) $user['id']) {
+            flash('error', 'You cannot delete your own account.');
+        } else {
+            [$ok, $msg] = user_delete($delId);
+            flash($ok ? 'success' : 'error', $msg);
+        }
     } elseif ($action === 'reset_password') {
         [$ok, $msg] = user_reset_password((int)input('id'), (string)input('new_password'));
         flash($ok ? 'success' : 'error', $msg);

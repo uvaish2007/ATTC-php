@@ -193,6 +193,20 @@ function journal_process_approval_expiry(?int $specificId = null, bool $forceChe
     }
 
     $pdo = db();
+    static $hasRequiredColumns = null;
+    if ($hasRequiredColumns === null) {
+        try {
+            $cols = $pdo->query("SHOW COLUMNS FROM `journal_publications`")->fetchAll(PDO::FETCH_COLUMN);
+            $hasRequiredColumns = in_array('approved_at', $cols, true) && in_array('approval_history', $cols, true);
+        } catch (\Throwable $e) {
+            $hasRequiredColumns = false;
+        }
+    }
+    if (!$hasRequiredColumns) {
+        $checkedThisRequest = true;
+        return 0;
+    }
+
     $sql = "SELECT id, status, approved_by, approved_at, review_remark, approval_history, academic_year, department
             FROM journal_publications
             WHERE status = 'Approved'
@@ -492,7 +506,7 @@ function pending_records(?string $department = null, ?string $stage = null, ?str
     $all = [];
 
     if ($role === 'Coordinator' || $stage === 'Submitted') {
-        $targetStatuses = ['Submitted', 'Unlocked for Edit'];
+        $targetStatuses = ['Submitted', 'Unlocked for Edit', 'Resubmitted'];
     } elseif ($role === 'HoD' || $stage === 'HOD Pending') {
         $targetStatuses = ['Approved', 'Submitted', 'Edit Requested', 'HOD Pending', 'Resubmitted', 'Unlocked for Edit'];
     } elseif ($role === 'Dean' || $stage === 'Dean Pending') {
@@ -589,19 +603,19 @@ function record_review(string $type, int $id, string $action, ?string $remark, i
     }
 
     if ($userRole === 'Coordinator') {
-        $validCurrent = ['Submitted', 'Unlocked for Edit'];
+        $validCurrent = ['Submitted', 'Unlocked for Edit', 'Resubmitted'];
         $newStatus    = ($action === 'reject') ? 'Rejected' : 'Approved';
     } elseif ($userRole === 'HoD') {
         if ($action !== 'request_edit') {
             return [false, 'HOD can only submit Edit Requests to Dean/Admin.'];
         }
-        $validCurrent = ['Approved', 'Submitted', 'HOD Pending', 'Dean Pending'];
+        $validCurrent = ['Approved', 'Submitted', 'HOD Pending', 'Dean Pending', 'Resubmitted'];
         $newStatus    = 'Edit Requested';
     } elseif ($userRole === 'Dean') {
         $validCurrent = ['Edit Requested', 'Dean Pending'];
         $newStatus    = ($action === 'reject') ? 'Approved' : 'Unlocked for Edit';
     } else { 
-        $validCurrent = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Approved', 'Unlocked for Edit'];
+        $validCurrent = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Approved', 'Unlocked for Edit', 'Resubmitted'];
         if ($action === 'request_edit') {
             $newStatus = 'Edit Requested';
         } elseif ($action === 'approve_edit') {
@@ -708,10 +722,10 @@ function records_bulk_approve(string $department, int $approvedBy, ?string $scop
     }
 
     if ($userRole === 'Coordinator') {
-        $validCurrent = ['Submitted'];
+        $validCurrent = ['Submitted', 'Resubmitted'];
         $newStatus    = 'Approved';
     } else {
-        $validCurrent = ['Edit Requested', 'Dean Pending', 'HOD Pending', 'Submitted'];
+        $validCurrent = ['Edit Requested', 'Dean Pending', 'HOD Pending', 'Submitted', 'Resubmitted'];
         $newStatus    = 'Approved';
     }
 
@@ -868,7 +882,7 @@ function edit_request_create(array $data, ?array $user = null): array
             $user = $uStmt->fetch(PDO::FETCH_ASSOC) ?: null;
         }
         if (!$user) {
-            $user = auth_user() ?? [
+            $user = current_user() ?? [
                 'id'         => (int)($data['requested_by'] ?? 0),
                 'role'       => $data['requested_by_role'] ?? 'HoD',
                 'name'       => $data['requested_by_name'] ?? 'HoD',
@@ -1104,7 +1118,10 @@ function edit_request_review(int $requestId, string $decision, ?string $comment,
                 decision_by_name = ?,
                 decision_role = ?,
                 decision_comment = ?,
-                decided_at = NOW()
+                decided_at = NOW(),
+                processed_by = ?,
+                processed_at = NOW(),
+                admin_comments = ?
              WHERE id = ?"
         );
         $stmt->execute([
@@ -1112,6 +1129,8 @@ function edit_request_review(int $requestId, string $decision, ?string $comment,
             (int)$user['id'],
             $user['name'] ?? 'Dean',
             $user['role'],
+            $comment ?: null,
+            (int)$user['id'],
             $comment ?: null,
             $requestId,
         ]);
@@ -1424,7 +1443,7 @@ function record_submit_for_review(string $type, int $id, array $user, ?array $fi
                 return [false, 'You do not have permission to submit this record for review.'];
             }
         } elseif ($user['role'] === 'Coordinator') {
-            if (!empty($user['department']) && !empty($record['department']) && $record['department'] !== $user['department'] && (int)($record['created_by'] ?? 0) !== (int)$user['id']) {
+            if (!empty($user['department']) && !empty($record['department']) && !department_names_match($record['department'], $user['department']) && (int)($record['created_by'] ?? 0) !== (int)$user['id']) {
                 $pdo->rollBack();
                 return [false, 'Record is outside your department scope.'];
             }
@@ -1480,9 +1499,17 @@ function record_submit_for_review(string $type, int $id, array $user, ?array $fi
             $sql .= " AND created_by = ?";
             $params[] = (int)$user['id'];
         } elseif ($user['role'] === 'Coordinator' && !empty($user['department'])) {
-            $sql .= " AND (department = ? OR created_by = ?)";
-            $params[] = $user['department'];
-            $params[] = (int)$user['id'];
+            $deptVars = department_variants($user['department']);
+            if (!empty($deptVars)) {
+                $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+                $sql .= " AND (department IN ($inPh) OR created_by = ?)";
+                $params = array_merge($params, $deptVars);
+                $params[] = (int)$user['id'];
+            } else {
+                $sql .= " AND (department = ? OR created_by = ?)";
+                $params[] = $user['department'];
+                $params[] = (int)$user['id'];
+            }
         }
 
         $updateStmt = $pdo->prepare($sql);

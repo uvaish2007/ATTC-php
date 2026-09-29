@@ -55,7 +55,7 @@ require __DIR__ . '/inc/header.php';
 <!-- Same strip settings.php draws, with this page as the last tab -->
 <?php $settingsTab = 'password'; require __DIR__ . '/inc/settings_tabs.php'; ?>
 
-<form method="get" class="fbar mt-5">
+<form method="get" class="fbar" style="margin-top:16px; margin-bottom:20px;">
   <span class="fbar-title"><?= icon('filter', 14) ?> Filters</span>
 
   <label class="fb-field<?= $statusFilter !== 'Pending' ? ' is-set' : '' ?>"><span class="fb-k">Status</span>
@@ -97,57 +97,67 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php else: ?>
   <div class="card">
-    <div class="card-head">
+    <div class="card-head" style="padding:18px 24px 14px;">
       <div>
         <div class="card-title">Password Requests</div>
-        <div class="card-sub">
+        <div class="card-sub" style="margin-top:3px;">
           Raised from the login page &middot; <?= (int) $counts['Pending'] ?> pending &middot;
           showing <?= count($requests) ?> <?= $statusFilter === 'All' ? 'request' . (count($requests) === 1 ? '' : 's') : strtolower($statusFilter) ?>
         </div>
       </div>
     </div>
     <div class="table-wrap">
-      <table class="data">
+      <table class="data wide" style="margin:0; width:100%;">
         <thead>
-          <tr>
-            <th style="width:64px">ID</th>
-            <th>User</th>
-            <th style="width:120px">Role</th>
-            <th style="width:150px">Department</th>
-            <th>Message</th>
-            <th style="width:110px">Status</th>
-            <th style="width:130px">Created</th>
-            <th style="width:170px">Processed</th>
-            <th style="width:110px" class="num">Action</th>
+          <tr style="background:var(--surface-sunken,#F8FAFC); border-bottom:1px solid var(--hairline,#E2E8F0);">
+            <th style="padding:11px 16px 11px 24px; width:70px; font-weight:700;">ID</th>
+            <th style="padding:11px 16px; font-weight:700;">User</th>
+            <th style="padding:11px 16px; width:120px; font-weight:700;">Role</th>
+            <th style="padding:11px 16px; width:150px; font-weight:700;">Department</th>
+            <th style="padding:11px 16px; font-weight:700;">Message</th>
+            <th style="padding:11px 16px; width:110px; font-weight:700;">Status</th>
+            <th style="padding:11px 16px; width:140px; font-weight:700;">Created</th>
+            <th style="padding:11px 16px; width:160px; font-weight:700;">Processed</th>
+            <th style="padding:11px 24px 11px 16px; width:110px; font-weight:700; text-align:right;">Action</th>
           </tr>
         </thead>
         <tbody>
         <?php foreach ($requests as $r): ?>
-          <tr id="pr-<?= (int) $r['id'] ?>">
-            <td class="tabular">#<?= (int) $r['id'] ?></td>
-            <td>
+          <tr id="pr-<?= (int) $r['id'] ?>" style="border-bottom:1px solid var(--hairline-soft,#F1F5F9);">
+            <td class="tabular" style="padding:13px 16px 13px 24px; vertical-align:middle; font-weight:600; color:var(--ink-muted,#64748B);">#<?= (int) $r['id'] ?></td>
+            <td style="padding:13px 16px; vertical-align:middle;">
               <div class="flex items-center gap-3 min-w-0">
                 <div class="avatar-dark avatar-sm"><?= e(initials($r['name'])) ?></div>
                 <div class="min-w-0">
-                  <div class="truncate" style="font-weight:600" title="<?= e($r['name']) ?>"><?= e($r['name']) ?></div>
+                  <div class="truncate" style="font-weight:600; color:var(--ink,#0F172A);" title="<?= e($r['name']) ?>"><?= e($r['name']) ?></div>
                   <div class="card-sub truncate" title="<?= e($r['email']) ?>"><?= e($r['email']) ?></div>
                 </div>
               </div>
             </td>
-            <td><span class="badge badge-neutral"><?= e($r['role'] === 'Director' ? 'Principal' : $r['role']) ?></span></td>
-            <td class="card-sub"><?= e($r['department'] ?: '—') ?></td>
-            <td class="card-sub"><?= $r['message'] ? e(excerpt((string) $r['message'], 70)) : '<span style="opacity:.6">No message</span>' ?></td>
-            <td><span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span></td>
-            <td class="card-sub"><?= e(date('d-m-Y H:i', strtotime((string) $r['created_at']))) ?></td>
-            <td class="card-sub">
+            <td style="padding:13px 16px; vertical-align:middle;">
+              <span class="badge badge-neutral"><?= e($r['role'] === 'Director' ? 'Principal' : $r['role']) ?></span>
+            </td>
+            <td style="padding:13px 16px; vertical-align:middle; color:var(--ink-muted,#64748B); font-size:13px;">
+              <?= e($r['department'] ?: '—') ?>
+            </td>
+            <td style="padding:13px 16px; vertical-align:middle; color:var(--ink-muted,#64748B); font-size:13px;">
+              <?= $r['message'] ? e(excerpt((string) $r['message'], 70)) : '<span style="color:var(--ink-faint,#94A3B8); font-style:italic;">No message</span>' ?>
+            </td>
+            <td style="padding:13px 16px; vertical-align:middle;">
+              <span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span>
+            </td>
+            <td style="padding:13px 16px; vertical-align:middle; color:var(--ink-muted,#64748B); font-size:12.5px; font-variant-numeric:tabular-nums; white-space:nowrap;">
+              <?= e(date('d-m-Y H:i', strtotime((string) $r['created_at']))) ?>
+            </td>
+            <td style="padding:13px 16px; vertical-align:middle; color:var(--ink-muted,#64748B); font-size:12.5px; white-space:nowrap;">
               <?php if ($r['processed_at']): ?>
-                <?= e(date('d-m-Y H:i', strtotime((string) $r['processed_at']))) ?>
-                <div style="font-size:11.5px;opacity:.8">by <?= e($r['processed_by_name'] ?: 'Admin') ?></div>
+                <div><?= e(date('d-m-Y H:i', strtotime((string) $r['processed_at']))) ?></div>
+                <div style="font-size:11px; color:var(--ink-faint,#94A3B8);">by <?= e($r['processed_by_name'] ?: 'Admin') ?></div>
               <?php else: ?>
-                —
+                <span style="color:var(--ink-faint,#94A3B8);">—</span>
               <?php endif; ?>
             </td>
-            <td class="num">
+            <td style="padding:13px 24px 13px 16px; vertical-align:middle; text-align:right;">
               <button type="button" class="btn btn-<?= $r['status'] === 'Pending' ? 'primary' : 'outline' ?> btn-sm"
                       onclick='reviewRequest(<?= htmlspecialchars(json_encode([
                           'id'           => (int) $r['id'],

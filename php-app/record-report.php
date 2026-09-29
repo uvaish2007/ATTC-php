@@ -84,10 +84,7 @@ if ($format === 'word') {
     ];
 
     $xlsxData = class_exists('SimpleXlsxWriter')
-        ? SimpleXlsxWriter::createXlsx($headers,
-            array_merge($exportRows, report_signoff_rows(
-                report_signoff_columns($singleDept ? $deptFullName : null), count($headers))),
-            mb_substr($spec['title'], 0, 31), $metaLines)
+        ? SimpleXlsxWriter::createXlsx($headers, $exportRows, mb_substr($spec['title'], 0, 31), $metaLines)
         : '';
 
     if (!empty($xlsxData)) {

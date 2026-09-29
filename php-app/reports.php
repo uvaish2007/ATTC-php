@@ -394,7 +394,7 @@ require __DIR__ . '/inc/header.php';
         </div>
         <div class="hero-card-actions">
           <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>">
-            <?= icon('download') ?> Download Excel (Multi-Tab)
+            <?= icon('download') ?> Download Excel
           </a>
           <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">
             <?= icon('file-text', 14) ?> Download PDF
@@ -634,7 +634,7 @@ require __DIR__ . '/inc/header.php';
             <div class="tmpl-report-sub">Full college data &middot; Multi-tab Excel / Grouped PDF &amp; Word &middot; All <?= count($departments) ?> departments</div>
           </div>
           <div class="tmpl-report-links">
-            <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>"><?= icon('download') ?> Excel (Multi-Tab)</a>
+            <a class="btn btn-primary btn-sm" href="<?= e(url('consolidated-report.php?format=excel' . ($year ? '&year=' . urlencode($year) : ''))) ?>"><?= icon('download') ?> Excel</a>
             <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=word' . ($year ? '&year=' . urlencode($year) : ''))) ?>">Word</a>
             <a class="btn btn-outline btn-sm" href="<?= e(url('consolidated-report.php?format=pdf' . ($year ? '&year=' . urlencode($year) : ''))) ?>" target="_blank" rel="noopener">PDF</a>
           </div>
@@ -726,7 +726,7 @@ require __DIR__ . '/inc/header.php';
   .tmpl-report-sub { font-size:12px; color:var(--ink-muted,#64748b); margin-top:2px; }
   .tmpl-report-links { display:grid; grid-template-columns:repeat(3, 82px); gap:8px; flex-shrink:0; }
   .tmpl-report-links .btn { min-width:0; width:100%; justify-content:center; text-align:center; box-sizing:border-box; padding:6px 0; }
-  .tmpl-report-extra[hidden], .rec-cat-body[hidden] { display:none !important; }
+  .tmpl-report-extra[hidden], .rec-cat-body[hidden], tr.rec-extra[hidden] { display:none !important; }
 
   /* Hero cards (Consolidated / Faculty Achievements) — a plain wrapping row of
      buttons. Kept separate from .tmpl-report-links, whose fixed 3x82px grid
@@ -818,7 +818,7 @@ require __DIR__ . '/inc/header.php';
                 <?= icon('eye', 13) ?> View only
               </a>
             <?php endif; ?>
-            <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" onclick="event.stopPropagation();" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
+            <button type="button" class="btn btn-secondary btn-sm js-cat-btn" data-cat="<?= e($ckey) ?>" style="border-radius:999px; padding:4px 10px; font-size:12px; display:inline-flex; align-items:center; gap:5px;">
               <?= icon('chevron-up', 13) ?> <span class="cat-btn-txt">Collapse</span>
             </button>
           </div>
@@ -955,7 +955,6 @@ require __DIR__ . '/inc/header.php';
           if (txt) txt.textContent = anyOpen ? 'Collapse categories' : 'Expand categories';
           const svg = allCatsBtn.querySelector('svg');
           if (svg) svg.outerHTML = anyOpen ? '<?= icon('chevron-up', 14) ?>' : '<?= icon('chevron-down', 14) ?>';
-        }
         }
       }
       return;

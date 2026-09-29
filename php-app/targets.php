@@ -22,7 +22,7 @@ if ((isset($_GET['action']) && $_GET['action'] === 'get_target_records') || (iss
         echo json_encode(['ok' => false, 'msg' => 'Target not found']);
         exit;
     }
-    if ($user['role'] === 'HoD' && !empty($user['department']) && $target['department'] !== $user['department']) {
+    if (in_array($user['role'], ['HoD', 'Coordinator'], true) && !empty($user['department']) && !department_names_match($target['department'] ?? '', $user['department'])) {
         echo json_encode(['ok' => false, 'msg' => 'Access restricted to your department.']);
         exit;
     }

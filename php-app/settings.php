@@ -116,36 +116,36 @@ require __DIR__ . '/inc/header.php';
       <?php else: ?>
 
         <div class="table-wrap">
-          <table class="data wide">
+          <table class="data wide" style="margin:0;">
             <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Category</th>
-                <th>Proof</th>
-                <th>Status</th>
-                <th class="num">Actions</th>
+              <tr style="border-bottom:1px solid var(--hairline,#E2E8F0);">
+                <th style="padding:10px 12px 10px 0; font-weight:700;">Metric</th>
+                <th style="padding:10px 12px; font-weight:700;">Category</th>
+                <th style="padding:10px 12px; font-weight:700;">Proof</th>
+                <th style="padding:10px 12px; font-weight:700;">Status</th>
+                <th style="padding:10px 0 10px 12px; font-weight:700; text-align:right;">Actions</th>
               </tr>
             </thead>
             <tbody>
               <?php foreach ($metrics as $metric): ?>
-                <tr>
-                  <td class="fw-500"><?= e($metric['name']) ?></td>
-                  <td class="faint"><?= e($metric['category']) ?></td>
-                  <td>
+                <tr style="border-bottom:1px solid var(--hairline-soft,#F1F5F9);">
+                  <td class="fw-500" style="vertical-align:middle; padding:12px 12px 12px 0;"><?= e($metric['name']) ?></td>
+                  <td class="faint" style="vertical-align:middle; padding:12px;"><?= e($metric['category']) ?></td>
+                  <td style="vertical-align:middle; padding:12px;">
                     <?php if ((int) $metric['proof_required'] === 1): ?>
                       <span class="badge badge-brand">Required</span>
                     <?php else: ?>
                       <span class="badge badge-neutral">Optional</span>
                     <?php endif; ?>
                   </td>
-                  <td>
+                  <td style="vertical-align:middle; padding:12px;">
                     <?php if ((int) $metric['status'] === 1): ?>
                       <span class="badge badge-success">Active</span>
                     <?php else: ?>
                       <span class="badge badge-neutral">Hidden</span>
                     <?php endif; ?>
                   </td>
-                  <td class="num">
+                  <td class="num" style="vertical-align:middle; padding:12px 0 12px 12px;">
                     <div class="dept-actions" style="justify-content:flex-end">
                       <button class="mini-btn" title="Edit"
                         onclick='editMetric(<?= e(json_encode($metric)) ?>)'><?= icon('pencil', 15) ?></button>
@@ -184,7 +184,7 @@ require __DIR__ . '/inc/header.php';
   <!-- ===================== My Account ===================== -->
   <div class="grid-1-1">
 
-    <div class="card">
+    <div class="card" style="display:flex; flex-direction:column;">
       <div class="card-head">
         <div>
           <div class="card-title">Your details</div>
@@ -192,7 +192,7 @@ require __DIR__ . '/inc/header.php';
         </div>
       </div>
 
-      <form method="post" class="card-body">
+      <form method="post" class="card-body" style="display:flex; flex-direction:column; flex:1;">
         <?= csrf_field() ?>
         <input type="hidden" name="tab" value="account">
         <input type="hidden" name="action" value="save_profile">
@@ -213,11 +213,13 @@ require __DIR__ . '/inc/header.php';
           <div class="hint">The email is the login name, so it is changed on the Users page.</div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-sm"><?= icon('save') ?> Save Changes</button>
+        <div style="margin-top:auto; padding-top:16px;">
+          <button type="submit" class="btn btn-primary btn-sm"><?= icon('save') ?> Save Changes</button>
+        </div>
       </form>
     </div>
 
-    <div class="card">
+    <div class="card" style="display:flex; flex-direction:column;">
       <div class="card-head">
         <div>
           <div class="card-title">Change password</div>
@@ -225,7 +227,7 @@ require __DIR__ . '/inc/header.php';
         </div>
       </div>
 
-      <form method="post" class="card-body">
+      <form method="post" class="card-body" style="display:flex; flex-direction:column; flex:1;">
         <?= csrf_field() ?>
         <input type="hidden" name="tab" value="account">
         <input type="hidden" name="action" value="change_password">
@@ -246,7 +248,9 @@ require __DIR__ . '/inc/header.php';
           <input class="input" type="password" name="confirm_password" required minlength="6">
         </div>
 
-        <button type="submit" class="btn btn-primary btn-sm"><?= icon('key') ?> Update Password</button>
+        <div style="margin-top:auto; padding-top:16px;">
+          <button type="submit" class="btn btn-primary btn-sm"><?= icon('key') ?> Update Password</button>
+        </div>
       </form>
     </div>
 

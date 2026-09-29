@@ -12,7 +12,6 @@ function navigation_for(string $role): array
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
             ['section' => 'Workspace', 'label' => 'Academic Year',        'path' => 'academic-years.php',       'icon' => 'calendar'],
             ['section' => 'Workspace', 'label' => 'EM Schedule Manager',  'path' => 'em-schedule.php',          'icon' => 'clock'],
-            ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Users',                'path' => 'users.php',                'icon' => 'users'],
@@ -52,7 +51,6 @@ function navigation_for(string $role): array
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
             ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
             ['section' => 'Workspace', 'label' => 'Review Records',       'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
-            ['section' => 'Workspace', 'label' => 'Review Targets',       'path' => 'targets.php',              'icon' => 'target'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Faculty',              'path' => 'faculty.php',              'icon' => 'graduation'],
@@ -131,11 +129,11 @@ function pending_approvals_count(array $user): int
     }
 
     if ($role === 'Coordinator') {
-        $targetStatuses = ['Submitted', 'Unlocked for Edit'];
+        $targetStatuses = ['Submitted', 'Unlocked for Edit', 'Resubmitted'];
     } elseif ($role === 'Dean') {
         $targetStatuses = ['Edit Requested', 'Dean Pending'];
     } else {   
-        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Unlocked for Edit'];
+        $targetStatuses = ['Submitted', 'Edit Requested', 'Dean Pending', 'HOD Pending', 'Unlocked for Edit', 'Resubmitted'];
     }
 
     $inClause = implode(',', array_fill(0, count($targetStatuses), '?'));
@@ -147,8 +145,15 @@ function pending_approvals_count(array $user): int
             $sql    = "SELECT COUNT(*) FROM `$table` WHERE status IN ($inClause)";
             $params = $targetStatuses;
             if ($scopeDept !== null) {
-                $sql     .= ' AND department = ?';
-                $params[] = $scopeDept;
+                $deptVars = department_variants($scopeDept);
+                if (!empty($deptVars)) {
+                    $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+                    $sql     .= " AND department IN ($inPh)";
+                    $params = array_merge($params, $deptVars);
+                } else {
+                    $sql     .= ' AND department = ?';
+                    $params[] = $scopeDept;
+                }
             }
             if (in_array('academic_year', target_record_table_columns($table), true)) {
                 $sql     .= ' AND academic_year = ?';

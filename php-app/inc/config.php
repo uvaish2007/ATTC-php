@@ -25,9 +25,15 @@ define('UPLOAD_URL', BASE_URL . '/uploads');
 
 define('SESSION_NAME', (string) env('SESSION_NAME', 'atts_session'));
 
-error_reporting(E_ALL);
-ini_set('display_errors', '1');
-define('APP_DEBUG', true);
+$appDebug = (bool) env('APP_DEBUG', false);
+define('APP_DEBUG', $appDebug);
+if ($appDebug) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', '1');
+} else {
+    error_reporting(0);
+    ini_set('display_errors', '0');
+}
 
 define('APP_TIMEZONE', (string) env('APP_TIMEZONE', 'Asia/Kolkata'));
 date_default_timezone_set(APP_TIMEZONE);

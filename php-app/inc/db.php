@@ -61,6 +61,8 @@ function db(): PDO
         if (APP_DEBUG) {
             die('Database connection failed: ' . htmlspecialchars($e->getMessage())
                 . '<br><br>Check inc/config.php and that MySQL is running and the "' . htmlspecialchars(DB_NAME) . '" database exists.');
+        } else {
+            die('A database connection error occurred. Please try again later.');
         }
     }
 

@@ -1109,13 +1109,19 @@ function announcement_set_status(int $id, string $status): array
 function announcement_delete(int $id): array
 {
     foreach (announcement_files($id) as $file) {
-        $path = UPLOAD_DIR . '/announcements/' . $file['stored_name'];
+        $path = UPLOAD_DIR . '/announcements/' . basename((string) $file['stored_name']);
         if (is_file($path)) {
-            unlink($path);
+            @unlink($path);
         }
     }
 
-    db()->prepare('DELETE FROM announcements WHERE id = ?')->execute([$id]);
+    try {
+        db()->prepare('DELETE FROM announcement_files WHERE announcement_id = ?')->execute([$id]);
+        db()->prepare('DELETE FROM announcements WHERE id = ?')->execute([$id]);
+    } catch (\PDOException $e) {
+        error_log('announcement_delete failed: ' . $e->getMessage());
+        return [false, 'Failed to delete announcement.'];
+    }
 
     return [true, 'Announcement deleted.'];
 }
