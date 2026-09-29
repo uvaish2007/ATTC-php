@@ -24,7 +24,7 @@ if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $f
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
-            return [null, 'Proof / Attachment is required. Please upload a PDF or image file (up to 2 MB).'];
+            return [null, 'Proof / Attachment is required. Please upload a PDF file (2 MB or less).'];
         }
         return [null, null];
     }
@@ -520,10 +520,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
     }
 
     if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
-        $validationErrors[] = 'Exam Session is required: choose ' . implode(' or ', exam_sessions()) . '.';
+        $validationErrors[] = 'Academic Session is required: choose ' . implode(' or ', exam_sessions()) . '.';
     }
 
-    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, false);
+    // Proof is mandatory, except when editing a record that already has one on file.
+    $proofRequired = true;
+    $proofEditId   = (int) input('edit_id');
+    if ($proofEditId > 0) {
+        try {
+            $stmt = db()->prepare("SELECT * FROM `{$types[$type]['table']}` WHERE id = ?");
+            $stmt->execute([$proofEditId]);
+            $proofRow = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $proofRequired = empty($proofRow['proof_file']) && empty($proofRow['proofs']);
+        } catch (Throwable $e) {
+            // fall back to requiring a proof
+        }
+    }
+    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $proofRequired);
     if ($proofError !== null) {
         $validationErrors[] = $proofError;
     }
@@ -768,13 +781,25 @@ function render_dept_field(array $user, array $departments, string $label = 'Dep
 
 function render_exam_session_field(string $academicYear): void
 {
-    echo '<div class="field"><label>Exam Session <span class="req">*</span></label>';
+    echo '<div class="field"><label>Academic Session <span class="req">*</span></label>';
     echo '<select class="select" name="exam_session" required>';
     foreach (exam_sessions() as $s) {
         $sel = $s === exam_session_current() ? ' selected' : '';
         echo '<option value="' . e($s) . '"' . $sel . '>' . e(exam_session_label($s, $academicYear)) . '</option>';
     }
     echo '</select></div>';
+}
+
+function render_proof_field(?array $editRecord = null): void
+{
+    // Required on every new entry; a record being edited that already has a proof keeps it.
+    $hasProof = $editRecord && (!empty($editRecord['proof_file']) || !empty($editRecord['proofs']));
+    echo '<div class="field" style="grid-column:span 2">';
+    echo '<label>Proof / Attachment' . ($hasProof ? '' : ' <span class="req">*</span>') . ' <span class="card-sub">— PDF only, strictly 2 MB or less'
+        . ($hasProof ? ' (leave empty to keep the current file)' : '') . '</span></label>';
+    echo '<input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf"' . ($hasProof ? '' : ' required') . '>';
+    echo '<div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>';
+    echo '</div>';
 }
 
 $pageTitle = 'Upload Data'; $breadcrumb = 'Upload Data';
@@ -1102,6 +1127,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Volume &amp; Issue No <span class="req">*</span></label><input class="input" name="volume_issue" required></div>
         <div class="field"><label>Month &amp; Year of Publication <span class="req">*</span> <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="publication_month" placeholder="e.g. 12/2025" required></div>
         <div class="field"><label>Link to the Article / DOI <span class="req">*</span></label><input class="input" name="doi" required></div>
+        <?php render_proof_field($editRecord); ?>
         <div class="field"><label>Link to Journal Website <span class="req">*</span></label><input class="input" name="journal_link" type="url" required></div>
         <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
@@ -1276,12 +1302,8 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
       <?php endif; ?>
 
-        <!-- Proof / attachment (optional) — carried onto the report -->
-        <div class="field" style="grid-column:span 2">
-          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
-          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
-          <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
-        </div>
+        <!-- Proof / attachment — carried onto the report (Journal places it above its link fields) -->
+        <?php if ($selectedType !== 'journal') render_proof_field($editRecord); ?>
       </div>
       </fieldset>
 
