@@ -25,11 +25,12 @@ function record_types(): array
         // Types added straight from the IQAC templates.
         'nss'                   => ['table' => 'nss',                    'label' => 'NSS / YRC / RRC',           'title_col' => 'activity_name', 'approval_required' => true],
         'online_course'         => ['table' => 'online_courses',         'label' => 'Online Course',             'title_col' => 'course_title',  'approval_required' => true],
-        'student_achievement'   => ['table' => 'student_achievements',   'label' => 'Student Achievement',       'title_col' => 'student_name',  'approval_required' => true],
-        'student_participation' => ['table' => 'student_participations', 'label' => 'Student Participation',     'title_col' => 'student_name',  'approval_required' => true],
+        'co_curricular'         => ['table' => 'student_achievements',   'label' => 'Co-Curricular',             'title_col' => 'student_name',  'approval_required' => true, 'category_val' => 'Co-Curricular'],
+        'extra_curricular'      => ['table' => 'student_achievements',   'label' => 'Extra-Curricular',          'title_col' => 'student_name',  'approval_required' => true, 'category_val' => 'Extra-Curricular'],
         'summer_training'       => ['table' => 'summer_training',        'label' => 'Summer / Winter Training',  'title_col' => 'title',         'approval_required' => true],
         'value_added'           => ['table' => 'value_added_courses',    'label' => 'Value Added Course',        'title_col' => 'course_title',  'approval_required' => true],
         'training'              => ['table' => 'training',               'label' => 'Training Programme',        'title_col' => 'event_title',   'approval_required' => true],
+        'student_achievement'   => ['table' => 'student_achievements',   'label' => 'Student Achievement',       'title_col' => 'student_name',  'approval_required' => true],
 
         // ===== INSTITUTIONAL / DEPARTMENT ACHIEVEMENT CATEGORIES =====
         // 1. University Pass Percentage
@@ -147,7 +148,7 @@ function record_categories(): array
         'activity' => ['label' => 'Activities & Outreach', 'icon' => 'calendar',
                        'types' => ['event', 'nss', 'value_added', 'training']],
         'student'  => ['label' => 'Student Records',       'icon' => 'users',
-                       'types' => ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation']],
+                       'types' => ['internship', 'placement', 'summer_training', 'co_curricular', 'extra_curricular']],
     ];
 
     $known = record_types();
@@ -359,6 +360,12 @@ function records_list(string $type, ?string $department = null, ?string $status 
 
     $sql = "SELECT * FROM `{$t['table']}` WHERE 1=1";
     $params = [];
+
+    if (isset($t['category_val'])) {
+        $sql .= " AND (category = ? OR (category IS NULL AND ? = 'Co-Curricular'))";
+        $params[] = $t['category_val'];
+        $params[] = $t['category_val'];
+    }
 
     if ($department && $hasDept) {
         $deptVars = department_variants($department);
@@ -1543,6 +1550,37 @@ function record_submit_for_review(string $type, int $id, array $user, ?array $fi
     }
 }
 
+function placement_job_roles(): array
+{
+    return [
+        'Software Engineer',
+        'Full Stack Developer',
+        'Frontend Developer',
+        'Backend Developer',
+        'Data Scientist',
+        'Data Analyst',
+        'Cloud Engineer',
+        'DevOps Engineer',
+        'QA / Test Engineer',
+        'Systems Engineer',
+        'Business Analyst',
+        'Graduate Engineer Trainee',
+        'Embedded Engineer',
+        'Network Engineer',
+        'Others',
+    ];
+}
+
+function nss_activity_types(): array
+{
+    return [
+        'NSS',
+        'YRC',
+        'RRC',
+        'UBA',
+    ];
+}
+
 /**
  * Returns formatted human-readable field labels and values for an entry,
  * using IQAC report specifications when available.
@@ -1569,6 +1607,7 @@ function record_display_attributes(string $type, array $record): array
         'faculty_name'        => 'Faculty Name',
         'department'          => 'Department',
         'academic_year'       => 'Academic Year',
+        'academic_session'    => 'Academic Session',
         'author_type'         => 'Author Type',
         'co_authors'          => 'Co-Authors',
         'paper_title'         => 'Paper Title',
@@ -1603,16 +1642,76 @@ function record_display_attributes(string $type, array $record): array
         'review_remark', 'proof_file', '_type_key', '_type_label', '_title'
     ];
 
+    if ($type === 'placement' || $type === 'nss' || $type === 'co_curricular' || $type === 'extra_curricular') {
+        $ignoreCols[] = 'exam_session';
+    }
+    if ($type === 'co_curricular' || $type === 'extra_curricular') {
+        $ignoreCols[] = 'category';
+    }
+
     $attributes = [];
     foreach ($record as $k => $v) {
         if (in_array($k, $ignoreCols, true)) {
             continue;
         }
         $label = $knownLabels[$k] ?? $fallbackLabels[$k] ?? ucwords(str_replace('_', ' ', $k));
+        if ($type === 'placement') {
+            if ($k === 'job_title') {
+                $label = 'Job Role';
+            } elseif ($k === 'academic_session' || $k === 'exam_session') {
+                $label = 'Academic Session';
+            }
+        } elseif ($type === 'nss') {
+            if ($k === 'academic_session' || $k === 'exam_session') {
+                $label = 'Academic Session';
+            }
+        } elseif ($type === 'co_curricular' || $type === 'extra_curricular') {
+            if ($k === 'academic_session' || $k === 'exam_session') {
+                $label = 'Academic Session';
+            } elseif ($k === 'function_name') {
+                $label = 'Name of the Function / Programme';
+            } elseif ($k === 'event_name') {
+                $label = 'Name of the Event';
+            } elseif ($k === 'event_type') {
+                $label = 'Event Type';
+            } elseif ($k === 'activity_type') {
+                $label = 'Activity Type';
+            } elseif ($k === 'level_secured') {
+                $label = 'Level';
+            } elseif ($k === 'position_secured') {
+                $label = 'Position Secured';
+            } elseif ($k === 'organising_institution') {
+                $label = 'Name of the Organising Institution';
+            } elseif ($k === 'team_individual') {
+                $label = 'Team / Individual';
+            } elseif ($k === 'team_members') {
+                $label = 'Team Members';
+            } elseif ($k === 'other_details') {
+                $label = 'Other Details';
+            }
+        }
+        $val = (string)($v ?? '');
+        if ($type === 'placement' && $k === 'pay_scale' && $val !== '') {
+            if (!str_ends_with(strtoupper($val), 'LPA')) {
+                $val .= ' LPA';
+            }
+        }
+        if (($type === 'co_curricular' || $type === 'extra_curricular') && $k === 'team_members' && $val !== '') {
+            $parsed = json_decode($val, true);
+            if (is_array($parsed) && !empty($parsed)) {
+                $mStrings = [];
+                foreach ($parsed as $m) {
+                    $mStr = trim(($m['name'] ?? '') . ' (' . ($m['reg_no'] ?? '') . ')');
+                    if (!empty($m['department'])) $mStr .= ' - ' . $m['department'];
+                    $mStrings[] = $mStr;
+                }
+                $val = implode(', ', $mStrings);
+            }
+        }
         $attributes[] = [
             'key'   => $k,
             'label' => $label,
-            'value' => (string)($v ?? ''),
+            'value' => $val,
         ];
     }
 
@@ -1659,5 +1758,10 @@ class Record
     public static function requires_approval(string $type): bool
     {
         return record_requires_approval($type);
+    }
+
+    public static function nss_activity_types(): array
+    {
+        return nss_activity_types();
     }
 }

@@ -594,7 +594,7 @@ function target_suggested_type(string $metric): ?string
     $m = strtoupper($metric);
 
     $rules = [
-        'nss'                   => ['NSS', 'YRC', 'RRC'],
+        'nss'                   => ['NSS', 'YRC', 'RRC', 'UBA'],
         'summer_training'       => ['SUMMER TRAINING', 'WINTER TRAINING'],
         'value_added'           => ['VALUE ADDED', 'VALUE-ADDED'],
         'online_course'         => ['ONLINE CERTIF', 'ONLINE COURSE'],

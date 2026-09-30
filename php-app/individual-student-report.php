@@ -181,8 +181,9 @@ require __DIR__ . '/inc/header.php';
       <option value="">All Student Categories</option>
       <option value="internship" <?= $category === 'internship' ? 'selected' : '' ?>>Internships</option>
       <option value="placement" <?= $category === 'placement' ? 'selected' : '' ?>>Placements</option>
+      <option value="co_curricular" <?= $category === 'co_curricular' ? 'selected' : '' ?>>Co-Curricular</option>
+      <option value="extra_curricular" <?= $category === 'extra_curricular' ? 'selected' : '' ?>>Extra-Curricular</option>
       <option value="student_achievement" <?= $category === 'student_achievement' ? 'selected' : '' ?>>Student Achievements</option>
-      <option value="student_participation" <?= $category === 'student_participation' ? 'selected' : '' ?>>Student Participations</option>
       <option value="summer_training" <?= $category === 'summer_training' ? 'selected' : '' ?>>Summer / Winter Training</option>
       <option value="nptel" <?= $category === 'nptel' ? 'selected' : '' ?>>SWAYAM-NPTEL (Students)</option>
       <option value="online_course" <?= $category === 'online_course' ? 'selected' : '' ?>>Online Courses (Students)</option>

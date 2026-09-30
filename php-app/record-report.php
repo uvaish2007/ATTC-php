@@ -62,6 +62,14 @@ if ($format === 'word') {
                 $rowVal[] = (string) $serial;
             } elseif ($field === 'department') {
                 $rowVal[] = department_full_name((string) ($r[$field] ?? ''));
+            } elseif ($field === 'academic_session') {
+                $rowVal[] = (string) ($r['academic_session'] ?? $r['exam_session'] ?? '');
+            } elseif ($field === 'pay_scale') {
+                $ps = trim((string) ($r['pay_scale'] ?? ''));
+                if ($ps !== '' && !str_ends_with(strtoupper($ps), 'LPA')) {
+                    $ps .= ' LPA';
+                }
+                $rowVal[] = $ps;
             } else {
                 $rowVal[] = (string) ($r[$field] ?? '');
             }
@@ -150,6 +158,13 @@ report_letterhead($mainTitle, $meta, $headingLines);
                     $val = (string) $serial;
                 } elseif ($field === 'department') {
                     $val = department_full_name((string) ($r[$field] ?? ''));
+                } elseif ($field === 'academic_session') {
+                    $val = (string) ($r['academic_session'] ?? $r['exam_session'] ?? '');
+                } elseif ($field === 'pay_scale') {
+                    $val = trim((string) ($r['pay_scale'] ?? ''));
+                    if ($val !== '' && !str_ends_with(strtoupper($val), 'LPA')) {
+                        $val .= ' LPA';
+                    }
                 } else {
                     $val = (string) ($r[$field] ?? '');
                 }

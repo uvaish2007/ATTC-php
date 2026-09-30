@@ -12,10 +12,24 @@ require_once __DIR__ . '/inc/inst_upload_handler.php'; // Institutional achievem
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
 $types       = record_types();
+unset($types['student_participation']);
+unset($types['student_achievement']);
+unset($types['conference']);
 $departments = departments_all();
 $years       = academic_years();
 $typeKeys    = array_keys($types);
 $activeYear  = active_academic_year();
+
+if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation', 'conference'], true)) {
+    if ($_GET['type'] === 'student_participation') {
+        flash('info', 'The Student Participation category is no longer available in Upload Data.');
+        redirect('/upload.php?type=co_curricular');
+    } elseif ($_GET['type'] === 'conference') {
+        flash('info', 'Conference is now submitted under FDP / Workshop activities.');
+        redirect('/upload.php?type=fdp');
+    }
+    redirect('/upload.php?type=co_curricular');
+}
 
 if (!defined('PROOF_MAX_BYTES')) {
     define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   
@@ -266,6 +280,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
     }
 
+    if ($type === 'conference') {
+        flash('info', 'Conference is now submitted under FDP / Workshop activities.');
+        redirect('/upload.php?type=fdp');
+    }
+
     if (!isset($types[$type])) {
         flash('error', 'Invalid record type.');
         redirect('/upload.php');
@@ -277,6 +296,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
             if (($_POST[$base] ?? '') === 'Others' && trim((string) $v) !== '') {
                 $_POST[$base] = trim((string) $v);
             }
+        }
+    }
+
+    if (in_array($type, ['placement', 'nss', 'co_curricular', 'extra_curricular', 'fdp'], true)) {
+        $sessVal = trim((string)($_POST['academic_session'] ?? $_POST['exam_session'] ?? ''));
+        if ($sessVal !== '') {
+            $_POST['academic_session'] = $sessVal;
+            $_POST['exam_session']     = $sessVal;
         }
     }
 
@@ -334,14 +361,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
             'faculty_name' => 'Faculty Name',
             'department' => 'Department',
             'academic_year' => 'Academic Year',
-            'duration' => 'Duration',
+            'exam_session' => 'Academic Session',
             'event_type' => 'Event Type',
-            'title' => 'Name of the FDP / Seminar / Workshop',
+            'title' => 'Title',
             'mode' => 'Mode',
             'organized_by' => 'Organized By',
             'from_date' => 'From Date',
             'to_date' => 'To Date',
-            'certificate_link' => 'Certificate Link',
+            'duration' => 'Duration',
         ],
         'mou' => [
             'department' => 'Department',
@@ -385,7 +412,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
             'reg_no' => 'Reg. No',
             'student_name' => 'Student Name',
             'department' => 'Dept / Branch',
-            'job_title' => 'Job Name',
+            'academic_session' => 'Academic Session',
+            'job_title' => 'Job Role',
             'mode' => 'Mode',
             'company' => 'Company Name & Address',
             'pay_scale' => 'Pay Scale',
@@ -394,6 +422,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         'nss' => [
             'department' => 'Department',
             'academic_year' => 'Academic Year',
+            'academic_session' => 'Academic Session',
             'activity_date' => 'Date',
             'activity_type' => 'Activity Type',
             'activity_name' => 'Name of the Activity',
@@ -413,25 +442,41 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
             'month_year' => 'Month & Year',
             'certificate_link' => 'Certificate Link',
         ],
+        'co_curricular' => [
+            'department'             => 'Dept / Branch',
+            'academic_year'          => 'Academic Year',
+            'academic_session'       => 'Academic Session',
+            'reg_no'                 => 'Reg. No',
+            'student_name'           => 'Name of the Student',
+            'function_name'          => 'Name of the Function / Programme',
+            'event_name'             => 'Name of the Event',
+            'event_type'             => 'Event Type',
+            'event_date'             => 'Date of the Event',
+            'team_individual'        => 'Team / Individual',
+            'level_secured'          => 'Level',
+            'position_secured'       => 'Position Secured',
+            'organising_institution' => 'Name of Organising Institution',
+            'certificate_link'       => 'Link to Certificate / Document',
+        ],
+        'extra_curricular' => [
+            'department'             => 'Dept / Branch',
+            'academic_year'          => 'Academic Year',
+            'academic_session'       => 'Academic Session',
+            'reg_no'                 => 'Reg. No',
+            'student_name'           => 'Student Name',
+            'activity_type'          => 'Activity Type',
+            'function_name'          => 'Name of the Function / Programme',
+            'event_name'             => 'Name of the Event',
+            'event_date'             => 'Date of the Event',
+            'team_individual'        => 'Team / Individual',
+            'level_secured'          => 'Level',
+            'position_secured'       => 'Position Secured',
+            'organising_institution' => 'Name of Organising Institution',
+            'certificate_link'       => 'Link to Certificate / Document',
+        ],
         'student_achievement' => [
             'department' => 'Dept / Branch',
             'academic_year' => 'Academic Year',
-            'reg_no' => 'Reg. No',
-            'student_name' => 'Name of the Student',
-            'event_type' => 'Event Type',
-            'event_name' => 'Name of the Event',
-            'function_name' => 'Name of the Function / Programme',
-            'event_date' => 'Date of the Event',
-            'team_individual' => 'Team / Individual',
-            'level_secured' => 'Level',
-            'position_secured' => 'Position Secured',
-            'organising_institution' => 'Name of Organising Institution',
-            'certificate_link' => 'Link to Certificate / Document',
-        ],
-        'student_participation' => [
-            'department' => 'Dept / Branch',
-            'academic_year' => 'Academic Year',
-            'activity_category' => 'Activity Category',
             'reg_no' => 'Reg. No',
             'student_name' => 'Name of the Student',
             'event_type' => 'Event Type',
@@ -486,9 +531,53 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
     $validationErrors = [];
     $expectedFields = $requiredMap[$type] ?? [];
 
+    if ($type === 'fdp') {
+        $validEventTypes = ['Conference', 'FDP', 'Workshop', 'Seminar', 'STTP', 'Training'];
+        $submittedEvType = trim((string)($_POST['event_type'] ?? ''));
+        if (!in_array($submittedEvType, $validEventTypes, true)) {
+            $validationErrors[] = 'Event Type must be one of: ' . implode(', ', $validEventTypes) . '.';
+        }
+
+        $fromDateStr = trim((string)($_POST['from_date'] ?? ''));
+        $toDateStr   = trim((string)($_POST['to_date'] ?? ''));
+        $fromTs      = strtotime($fromDateStr);
+        $toTs        = strtotime($toDateStr);
+
+        if ($fromDateStr === '' || $fromTs === false) {
+            $validationErrors[] = 'From Date must be a valid date.';
+        }
+        if ($toDateStr === '' || $toTs === false) {
+            $validationErrors[] = 'To Date must be a valid date.';
+        }
+
+        if ($fromTs !== false && $toTs !== false && $fromDateStr !== '' && $toDateStr !== '') {
+            $fromDt = new DateTime($fromDateStr);
+            $toDt   = new DateTime($toDateStr);
+            if ($toDt < $fromDt) {
+                $validationErrors[] = 'To Date cannot be before From Date.';
+                $_POST['duration']  = '';
+            } else {
+                // Inclusive calendar date counting: diff in days + 1 (e.g. 01/10/2026 to 07/10/2026 is 7 days)
+                $interval = $fromDt->diff($toDt);
+                $diffDays = (int)$interval->days + 1;
+                $calcDuration = $diffDays === 1 ? '1 day' : $diffDays . ' days';
+                // Server-calculated duration always overrides browser submission
+                $_POST['duration'] = $calcDuration;
+            }
+        }
+
+        $certLink = trim((string)($_POST['certificate_link'] ?? ''));
+        if ($certLink !== '' && !preg_match('/^https?:\/\/.+/i', $certLink)) {
+            $validationErrors[] = 'Certificate Link must be a valid URL starting with http:// or https://.';
+        }
+    }
+
     foreach ($expectedFields as $fKey => $fLabel) {
         if ($fKey === 'academic_year') {
             continue; 
+        }
+        if ($type === 'fdp' && in_array($fKey, ['event_type', 'from_date', 'to_date', 'duration'], true)) {
+            continue;
         }
         $val = trim((string) ($_POST[$fKey] ?? ''));
         if ($val === '') {
@@ -513,6 +602,73 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
                 $validationErrors[] = "{$fLabel} must be a number greater than 0.";
             }
         }
+
+        if (in_array($type, ['placement', 'nss', 'co_curricular', 'extra_curricular'], true) && $fKey === 'academic_session') {
+            if (!in_array($val, academic_years(), true) && ($editRecord['academic_session'] ?? $editRecord['exam_session'] ?? '') !== $val) {
+                $validationErrors[] = "Academic Session is required. Please select a valid academic session.";
+            }
+        }
+
+        if ($type === 'nss' && $fKey === 'activity_type') {
+            if (!in_array($val, nss_activity_types(), true)) {
+                $validationErrors[] = "Activity Type must be one of: " . implode(', ', nss_activity_types()) . ".";
+            }
+        }
+
+        if ($type === 'placement' && $fKey === 'pay_scale') {
+            if (!is_numeric($val) || (float)$val <= 0 || !preg_match('/^\d+(\.\d+)?$/', $val)) {
+                $validationErrors[] = "Pay Scale must be a valid positive numeric value (e.g. 7.5). Do not enter 'LPA' or currency symbols.";
+            } else {
+                $_POST['pay_scale'] = (string)(float)$val;
+            }
+        }
+    }
+
+    if ($type === 'co_curricular') {
+        $_POST['category'] = 'Co-Curricular';
+        $evType = trim((string)($_POST['event_type'] ?? ''));
+        if ($evType === 'Others') {
+            $otherEvType = trim((string)($_POST['other_event_type'] ?? ''));
+            if ($otherEvType === '') {
+                $validationErrors[] = 'Other Event Type is required when "Others" is selected.';
+            } else {
+                $_POST['event_type'] = $otherEvType;
+                $_POST['other_event_type'] = $otherEvType;
+            }
+        } else {
+            $_POST['other_event_type'] = '';
+        }
+    }
+
+    if ($type === 'extra_curricular') {
+        $_POST['category'] = 'Extra-Curricular';
+        $actType = trim((string)($_POST['activity_type'] ?? ''));
+        if (!in_array($actType, ['Sports', 'Cultural'], true)) {
+            $validationErrors[] = 'Activity Type must be either Sports or Cultural.';
+        }
+        if (empty($_POST['event_type'])) {
+            $_POST['event_type'] = $actType;
+        }
+    }
+
+    $cleanMembers = [];
+    if (in_array($type, ['co_curricular', 'extra_curricular'], true)) {
+        $teamIndiv = trim((string)($_POST['team_individual'] ?? 'Individual'));
+        if ($teamIndiv === 'Team' && !empty($_POST['team_member_reg_no']) && is_array($_POST['team_member_reg_no'])) {
+            foreach ($_POST['team_member_reg_no'] as $mIdx => $mReg) {
+                $mReg = trim((string)$mReg);
+                $mName = trim((string)($_POST['team_member_name'][$mIdx] ?? ''));
+                $mDept = trim((string)($_POST['team_member_dept'][$mIdx] ?? ''));
+                if ($mReg !== '' || $mName !== '') {
+                    $cleanMembers[] = [
+                        'reg_no'     => $mReg,
+                        'name'       => $mName,
+                        'department' => $mDept,
+                    ];
+                }
+            }
+        }
+        $_POST['team_members'] = !empty($cleanMembers) ? json_encode($cleanMembers) : null;
     }
 
     // ── Institutional types bypass the exam_session check and generic handler ──
@@ -522,8 +678,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         redirect('/upload.php?type=' . $type);
     }
 
-    if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
-        $validationErrors[] = 'Exam Session is required: choose ' . implode(' or ', exam_sessions()) . '.';
+    if ($type !== 'placement' && $type !== 'nss' && $type !== 'co_curricular' && $type !== 'extra_curricular') {
+        if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
+            $sessLabel = in_array($type, ['fdp', 'mou'], true) ? 'Academic Session' : 'Exam Session';
+            $validationErrors[] = $sessLabel . ' is required: choose ' . implode(' or ', exam_sessions()) . '.';
+        }
     }
 
     [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, false);
@@ -589,6 +748,16 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
             $sql = "UPDATE `$table` SET " . implode(', ', $setPairs) . " WHERE id = ?";
             $updateValues[] = $editId;
             $pdo->prepare($sql)->execute($updateValues);
+
+            if (in_array($type, ['co_curricular', 'extra_curricular', 'student_achievement'], true)) {
+                $pdo->prepare("DELETE FROM student_achievement_team_members WHERE achievement_id = ?")->execute([$editId]);
+                if (!empty($cleanMembers)) {
+                    $insMemStmt = $pdo->prepare("INSERT INTO student_achievement_team_members (achievement_id, reg_no, student_name, department) VALUES (?, ?, ?, ?)");
+                    foreach ($cleanMembers as $cm) {
+                        $insMemStmt->execute([$editId, $cm['reg_no'], $cm['name'], $cm['department'] ?: null]);
+                    }
+                }
+            }
 
             edit_request_complete($editId, $type, (int)$user['id'], $oldValues, $newValues);
 
@@ -662,6 +831,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         $sql = "INSERT INTO `$table` (" . implode(', ', $quotedFields) . ") VALUES (" . implode(', ', $placeholders) . ")";
         $pdo->prepare($sql)->execute($values);
         $newRecordId = (int)$pdo->lastInsertId();
+
+        if (in_array($type, ['co_curricular', 'extra_curricular', 'student_achievement'], true) && !empty($cleanMembers)) {
+            $insMemStmt = $pdo->prepare("INSERT INTO student_achievement_team_members (achievement_id, reg_no, student_name, department) VALUES (?, ?, ?, ?)");
+            foreach ($cleanMembers as $cm) {
+                $insMemStmt->execute([$newRecordId, $cm['reg_no'], $cm['name'], $cm['department'] ?: null]);
+            }
+        }
 
         if ($initialStatus === 'Submitted') {
             record_workflow_audit(
@@ -769,15 +945,33 @@ function render_dept_field(array $user, array $departments, string $label = 'Dep
 }
 }
 
-function render_exam_session_field(string $academicYear): void
+function render_exam_session_field(string $academicYear, string $label = 'Exam Session'): void
 {
-    echo '<div class="field"><label>Exam Session <span class="req">*</span></label>';
+    echo '<div class="field"><label>' . e($label) . ' <span class="req">*</span></label>';
     echo '<select class="select" name="exam_session" required>';
     foreach (exam_sessions() as $s) {
         $sel = $s === exam_session_current() ? ' selected' : '';
         echo '<option value="' . e($s) . '"' . $sel . '>' . e(exam_session_label($s, $academicYear)) . '</option>';
     }
     echo '</select></div>';
+}
+
+if (!function_exists('render_academic_session_field')) {
+function render_academic_session_field(string $academicYear, ?string $currentVal = null): void
+{
+    $currSess = $currentVal ?: $academicYear;
+    echo '<div class="field"><label for="academic_session">Academic Session <span class="req">*</span></label>';
+    echo '<select class="select" id="academic_session" name="academic_session" required>';
+    $ayList = academic_years();
+    if (!empty($currSess) && !in_array($currSess, $ayList, true)) {
+        echo '<option value="' . e($currSess) . '" selected>' . e($currSess) . '</option>';
+    }
+    foreach ($ayList as $ay) {
+        $sel = ($ay === $currSess) ? ' selected' : '';
+        echo '<option value="' . e($ay) . '"' . $sel . '>' . e($ay) . '</option>';
+    }
+    echo '</select></div>';
+}
 }
 
 $pageTitle = 'Upload Data'; $breadcrumb = 'Upload Data';
@@ -1029,7 +1223,19 @@ require __DIR__ . '/inc/header.php';
   <div class="card-head">
     <div>
       <div class="card-title">
-        <?= $editRecord ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($types[$selectedType]['label']) ?>
+        <span class="js-form-title-text">
+          <?php
+            if ($selectedType === 'fdp') {
+                $currentEvType = $editRecord['event_type'] ?? 'FDP';
+                if (!in_array($currentEvType, ['Conference', 'FDP', 'Workshop', 'Seminar', 'STTP', 'Training'], true)) {
+                    $currentEvType = 'FDP';
+                }
+                echo $editRecord ? 'Edit ' . e($currentEvType) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($currentEvType);
+            } else {
+                echo $editRecord ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($types[$selectedType]['label']);
+            }
+          ?>
+        </span>
         <?php if ($editRecord): ?>
           <span class="badge badge-neutral js-form-status-badge" style="font-size:11px; margin-left:8px; vertical-align:middle; text-transform:none;"><?= e($editRecord['status'] ?? 'Draft') ?></span>
         <?php endif; ?>
@@ -1080,7 +1286,7 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-      <?php if (in_array($selectedType, ['journal','book','conference','patent','fdp'])): ?>
+      <?php if (in_array($selectedType, ['journal','book','patent'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -1114,14 +1320,6 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Month &amp; Year of Publication <span class="req">*</span> <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="publication_month" placeholder="e.g. 01/2026" required></div>
         <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
-      <?php elseif ($selectedType === 'conference'): ?>
-        <div class="field"><label>Author Type <span class="req">*</span></label><select class="select" name="author_type" required><option>Author-1</option><option>Co-Author</option></select></div>
-        <div class="field" style="grid-column:span 2"><label>Paper Title <span class="req">*</span></label><input class="input" name="paper_title" required></div>
-        <div class="field"><label>Conference Name <span class="req">*</span></label><input class="input" name="conference_name" required></div>
-        <div class="field"><label>Type <span class="req">*</span></label><select class="select" name="conference_type" required><option>National</option><option>International</option></select></div>
-        <div class="field"><label>Venue <span class="req">*</span></label><input class="input" name="venue" required></div>
-        <div class="field"><label>Conference Date <span class="req">*</span></label><input class="input" name="conference_date" type="date" required></div>
-
       <?php elseif ($selectedType === 'patent'): ?>
         <div class="field"><label>Patent / Copyright <span class="req">*</span></label><select class="select" name="category" required><option>Patent</option><option>Copyright</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Title of the Patent / Copyright <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -1130,18 +1328,77 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'fdp'): ?>
-        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 5 days / 1 week" required></div>
-        <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>FDP</option><option>Workshop</option><option>Seminar</option><option>STTP</option><option>Conference</option></select></div>
-        <div class="field" style="grid-column:span 2"><label>Name of the FDP / Seminar / Workshop <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
-        <div class="field"><label>Organized By <span class="req">*</span> <span class="card-sub">(Institution / Agency)</span></label><input class="input" name="organized_by" required></div>
-        <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
-        <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
-        <div class="field"><label>Certificate Link <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
+        <?php
+          $evTypeLabelMap = [
+            'FDP' => 'Name of the FDP',
+            'Workshop' => 'Name of the Workshop',
+            'Seminar' => 'Name of the Seminar',
+            'STTP' => 'Name of the STTP',
+            'Training' => 'Name of the Training Programme',
+            'Conference' => 'Name of the Conference',
+          ];
+          $currentEvType = $editRecord['event_type'] ?? 'FDP';
+          if (!array_key_exists($currentEvType, $evTypeLabelMap)) {
+              $currentEvType = 'FDP';
+          }
+          $currentTitleLabel = $evTypeLabelMap[$currentEvType] ?? 'Name of the ' . $currentEvType;
+          $evTypes = ['Conference', 'FDP', 'Workshop', 'Seminar', 'STTP', 'Training'];
+        ?>
+        <div class="field"><label>Faculty Name <span class="req">*</span></label>
+          <input class="input" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? $user['name']) ?>" required>
+        </div>
+        <?php render_dept_field($user, $departments, 'Department', true); ?>
+        <div class="field"><label>Academic Year</label>
+          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
+        </div>
+        <?php render_exam_session_field($effectiveYear, 'Academic Session'); ?>
+        <div class="field"><label for="fdp_event_type">Event Type <span class="req">*</span></label>
+          <select class="select" name="event_type" id="fdp_event_type" required>
+            <?php foreach ($evTypes as $et): ?>
+              <option value="<?= e($et) ?>"<?= $et === $currentEvType ? ' selected' : '' ?>><?= e($et) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field" style="grid-column:span 2"><label id="fdp_title_label"><span class="js-fdp-title-label-text"><?= e($currentTitleLabel) ?></span> <span class="req">*</span></label>
+          <input class="input" name="title" id="fdp_title_input" value="<?= e($editRecord['title'] ?? '') ?>" required>
+        </div>
+        <div class="field"><label>Mode <span class="req">*</span></label>
+          <select class="select" name="mode" required>
+            <?php foreach (['Online', 'Offline', 'Hybrid'] as $m): ?>
+              <option value="<?= e($m) ?>"<?= ($editRecord['mode'] ?? '') === $m ? ' selected' : '' ?>><?= e($m) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label>Organized By <span class="req">*</span> <span class="card-sub">(Institution / Agency)</span></label>
+          <input class="input" name="organized_by" value="<?= e($editRecord['organized_by'] ?? '') ?>" required>
+        </div>
+        <div class="field"><label for="fdp_from_date">From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label>
+          <input class="input" name="from_date" id="fdp_from_date" type="date" value="<?= e($editRecord['from_date'] ?? '') ?>" required>
+        </div>
+        <div class="field"><label for="fdp_to_date">To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label>
+          <input class="input" name="to_date" id="fdp_to_date" type="date" value="<?= e($editRecord['to_date'] ?? '') ?>" required>
+        </div>
+        <div class="field"><label for="fdp_duration">Duration <span class="req">*</span> <span class="card-sub">(Calculated automatically)</span></label>
+          <input class="input" name="duration" id="fdp_duration" value="<?= e($editRecord['duration'] ?? '') ?>" readonly placeholder="Auto-calculated from dates" style="background:#f8fafc; font-weight:600;" required>
+          <div id="fdp_duration_error" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
+        </div>
+        <div class="field" style="grid-column:span 2">
+          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
+          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
+          <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
+          <?php if (!empty($editRecord['proof_file'])): ?>
+            <div style="font-size:12px; margin-top:4px;">
+              Current proof: <a href="<?= e(url('proof.php?type=fdp&id=' . (int)$editRecord['id'])) ?>" target="_blank" class="text-primary font-medium">View uploaded PDF</a>
+            </div>
+          <?php endif; ?>
+        </div>
+        <div class="field" style="grid-column:span 2"><label for="fdp_certificate_link">Certificate Link (Optional) <span class="card-sub">(https://...)</span></label>
+          <input class="input" name="certificate_link" id="fdp_certificate_link" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" placeholder="https://example.com/certificate.pdf">
+        </div>
 
       <?php elseif ($selectedType === 'mou'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <?php render_exam_session_field($effectiveYear); ?>
+        <?php render_exam_session_field($effectiveYear, 'Academic Session'); ?>
         <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
         <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" required></div>
@@ -1189,19 +1446,79 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <?php render_exam_session_field($effectiveYear); ?>
-        <div class="field"><label>Job Name <span class="req">*</span></label><input class="input" name="job_title" required></div>
+        <div class="field">
+          <label for="academic_session">Academic Session <span class="req">*</span></label>
+          <select class="select" id="academic_session" name="academic_session" required>
+            <?php
+              $ayList = academic_years();
+              $currSess = $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? $effectiveYear;
+              if (!empty($currSess) && !in_array($currSess, $ayList, true)) {
+                  echo '<option value="' . e($currSess) . '" selected>' . e($currSess) . '</option>';
+              }
+              foreach ($ayList as $ay):
+                $sel = ($ay === $currSess) ? ' selected' : '';
+            ?>
+              <option value="<?= e($ay) ?>"<?= $sel ?>><?= e($ay) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="job_title">Job Role <span class="req">*</span></label>
+          <select class="select js-other" id="job_title" name="job_title" data-other="job_title_other" required>
+            <option value="">Select Job Role</option>
+            <?php
+              $roles = placement_job_roles();
+              $currRole = $editRecord['job_title'] ?? '';
+              $foundInList = false;
+              foreach ($roles as $r) {
+                  $sel = (strcasecmp($r, $currRole) === 0) ? ' selected' : '';
+                  if ($sel) $foundInList = true;
+                  echo '<option value="' . e($r) . '"' . $sel . '>' . e($r) . '</option>';
+              }
+              if (!empty($currRole) && !$foundInList && $currRole !== 'Others') {
+                  echo '<option value="' . e($currRole) . '" selected>' . e($currRole) . '</option>';
+              }
+            ?>
+          </select>
+          <input class="input js-other-text" name="job_title_other" placeholder="Specify Job Role" style="margin-top:8px; display:none;">
+        </div>
         <div class="field"><label>Mode <span class="req">*</span> <span class="card-sub">(On Campus / Off Campus)</span></label><select class="select" name="mode" required><option>On Campus</option><option>Off Campus</option></select></div>
         <div class="field" style="grid-column:span 2"><label>Company Name &amp; Address <span class="req">*</span> <span class="card-sub">(with Contact Details)</span></label><input class="input" name="company" required></div>
-        <div class="field"><label>Pay Scale <span class="req">*</span></label><input class="input" name="pay_scale" required></div>
+        <div class="field">
+          <label for="pay_scale">Pay Scale <span class="req">*</span></label>
+          <div class="input-suffix-wrapper" style="position:relative; display:flex; align-items:center;">
+            <input class="input" id="pay_scale" name="pay_scale" type="number" step="any" min="0.01" placeholder="e.g. 7.5" required style="padding-right:58px;" value="<?= e(!empty($editRecord['pay_scale']) ? (is_numeric($editRecord['pay_scale']) ? $editRecord['pay_scale'] : preg_replace('/[^0-9.]/', '', $editRecord['pay_scale'])) : '') ?>">
+            <span class="input-suffix-tag" style="position:absolute; right:14px; font-size:12px; font-weight:700; color:var(--ink-muted, #64748B); pointer-events:none; background:var(--surface, #fff); padding-left:4px; letter-spacing:0.5px;">LPA</span>
+          </div>
+        </div>
         <div class="field" style="grid-column:span 2"><label>Web Link to Appointment Order <span class="req">*</span></label><input class="input" name="appointment_order_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'nss'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
-        <?php render_exam_session_field($effectiveYear); ?>
+        <div class="field">
+          <label for="academic_session">Academic Session <span class="req">*</span></label>
+          <select class="select" id="academic_session" name="academic_session" required>
+            <?php
+              $currNssSess = $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? $effectiveYear;
+              foreach (academic_years() as $ay):
+            ?>
+              <option value="<?= e($ay) ?>" <?= $ay === $currNssSess ? 'selected' : '' ?>><?= e($ay) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
         <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" required></div>
-        <div class="field"><label>Activity Type <span class="req">*</span></label><select class="select" name="activity_type" required><option>NSS</option><option>YRC</option><option>RRC</option></select></div>
+        <div class="field">
+          <label for="activity_type">Activity Type <span class="req">*</span></label>
+          <select class="select" id="activity_type" name="activity_type" required>
+            <?php
+              $currActType = $editRecord['activity_type'] ?? 'NSS';
+              foreach (nss_activity_types() as $actType):
+            ?>
+              <option value="<?= e($actType) ?>" <?= $actType === $currActType ? 'selected' : '' ?>><?= e($actType) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
         <div class="field" style="grid-column:span 2"><label>Name of the Activity <span class="req">*</span></label><input class="input" name="activity_name" required></div>
         <div class="field"><label>Venue <span class="req">*</span></label><input class="input" name="venue" required></div>
         <div class="field"><label>No. of Students Participated <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" required></div>
@@ -1220,18 +1537,175 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Month &amp; Year <span class="req">*</span> <span class="card-sub">(mm/yyyy)</span></label><input class="input" name="month_year" placeholder="e.g. 03/2026" required></div>
         <div class="field"><label>Certificate Link <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
 
-      <?php elseif ($selectedType === 'student_achievement' || $selectedType === 'student_participation'): ?>
+      <?php elseif ($selectedType === 'co_curricular'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
-        <?php render_exam_session_field($effectiveYear); ?>
-        <?php if ($selectedType === 'student_participation'): ?>
-        <div class="field"><label>Activity Category <span class="req">*</span></label><select class="select" name="activity_category" required><option>Co-curricular</option><option>Extra-curricular</option></select></div>
-        <?php endif; ?>
+        <?php render_academic_session_field($effectiveYear, $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? null); ?>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
+        <div class="field"><label>Name of the Student <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of the Function / Programme <span class="req">*</span></label><input class="input" name="function_name" value="<?= e($editRecord['function_name'] ?? '') ?>" required></div>
+        <div class="field"><label>Name of the Event <span class="req">*</span></label><input class="input" name="event_name" value="<?= e($editRecord['event_name'] ?? '') ?>" required></div>
+        <div class="field">
+          <label for="co_event_type">Event Type <span class="req">*</span></label>
+          <?php
+            $coTypes = ['Symposium', 'Hackathon', 'Ideathon', 'Others'];
+            $currCoType = $editRecord['event_type'] ?? '';
+            $isCustomCo = !empty($currCoType) && !in_array($currCoType, ['Symposium', 'Hackathon', 'Ideathon'], true);
+          ?>
+          <select class="select js-co-event-type" id="co_event_type" name="event_type" required>
+            <option value="">Select Event Type</option>
+            <?php foreach ($coTypes as $opt):
+              $sel = ($currCoType === $opt || ($opt === 'Others' && $isCustomCo)) ? 'selected' : '';
+            ?>
+              <option value="<?= e($opt) ?>" <?= $sel ?>><?= e($opt) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <div class="js-other-event-wrap" style="margin-top:8px; display:<?= ($currCoType === 'Others' || $isCustomCo) ? 'block' : 'none' ?>;">
+            <label style="font-size:12px; font-weight:600; color:var(--ink-muted,#64748b);">Other Event Type <span class="req">*</span></label>
+            <input class="input js-other-event-input" name="other_event_type" placeholder="Enter event type" value="<?= e($editRecord['other_event_type'] ?? ($isCustomCo ? $currCoType : '')) ?>" <?= ($currCoType === 'Others' || $isCustomCo) ? 'required' : '' ?>>
+          </div>
+        </div>
+        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" value="<?= e($editRecord['event_date'] ?? '') ?>" required></div>
+        <div class="field">
+          <label>Team / Individual <span class="req">*</span></label>
+          <select class="select js-team-toggle" name="team_individual" required>
+            <option value="Individual" <?= ($editRecord['team_individual'] ?? 'Individual') === 'Individual' ? 'selected' : '' ?>>Individual</option>
+            <option value="Team" <?= ($editRecord['team_individual'] ?? '') === 'Team' ? 'selected' : '' ?>>Team</option>
+          </select>
+        </div>
+        <div class="field js-team-section" style="grid-column:span 2; display:<?= ($editRecord['team_individual'] ?? '') === 'Team' ? 'block' : 'none' ?>; background:var(--bg-subtle, #f8fafc); border:1px solid var(--border, #e2e8f0); border-radius:10px; padding:16px; margin-top:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <strong style="font-size:14px; color:var(--ink, #1e293b);">Team Members (Additional Participating Students)</strong>
+              <div class="card-sub" style="font-size:12px; margin-top:2px;">Add each student member of the team below.</div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm js-add-member-btn" style="height:32px; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+              <?= icon('plus', 13) ?> + Add Team Member
+            </button>
+          </div>
+          <div class="js-members-container" style="display:flex; flex-direction:column; gap:10px;">
+            <?php
+              $existingMembers = [];
+              if (!empty($editRecord['team_members'])) {
+                  $existingMembers = json_decode($editRecord['team_members'], true) ?: [];
+              }
+              if (!empty($existingMembers)):
+                foreach ($existingMembers as $mIdx => $m):
+            ?>
+              <div class="js-member-row" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; background:var(--surface, #ffffff); border:1px solid var(--border, #e2e8f0); border-radius:8px; padding:10px 12px; margin-top:6px;">
+                <div>
+                  <label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Member <span class="js-member-num"><?= $mIdx + 1 ?></span> Reg. No <span class="req">*</span></label>
+                  <input class="input" name="team_member_reg_no[]" value="<?= e($m['reg_no'] ?? '') ?>" placeholder="e.g. 21CS001" required>
+                </div>
+                <div>
+                  <label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Student Name <span class="req">*</span></label>
+                  <input class="input" name="team_member_name[]" value="<?= e($m['name'] ?? '') ?>" placeholder="e.g. Student Name" required>
+                </div>
+                <div>
+                  <label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Department</label>
+                  <input class="input" name="team_member_dept[]" value="<?= e($m['department'] ?? '') ?>" placeholder="e.g. CSE / IT">
+                </div>
+                <div>
+                  <button type="button" class="btn btn-ghost btn-sm js-remove-member-btn" style="color:var(--danger, #dc2626); height:36px; padding:0 10px;" title="Remove Member">
+                    <?= icon('trash', 13) ?> Remove
+                  </button>
+                </div>
+              </div>
+            <?php
+                endforeach;
+              endif;
+            ?>
+          </div>
+        </div>
+        <div class="field"><label>Level <span class="req">*</span></label><select class="select" name="level_secured" required><option <?= ($editRecord['level_secured'] ?? '') === 'University' ? 'selected' : '' ?>>University</option><option <?= ($editRecord['level_secured'] ?? '') === 'State' ? 'selected' : '' ?>>State</option><option <?= ($editRecord['level_secured'] ?? '') === 'National' ? 'selected' : '' ?>>National</option><option <?= ($editRecord['level_secured'] ?? '') === 'International' ? 'selected' : '' ?>>International</option></select></div>
+        <div class="field"><label>Position Secured <span class="req">*</span></label><input class="input" name="position_secured" placeholder="e.g. First / Winner / Participant" value="<?= e($editRecord['position_secured'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of the Organising Institution <span class="req">*</span></label><input class="input" name="organising_institution" value="<?= e($editRecord['organising_institution'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Other Details / Remarks</label><textarea class="input" name="other_details" rows="3" placeholder="Enter any additional details, remarks, or notes..."><?= e($editRecord['other_details'] ?? '') ?></textarea></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" required></div>
+
+      <?php elseif ($selectedType === 'extra_curricular'): ?>
+        <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_session_field($effectiveYear, $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? null); ?>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
+        <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of the Function / Programme <span class="req">*</span></label><input class="input" name="function_name" value="<?= e($editRecord['function_name'] ?? '') ?>" required></div>
+        <div class="field"><label>Name of the Event <span class="req">*</span></label><input class="input" name="event_name" value="<?= e($editRecord['event_name'] ?? '') ?>" required></div>
+        <div class="field">
+          <label for="activity_type">Activity Type <span class="req">*</span></label>
+          <select class="select" id="activity_type" name="activity_type" required>
+            <option value="">Select Activity Type</option>
+            <option value="Sports" <?= ($editRecord['activity_type'] ?? '') === 'Sports' ? 'selected' : '' ?>>Sports</option>
+            <option value="Cultural" <?= ($editRecord['activity_type'] ?? '') === 'Cultural' ? 'selected' : '' ?>>Cultural</option>
+          </select>
+        </div>
+        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" value="<?= e($editRecord['event_date'] ?? '') ?>" required></div>
+        <div class="field">
+          <label>Team / Individual <span class="req">*</span></label>
+          <select class="select js-team-toggle" name="team_individual" required>
+            <option value="Individual" <?= ($editRecord['team_individual'] ?? 'Individual') === 'Individual' ? 'selected' : '' ?>>Individual</option>
+            <option value="Team" <?= ($editRecord['team_individual'] ?? '') === 'Team' ? 'selected' : '' ?>>Team</option>
+          </select>
+        </div>
+        <div class="field js-team-section" style="grid-column:span 2; display:<?= ($editRecord['team_individual'] ?? '') === 'Team' ? 'block' : 'none' ?>; background:var(--bg-subtle, #f8fafc); border:1px solid var(--border, #e2e8f0); border-radius:10px; padding:16px; margin-top:8px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <strong style="font-size:14px; color:var(--ink, #1e293b);">Team Members (Additional Participating Students)</strong>
+              <div class="card-sub" style="font-size:12px; margin-top:2px;">Add each student member of the team below.</div>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm js-add-member-btn" style="height:32px; font-size:12px; display:inline-flex; align-items:center; gap:6px;">
+              <?= icon('plus', 13) ?> + Add Team Member
+            </button>
+          </div>
+          <div class="js-members-container" style="display:flex; flex-direction:column; gap:10px;">
+            <?php
+              $existingMembers = [];
+              if (!empty($editRecord['team_members'])) {
+                  $existingMembers = json_decode($editRecord['team_members'], true) ?: [];
+              }
+              if (!empty($existingMembers)):
+                foreach ($existingMembers as $mIdx => $m):
+            ?>
+              <div class="js-member-row" style="display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; background:var(--surface, #ffffff); border:1px solid var(--border, #e2e8f0); border-radius:8px; padding:10px 12px; margin-top:6px;">
+                <div>
+                  <label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Member <span class="js-member-num"><?= $mIdx + 1 ?></span> Reg. No <span class="req">*</span></label>
+                  <input class="input" name="team_member_reg_no[]" value="<?= e($m['reg_no'] ?? '') ?>" placeholder="e.g. 21CS001" required>
+                </div>
+                <div>
+                  <label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Student Name <span class="req">*</span></label>
+                  <input class="input" name="team_member_name[]" value="<?= e($m['name'] ?? '') ?>" placeholder="e.g. Student Name" required>
+                </div>
+                <div>
+                  <label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Department</label>
+                  <input class="input" name="team_member_dept[]" value="<?= e($m['department'] ?? '') ?>" placeholder="e.g. CSE / IT">
+                </div>
+                <div>
+                  <button type="button" class="btn btn-ghost btn-sm js-remove-member-btn" style="color:var(--danger, #dc2626); height:36px; padding:0 10px;" title="Remove Member">
+                    <?= icon('trash', 13) ?> Remove
+                  </button>
+                </div>
+              </div>
+            <?php
+                endforeach;
+              endif;
+            ?>
+          </div>
+        </div>
+        <div class="field"><label>Level <span class="req">*</span></label><select class="select" name="level_secured" required><option <?= ($editRecord['level_secured'] ?? '') === 'University' ? 'selected' : '' ?>>University</option><option <?= ($editRecord['level_secured'] ?? '') === 'State' ? 'selected' : '' ?>>State</option><option <?= ($editRecord['level_secured'] ?? '') === 'National' ? 'selected' : '' ?>>National</option><option <?= ($editRecord['level_secured'] ?? '') === 'International' ? 'selected' : '' ?>>International</option></select></div>
+        <div class="field"><label>Position Secured <span class="req">*</span></label><input class="input" name="position_secured" placeholder="e.g. First / Winner / Participant" value="<?= e($editRecord['position_secured'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name of the Organising Institution <span class="req">*</span></label><input class="input" name="organising_institution" value="<?= e($editRecord['organising_institution'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Other Details</label><textarea class="input" name="other_details" rows="3" placeholder="Enter any additional information about the activity..."><?= e($editRecord['other_details'] ?? '') ?></textarea></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" required></div>
+
+      <?php elseif ($selectedType === 'student_achievement'): ?>
+        <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
+        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_session_field($effectiveYear, $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? null); ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field"><label>Event Type <span class="req">*</span></label><input class="input" name="event_type" placeholder="e.g. Technical / Sports / Cultural" required></div>
-        <div class="field"><label>Name of the Event <span class="req">*</span></label><input class="input" name="event_name" required></div>
         <div class="field" style="grid-column:span 2"><label>Name of the Function / Programme <span class="req">*</span></label><input class="input" name="function_name" required></div>
+        <div class="field"><label>Name of the Event <span class="req">*</span></label><input class="input" name="event_name" required></div>
+        <div class="field"><label>Event Type <span class="req">*</span></label><input class="input" name="event_type" placeholder="e.g. Technical / Sports / Cultural" required></div>
         <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
         <div class="field"><label>Team / Individual <span class="req">*</span></label><select class="select" name="team_individual" required><option>Individual</option><option>Team</option></select></div>
         <div class="field"><label>Level <span class="req">*</span></label><select class="select" name="level_secured" required><option>University</option><option>State</option><option>National</option><option>International</option></select></div>
@@ -1279,12 +1753,14 @@ require __DIR__ . '/inc/header.php';
 
       <?php require __DIR__ . '/inc/inst_upload_forms.php'; ?>
 
+      <?php if ($selectedType !== 'fdp'): ?>
         <!-- Proof / attachment (optional) — carried onto the report -->
         <div class="field" style="grid-column:span 2">
           <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
           <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
           <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
         </div>
+      <?php endif; ?>
       </div>
       </fieldset>
 
@@ -1338,8 +1814,19 @@ require __DIR__ . '/inc/header.php';
           if (!editData) return;
           for (const [key, val] of Object.entries(editData)) {
             if (val === null || val === undefined || key === 'id' || key === 'proof_file') continue;
-            const el = document.querySelector(`[name="${key}"]`);
+            let el = document.querySelector(`[name="${key}"]`);
+            if (!el && key === 'exam_session') {
+              el = document.querySelector('[name="academic_session"]');
+            }
+            if (!el && key === 'academic_session') {
+              el = document.querySelector('[name="exam_session"]');
+            }
             if (el) {
+              if (key === 'pay_scale') {
+                const numVal = String(val).replace(/[^0-9.]/g, '');
+                el.value = numVal || val;
+                continue;
+              }
               if (el.tagName === 'SELECT') {
                 el.value = val;
                 if (el.classList.contains('js-other')) {
@@ -1379,6 +1866,116 @@ require __DIR__ . '/inc/header.php';
         sync();
       });
 
+      // Co-Curricular Event Type Others Toggle
+      document.querySelectorAll('.js-co-event-type').forEach(function (sel) {
+        var wrap = sel.parentElement.querySelector('.js-other-event-wrap');
+        var input = wrap ? wrap.querySelector('.js-other-event-input') : null;
+        if (!wrap || !input) return;
+        function syncCoType() {
+          var isOther = sel.value === 'Others';
+          wrap.style.display = isOther ? 'block' : 'none';
+          input.required = isOther;
+          if (!isOther) {
+            input.value = '';
+          }
+        }
+        sel.addEventListener('change', syncCoType);
+        syncCoType();
+      });
+
+      // Team / Individual Toggle
+      document.querySelectorAll('.js-team-toggle').forEach(function (sel) {
+        var form = sel.closest('form');
+        if (!form) return;
+        var section = form.querySelector('.js-team-section');
+        if (!section) return;
+        function syncTeam() {
+          var isTeam = sel.value === 'Team';
+          section.style.display = isTeam ? 'block' : 'none';
+          section.querySelectorAll('input').forEach(function (inp) {
+            if (inp.name === 'team_member_reg_no[]' || inp.name === 'team_member_name[]') {
+              inp.required = isTeam;
+            }
+          });
+          if (isTeam) {
+            var container = section.querySelector('.js-members-container');
+            if (container && container.querySelectorAll('.js-member-row').length === 0) {
+              addTeamMemberRow(container);
+            }
+          }
+        }
+        sel.addEventListener('change', syncTeam);
+        syncTeam();
+      });
+
+      function renumberTeamMembers(container) {
+        if (!container) return;
+        var rows = container.querySelectorAll('.js-member-row');
+        rows.forEach(function (row, idx) {
+          var numEl = row.querySelector('.js-member-num');
+          if (numEl) numEl.textContent = (idx + 1);
+        });
+      }
+
+      function addTeamMemberRow(container, regVal, nameVal, deptVal) {
+        if (!container) return;
+        var form = container.closest('form');
+        var teamSel = form ? form.querySelector('.js-team-toggle') : null;
+        var isTeam = teamSel ? teamSel.value === 'Team' : true;
+        var nextNum = container.querySelectorAll('.js-member-row').length + 1;
+        var row = document.createElement('div');
+        row.className = 'js-member-row';
+        row.style.cssText = 'display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; background:var(--surface, #ffffff); border:1px solid var(--border, #e2e8f0); border-radius:8px; padding:10px 12px; margin-top:6px;';
+        row.innerHTML = '<div>' +
+          '<label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Member <span class="js-member-num">' + nextNum + '</span> Reg. No <span class="req">*</span></label>' +
+          '<input class="input" name="team_member_reg_no[]" value="' + (regVal ? String(regVal).replace(/"/g, '&quot;') : '') + '" placeholder="e.g. 21CS001"' + (isTeam ? ' required' : '') + '>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Student Name <span class="req">*</span></label>' +
+          '<input class="input" name="team_member_name[]" value="' + (nameVal ? String(nameVal).replace(/"/g, '&quot;') : '') + '" placeholder="e.g. Student Name"' + (isTeam ? ' required' : '') + '>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Department</label>' +
+          '<input class="input" name="team_member_dept[]" value="' + (deptVal ? String(deptVal).replace(/"/g, '&quot;') : '') + '" placeholder="e.g. CSE / IT">' +
+        '</div>' +
+        '<div>' +
+          '<button type="button" class="btn btn-ghost btn-sm js-remove-member-btn" style="color:var(--danger, #dc2626); height:36px; padding:0 10px;" title="Remove Member">' +
+            'Remove' +
+          '</button>' +
+        '</div>';
+        container.appendChild(row);
+        renumberTeamMembers(container);
+      }
+
+      document.addEventListener('click', function (e) {
+        var addBtn = e.target.closest('.js-add-member-btn');
+        if (addBtn) {
+          var form = addBtn.closest('form');
+          if (form) {
+            var container = form.querySelector('.js-members-container');
+            if (container) {
+              addTeamMemberRow(container);
+              container.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }
+          return;
+        }
+
+        var removeBtn = e.target.closest('.js-remove-member-btn');
+        if (removeBtn) {
+          var row = removeBtn.closest('.js-member-row');
+          if (row) {
+            var container = row.parentElement;
+            row.remove();
+            if (container) {
+              renumberTeamMembers(container);
+              container.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }
+          return;
+        }
+      });
+
       var proofInput = document.getElementById('proofInput');
       if (proofInput) {
         var MAX_PROOF_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -1416,6 +2013,97 @@ require __DIR__ . '/inc/header.php';
         });
       }
 
+      // FDP / Unified Activity Form dynamic title, labels & duration calculation
+      (function () {
+        var evTypeSelect = document.getElementById('fdp_event_type');
+        var fromDateInput = document.getElementById('fdp_from_date');
+        var toDateInput = document.getElementById('fdp_to_date');
+        var durationInput = document.getElementById('fdp_duration');
+        var durationError = document.getElementById('fdp_duration_error');
+        var titleLabelText = document.querySelector('.js-fdp-title-label-text');
+        var formTitleText = document.querySelector('.js-form-title-text');
+        var isEditing = <?= !empty($editRecord) ? 'true' : 'false' ?>;
+        var editId = <?= json_encode((int)($editRecord['id'] ?? $editId ?? 0)) ?>;
+
+        var labelMap = {
+          'FDP': 'Name of the FDP',
+          'Workshop': 'Name of the Workshop',
+          'Seminar': 'Name of the Seminar',
+          'STTP': 'Name of the STTP',
+          'Training': 'Name of the Training Programme',
+          'Conference': 'Name of the Conference'
+        };
+
+        function updateLabelsAndTitle() {
+          if (!evTypeSelect) return;
+          var val = evTypeSelect.value || 'FDP';
+          if (titleLabelText) {
+            titleLabelText.textContent = labelMap[val] || ('Name of the ' + val);
+          }
+          if (formTitleText) {
+            if (isEditing && editId > 0) {
+              formTitleText.textContent = 'Edit ' + val + ' #' + editId;
+            } else {
+              formTitleText.textContent = 'New ' + val;
+            }
+          }
+        }
+
+        function calculateDuration() {
+          if (!fromDateInput || !toDateInput || !durationInput) return;
+          var fromVal = fromDateInput.value;
+          var toVal = toDateInput.value;
+
+          if (!fromVal || !toVal) {
+            if (durationError) durationError.style.display = 'none';
+            return;
+          }
+
+          var d1 = new Date(fromVal + 'T00:00:00');
+          var d2 = new Date(toVal + 'T00:00:00');
+
+          if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+            return;
+          }
+
+          if (d2 < d1) {
+            if (durationError) {
+              durationError.textContent = 'To Date cannot be before From Date.';
+              durationError.style.display = 'block';
+            }
+            durationInput.value = '';
+            durationInput.setCustomValidity('To Date cannot be before From Date.');
+          } else {
+            if (durationError) {
+              durationError.style.display = 'none';
+            }
+            durationInput.setCustomValidity('');
+            // Inclusive calendar date difference:
+            var diffMs = d2.getTime() - d1.getTime();
+            var diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+            var text = diffDays === 1 ? '1 day' : diffDays + ' days';
+            durationInput.value = text;
+          }
+        }
+
+        if (evTypeSelect) {
+          evTypeSelect.addEventListener('change', function () {
+            updateLabelsAndTitle();
+          });
+          updateLabelsAndTitle();
+        }
+
+        if (fromDateInput && toDateInput) {
+          fromDateInput.addEventListener('change', calculateDuration);
+          toDateInput.addEventListener('change', calculateDuration);
+          fromDateInput.addEventListener('input', calculateDuration);
+          toDateInput.addEventListener('input', calculateDuration);
+          if (fromDateInput.value && toDateInput.value && !durationInput.value) {
+            calculateDuration();
+          }
+        }
+      })();
+
       (function () {
         var form = document.querySelector('.card-body form');
         if (!form) return;
@@ -1423,12 +2111,26 @@ require __DIR__ . '/inc/header.php';
         if (isEditing) return; // Do not overwrite active record edit with unrelated draft!
         var activeYear = <?= json_encode($activeYear) ?>;
         var recordType = <?= json_encode($selectedType) ?>;
-        var storageKey = 'atts_upload_draft_' + activeYear + '_' + recordType;
+
+        function getStorageKey() {
+          if (recordType === 'fdp') {
+            var evEl = form.querySelector('[name="event_type"]');
+            var ev = (evEl ? evEl.value : 'FDP') || 'FDP';
+            return 'atts_upload_draft_' + activeYear + '_fdp_' + ev;
+          }
+          return 'atts_upload_draft_' + activeYear + '_' + recordType;
+        }
+
         var submittedDraftType = <?= json_encode($submittedDraftType) ?>;
         if (submittedDraftType) {
           try {
             sessionStorage.removeItem('atts_upload_draft_' + activeYear + '_' + submittedDraftType);
             sessionStorage.removeItem('faculty_upload_draft_' + <?= json_encode((int)$user['id']) ?> + '_' + submittedDraftType);
+            if (submittedDraftType === 'fdp') {
+              ['Conference', 'FDP', 'Workshop', 'Seminar', 'STTP', 'Training'].forEach(function (et) {
+                sessionStorage.removeItem('atts_upload_draft_' + activeYear + '_fdp_' + et);
+              });
+            }
           } catch (e) {}
         }
 
@@ -1450,6 +2152,13 @@ require __DIR__ . '/inc/header.php';
             if (!name || name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
             if (el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
 
+            if (name.endsWith('[]')) {
+              var cleanName = name.slice(0, -2);
+              if (!draft[cleanName]) draft[cleanName] = [];
+              draft[cleanName].push(el.value);
+              return;
+            }
+
             if (el.type === 'checkbox') {
               draft[name] = el.checked;
             } else if (el.type === 'radio') {
@@ -1470,6 +2179,7 @@ require __DIR__ . '/inc/header.php';
             var k = keys[i];
             if (k === 'faculty_name' || k === 'department' || k === 'academic_year') continue;
             var val = draft[k];
+            if (Array.isArray(val) && val.some(function(v){ return v && String(v).trim() !== ''; })) return true;
             if (typeof val === 'string' && val.trim() !== '') return true;
             if (typeof val === 'boolean' && val) return true;
           }
@@ -1479,11 +2189,12 @@ require __DIR__ . '/inc/header.php';
         function saveDraft() {
           try {
             var draft = getDraftData();
+            var key = getStorageKey();
             if (hasDraftData(draft)) {
-              sessionStorage.setItem(storageKey, JSON.stringify(draft));
+              sessionStorage.setItem(key, JSON.stringify(draft));
               showDraftStatus('Draft saved');
             } else {
-              sessionStorage.removeItem(storageKey);
+              sessionStorage.removeItem(key);
             }
           } catch (e) {
             console.warn('Unable to save form draft to sessionStorage:', e);
@@ -1499,7 +2210,8 @@ require __DIR__ . '/inc/header.php';
         var isRestoring = false;
         function restoreDraft() {
           try {
-            var raw = sessionStorage.getItem(storageKey);
+            var key = getStorageKey();
+            var raw = sessionStorage.getItem(key);
             if (!raw) return;
             var draft = JSON.parse(raw);
             if (!draft || typeof draft !== 'object') return;
@@ -1540,6 +2252,28 @@ require __DIR__ . '/inc/header.php';
               });
             });
 
+            // If FDP dates were restored, trigger duration recalculation
+            if (recordType === 'fdp') {
+              var fromEl = form.querySelector('[name="from_date"]');
+              if (fromEl) {
+                fromEl.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }
+
+            // Restore dynamic team members
+            if (Array.isArray(draft['team_member_reg_no']) && draft['team_member_reg_no'].length > 0) {
+              var container = form.querySelector('.js-members-container');
+              if (container) {
+                container.innerHTML = '';
+                draft['team_member_reg_no'].forEach(function (reg, i) {
+                  var mName = (draft['team_member_name'] && draft['team_member_name'][i]) || '';
+                  var mDept = (draft['team_member_dept'] && draft['team_member_dept'][i]) || '';
+                  addTeamMemberRow(container, reg, mName, mDept);
+                });
+                restoredAny = true;
+              }
+            }
+
             document.querySelectorAll('.js-other').forEach(function (sel) {
               var otherName = sel.getAttribute('data-other');
               var box = otherName ? form.elements[otherName] : null;
@@ -1553,6 +2287,20 @@ require __DIR__ . '/inc/header.php';
               }
             });
 
+            var coSel = form.querySelector('.js-co-event-type');
+            if (coSel) {
+              coSel.dispatchEvent(new Event('change', { bubbles: true }));
+              if (coSel.value === 'Others' && draft['other_event_type']) {
+                var oInput = form.querySelector('.js-other-event-input');
+                if (oInput) oInput.value = draft['other_event_type'];
+              }
+            }
+
+            var teamSel = form.querySelector('.js-team-toggle');
+            if (teamSel) {
+              teamSel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
             if (restoredAny) {
               showDraftStatus('Draft restored');
             }
@@ -1560,6 +2308,22 @@ require __DIR__ . '/inc/header.php';
             console.warn('Unable to restore form draft from sessionStorage:', e);
           } finally {
             isRestoring = false;
+          }
+        }
+
+        // FDP draft switching on event type change
+        if (recordType === 'fdp') {
+          var evSelect = form.querySelector('[name="event_type"]');
+          if (evSelect) {
+            evSelect.addEventListener('change', function () {
+              if (isRestoring) return;
+              // Reset event-specific fields before restoring new draft
+              ['title', 'from_date', 'to_date', 'duration', 'certificate_link'].forEach(function (fn) {
+                var fEl = form.elements[fn];
+                if (fEl) fEl.value = '';
+              });
+              restoreDraft();
+            });
           }
         }
 
