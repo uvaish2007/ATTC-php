@@ -517,7 +517,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
     $validationErrors = [];
     $expectedFields = $requiredMap[$type] ?? [];
 
-<<<<<<< HEAD
     if ($type === 'fdp') {
         $validEventTypes = ['Conference', 'FDP', 'Workshop', 'Seminar', 'STTP', 'Training'];
         $submittedEvType = trim((string)($_POST['event_type'] ?? ''));
@@ -556,7 +555,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         $certLink = trim((string)($_POST['certificate_link'] ?? ''));
         if ($certLink !== '' && !preg_match('/^https?:\/\/.+/i', $certLink)) {
             $validationErrors[] = 'Certificate Link must be a valid URL starting with http:// or https://.';
-=======
+        }
+    }
+
     if ($type === 'nptel') {
         [$nptelClean, $nptelErrors] = nptel_prepare_submission($user, $_POST, $departments);
         $validationErrors = $nptelErrors;
@@ -605,7 +606,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
             if ($dupMessage !== null) {
                 $validationErrors[] = $dupMessage;
             }
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
         }
     }
 
@@ -715,16 +715,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         redirect('/upload.php?type=' . $type);
     }
 
-<<<<<<< HEAD
-    if ($type !== 'placement' && $type !== 'nss' && $type !== 'co_curricular' && $type !== 'extra_curricular') {
+    if (!in_array($type, ['journal', 'book', 'placement', 'nss', 'co_curricular', 'extra_curricular'], true)) {
         if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
             $sessLabel = in_array($type, ['fdp', 'mou'], true) ? 'Academic Session' : 'Exam Session';
             $validationErrors[] = $sessLabel . ' is required: choose ' . implode(' or ', exam_sessions()) . '.';
         }
-=======
-    if (!in_array($type, ['journal', 'book'], true) && !in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
-        $validationErrors[] = 'Academic Session is required: choose ' . implode(' or ', exam_sessions()) . '.';
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
     }
 
     // Proof is mandatory, except when editing a record that already has one on file.
@@ -1064,11 +1059,7 @@ function render_dept_field(array $user, array $departments, string $label = 'Dep
 
 function render_exam_session_field(string $academicYear, string $label = 'Exam Session'): void
 {
-<<<<<<< HEAD
     echo '<div class="field"><label>' . e($label) . ' <span class="req">*</span></label>';
-=======
-    echo '<div class="field"><label>Academic Session <span class="req">*</span></label>';
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
     echo '<select class="select" name="exam_session" required>';
     foreach (exam_sessions() as $s) {
         $sel = $s === exam_session_current() ? ' selected' : '';
@@ -1077,7 +1068,6 @@ function render_exam_session_field(string $academicYear, string $label = 'Exam S
     echo '</select></div>';
 }
 
-<<<<<<< HEAD
 if (!function_exists('render_academic_session_field')) {
 function render_academic_session_field(string $academicYear, ?string $currentVal = null): void
 {
@@ -1094,7 +1084,8 @@ function render_academic_session_field(string $academicYear, ?string $currentVal
     }
     echo '</select></div>';
 }
-=======
+}
+
 /**
  * Journal / Book author fields: Main Author, their department, Academic Year,
  * $afterYear (Book: its Academic Session), Number of Co-Authors, Main Author
@@ -1198,7 +1189,6 @@ function render_event_mode_fields(): void
         . '<input class="input" name="online_platform" maxlength="150" data-mode-required="1" placeholder="e.g. Google Meet, Zoom, MS Teams"></div>';
     echo '<div class="field" data-event-mode-for="Online Hybrid" style="display:none"><label>Meeting Link <span class="card-sub">(if available)</span></label>'
         . '<input class="input" name="meeting_link" type="url" maxlength="500" placeholder="https://"></div>';
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
 }
 
 $pageTitle = 'Upload Data'; $breadcrumb = 'Upload Data';
@@ -1508,11 +1498,7 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-<<<<<<< HEAD
-      <?php if (in_array($selectedType, ['journal','book','patent'])): ?>
-=======
       <?php if (in_array($selectedType, ['conference','patent','fdp'])): ?>
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -2083,20 +2069,9 @@ require __DIR__ . '/inc/header.php';
 
       <?php require __DIR__ . '/inc/inst_upload_forms.php'; ?>
 
-<<<<<<< HEAD
-      <?php if ($selectedType !== 'fdp'): ?>
-        <!-- Proof / attachment (optional) — carried onto the report -->
-        <div class="field" style="grid-column:span 2">
-          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
-          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
-          <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
-        </div>
-      <?php endif; ?>
-=======
-        <!-- Proof / attachment — carried onto the report (Journal places it above its link fields).
+        <!-- Proof / attachment — carried onto the report (Journal and FDP place it within their sections).
              Institutional forms keep it optional, matching their handler. -->
-        <?php if ($selectedType !== 'journal') render_proof_field($editRecord, !str_starts_with($selectedType, 'inst_')); ?>
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
+        <?php if (!in_array($selectedType, ['journal', 'fdp'], true)) render_proof_field($editRecord, !str_starts_with($selectedType, 'inst_')); ?>
       </div>
       </fieldset>
 
@@ -2202,7 +2177,6 @@ require __DIR__ . '/inc/header.php';
         sync();
       });
 
-<<<<<<< HEAD
       // Co-Curricular Event Type Others Toggle
       document.querySelectorAll('.js-co-event-type').forEach(function (sel) {
         var wrap = sel.parentElement.querySelector('.js-other-event-wrap');
@@ -2312,7 +2286,7 @@ require __DIR__ . '/inc/header.php';
           return;
         }
       });
-=======
+
       // Event Mode: show the venue and / or online fields the chosen mode needs.
       // Hidden fields keep their values so switching back loses nothing; the
       // server drops whatever the final mode does not use.
@@ -2441,7 +2415,6 @@ require __DIR__ . '/inc/header.php';
           });
         });
       })();
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
 
       var proofInput = document.getElementById('proofInput');
       if (proofInput) {
