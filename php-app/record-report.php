@@ -34,7 +34,23 @@ $from = parse_date_input((string) input('from'));
 $to   = parse_date_input((string) input('to'));
 [$from, $to] = em_intersect_period($em, $from, $to, $year);
 
-$records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to, $year);
+// Events: ?event_mode=Online|Offline|Hybrid narrows to one mode.
+$eventMode = is_event_type($type) ? event_mode_normalize(input('event_mode')) : null;
+
+$records = report_records($user, $isOversight ? $department : null, $status, $type, $from, $to, $year, false, $eventMode, true);
+if (is_event_type($type)) {
+    $records = array_map('event_mode_decorate_row', $records);
+}
+if ($eventMode !== null) {
+    $spec['title'] .= ' — ' . strtoupper($eventMode) . ' MODE';
+}
+
+// NPTEL holds both sides; ?participant=Faculty|Student narrows to one.
+$participant = trim((string) input('participant'));
+if ($type === 'nptel' && in_array($participant, nptel_participant_types(), true)) {
+    $records = array_values(array_filter($records, fn($r) => nptel_is_student($r) === ($participant === 'Student')));
+    $spec['title'] .= ' — ' . strtoupper($participant) . 'S';
+}
 
 $columns = array_values(array_filter($spec['columns'], fn($c) => !($singleDept && $c[1] === 'department')));
 
@@ -120,6 +136,7 @@ if (!empty($spec['subtitle'])) { $headingLines[] = $spec['subtitle']; }
 
 $meta = [['Department', $singleDept ? $deptFullName : 'All departments']];
 if ($status !== null) { $meta[] = ['Status', $status]; }
+if ($eventMode !== null) { $meta[] = ['Event Mode', $eventMode]; }
 if ($from || $to) {
     $fmt = fn(?string $d) => $d ? date('d.m.Y', strtotime($d)) : '…';
     $meta[] = ['Period', $fmt($from) . ' to ' . $fmt($to)];

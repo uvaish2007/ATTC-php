@@ -6,17 +6,72 @@ require_once __DIR__ . '/User.php';
 function faculty_achievement_categories(): array
 {
     return [
-        'journal'    => ['label' => 'Journal Publication',    'group' => 'Publications', 'table' => 'journal_publications',    'title_col' => 'paper_title'],
+        // Journals and books are credited to every recorded author (Main
+        // Author and Co-Authors); 'grid' is their column on the faculty grid.
+        'journal'    => ['label' => 'Journal Publication',    'group' => 'Publications', 'table' => 'journal_publications',    'title_col' => 'paper_title',
+                         'source' => publication_owner_source_sql('journal'), 'owner' => '`_owner_id`', 'grid' => 'journals'],
         'conference' => ['label' => 'Conference Publication', 'group' => 'Conferences',  'table' => 'conference_publications', 'title_col' => 'paper_title'],
-        'book'       => ['label' => 'Book / Book Chapter',    'group' => 'Books',        'table' => 'book_publications',       'title_col' => 'title'],
+        'book'       => ['label' => 'Book / Book Chapter',    'group' => 'Books',        'table' => 'book_publications',       'title_col' => 'title',
+                         'source' => publication_owner_source_sql('book'), 'owner' => '`_owner_id`', 'grid' => 'books'],
         'event'      => ['label' => 'Events Organized',       'group' => 'Events',       'table' => 'events',                  'title_col' => 'event_title'],
         'fdp'        => ['label' => 'FDP / Workshop / Seminar','group' => 'Training',     'table' => 'fdp',                     'title_col' => 'title'],
         'training'   => ['label' => 'Training Programmes',    'group' => 'Training',     'table' => 'training',                'title_col' => 'event_title'],
         'patent'     => ['label' => 'Patents & Copyrights',   'group' => 'Patents',      'table' => 'patents',                 'title_col' => 'title'],
-        'nptel'      => ['label' => 'SWAYAM-NPTEL Courses',   'group' => 'Other',        'table' => 'nptel',                   'title_col' => 'course_title'],
+        // Faculty NPTEL only, credited to the participant — a student NPTEL a
+        // faculty member uploads is a student achievement, not theirs.
+        'nptel'      => ['label' => 'SWAYAM-NPTEL Courses',   'group' => 'Other',        'table' => 'nptel',                   'title_col' => 'course_title',
+                         'where' => nptel_participant_sql('Faculty'), 'owner' => nptel_faculty_owner_sql()],
         'online_course' => ['label' => 'Online Courses',      'group' => 'Other',        'table' => 'online_courses',          'title_col' => 'course_title'],
         'mou'        => ['label' => 'MoUs Signed',            'group' => 'Other',        'table' => 'mou',                     'title_col' => 'organization'],
     ];
+}
+
+// Extra WHERE condition a category carries (only NPTEL has one).
+function faculty_category_where(array $meta): string
+{
+    return !empty($meta['where']) ? " AND ({$meta['where']})" : '';
+}
+
+// The column naming which faculty member a record counts for.
+function faculty_category_owner(array $meta): string
+{
+    return $meta['owner'] ?? '`created_by`';
+}
+
+// What a category's queries read. Per-faculty queries on a category with a
+// `source` (journals: one row per author) read that; department and overall
+// totals read the table itself, so a paper with several authors counts once.
+function faculty_category_from(array $meta, bool $perFaculty): string
+{
+    return ($perFaculty && !empty($meta['source'])) ? $meta['source'] . ' AS src' : "`{$meta['table']}`";
+}
+
+// Publications of one type ('journal' / 'book') behind a set of grid rows,
+// each counted once however many of its authors are in the set.
+function faculty_grid_distinct(array $gridRows, string $type): int
+{
+    $ids = [];
+    foreach ($gridRows as $r) {
+        foreach ($r['pub_ids'][$type] ?? [] as $id) {
+            $ids[$id] = true;
+        }
+    }
+    return count($ids);
+}
+
+// How many more journals and books the per-faculty sum shows than there are
+// publications — the amount to take off a total so each counts once.
+function faculty_grid_shared_overlap(array $gridRows): int
+{
+    $overlap = 0;
+    foreach (['journal', 'book'] as $type) {
+        $credited = 0;
+        foreach ($gridRows as $r) {
+            $credited += count($r['pub_ids'][$type] ?? []);
+        }
+        $overlap += $credited - faculty_grid_distinct($gridRows, $type);
+    }
+    return $overlap;
 }
 
 function resolve_faculty_achievement_scope(array $currentUser, ?string $requestedDept): ?string
@@ -65,7 +120,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
             continue;
         }
 
-        $sql = "SELECT COUNT(*) AS cnt, department FROM `{$meta['table']}` WHERE 1=1";
+        $sql = "SELECT COUNT(*) AS cnt, department FROM " . faculty_category_from($meta, (bool) $facultyIdFilter) . " WHERE 1=1" . faculty_category_where($meta);
         $params = [];
 
         if ($effDept) {
@@ -80,14 +135,14 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
             }
         }
         if ($facultyIdFilter) {
-            $sql .= " AND created_by = ?";
+            $sql .= ' AND ' . faculty_category_owner($meta) . ' = ?';
             $params[] = $facultyIdFilter;
         }
         if ($yearFilter && in_array('academic_year', $cols, true)) {
             $sql .= " AND academic_year = ?";
             $params[] = $yearFilter;
         }
-        $sql .= em_window_sql($window, $params);   
+        $sql .= em_window_sql($window, $params);
         $sql .= " GROUP BY department";
 
         try {
@@ -125,7 +180,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
         $sql = "SELECT 
                     SUM(CASE WHEN status = 'Approved' THEN 1 ELSE 0 END) AS app_cnt,
                     SUM(CASE WHEN status LIKE '%Pending%' OR status = 'Submitted' THEN 1 ELSE 0 END) AS pend_cnt
-                FROM `{$meta['table']}` WHERE 1=1";
+                FROM " . faculty_category_from($meta, (bool) $facultyIdFilter) . " WHERE 1=1" . faculty_category_where($meta);
         $params = [];
         if ($effDept) {
             $deptVars = department_variants($effDept);
@@ -139,7 +194,7 @@ function faculty_achievements_summary(array $currentUser, ?string $deptFilter = 
             }
         }
         if ($facultyIdFilter) {
-            $sql .= " AND created_by = ?";
+            $sql .= ' AND ' . faculty_category_owner($meta) . ' = ?';
             $params[] = $facultyIdFilter;
         }
         if ($yearFilter && in_array('academic_year', $cols, true)) {
@@ -298,6 +353,7 @@ function faculty_achievements_grid(array $currentUser, ?string $deptFilter = nul
             'patents'      => 0,
             'other'        => 0,
             'total'        => 0,
+            'pub_ids'      => ['journal' => [], 'book' => []],
         ];
     }
 
@@ -314,16 +370,27 @@ function faculty_achievements_grid(array $currentUser, ?string $deptFilter = nul
             continue;
         }
 
-        $q = "SELECT created_by, COUNT(*) as cnt FROM `{$meta['table']}` WHERE created_by IN ({$inClause})";
+        $owner = faculty_category_owner($meta);
+        // Journals and books also bring their ids, so totals can count each
+        // publication once.
+        $idsCol = '';
+        if (!empty($meta['source'])) {
+            $idsCol = ', GROUP_CONCAT(id) AS ids';
+            try {
+                db()->exec('SET SESSION group_concat_max_len = 1048576');   // default 1024 would cut long id lists
+            } catch (\PDOException $e) {
+            }
+        }
+        $q = "SELECT {$owner} AS owner_id, COUNT(*) as cnt{$idsCol} FROM " . faculty_category_from($meta, true) . " WHERE {$owner} IN ({$inClause})" . faculty_category_where($meta);
         $p = $facIds;
 
         if ($yearFilter && in_array('academic_year', $cols, true)) {
             $q .= " AND academic_year = ?";
             $p[] = $yearFilter;
         }
-        $q .= em_window_sql($window, $p);   
+        $q .= em_window_sql($window, $p);
 
-        $q .= " GROUP BY created_by";
+        $q .= " GROUP BY owner_id";
 
         try {
             $st = db()->prepare($q);
@@ -331,15 +398,18 @@ function faculty_achievements_grid(array $currentUser, ?string $deptFilter = nul
             $rows = $st->fetchAll();
 
             foreach ($rows as $r) {
-                $fid = (int) $r['created_by'];
+                $fid = (int) $r['owner_id'];
                 $cnt = (int) $r['cnt'];
                 if (isset($facMap[$fid])) {
-                    $grpKey = strtolower($meta['group']);
+                    $grpKey = $meta['grid'] ?? strtolower($meta['group']);
                     if (!isset($facMap[$fid][$grpKey])) {
                         $grpKey = 'other';
                     }
                     $facMap[$fid][$grpKey] += $cnt;
                     $facMap[$fid]['total'] += $cnt;
+                    if (!empty($r['ids'])) {
+                        $facMap[$fid]['pub_ids'][$catKey] = array_map('intval', explode(',', $r['ids']));
+                    }
                 }
             }
         } catch (\PDOException $e) {
@@ -422,7 +492,7 @@ function faculty_achievement_details(int $facultyId, ?string $yearFilter = null,
             continue;
         }
 
-        $sql = "SELECT * FROM `{$meta['table']}` WHERE created_by = ?";
+        $sql = "SELECT * FROM " . faculty_category_from($meta, true) . " WHERE " . faculty_category_owner($meta) . ' = ?' . faculty_category_where($meta);
         $params = [$facultyId];
 
         if ($yearFilter && in_array('academic_year', $cols, true)) {
@@ -440,6 +510,7 @@ function faculty_achievement_details(int $facultyId, ?string $yearFilter = null,
 
             if (!empty($rows)) {
                 $summary[$meta['label']] = count($rows);
+                $pubAuthors = !empty($meta['source']) ? publication_authors_for($catKey, array_column($rows, 'id')) : [];
                 foreach ($rows as $r) {
                     $title = $r[$meta['title_col']] ?? $r['title'] ?? 'Achievement Record';
                     $item = [
@@ -454,6 +525,13 @@ function faculty_achievement_details(int $facultyId, ?string $yearFilter = null,
                         'year'        => $r['academic_year'] ?? '—',
                         'raw'         => $r,
                     ];
+                    if (is_event_type($catKey)) {
+                        $item['event_mode'] = event_mode_normalize($r['mode'] ?? '') ?? 'Not specified';
+                    }
+                    // Every author of the publication, with positions.
+                    if (!empty($pubAuthors[$item['id']])) {
+                        $item['authors'] = publication_authors_text($pubAuthors[$item['id']]);
+                    }
                     $detailedRecords[] = $item;
                     $byCategory[$meta['label']][] = $item;
                 }
@@ -526,7 +604,7 @@ function department_achievements_comparison(array $currentUser, ?string $yearFil
             continue;
         }
 
-        $sql = "SELECT department, COUNT(*) as cnt FROM `{$meta['table']}` WHERE 1=1";
+        $sql = "SELECT department, COUNT(*) as cnt FROM `{$meta['table']}` WHERE 1=1" . faculty_category_where($meta);
         $params = [];
 
         if ($effDept) {

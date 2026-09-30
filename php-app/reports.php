@@ -61,13 +61,17 @@ if ($fromIso && $toIso && $fromIso > $toIso) {
 
 [$recFrom, $recTo] = em_intersect_period($em, $rangeError ? null : $fromIso, $rangeError ? null : $toIso, $year);
 
-$records = report_records($user, $department, $status, $type, $recFrom, $recTo, $year);
+// Event Mode filter: offered while the view can hold events (no type, or an event type).
+$eventModeOn = !$isDirector && ($type === null || is_event_type($type))
+    && ($category === null || array_intersect(record_category_types($category), event_mode_types()));
+$eventMode   = $eventModeOn ? event_mode_normalize(input('event_mode')) : null;
+
+$records = report_records($user, $department, $status, $type, $recFrom, $recTo, $year, false, $eventMode, true);
 
 // A category keeps only the types in that group; a chosen type still wins,
 // so picking both never shows a record outside the type.
 if ($category !== null) {
-    $catTypes = record_category_types($category);
-    $records  = array_values(array_filter($records, fn($r) => in_array($r['_type_key'], $catTypes, true)));
+    $records = array_values(array_filter($records, fn($r) => record_row_category($r) === $category));
 }
 
 $types       = record_types();
@@ -98,6 +102,7 @@ $emQ      = $em !== 'all' ? $em : null;   $recordsQ = array_filter([
     'from'          => $fromDisplay,
     'to'            => $toDisplay,
     'em'            => $emQ,
+    'event_mode'    => $eventMode,
 ]);
 $meetingQ = array_filter(['department' => $department, 'academic_year' => $year, 'year' => $year, 'em' => $emQ]);
 $metricsQ = array_filter(['department' => $department, 'academic_year' => $year, 'year' => $year, 'from' => $fromDisplay, 'to' => $toDisplay, 'em' => $emQ]);
@@ -125,7 +130,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
-<?php   $activeCount = count(array_filter([$department, $type, $status, $category])) + (($fromDisplay || $toDisplay) ? 1 : 0) + ($em !== 'all' ? 1 : 0); ?>
+<?php   $activeCount = count(array_filter([$department, $type, $status, $category, $eventMode])) + (($fromDisplay || $toDisplay) ? 1 : 0) + ($em !== 'all' ? 1 : 0); ?>
 <div class="page-head">
   <div>
     <h1><?= $category ? e($categories[$category]['label']) : 'Reports' ?></h1>
@@ -209,6 +214,17 @@ require __DIR__ . '/inc/header.php';
         <?php endforeach; ?>
       </select>
     </label>
+
+    <?php if ($eventModeOn): ?>
+      <label class="fb-field" title="Online / Offline / Hybrid — shows events of that mode only"><span class="fb-k">Event Mode</span>
+        <select name="event_mode" onchange="this.form.submit()">
+          <option value="">All Modes</option>
+          <?php foreach (event_modes() as $m): ?>
+            <option value="<?= e($m) ?>" <?= $eventMode === $m ? 'selected' : '' ?>><?= e($m) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    <?php endif; ?>
 
     <label class="fb-field"><span class="fb-k">Status</span>
       <select name="status" onchange="this.form.submit()">
@@ -339,9 +355,12 @@ require __DIR__ . '/inc/header.php';
   } else {
       $shownSpecs = $allSpecs;
   }
+  if ($eventMode !== null) {
+      $shownSpecs = array_intersect_key($shownSpecs, array_flip(event_mode_types()));
+  }
   $reportScopeQ = array_filter([
       'department' => $department, 'year' => $year, 'status' => $status,
-      'from' => $fromIso, 'to' => $toIso, 'em' => $emQ,
+      'from' => $fromIso, 'to' => $toIso, 'em' => $emQ, 'event_mode' => $eventMode,
   ]);
 
   $scoped = $records;
@@ -361,6 +380,7 @@ require __DIR__ . '/inc/header.php';
       $category   ? 'Category: ' . $categories[$category]['label'] : null,
       $year       ? 'Year: ' . $year       : null,
       $status     ? 'Status: ' . $status   : null,
+      $eventMode  ? 'Event Mode: ' . $eventMode : null,
       ($fromIso || $toIso) ? 'Period set' : null,
       $em !== 'all' ? 'Meeting: ' . em_filter_label($em, $year) : null,
   ]);
@@ -446,7 +466,8 @@ require __DIR__ . '/inc/header.php';
     $feat4DeptsOrdered = array_merge($activeDepts, $emptyDepts);
 
     $feat4TotalFaculty = count($feat4FacultyGrid);
-    $feat4TotalAchievements = array_sum(array_column($feat4FacultyGrid, 'total'));
+    // A journal with several faculty authors counts once in the total.
+    $feat4TotalAchievements = array_sum(array_column($feat4FacultyGrid, 'total')) - faculty_grid_shared_overlap($feat4FacultyGrid);
   ?>
   <!-- ========================================================================
        DEPARTMENT & FACULTY ACHIEVEMENTS REPORT (FEAT-04)
@@ -754,8 +775,9 @@ require __DIR__ . '/inc/header.php';
 
 <!-- The records themselves, grouped by category -->
 <?php
-  $byType = [];
-  foreach ($records as $r) { $byType[$r['_type_key']][] = $r; }
+  // Grouped per category, so Faculty and Student NPTEL land in their own sections.
+  $byCatType = [];
+  foreach ($records as $r) { $byCatType[record_row_category($r) ?? 'other'][$r['_type_key']][] = $r; }
   $perGroup  = 6;
   $maxInline = 400;
 
@@ -803,6 +825,7 @@ require __DIR__ . '/inc/header.php';
     <?php else: ?>
       <?php foreach ($shownCats as $ckey => $cat): ?>
       <?php
+        $byType   = $byCatType[$ckey] ?? [];
         $catKeys  = array_filter($catTypeMap[$ckey], fn($k) => !empty($byType[$k]));
         $catCount = array_sum(array_map(fn($k) => count($byType[$k]), $catKeys));
       ?>
@@ -830,10 +853,13 @@ require __DIR__ . '/inc/header.php';
               $group  = $byType[$key];
               $shown  = array_slice($group, 0, $maxInline);
               $hidden = max(0, count($shown) - $perGroup);                 $tq     = ['type' => $key] + $reportScopeQ;
+              if ($key === 'nptel') {
+                  $tq['participant'] = $ckey === 'student' ? 'Student' : 'Faculty';
+              }
             ?>
             <div class="rec-group" data-group="<?= e($key) ?>">
               <div class="rec-group-head">
-                <span class="rec-group-name"><?= e($t['label']) ?></span>
+                <span class="rec-group-name"><?= e($key === 'nptel' ? $group[0]['_type_label'] : $t['label']) ?></span>
                 <span class="badge badge-neutral"><?= count($group) ?></span>
                 <div class="rec-group-actions">
                   <?php if ($hidden > 0): ?>
@@ -860,6 +886,9 @@ require __DIR__ . '/inc/header.php';
                       <tr <?= $i >= $perGroup ? 'class="rec-extra" hidden' : '' ?>>
                         <td>
                           <div class="fw-500 truncate" style="max-width:380px"><?= e($record['_title']) ?></div>
+                          <?php if (is_event_type($record['_type_key'] ?? '')): ?>
+                            <div style="margin-top:3px"><?= event_mode_badge($record['mode'] ?? null, 'Mode: ') ?></div>
+                          <?php endif; ?>
                           <?php if ($record['_person'] !== ''): ?>
                             <div class="card-sub"><?= e($record['_person']) ?></div>
                           <?php endif; ?>

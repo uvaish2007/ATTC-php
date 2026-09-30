@@ -172,6 +172,7 @@ $embed      = (string) input('embed') === '1';
     .pill { display: inline-block; padding: 3px 9px; border-radius: 999px;
       font-size: 11px; font-weight: 700; background: var(--navy-50); color: var(--muted); }
     .pill-ok { background: rgba(16,185,129,0.12); color: #047857; }
+    .pill-mode { background: rgba(255,79,1,0.10); color: #C2410C; font-weight: 700; letter-spacing: .03em; }
     .pill-warn { background: rgba(245,158,11,0.14); color: #B45309; }
     .pill-bad { background: rgba(239,68,68,0.12); color: #B91C1C; }
 
@@ -1819,7 +1820,7 @@ $embed      = (string) input('embed') === '1';
               <div class="t-title">${esc(r.title)}</div>
               ${r.person ? `<div class="t-sub">${isStudent ? 'Student' : 'Faculty'}: ${esc(r.person)}${r.reg_no ? ' &middot; ' + esc(r.reg_no) : ''}</div>` : ''}
             </td>
-            <td><span class="pill">${esc(r.type)}</span></td>
+            <td><span class="pill">${esc(r.type)}</span>${r.event_mode ? `<div style="margin-top:4px;"><span class="pill pill-mode">Mode: ${esc(String(r.event_mode).toUpperCase())}</span></div>` : ''}</td>
             <td class="t-sub">${esc(r.department)}</td>
             <td class="t-sub">${esc(r.date)}</td>
             <td>${r.status ? `<span class="pill">${esc(r.status)}</span>` : ''}</td>

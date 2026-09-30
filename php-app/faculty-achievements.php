@@ -126,14 +126,17 @@ foreach ($studGrid as $s) {
 arsort($studDeptCounts);
 
 $facTotalProfiles  = count($facGrid);
-$facTotalRecords   = (int) array_sum(array_column($facGrid, 'total'));
+// A journal or book with several faculty authors is on each author's row, but
+// the totals below count the publication once.
+$facTotalRecords   = (int) array_sum(array_column($facGrid, 'total')) - faculty_grid_shared_overlap($facGrid);
 $facTopContributor = null;
 $facTopRecords     = 0;
 $facDeptTotals     = [];
+$facDeptRows       = [];
 $facCatTotals      = [
-    'Journals'    => ['count' => (int) array_sum(array_column($facGrid, 'journals')),    'color' => '#0066CC'],
+    'Journals'    => ['count' => faculty_grid_distinct($facGrid, 'journal'),              'color' => '#0066CC'],
     'Conferences' => ['count' => (int) array_sum(array_column($facGrid, 'conferences')), 'color' => '#059669'],
-    'Books'       => ['count' => (int) array_sum(array_column($facGrid, 'books')),       'color' => '#FF4F01'],
+    'Books'       => ['count' => faculty_grid_distinct($facGrid, 'book'),                 'color' => '#FF4F01'],
     'Events'      => ['count' => (int) array_sum(array_column($facGrid, 'events')),      'color' => '#DC2626'],
     'Training'    => ['count' => (int) array_sum(array_column($facGrid, 'training')),    'color' => '#7E22CE'],
     'Patents'     => ['count' => (int) array_sum(array_column($facGrid, 'patents')),     'color' => '#0D9488'],
@@ -146,6 +149,10 @@ foreach ($facGrid as $f) {
     }
     $d = $f['department'] ?: 'Other';
     $facDeptTotals[$d] = ($facDeptTotals[$d] ?? 0) + (int)$f['total'];
+    $facDeptRows[$d][] = $f;
+}
+foreach ($facDeptRows as $d => $dRows) {
+    $facDeptTotals[$d] -= faculty_grid_shared_overlap($dRows);
 }
 arsort($facDeptTotals);
 $facRanked = $facGrid;
