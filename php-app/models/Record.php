@@ -148,8 +148,11 @@ function record_categories(): array
         'activity' => ['label' => 'Activities & Outreach', 'icon' => 'calendar',
                        'types' => ['event', 'nss', 'value_added', 'training']],
         // NPTEL sits in both: record_row_category() puts each row on one side.
-        'student'  => ['label' => 'Student Records',       'icon' => 'users',
-                       'types' => ['internship', 'placement', 'summer_training', 'co_curricular', 'extra_curricular', 'student_achievement', 'nptel']],
+        'student'  => [
+            'label' => 'Student Records',
+            'icon'  => 'users',
+            'types' => ['internship', 'placement', 'summer_training', 'co_curricular', 'extra_curricular', 'student_achievement', 'nptel'],
+        ],
     ];
 
     $known = record_types();
