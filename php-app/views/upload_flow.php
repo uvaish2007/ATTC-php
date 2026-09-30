@@ -87,6 +87,8 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
           </select>
         </div>
 
+        <input type="hidden" name="data_type" value="student">
+
         <?php if ($ufLocked): ?>
           <div class="alert alert-warning" style="margin-bottom:20px;">
             Academic year <?= e($ufActive) ?> cycle is currently locked by the Administrator. New record submissions are frozen.
@@ -156,7 +158,7 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
       <?= csrf_field() ?>
       <input type="hidden" name="upload_flow_step" value="data_type">
 
-      <div class="uf-choices" style="grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));">
+      <div class="uf-choices" style="grid-template-columns:minmax(0, 360px); justify-content:center;">
         <!-- Student Data Card -->
         <section class="card uf-choice">
           <div class="uf-choice-ic">
@@ -166,20 +168,6 @@ $ufBackUrl   = $ufIsYear ? url(($flowState['return_to'] ?? '') ?: 'dashboard.php
           <p class="uf-choice-sub">Student academic records</p>
           <div class="uf-choice-foot">
             <button type="submit" name="data_type" value="student" class="btn btn-primary" <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'disabled style="cursor:not-allowed;opacity:0.75;"' : '' ?>>
-              <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'LOCKED' : 'SELECT' ?>
-            </button>
-          </div>
-        </section>
-
-        <!-- Institutional / Department Achievements Card -->
-        <section class="card uf-choice">
-          <div class="uf-choice-ic brand" style="background:#FEF3C7; color:#D97706;">
-            <?= icon('award', 28) ?>
-          </div>
-          <h2 class="uf-choice-title">INSTITUTIONAL ACHIEVEMENTS</h2>
-          <p class="uf-choice-sub">Department &amp; institutional target metrics</p>
-          <div class="uf-choice-foot">
-            <button type="submit" name="data_type" value="institutional" class="btn btn-primary" <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'disabled style="cursor:not-allowed;opacity:0.75;"' : '' ?>>
               <?= ($ufYearEmBlock && $user['role'] !== 'Admin') ? 'LOCKED' : 'SELECT' ?>
             </button>
           </div>

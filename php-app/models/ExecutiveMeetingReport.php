@@ -608,13 +608,6 @@ function em_dataset(array $user, array $f): array
 {
     $records = report_records($user, $f['department'], null, null, $f['record_from'], $f['record_to'], $f['year'], true);
 
-    $catOfType = [];
-    foreach (record_categories() as $catKey => $cat) {
-        foreach ($cat['types'] as $typeKey) {
-            $catOfType[$typeKey] = $catKey;
-        }
-    }
-
     $faculty  = [];
     $student  = [];
     $activity = [];
@@ -623,10 +616,13 @@ function em_dataset(array $user, array $f): array
 
     foreach ($records as $r) {
         $typeKey = $r['_type_key'];
-        $cat     = $catOfType[$typeKey] ?? 'activity';
+        $cat     = record_row_category($r) ?? 'activity';
 
-        if ($f['faculty_id'] !== null && $cat !== 'student'
-            && (int) ($r['created_by'] ?? 0) !== $f['faculty_id']) {
+        // A faculty NPTEL belongs to its participant, not to whoever uploaded it.
+        $ownerId = ($typeKey === 'nptel' && !empty($r['participant_user_id']))
+            ? (int) $r['participant_user_id']
+            : (int) ($r['created_by'] ?? 0);
+        if ($f['faculty_id'] !== null && $cat !== 'student' && $ownerId !== $f['faculty_id']) {
             continue;
         }
 
@@ -833,6 +829,7 @@ function em_record_row(array $r, array $names): array
     return [
         'title'      => (string) ($r['_title'] ?? '(untitled)'),
         'type'       => (string) ($r['_type_label'] ?? ''),
+        'event_mode' => is_event_type($r['_type_key'] ?? '') ? (event_mode_normalize($r['mode'] ?? '') ?? 'Not specified') : '',
         'person'     => (string) $person,
         'department' => (string) ($r['department'] ?? ''),
         'status'     => (string) ($r['status'] ?? ''),

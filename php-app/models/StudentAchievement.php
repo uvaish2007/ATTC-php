@@ -71,8 +71,8 @@ function student_achievement_categories(): array
             'table'       => 'nptel',
             'title_col'   => 'course_title',
             'student_col' => 'candidate_name',
-            'reg_col'     => null,
-            'where_extra' => "category = 'Student'",
+            'reg_col'     => 'reg_no',   // used once the column exists (sql/nptel_participant.sql)
+            'where_extra' => nptel_participant_sql('Student'),
             'date_col'    => 'created_at',
         ],
         'online_course' => [
@@ -318,8 +318,13 @@ function department_student_achievements_comparison(array $currentUser, ?string 
     $deptStmt = db()->query("SELECT name FROM departments ORDER BY name ASC");
     $departments = $deptStmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
+    // Alias-aware, as department_achievements_comparison() is: records say "CSE"
+    // where the departments table says "Computer Science and Engineering".
     if ($effDept) {
-        $departments = array_values(array_filter($departments, fn($d) => $d === $effDept));
+        $departments = array_values(array_filter($departments, fn($d) => department_names_match($d, $effDept)));
+        if (empty($departments)) {
+            $departments = [$effDept];
+        }
     }
 
     $result = [];
@@ -368,8 +373,9 @@ function department_student_achievements_comparison(array $currentUser, ?string 
             $sql .= " AND ({$meta['where_extra']})";
         }
         if ($effDept) {
-            $sql .= " AND department = ?";
-            $params[] = $effDept;
+            $deptVars = department_variants($effDept) ?: [$effDept];
+            $sql .= ' AND department IN (' . implode(',', array_fill(0, count($deptVars), '?')) . ')';
+            $params = array_merge($params, $deptVars);
         }
         if ($yearFilter && in_array('academic_year', $cols, true)) {
             $sql .= " AND academic_year = ?";
@@ -387,6 +393,14 @@ function department_student_achievements_comparison(array $currentUser, ?string 
             foreach ($rows as $r) {
                 $dName = $r['department'] ?? '';
                 $cnt = (int) $r['cnt'];
+                if (!isset($result[$dName])) {
+                    foreach (array_keys($result) as $k) {
+                        if (department_names_match($k, $dName)) {
+                            $dName = $k;
+                            break;
+                        }
+                    }
+                }
                 if (isset($result[$dName])) {
                     if (isset($result[$dName][$colKey])) {
                         $result[$dName][$colKey] += $cnt;

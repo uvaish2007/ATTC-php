@@ -260,6 +260,7 @@ report_document_head('Faculty Details · ' . $profile['name']);
             <td>
               <?= e($item['title']) ?>
               <?php if ($extra !== ''): ?><div class="muted"><?= e($extra) ?></div><?php endif; ?>
+              <?php if (!empty($item['authors'])): ?><div class="muted">Authors: <?= e($item['authors']) ?></div><?php endif; ?>
             </td>
             <td><?= e($item['category']) ?></td>
             <td class="c"><?= e($item['status']) ?></td>

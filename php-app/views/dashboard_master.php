@@ -15,7 +15,7 @@ $statusColours = [
 $shortNames = [
     'Journals'       => 'Journals',  'Books'          => 'Books',    'Conferences' => 'Conf.',
     'Patents'        => 'Patents',   'FDP'            => 'FDP',      'MoUs'        => 'MoUs',
-    'NPTEL'          => 'NPTEL',     'Online Courses' => 'Online',
+    'NPTEL (Faculty)' => 'NPTEL-F',  'Online Courses' => 'Online',   'NPTEL (Student)' => 'NPTEL-S',
     'Events'         => 'Events',    'NSS/YRC/RRC'    => 'NSS',      'Value Added' => 'Val.Add',
     'Training'       => 'Training',
     'Internships'    => 'Interns',   'Placements'     => 'Placed',   'Summer Training' => 'Summer',
@@ -1301,6 +1301,7 @@ if (!function_exists('dash_column_chart')) {
               <div class="card-sub">
                 <?= e($record['metric']) ?><?= $record['department'] ? ' &middot; ' . e($record['department']) : '' ?>
                 &middot; <?= e(time_ago($record['at'])) ?>
+                <?php if (($record['event_mode'] ?? null) !== null): ?>&middot; <?= event_mode_badge($record['event_mode']) ?><?php endif; ?>
               </div>
             </div>
             <span class="badge badge-<?= status_class($record['status']) ?>">

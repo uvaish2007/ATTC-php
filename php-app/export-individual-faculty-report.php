@@ -56,7 +56,7 @@ if ($format === 'excel') {
         $rows[] = [
             $sno++,
             $r['category'],
-            $r['title'],
+            $r['title'] . (!empty($r['authors']) ? ' (Authors: ' . $r['authors'] . ')' : ''),
             department_full_name($r['department']),
             $r['status'],
             $r['year'],
@@ -116,7 +116,7 @@ if ($format === 'csv') {
         fputcsv($out, [
             $sno++,
             $r['category'],
-            $r['title'],
+            $r['title'] . (!empty($r['authors']) ? ' (Authors: ' . $r['authors'] . ')' : ''),
             department_full_name($r['department']),
             $r['status'],
             $r['year'],
@@ -258,7 +258,7 @@ if ($format === 'word') {
           <?php $idx = 1; foreach ($catItems as $item): ?>
             <tr>
               <td><?= $idx++ ?></td>
-              <td class="fw-bold"><?= e($item['title']) ?></td>
+              <td class="fw-bold"><?= e($item['title']) ?><?php if (!empty($item['authors'])): ?><div style="font-weight:normal; font-size:0.9em;">Authors: <?= e($item['authors']) ?></div><?php endif; ?></td>
               <td><?= e($item['status']) ?></td>
               <td><?= e($item['year']) ?></td>
               <td><?= date('d/m/Y', strtotime($item['created_at'])) ?></td>
