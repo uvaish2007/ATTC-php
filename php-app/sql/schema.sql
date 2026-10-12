@@ -106,6 +106,8 @@ CREATE TABLE journal_publications (
   publication_month VARCHAR(20)  NULL,
   publication_year  VARCHAR(10)  NULL,
   doi               VARCHAR(255) NULL,
+  doi_key           VARCHAR(255) NULL,          -- canonical DOI, duplicate check (journal_authors.sql)
+  title_key         CHAR(40)     NULL,          -- normalised title hash, duplicate check
   journal_link      VARCHAR(500) NULL,
   document_link     VARCHAR(500) NULL,
   proofs            TEXT         NULL,          -- JSON array of file paths
@@ -119,8 +121,26 @@ CREATE TABLE journal_publications (
   KEY idx_journal_status (status),
   KEY idx_journal_created_by (created_by),
   KEY idx_journal_year (academic_year),
+  KEY idx_journal_doi_key (doi_key),
+  KEY idx_journal_title_key (title_key),
   CONSTRAINT fk_journal_created_by  FOREIGN KEY (created_by)  REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT fk_journal_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- The faculty authors of a journal publication, one row each, positions unique.
+DROP TABLE IF EXISTS journal_authors;
+CREATE TABLE journal_authors (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  journal_id       INT NOT NULL,
+  user_id          INT NOT NULL,
+  author_position  TINYINT UNSIGNED NOT NULL,
+  is_main          TINYINT(1) NOT NULL DEFAULT 0,
+  created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_journal_author_user (journal_id, user_id),
+  UNIQUE KEY uq_journal_author_position (journal_id, author_position),
+  KEY idx_journal_author_user (user_id),
+  CONSTRAINT fk_journal_author_journal FOREIGN KEY (journal_id) REFERENCES journal_publications(id) ON DELETE CASCADE,
+  CONSTRAINT fk_journal_author_user    FOREIGN KEY (user_id)    REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
@@ -131,11 +151,18 @@ CREATE TABLE book_publications (
   id                   INT AUTO_INCREMENT PRIMARY KEY,
   faculty_name         VARCHAR(190) NOT NULL,
   department           VARCHAR(150) NOT NULL,
+  author_type          VARCHAR(50)  NULL,
+  co_authors           TEXT         NULL,
   academic_year        VARCHAR(20)  NOT NULL,
+  academic_session     VARCHAR(20)  NULL,
   publication_category VARCHAR(50)  NULL,
   title                TEXT         NOT NULL,
   publisher_name       VARCHAR(255) NULL,
   isbn                 VARCHAR(100) NULL,
+  doi                  VARCHAR(255) NULL,
+  doi_key              VARCHAR(255) NULL,
+  isbn_key             VARCHAR(13)  NULL,
+  title_key            CHAR(40)     NULL,
   publication_month    VARCHAR(20)  NULL,
   publication_year     VARCHAR(10)  NULL,
   document_link        VARCHAR(500) NULL,
@@ -150,8 +177,27 @@ CREATE TABLE book_publications (
   KEY idx_book_status (status),
   KEY idx_book_created_by (created_by),
   KEY idx_book_year (academic_year),
+  KEY idx_book_doi_key (doi_key),
+  KEY idx_book_isbn_key (isbn_key),
+  KEY idx_book_title_key (title_key),
   CONSTRAINT fk_book_created_by  FOREIGN KEY (created_by)  REFERENCES users(id) ON DELETE SET NULL,
   CONSTRAINT fk_book_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- One row per faculty author of a book / chapter (see sql/book_authors.sql).
+DROP TABLE IF EXISTS book_authors;
+CREATE TABLE book_authors (
+  id               INT AUTO_INCREMENT PRIMARY KEY,
+  book_id          INT NOT NULL,
+  user_id          INT NOT NULL,
+  author_position  TINYINT UNSIGNED NOT NULL,
+  is_main          TINYINT(1) NOT NULL DEFAULT 0,
+  created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_book_author_user (book_id, user_id),
+  UNIQUE KEY uq_book_author_position (book_id, author_position),
+  KEY idx_book_author_user (user_id),
+  CONSTRAINT fk_book_author_book FOREIGN KEY (book_id) REFERENCES book_publications(id) ON DELETE CASCADE,
+  CONSTRAINT fk_book_author_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------------
@@ -276,7 +322,10 @@ CREATE TABLE events (
   event_date      VARCHAR(50)  NULL,
   event_title     TEXT         NULL,
   event_type      VARCHAR(100) NULL,
-  mode            VARCHAR(30)  NULL,
+  mode            ENUM('Online','Offline','Hybrid') NULL,
+  venue           VARCHAR(255) NULL,
+  online_platform VARCHAR(150) NULL,
+  meeting_link    VARCHAR(500) NULL,
   resource_person VARCHAR(190) NULL,
   designation     VARCHAR(190) NULL,
   contact_details VARCHAR(255) NULL,

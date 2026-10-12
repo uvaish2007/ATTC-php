@@ -114,6 +114,10 @@ if ($format === 'excel') {
                     $j, $c, $b, $e, $t, $p, $o, $tot,
                 ];
             }
+            // A journal or book shared by faculty of this department counts once here.
+            $dTotals['j']    = faculty_grid_distinct($facultyList, 'journal');
+            $dTotals['b']    = faculty_grid_distinct($facultyList, 'book');
+            $dTotals['tot'] -= faculty_grid_shared_overlap($facultyList);
 
             $rows[] = [
                 'Subtotal',
@@ -136,6 +140,10 @@ if ($format === 'excel') {
                 $grandTotals[$k] += $val;
             }
         }
+        // …and once overall, even when its authors are in different departments.
+        $grandTotals['j']   = faculty_grid_distinct($facGrid, 'journal');
+        $grandTotals['b']   = faculty_grid_distinct($facGrid, 'book');
+        $grandTotals['tot'] = (int) array_sum(array_column($facGrid, 'total')) - faculty_grid_shared_overlap($facGrid);
 
         $rows[] = [
             'TOTAL',
@@ -404,6 +412,12 @@ if ($format === 'word') {
               <td class="num" style="font-weight:700; color:#FF4F01;"><?= (int) $f['total'] ?></td>
             </tr>
           <?php endforeach; ?>
+          <?php
+            // A journal or book shared by faculty of this department counts once here.
+            $dTot['j']    = faculty_grid_distinct($facultyList, 'journal');
+            $dTot['b']    = faculty_grid_distinct($facultyList, 'book');
+            $dTot['tot'] -= faculty_grid_shared_overlap($facultyList);
+          ?>
           <tr class="subtotal-row">
             <td colspan="4" style="text-align:right; font-weight:700; padding-right:10px;">Subtotal for <?= e(department_full_name($deptName)) ?>:</td>
             <td class="num"><?= $dTot['j'] ?></td>

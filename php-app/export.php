@@ -16,6 +16,7 @@
  *   to         YYYY-MM-DD
  *   year       academic year (e.g. 2024-25)
  *   em         all | em1 | em2
+ *   event_mode Online | Offline | Hybrid (events only)
  */
 
 require_once __DIR__ . '/inc/auth.php';
@@ -49,12 +50,16 @@ $department = user_department_scope($user, input('department'));
 $isAllAcademic = ($type === null || $type === 'academic_record' || $type === 'all');
 $queryType     = $isAllAcademic ? null : $type;
 
-$records = report_records($user, $department, $status, $queryType, $from, $to, $year);
+$eventMode = event_mode_normalize(input('event_mode'));
+if ($eventMode !== null && $queryType !== null && !is_event_type($queryType)) {
+    $eventMode = null;   // only events have a mode
+}
+
+$records = report_records($user, $department, $status, $queryType, $from, $to, $year, false, $eventMode, true);
 
 $categories = record_categories();
 if ($category !== null && isset($categories[$category])) {
-    $catTypes = record_category_types($category);
-    $records  = array_values(array_filter($records, fn($r) => in_array($r['_type_key'], $catTypes, true)));
+    $records = array_values(array_filter($records, fn($r) => record_row_category($r) === $category));
 }
 
 // ---- Naming and header metadata ----------------------------------------
@@ -89,6 +94,15 @@ $reportTitle = strtoupper($typeLabel);
 
 // The columns, in order. Same for every format.
 $columns = ['S.No', 'Record', 'Type', 'Faculty / Student', 'Department', 'Status', 'Date', 'Proof'];
+
+// Event Mode column, added only when the export holds events. Proof stays last.
+$hasEvents = (bool) array_filter($records, fn($r) => is_event_type($r['_type_key'] ?? ''));
+if ($hasEvents) {
+    array_splice($columns, 3, 0, ['Event Mode']);
+}
+if ($eventMode !== null) {
+    $reportTitle .= ' - ' . strtoupper($eventMode) . ' EVENTS';
+}
 
 function csv_line($handle, array $fields): void
 {
@@ -145,7 +159,8 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
         }
     }
 
-    return [
+    global $hasEvents;
+    $row = [
         $serial,
         $record['_title'],
         $record['_type_label'],
@@ -155,6 +170,11 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
         date('d/m/Y', strtotime($record['created_at'])),
         $proofVal,
     ];
+    if ($hasEvents) {
+        $mode = is_event_type($type) ? (event_mode_normalize($record['mode'] ?? '') ?? 'Not specified') : '—';
+        array_splice($row, 3, 0, [$mode]);
+    }
+    return $row;
 }
 
 if ($format === 'csv') {
@@ -264,7 +284,7 @@ report_letterhead($reportTitle, $meta);
         <?php foreach ($records as $record): ?>
           <tr>
             <?php foreach (export_row($record, $serial++, $format) as $i => $value): ?>
-              <?php $isProof = ($i === 7); ?>
+              <?php $isProof = ($i === count($columns) - 1); ?>
               <td<?= $i === 0 ? ' class="num"' : ($isProof ? ' class="c"' : '') ?>><?= $isProof ? $value : e($value) ?></td>
             <?php endforeach; ?>
           </tr>

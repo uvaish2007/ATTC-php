@@ -1310,7 +1310,7 @@ if ($from === 'faculty-achievements' || $from === 'faculty_achievements' || strp
                 <div style="font-weight:700; color:#0B2D59;">${escapeHtml(r.title || '(untitled)')}</div>
                 ${r.description ? `<div style="font-size:11.5px; color:#64748B; margin-top:2px;">${escapeHtml(r.description)}</div>` : ''}
               </td>
-              <td><span class="pill">${escapeHtml(r.type_label || slide.category_label)}</span></td>
+              <td><span class="pill">${escapeHtml(r.type_label || slide.category_label)}</span>${r.event_mode ? `<div style="margin-top:4px;"><span style="display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.03em; background:rgba(255,79,1,0.10); color:#C2410C;">Mode: ${escapeHtml(String(r.event_mode).toUpperCase())}</span></div>` : ''}</td>
               <td style="font-size:12px; color:#64748B;">${escapeHtml(r.event_date || r.academic_year || '')}</td>
               <td><span class="pill pill-ok">${escapeHtml(r.status || 'Verified')}</span></td>
             </tr>

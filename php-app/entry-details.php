@@ -37,6 +37,18 @@ if (in_array($user['role'], ['Admin', 'Dean', 'Principal', 'Director'], true)) {
 } elseif ($user['role'] === 'Faculty') {
     $canView = ((int)($record['created_by'] ?? 0) === (int)$user['id']);
 }
+// A journal or book is also visible to its recorded authors, and to the HoD /
+// Coordinator of any author's department.
+if (!$canView && in_array($type, ['journal', 'book'], true)) {
+    foreach (publication_authors_for($type, [$id])[$id] ?? [] as $author) {
+        if ($user['role'] === 'Faculty' && (int) $author['user_id'] === (int) $user['id']) {
+            $canView = true;
+        } elseif (in_array($user['role'], ['HoD', 'Coordinator'], true)
+            && department_names_match($author['department'] ?? '', $user['department'] ?? '')) {
+            $canView = true;
+        }
+    }
+}
 
 if (!$canView) {
     flash('error', 'Access Denied: You are not authorized to view this entry.');
@@ -114,6 +126,7 @@ require __DIR__ . '/inc/header.php';
       <h1 style="font-size:20px; font-weight:800; color:#0F172A; margin:0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <span style="max-width:700px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"><?= e($record['_title']) ?></span>
         <span class="badge badge-info" style="font-size:12px;"><?= e($record['_type_label']) ?></span>
+        <?php if (is_event_type($type)): ?><?= event_mode_badge($record['mode'] ?? null, 'Mode: ') ?><?php endif; ?>
       </h1>
     </div>
 

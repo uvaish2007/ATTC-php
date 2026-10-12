@@ -33,7 +33,8 @@ foreach (record_types() as $t) {
     $rows[$t['label']] = array_fill_keys($statuses, 0) + ['total' => 0];
 }
 foreach ($records as $r) {
-    $label  = $r['_type_label'];
+    // By type, not _type_label: NPTEL rows carry "NPTEL (Faculty)" / "(Student)".
+    $label  = record_types()[$r['_type_key']]['label'] ?? $r['_type_label'];
     $status = in_array($r['status'], $statuses, true) ? $r['status'] : 'Draft';
     $rows[$label][$status]++;
     $rows[$label]['total']++;

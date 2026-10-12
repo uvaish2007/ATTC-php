@@ -7,6 +7,10 @@ require_once __DIR__ . '/ExecutiveMeeting.php';
 
 function all_metrics(): array
 {
+    // NPTEL is one table split by participant: faculty certificates count as
+    // faculty contributions, student certificates as student records.
+    $nptelYear = in_array('academic_year', target_record_table_columns('nptel'), true);
+
     return [
         'journals'        => ['label' => 'Journals',        'table' => 'journal_publications',    'group' => 'faculty',  'year' => true],
         'books'           => ['label' => 'Books',           'table' => 'book_publications',       'group' => 'faculty',  'year' => true],
@@ -14,7 +18,7 @@ function all_metrics(): array
         'patents'         => ['label' => 'Patents',         'table' => 'patents',                 'group' => 'faculty',  'year' => true],
         'fdp'             => ['label' => 'FDP',             'table' => 'fdp',                     'group' => 'faculty',  'year' => false],
         'mou'             => ['label' => 'MoUs',            'table' => 'mou',                     'group' => 'faculty',  'year' => false],
-        'nptel'           => ['label' => 'NPTEL',           'table' => 'nptel',                   'group' => 'faculty',  'year' => false],
+        'nptel'           => ['label' => 'NPTEL (Faculty)', 'table' => 'nptel',                   'group' => 'faculty',  'year' => $nptelYear, 'where' => nptel_participant_sql('Faculty')],
         'online'          => ['label' => 'Online Courses',  'table' => 'online_courses',          'group' => 'faculty',  'year' => true],
         'events'          => ['label' => 'Events',          'table' => 'events',                  'group' => 'activity', 'year' => false],
         'nss'             => ['label' => 'NSS/YRC/RRC',      'table' => 'nss',                     'group' => 'activity', 'year' => true],
@@ -25,6 +29,7 @@ function all_metrics(): array
         'summer_training' => ['label' => 'Summer Training', 'table' => 'summer_training',         'group' => 'student',  'year' => true],
         'achievements'    => ['label' => 'Achievements',    'table' => 'student_achievements',    'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],
         'participations'  => ['label' => 'Participations',  'table' => 'student_participations',  'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],
+        'nptel_student'   => ['label' => 'NPTEL (Student)', 'table' => 'nptel',                   'group' => 'student',  'year' => $nptelYear, 'where' => nptel_participant_sql('Student')],
     ];
 }
 
@@ -66,7 +71,7 @@ function dashboard_data(array $user): array
     foreach ($metrics as $key => $m) {
         $expr   = metric_count_expr($m);
         $sql    = "SELECT department, $expr AS n FROM `{$m['table']}`";
-        $where  = [];
+        $where  = !empty($m['where']) ? [$m['where']] : [];
         $params = [];
         if ($departmentFilter !== null)   { $where[] = 'department = ?';   $params[] = $departmentFilter; }
         if ($status !== null)             { $where[] = 'status = ?';        $params[] = $status; }
@@ -146,7 +151,7 @@ function dashboard_data(array $user): array
     foreach ($metrics as $key => $m) {
         $expr   = metric_count_expr($m);
         $sql    = "SELECT status, $expr AS n FROM `{$m['table']}`";
-        $where  = [];
+        $where  = !empty($m['where']) ? [$m['where']] : [];
         $params = [];
         if ($departmentFilter !== null)   { $where[] = 'department = ?';    $params[] = $departmentFilter; }
         if ($year !== null && $m['year']) { $where[] = 'academic_year = ?'; $params[] = $year; }
@@ -384,7 +389,7 @@ function target_metric_sources(): array
         'Patents & Copyrights'    => ['table' => 'patents',                 'dept' => true,  'year' => true],
         'MoU Signed'              => ['table' => 'mou',                     'dept' => true,  'year' => false],
         'FDP Participation'       => ['table' => 'fdp',                     'dept' => true,  'year' => false],
-        'NPTEL'                   => ['table' => 'nptel',                   'dept' => true,  'year' => false],
+        'NPTEL'                   => ['table' => 'nptel',                   'dept' => true,  'year' => in_array('academic_year', target_record_table_columns('nptel'), true)],
         'Students Internship'     => ['table' => 'internships',             'dept' => false, 'year' => false],
         'Placements'              => ['table' => 'placements',              'dept' => false, 'year' => false],
     ];
@@ -560,12 +565,12 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
         ['table' => 'patents',                 'label' => 'Patent',         'title' => 'title',         'year' => true],
         ['table' => 'fdp',                     'label' => 'FDP',            'title' => 'title',         'year' => false],
         ['table' => 'mou',                     'label' => 'MoU',            'title' => 'organization',  'year' => false],
-        ['table' => 'events',                  'label' => 'Event',          'title' => 'event_title',   'year' => false],
-        ['table' => 'nptel',                   'label' => 'NPTEL',          'title' => 'course_title',  'year' => false],
+        ['table' => 'events',                  'label' => 'Event',          'title' => 'event_title',   'year' => false, 'mode' => true],
+        ['table' => 'nptel',                   'label' => 'NPTEL',          'title' => 'course_title',  'year' => in_array('academic_year', target_record_table_columns('nptel'), true)],
         ['table' => 'online_courses',          'label' => 'Online Course',  'title' => 'course_title',  'year' => true],
         ['table' => 'nss',                     'label' => 'NSS/YRC/RRC',    'title' => 'activity_name', 'year' => true],
         ['table' => 'value_added_courses',     'label' => 'Value Added',    'title' => 'course_title',  'year' => true],
-        ['table' => 'training',                'label' => 'Training',       'title' => 'event_title',   'year' => true],
+        ['table' => 'training',                'label' => 'Training',       'title' => 'event_title',   'year' => true,  'mode' => true],
         ['table' => 'internships',             'label' => 'Internship',     'title' => 'title',         'year' => false],
         ['table' => 'placements',              'label' => 'Placement',      'title' => 'student_name',  'year' => false],
         ['table' => 'summer_training',         'label' => 'Summer Training','title' => 'title',         'year' => true],
@@ -586,7 +591,8 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
             $where[] = 'created_at <= ?'; $params[] = $emWindow['to'] . ' 23:59:59';
         }
 
-        $sql = "SELECT `{$s['title']}` AS title, status, created_at, department FROM `{$s['table']}`";
+        $modeCol = !empty($s['mode']) ? ', `mode`' : '';
+        $sql = "SELECT `{$s['title']}` AS title, status, created_at, department{$modeCol} FROM `{$s['table']}`";
         if ($where) { $sql .= ' WHERE ' . implode(' AND ', $where); }
         $sql .= ' ORDER BY created_at DESC LIMIT 5';
 
@@ -600,6 +606,7 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
                     'department' => $r['department'],
                     'status'     => $r['status'],
                     'at'         => $r['created_at'],
+                    'event_mode' => !empty($s['mode']) ? ($r['mode'] ?? '') : null,
                 ];
             }
         } catch (\PDOException $e) {
@@ -635,7 +642,8 @@ function my_dashboard_data(array $user): array
 
     foreach ($metrics as $key => $m) {
         try {
-            $sql    = "SELECT status, COUNT(*) AS n FROM `{$m['table']}` WHERE created_by = ?";
+            $sql    = "SELECT status, COUNT(*) AS n FROM `{$m['table']}` WHERE created_by = ?"
+                    . (!empty($m['where']) ? " AND ({$m['where']})" : '');
             $params = [$uid];
             if (!empty($m['year'])) {
                 $sql .= ' AND academic_year = ?';

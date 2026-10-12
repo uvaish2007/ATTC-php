@@ -66,7 +66,8 @@ function upload_flow_faculty_types(?string $currentDataType = null): array
     foreach (upload_flow_faculty_groups() as $group) {
         $types = array_merge($types, $group['types']);
     }
-    return array_values(array_unique($types));
+    $types = array_values(array_unique($types));
+    return array_values(array_filter($types, fn($t) => !in_array($t, ['conference', 'student_participation', 'student_achievement'], true)));
 }
 
 function upload_flow_years(): array
@@ -82,9 +83,9 @@ function upload_flow_data_types(): array
     }
 
     $allTypes = array_keys(record_types());
-    $studentTypes = ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation', 'nptel', 'online_course'];
+    $studentTypes = ['nptel', 'internship', 'placement', 'online_course', 'co_curricular', 'extra_curricular', 'summer_training'];
     $institutionalTypes = array_values(array_filter($allTypes, fn($t) => str_starts_with($t, 'inst_')));
-    $facultyTypes = array_values(array_filter($allTypes, fn($t) => !str_starts_with($t, 'inst_') && !in_array($t, ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation'], true)));
+    $facultyTypes = array_values(array_filter($allTypes, fn($t) => !str_starts_with($t, 'inst_') && !in_array($t, ['nptel', 'internship', 'placement', 'online_course', 'co_curricular', 'extra_curricular', 'summer_training', 'student_achievement', 'student_participation', 'conference'], true)));
 
     $defs = [
         'student'       => ['label' => 'STUDENT DATA', 'icon' => 'users', 'categories' => ['student'],

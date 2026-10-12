@@ -26,6 +26,10 @@ const MIGRATION_FILES = [
     'exam_session.sql',
     'institutional_achievements.sql',
     'master_accounts.sql',
+    'nptel_participant.sql',
+    'event_mode.sql',
+    'journal_authors.sql',
+    'book_authors.sql',
 ];
 
 const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (

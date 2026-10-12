@@ -101,6 +101,7 @@ $cards = [
               <div class="t truncate"><?= e($record['title']) ?></div>
               <div class="card-sub">
                 <?= e($record['metric']) ?> &middot; <?= e(time_ago($record['at'])) ?>
+                <?php if (($record['event_mode'] ?? null) !== null): ?>&middot; <?= event_mode_badge($record['event_mode']) ?><?php endif; ?>
               </div>
             </div>
             <span class="badge badge-<?= status_class($record['status']) ?>">

@@ -66,8 +66,9 @@ $facStmt = db()->prepare($facSql);
 $facStmt->execute($facParams);
 $facultyList = $facStmt->fetchAll();
 
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow ?? null);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow ?? null);
+// ---- Fetch Data ---------------------------------------------------------
+$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
+$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
 
 // Sort department comparison descending by total achievements
 $sortedDeptComp = $deptComp;
@@ -112,8 +113,8 @@ $sortedCatBreakdown = $categoryBreakdown;
 usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
 $activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
 
-$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow ?? null);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow ?? null);
+$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
+$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
 
 $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
 $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
@@ -126,14 +127,17 @@ foreach ($studGrid as $s) {
 arsort($studDeptCounts);
 
 $facTotalProfiles  = count($facGrid);
-$facTotalRecords   = (int) array_sum(array_column($facGrid, 'total'));
+// A journal or book with several faculty authors is on each author's row, but
+// the totals below count the publication once.
+$facTotalRecords   = (int) array_sum(array_column($facGrid, 'total')) - faculty_grid_shared_overlap($facGrid);
 $facTopContributor = null;
 $facTopRecords     = 0;
 $facDeptTotals     = [];
+$facDeptRows       = [];
 $facCatTotals      = [
-    'Journals'    => ['count' => (int) array_sum(array_column($facGrid, 'journals')),    'color' => '#0066CC'],
+    'Journals'    => ['count' => faculty_grid_distinct($facGrid, 'journal'),              'color' => '#0066CC'],
     'Conferences' => ['count' => (int) array_sum(array_column($facGrid, 'conferences')), 'color' => '#059669'],
-    'Books'       => ['count' => (int) array_sum(array_column($facGrid, 'books')),       'color' => '#FF4F01'],
+    'Books'       => ['count' => faculty_grid_distinct($facGrid, 'book'),                 'color' => '#FF4F01'],
     'Events'      => ['count' => (int) array_sum(array_column($facGrid, 'events')),      'color' => '#DC2626'],
     'Training'    => ['count' => (int) array_sum(array_column($facGrid, 'training')),    'color' => '#7E22CE'],
     'Patents'     => ['count' => (int) array_sum(array_column($facGrid, 'patents')),     'color' => '#0D9488'],
@@ -146,6 +150,10 @@ foreach ($facGrid as $f) {
     }
     $d = $f['department'] ?: 'Other';
     $facDeptTotals[$d] = ($facDeptTotals[$d] ?? 0) + (int)$f['total'];
+    $facDeptRows[$d][] = $f;
+}
+foreach ($facDeptRows as $d => $dRows) {
+    $facDeptTotals[$d] -= faculty_grid_shared_overlap($dRows);
 }
 arsort($facDeptTotals);
 $facRanked = $facGrid;
@@ -177,16 +185,16 @@ $studCatBreakdown = [
         'table' => 'online_courses',
         'color' => '#7E22CE',
     ],
-    'Student Achievements' => [
-        'label' => 'Student Achievements (Awards/Prizes)',
-        'count' => (int) ($studSummary['categoryCounts']['Student Achievements'] ?? 0),
+    'Co-Curricular' => [
+        'label' => 'Co-Curricular Activities (Symposiums, Hackathons, etc.)',
+        'count' => (int) ($studSummary['categoryCounts']['Co-Curricular'] ?? 0),
         'table' => 'student_achievements',
         'color' => '#0D9488',
     ],
-    'Student Participation' => [
-        'label' => 'Symposiums & Event Participations',
-        'count' => (int) ($studSummary['categoryCounts']['Student Participations'] ?? 0),
-        'table' => 'student_participations',
+    'Extra-Curricular' => [
+        'label' => 'Extra-Curricular Activities (Sports, Cultural, etc.)',
+        'count' => (int) ($studSummary['categoryCounts']['Extra-Curricular'] ?? 0),
+        'table' => 'student_achievements',
         'color' => '#DC2626',
     ],
     'Training' => [
@@ -1787,12 +1795,12 @@ $mxAvatar = static function (string $name): string {
           <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Online Courses'] ?? 0)) ?></div>
         </div>
         <div class="stud-stat-card">
-          <div class="stud-stat-label">Achievements</div>
-          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Student Achievements'] ?? 0)) ?></div>
+          <div class="stud-stat-label">Co-Curricular</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Co-Curricular'] ?? 0)) ?></div>
         </div>
         <div class="stud-stat-card">
-          <div class="stud-stat-label">Participation</div>
-          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Student Participations'] ?? 0)) ?></div>
+          <div class="stud-stat-label">Extra-Curricular</div>
+          <div class="stud-stat-value tabular"><?= number_format((int) ($studSummary['categoryCounts']['Extra-Curricular'] ?? 0)) ?></div>
         </div>
         <div class="stud-stat-card">
           <div class="stud-stat-label">Training</div>
@@ -1818,8 +1826,8 @@ $mxAvatar = static function (string $name): string {
                   'internships'    => ['Intern',  'Internships',              '#10B981'],
                   'placements'     => ['Place',   'Placements',               '#FF4F01'],
                   'online_courses' => ['Course',  'Online Courses',           '#0891B2'],
-                  'achievements'   => ['Achieve', 'Student Achievements',     '#D97706'],
-                  'participation'  => ['Partic',  'Student Participations',   '#E11D48'],
+                  'co_curricular'    => ['Co-Curr', 'Co-Curricular Activities', '#0D9488'],
+                  'extra_curricular' => ['Ex-Curr', 'Extra-Curricular Activities', '#DC2626'],
                   'training'       => ['Train',   'Summer / Winter Training', '#7C3AED'],
                   'other'          => ['Other',   'Other Achievements',       '#64748B'],
               ];

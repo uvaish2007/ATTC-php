@@ -139,12 +139,17 @@ require __DIR__ . '/inc/header.php';
                   <div style="color:var(--ink,#131D3B); font-weight:600;"><?= e($item['title']) ?></div>
                   <?php if (!empty($item['raw']['journal_name'])): ?>
                     <div class="card-sub">Journal: <?= e($item['raw']['journal_name']) ?></div>
+                    <?php if (!empty($item['authors'])): ?><div class="card-sub">Authors: <?= e($item['authors']) ?></div><?php endif; ?>
                   <?php elseif (!empty($item['raw']['publisher_name'])): ?>
                     <div class="card-sub">Publisher: <?= e($item['raw']['publisher_name']) ?></div>
+                    <?php if (!empty($item['authors'])): ?><div class="card-sub">Authors: <?= e($item['authors']) ?></div><?php endif; ?>
                   <?php elseif (!empty($item['raw']['conference_name'])): ?>
                     <div class="card-sub">Conference: <?= e($item['raw']['conference_name']) ?></div>
                   <?php elseif (!empty($item['raw']['event_title'])): ?>
                     <div class="card-sub">Event: <?= e($item['raw']['event_title']) ?></div>
+                  <?php endif; ?>
+                  <?php if (is_event_type($item['type_key'] ?? '')): ?>
+                    <div style="margin-top:3px"><?= event_mode_badge($item['raw']['mode'] ?? null, 'Mode: ') ?></div>
                   <?php endif; ?>
                 </td>
                 <td><span class="badge badge-neutral" style="font-size:11.5px;"><?= e($item['category']) ?></span></td>

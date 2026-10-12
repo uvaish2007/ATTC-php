@@ -135,6 +135,9 @@ $filterDept = in_array($user['role'], ['Admin', 'Dean'], true) ? (trim((string) 
 $filterType = (string) input('type');
 if (!isset($types[$filterType])) { $filterType = ''; }
 $search = trim((string) input('q'));
+// Event Mode filter: offered while the list can hold events (all types or an event type).
+$filterModeOn = $filterType === '' || is_event_type($filterType);
+$filterMode   = $filterModeOn ? event_mode_normalize(input('event_mode')) : null;
 
 // Department scope
 $effectiveDept = $scopeDept ?? $filterDept;
@@ -210,6 +213,9 @@ if ($user['role'] === 'Coordinator' || $user['role'] === 'Admin') {
 if ($filterType !== '') {
     $records = array_values(array_filter($records, fn($r) => $r['_type_key'] === $filterType));
 }
+if ($filterMode !== null) {
+    $records = array_values(array_filter($records, fn($r) => is_event_type($r['_type_key'] ?? '') && event_mode_normalize($r['mode'] ?? '') === $filterMode));
+}
 if ($search !== '') {
     $needle = mb_strtolower($search);
     $records = array_values(array_filter($records, function ($r) use ($needle) {
@@ -218,7 +224,7 @@ if ($search !== '') {
     }));
 }
 
-$hasFilter = $filterDept || $filterType !== '' || $search !== '';
+$hasFilter = $filterDept || $filterType !== '' || $search !== '' || $filterMode !== null;
 
 // Page Titles & Breadcrumbs
 $isHod = $user['role'] === 'HoD';
@@ -232,7 +238,7 @@ $breadcrumb = $isHod ? 'Review Records' : 'Approvals';
 require __DIR__ . '/inc/header.php';
 ?>
 
-<?php $activeCount = ($filterDept ? 1 : 0) + ($filterType !== '' ? 1 : 0) + ($search !== '' ? 1 : 0); ?>
+<?php $activeCount = ($filterDept ? 1 : 0) + ($filterType !== '' ? 1 : 0) + ($search !== '' ? 1 : 0) + ($filterMode !== null ? 1 : 0); ?>
 <div class="page-head" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px">
   <div>
     <h1 style="font-size:24px; font-weight:700; color:#0F172A; margin:0 0 4px"><?= e($pageTitle) ?></h1>
@@ -738,6 +744,7 @@ require __DIR__ . '/inc/header.php';
                 <tr class="pr-row pr-st-unlocked">
                   <td>
                     <span class="pr-title" title="<?= e($ac['_title']) ?>"><?= e($ac['_title']) ?></span>
+                    <?php if (is_event_type($ac['_type_key'] ?? '')): ?><div style="margin-top:2px"><?= event_mode_badge($ac['mode'] ?? null, 'Mode: ') ?></div><?php endif; ?>
                     <div class="pr-sub" title="<?= e(($ac['faculty_name'] ?? 'Faculty') . ' · ' . ($ac['department'] ?? '')) ?>">
                       <?= e($ac['faculty_name'] ?? 'Faculty') ?><?php if (!empty($ac['department'])): ?> · <?= e($ac['department']) ?><?php endif; ?>
                     </div>
@@ -902,6 +909,17 @@ require __DIR__ . '/inc/header.php';
       </select>
     </label>
 
+    <?php if ($filterModeOn): ?>
+      <label class="fb-field" title="Online / Offline / Hybrid — shows events of that mode only"><span class="fb-k">Event Mode</span>
+        <select name="event_mode" onchange="this.form.submit()">
+          <option value="">All Modes</option>
+          <?php foreach (event_modes() as $m): ?>
+            <option value="<?= e($m) ?>" <?= $filterMode === $m ? 'selected' : '' ?>><?= e($m) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    <?php endif; ?>
+
     <label class="fb-field fb-grow fb-search"><span class="fb-k">Search</span>
       <input type="text" name="q" value="<?= e($search) ?>" placeholder="Search title, faculty or department...">
     </label>
@@ -917,7 +935,7 @@ require __DIR__ . '/inc/header.php';
       <div class="ic"><?= icon('check', 28) ?></div>
       <p style="font-size:16px; font-weight:600; color:#0F172A; margin:0 0 4px">No records found</p>
       <div class="card-sub">
-        <?= $search !== '' || $filterType !== '' || $filterDept
+        <?= $search !== '' || $filterType !== '' || $filterDept || $filterMode !== null
           ? 'Try adjusting your search or filters.'
           : ($user['role'] === 'HoD'
             ? 'No records currently in review for ' . e($scopeDept ?? 'your department') . '.'
@@ -1020,6 +1038,7 @@ require __DIR__ . '/inc/header.php';
             <tr class="pr-row pr-st-<?= e($prStKey) ?>">
               <td>
                 <a href="<?= e($prDetails) ?>" class="pr-title" title="<?= e($r['_title']) ?> — open Dual View"><?= e($r['_title']) ?></a>
+                <?php if (is_event_type($r['_type_key'] ?? '')): ?><div style="margin-top:2px"><?= event_mode_badge($r['mode'] ?? null, 'Mode: ') ?></div><?php endif; ?>
                 <?php if ($who !== ''): ?><div class="pr-sub"><?= e($who) ?> &middot; <?= e($r['department'] ?? 'N/A') ?></div><?php endif; ?>
                 <div class="pr-meta" title="<?= e(date('d M Y, h:i A', strtotime($r['created_at']))) ?>">
                   <?= icon('clock', 11) ?> <?= e(time_ago($r['created_at'])) ?>
@@ -1173,6 +1192,7 @@ require __DIR__ . '/inc/header.php';
                       <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
                         <span class="badge" style="background:#EFF6FF; color:#1D4ED8; font-weight:700; font-size:11px; border:1px solid #BFDBFE;">Approval Record Card</span>
                         <span class="badge badge-info" style="font-size:11px;"><?= e($r['_type_label']) ?></span>
+                        <?php if (is_event_type($r['_type_key'] ?? '')): ?><?= event_mode_badge($r['mode'] ?? null, 'Mode: ') ?><?php endif; ?>
                         <span class="badge badge-<?= status_class($r['status']) ?>" style="font-size:11px;"><?= e($r['status']) ?></span>
                         <h4 style="margin:0; font-size:15px; font-weight:700; color:#0F172A;"><?= e($r['_title']) ?></h4>
                       </div>
@@ -1207,6 +1227,12 @@ require __DIR__ . '/inc/header.php';
                         </div>
                         <div style="display:grid; grid-template-columns:1fr; gap:6px;">
                           <div><strong style="color:#64748B;">Title:</strong> <span style="color:#0F172A; font-weight:600;"><?= e($r['_title']) ?></span></div>
+                          <?php if (is_event_type($r['_type_key'] ?? '')): ?>
+                            <div><strong style="color:#64748B;">Event Mode:</strong> <?= event_mode_badge($r['mode'] ?? null) ?></div>
+                            <?php if (($loc = event_mode_location_text($r)) !== ''): ?>
+                              <div><strong style="color:#64748B;">Venue / Platform:</strong> <?= e($loc) ?></div>
+                            <?php endif; ?>
+                          <?php endif; ?>
                           <div><strong style="color:#64748B;">Faculty / Author:</strong> <?= e($who) ?></div>
                           <div><strong style="color:#64748B;">Department:</strong> <?= e($r['department'] ?? 'General') ?></div>
                           <div><strong style="color:#64748B;">Status:</strong> <span class="badge badge-<?= status_class($r['status']) ?>" style="font-size:10.5px"><?= e($r['status']) ?></span></div>

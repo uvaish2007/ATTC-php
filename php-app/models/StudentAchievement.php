@@ -28,27 +28,29 @@ function student_achievement_categories(): array
             'reg_col'     => 'reg_no',
             'date_col'    => 'created_at',
         ],
-        'student_achievement' => [
-            'key'         => 'student_achievement',
-            'label'       => 'Student Achievement',
-            'col_name'    => 'achievements',
-            'group'       => 'Achievements',
+        'co_curricular' => [
+            'key'         => 'co_curricular',
+            'label'       => 'Co-Curricular',
+            'col_name'    => 'co_curricular',
+            'group'       => 'Co-Curricular',
             'table'       => 'student_achievements',
             'title_col'   => 'event_name',
             'student_col' => 'student_name',
             'reg_col'     => 'reg_no',
             'date_col'    => 'event_date',
+            'where_extra' => "(r.category = 'Co-Curricular' OR r.category IS NULL OR r.category = '')",
         ],
-        'student_participation' => [
-            'key'         => 'student_participation',
-            'label'       => 'Student Participation',
-            'col_name'    => 'participation',
-            'group'       => 'Participation',
-            'table'       => 'student_participations',
+        'extra_curricular' => [
+            'key'         => 'extra_curricular',
+            'label'       => 'Extra-Curricular',
+            'col_name'    => 'extra_curricular',
+            'group'       => 'Extra-Curricular',
+            'table'       => 'student_achievements',
             'title_col'   => 'event_name',
             'student_col' => 'student_name',
             'reg_col'     => 'reg_no',
             'date_col'    => 'event_date',
+            'where_extra' => "r.category = 'Extra-Curricular'",
         ],
         'summer_training' => [
             'key'         => 'summer_training',
@@ -69,8 +71,8 @@ function student_achievement_categories(): array
             'table'       => 'nptel',
             'title_col'   => 'course_title',
             'student_col' => 'candidate_name',
-            'reg_col'     => null,
-            'where_extra' => "category = 'Student'",
+            'reg_col'     => 'reg_no',   // used once the column exists (sql/nptel_participant.sql)
+            'where_extra' => nptel_participant_sql('Student'),
             'date_col'    => 'created_at',
         ],
         'online_course' => [
@@ -122,8 +124,12 @@ function student_achievements_grid(array $currentUser, ?string $deptFilter = nul
     $nameIndex = [];
 
     foreach ($categories as $catKey => $meta) {
-        if ($catFilter && $catFilter !== $catKey && $catFilter !== $meta['group'] && $catFilter !== $meta['col_name']) {
-            continue;
+        if ($catFilter) {
+            $isMatch = ($catFilter === $catKey || $catFilter === $meta['group'] || $catFilter === $meta['col_name']);
+            if (!$isMatch && $catFilter === 'student_achievement' && in_array($catKey, ['co_curricular', 'extra_curricular'], true)) {
+                $isMatch = true;
+            }
+            if (!$isMatch) continue;
         }
 
         $table = $meta['table'];
@@ -191,21 +197,23 @@ function student_achievements_grid(array $currentUser, ?string $deptFilter = nul
 
                 if (!isset($students[$key])) {
                     $students[$key] = [
-                        'key'            => $key,
-                        'reg_no'         => ($regNo !== '' && $regNo !== '—') ? $regNo : '—',
-                        'student_name'   => $name,
-                        'department'     => $dept,
-                        'nptel'          => 0,
-                        'internships'    => 0,
-                        'placements'     => 0,
-                        'online_courses' => 0,
-                        'achievements'   => 0,
-                        'participation'  => 0,
-                        'training'       => 0,
-                        'other'          => 0,
-                        'total'          => 0,
-                        'approved_count' => 0,
-                        'pending_count'  => 0,
+                        'key'              => $key,
+                        'reg_no'           => ($regNo !== '' && $regNo !== '—') ? $regNo : '—',
+                        'student_name'     => $name,
+                        'department'       => $dept,
+                        'nptel'            => 0,
+                        'internships'      => 0,
+                        'placements'       => 0,
+                        'online_courses'   => 0,
+                        'co_curricular'    => 0,
+                        'extra_curricular' => 0,
+                        'achievements'     => 0,
+                        'participation'    => 0,
+                        'training'         => 0,
+                        'other'            => 0,
+                        'total'            => 0,
+                        'approved_count'   => 0,
+                        'pending_count'    => 0,
                     ];
                     $nameIndex[$nameKey] = $key;
                 } elseif ($students[$key]['reg_no'] === '—' && $regNo !== '' && $regNo !== '—') {
@@ -218,6 +226,9 @@ function student_achievements_grid(array $currentUser, ?string $deptFilter = nul
                     $students[$key][$colKey] += $cnt;
                 } else {
                     $students[$key]['other'] += $cnt;
+                }
+                if ($colKey === 'co_curricular' || $colKey === 'extra_curricular') {
+                    $students[$key]['achievements'] += $cnt;
                 }
                 $students[$key]['total'] += $cnt;
 
@@ -252,6 +263,8 @@ function student_achievements_summary(array $currentUser, ?string $deptFilter = 
     $categoryCounts    = [
         'Internships'              => 0,
         'Placements'               => 0,
+        'Co-Curricular'            => 0,
+        'Extra-Curricular'         => 0,
         'Student Achievements'     => 0,
         'Student Participations'   => 0,
         'Summer / Winter Training' => 0,
@@ -266,8 +279,9 @@ function student_achievements_summary(array $currentUser, ?string $deptFilter = 
         $pendingRecords    += $s['pending_count'];
         $categoryCounts['Internships']              += $s['internships'];
         $categoryCounts['Placements']               += $s['placements'];
-        $categoryCounts['Student Achievements']     += $s['achievements'];
-        $categoryCounts['Student Participations']   += $s['participation'];
+        $categoryCounts['Co-Curricular']            += $s['co_curricular'];
+        $categoryCounts['Extra-Curricular']         += $s['extra_curricular'];
+        $categoryCounts['Student Achievements']     += $s['co_curricular'] + $s['extra_curricular'];
         $categoryCounts['Summer / Winter Training'] += $s['training'];
         $categoryCounts['SWAYAM-NPTEL']             += $s['nptel'];
         $categoryCounts['Online Courses']           += $s['online_courses'];
@@ -304,28 +318,39 @@ function department_student_achievements_comparison(array $currentUser, ?string 
     $deptStmt = db()->query("SELECT name FROM departments ORDER BY name ASC");
     $departments = $deptStmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 
+    // Alias-aware, as department_achievements_comparison() is: records say "CSE"
+    // where the departments table says "Computer Science and Engineering".
     if ($effDept) {
-        $departments = array_values(array_filter($departments, fn($d) => $d === $effDept));
+        $departments = array_values(array_filter($departments, fn($d) => department_names_match($d, $effDept)));
+        if (empty($departments)) {
+            $departments = [$effDept];
+        }
     }
 
     $result = [];
     foreach ($departments as $d) {
         $result[$d] = [
-            'department'     => $d,
-            'total'          => 0,
-            'internships'    => 0,
-            'placements'     => 0,
-            'achievements'   => 0,
-            'participation'  => 0,
-            'training'       => 0,
-            'nptel'          => 0,
-            'online_courses' => 0,
+            'department'       => $d,
+            'total'            => 0,
+            'internships'      => 0,
+            'placements'       => 0,
+            'co_curricular'    => 0,
+            'extra_curricular' => 0,
+            'achievements'     => 0,
+            'participation'    => 0,
+            'training'         => 0,
+            'nptel'            => 0,
+            'online_courses'   => 0,
         ];
     }
 
     foreach ($categories as $catKey => $meta) {
-        if ($catFilter && $catFilter !== $catKey && $catFilter !== $meta['group'] && $catFilter !== $meta['col_name']) {
-            continue;
+        if ($catFilter) {
+            $isMatch = ($catFilter === $catKey || $catFilter === $meta['group'] || $catFilter === $meta['col_name']);
+            if (!$isMatch && $catFilter === 'student_achievement' && in_array($catKey, ['co_curricular', 'extra_curricular'], true)) {
+                $isMatch = true;
+            }
+            if (!$isMatch) continue;
         }
 
         $table = $meta['table'];
@@ -348,8 +373,9 @@ function department_student_achievements_comparison(array $currentUser, ?string 
             $sql .= " AND ({$meta['where_extra']})";
         }
         if ($effDept) {
-            $sql .= " AND department = ?";
-            $params[] = $effDept;
+            $deptVars = department_variants($effDept) ?: [$effDept];
+            $sql .= ' AND department IN (' . implode(',', array_fill(0, count($deptVars), '?')) . ')';
+            $params = array_merge($params, $deptVars);
         }
         if ($yearFilter && in_array('academic_year', $cols, true)) {
             $sql .= " AND academic_year = ?";
@@ -367,9 +393,20 @@ function department_student_achievements_comparison(array $currentUser, ?string 
             foreach ($rows as $r) {
                 $dName = $r['department'] ?? '';
                 $cnt = (int) $r['cnt'];
+                if (!isset($result[$dName])) {
+                    foreach (array_keys($result) as $k) {
+                        if (department_names_match($k, $dName)) {
+                            $dName = $k;
+                            break;
+                        }
+                    }
+                }
                 if (isset($result[$dName])) {
                     if (isset($result[$dName][$colKey])) {
                         $result[$dName][$colKey] += $cnt;
+                    }
+                    if ($colKey === 'co_curricular' || $colKey === 'extra_curricular') {
+                        $result[$dName]['achievements'] += $cnt;
                     }
                     $result[$dName]['total'] += $cnt;
                 }
@@ -403,8 +440,12 @@ function student_achievement_details(
     $cleanDeptHint = (!empty($deptHint) && $deptHint !== '—') ? strtolower(trim($deptHint)) : '';
 
     foreach ($categories as $catKey => $meta) {
-        if ($catFilter && $catFilter !== $catKey && $catFilter !== $meta['group'] && $catFilter !== $meta['col_name']) {
-            continue;
+        if ($catFilter) {
+            $isMatch = ($catFilter === $catKey || $catFilter === $meta['group'] || $catFilter === $meta['col_name']);
+            if (!$isMatch && $catFilter === 'student_achievement' && in_array($catKey, ['co_curricular', 'extra_curricular'], true)) {
+                $isMatch = true;
+            }
+            if (!$isMatch) continue;
         }
 
         $table = $meta['table'];
