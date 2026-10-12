@@ -203,10 +203,16 @@ require __DIR__ . '/inc/header.php';
         in this scope
       </div>
     </div>
-    <a class="btn btn-primary em-present-btn" href="<?= e($presentUrl) ?>" id="emPresentBtn"
-       onclick="return openPresentation(event);" title="Present the filtered report full screen">
-      <?= icon('play-circle', 17) ?> PRESENT
-    </a>
+    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+      <a class="btn btn-secondary em-present-btn" href="<?= e($presentUrl . '&view=analytical') ?>" id="emAnalyticalBtn"
+         onclick="return openAnalytical(event);" title="Open 56-metric analytical dashboard">
+        <?= icon('chart-bar', 16) ?> ANALYTICAL MODE (56)
+      </a>
+      <a class="btn btn-primary em-present-btn" href="<?= e($presentUrl) ?>" id="emPresentBtn"
+         onclick="return openPresentation(event);" title="Present the filtered report full screen">
+        <?= icon('play-circle', 17) ?> PRESENT (SLIDES)
+      </a>
+    </div>
   </div>
 
   <div class="card-body pt-0">
@@ -266,6 +272,38 @@ require __DIR__ . '/inc/header.php';
       </div>
     </div>
 
+    <!-- FEAT: Mandatory Slide 2 Top 3 Departments Summary Preview (Admin / Dean / Principal) -->
+    <?php if (metrics_56_is_admin_role($user['role'] ?? '')): ?>
+      <div class="ts-preview-box mt-4" style="border-left:4px solid #10B981;">
+        <div class="ts-preview-hdr" style="background:#0F172A;">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div class="ts-preview-icon" style="background:rgba(16,185,129,0.2); border:1px solid #10B981; color:#10B981; border-radius:8px; padding:6px; display:grid; place-items:center;">
+              <?= icon('award', 20) ?>
+            </div>
+            <div style="width:1.5px; height:24px; background:rgba(255,255,255,0.3);"></div>
+            <div>
+              <div style="font-size:11px; font-weight:600; color:#A7F3D0; line-height:1.2;">Mandatory 2nd Page Summary</div>
+              <div style="font-size:17px; font-weight:800; color:#FFFFFF; line-height:1.1;">Top 3 Departments per Metric (All 56 Records)</div>
+            </div>
+          </div>
+          <span class="badge" style="background:#10B981; color:#fff; font-weight:700; font-size:11px;">Presentation Slide 2 (Summary)</span>
+        </div>
+        <div style="padding:14px 18px; background:#F8FAFC; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+          <div style="font-size:12.5px; color:#334155; line-height:1.4;">
+            Top 3 ranking benchmarks are dynamically compiled across all active department submissions. Metrics with missing data are safely marked <b>Nil</b>.
+          </div>
+          <div style="display:flex; gap:8px;">
+            <a class="btn btn-secondary btn-sm" href="<?= e($presentUrl . '&view=analytical') ?>" onclick="return openAnalytical(event);">
+              <?= icon('chart-bar', 13) ?> Analytical View
+            </a>
+            <a class="btn btn-primary btn-sm" href="<?= e($presentUrl) ?>" onclick="return openPresentation(event);">
+              <?= icon('presentation', 13) ?> View Slide 2
+            </a>
+          </div>
+        </div>
+      </div>
+    <?php endif; ?>
+
     <!-- Counts feeding the deck -->
     <div class="stat-grid grid-4 mt-4">
       <div class="stat">
@@ -273,24 +311,33 @@ require __DIR__ . '/inc/header.php';
         <div class="stat-value tabular"><?= count($dataset['faculty']) ?></div>
         <div class="stat-desc">Records in scope</div>
       </div>
-      <div class="stat">
-        <div class="stat-top"><div class="stat-label">Student Records</div><div class="stat-ic navy"><?= icon('users') ?></div></div>
-        <div class="stat-value tabular"><?= count($dataset['student']) ?></div>
-        <div class="stat-desc">Achievements &amp; placements</div>
-      </div>
-      <div class="stat">
-        <div class="stat-top"><div class="stat-label">Activities</div><div class="stat-ic navy"><?= icon('calendar') ?></div></div>
-        <div class="stat-value tabular"><?= count($dataset['activity']) ?></div>
-        <div class="stat-desc">Events &amp; outreach</div>
-      </div>
-      <div class="stat">
-        <div class="stat-top"><div class="stat-label">Target Achieved</div><div class="stat-ic brand"><?= icon('target') ?></div></div>
-        <div class="stat-value tabular">
-          <?= $dataset['rollup']['percentage'] !== null ? e($dataset['rollup']['percentage']) . '%' : '—' ?>
+      <?php if (($user['role'] ?? '') !== 'Faculty'): ?>
+        <div class="stat">
+          <div class="stat-top"><div class="stat-label">Student Records</div><div class="stat-ic navy"><?= icon('users') ?></div></div>
+          <div class="stat-value tabular"><?= count($dataset['student']) ?></div>
+          <div class="stat-desc">Achievements &amp; placements</div>
         </div>
-        <div class="stat-desc">
-          <?= (int) $dataset['rollup']['achieved'] ?> of <?= (int) $dataset['rollup']['target'] ?>
+        <div class="stat">
+          <div class="stat-top"><div class="stat-label">Activities</div><div class="stat-ic navy"><?= icon('calendar') ?></div></div>
+          <div class="stat-value tabular"><?= count($dataset['activity']) ?></div>
+          <div class="stat-desc">Events &amp; outreach</div>
         </div>
+      <?php else: ?>
+        <div class="stat" style="opacity:0.65;">
+          <div class="stat-top"><div class="stat-label">Student Records</div><div class="stat-ic navy"><?= icon('lock') ?></div></div>
+          <div class="stat-value tabular">&mdash;</div>
+          <div class="stat-desc">Restricted from Faculty</div>
+        </div>
+        <div class="stat">
+          <div class="stat-top"><div class="stat-label">Faculty Role Scope</div><div class="stat-ic brand"><?= icon('user') ?></div></div>
+          <div class="stat-value tabular" style="font-size:18px;">Faculty Only</div>
+          <div class="stat-desc">Individual achievement focus</div>
+        </div>
+      <?php endif; ?>
+      <div class="stat">
+        <div class="stat-top"><div class="stat-label">All 56 Metrics</div><div class="stat-ic brand"><?= icon('target') ?></div></div>
+        <div class="stat-value tabular">56</div>
+        <div class="stat-desc">Complete Catalog Audited</div>
       </div>
     </div>
 
@@ -371,6 +418,19 @@ require __DIR__ . '/inc/header.php';
     if (!dlg || !frame || typeof dlg.showModal !== 'function') return true;   // no dialog support: follow the link
     if (evt) evt.preventDefault();
     frame.src = PRESENT_URL + (PRESENT_URL.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    dlg.showModal();
+    frame.onload = function() {
+      try { frame.contentWindow.focus(); } catch (err) {}
+    };
+    return false;
+  }
+
+  function openAnalytical(evt) {
+    const dlg = document.getElementById('presentDlg');
+    const frame = document.getElementById('presentFrame');
+    if (!dlg || !frame || typeof dlg.showModal !== 'function') return true;
+    if (evt) evt.preventDefault();
+    frame.src = PRESENT_URL + (PRESENT_URL.indexOf('?') === -1 ? '?' : '&') + 'embed=1&view=analytical';
     dlg.showModal();
     frame.onload = function() {
       try { frame.contentWindow.focus(); } catch (err) {}

@@ -74,7 +74,13 @@ if ($canPresent) {
       </div>
 
       <?php if ($canPresent): ?>
-        <div class="em-dash-actions">
+        <div class="em-dash-actions" style="display:flex; gap:8px;">
+          <a class="btn btn-secondary em-dash-present-btn" id="emDashboardAnalyticalBtn"
+             href="<?= e($dashPresentUrl . '&view=analytical') ?>"
+             onclick="return openEmDashboardPresentation(this.href, event);"
+             title="Open 56-metric analytical mode">
+            <?= icon('chart-bar', 16) ?> Analytics (56)
+          </a>
           <a class="btn btn-primary em-dash-present-btn" id="emDashboardPresentBtn"
              href="<?= e($dashPresentUrl) ?>"
              onclick="return openEmDashboardPresentation(this.href, event);"

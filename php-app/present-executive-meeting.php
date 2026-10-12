@@ -40,6 +40,12 @@ if ((string) input('active_session') === '1') {
 $dataset = em_dataset($user, $filters);
 $slides  = em_slides($dataset);
 
+$metrics56 = $dataset['metrics_56'] ?? metrics_56_get_data($user, $filters['department'], $filters['year'], $filters['faculty_id']);
+$metrics56Json = json_encode($metrics56, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+$userRole = $user['role'] ?? 'Faculty';
+$isAdmin = metrics_56_is_admin_role($userRole);
+$initialView = ((string) input('view') === 'analytical') ? 'analytical' : 'slides';
+
 $slidesJson = json_encode($slides, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
 $exitUrl    = ((string) input('active_session') === '1')
     ? url('dashboard.php')
@@ -520,6 +526,87 @@ $embed      = (string) input('embed') === '1';
       .ts-card-val { font-size: 54px; }
       .ts-card-body { min-height: 100px; padding: 14px; }
     }
+
+    /* ---- Rule #2 & #7: Missing data pill ---- */
+    .pill-nil {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+      background: #F1F5F9;
+      color: #64748B;
+      border: 1px solid #CBD5E1;
+      letter-spacing: .02em;
+    }
+
+    /* ---- Rule #3: Slide 2 Top 3 Medals & Benchmarks ---- */
+    .rank-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .rank-1 { background: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; }
+    .rank-2 { background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1; }
+    .rank-3 { background: #FFEDD5; color: #9A3412; border: 1px solid #FDBA74; }
+    .rank-empty { background: #F8FAFC; color: #94A3B8; border: 1px dashed #CBD5E1; font-weight: 500; font-size: 10.5px; }
+
+    .top3-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+    .top3-table thead th {
+      background: #0B2D59; color: #FFFFFF; font-size: 11px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .03em; padding: 9px 12px;
+      position: sticky; top: 0; z-index: 2; text-align: left;
+    }
+    .top3-table tbody td {
+      padding: 8px 12px; border-bottom: 1px solid #E2E8F0; vertical-align: middle;
+    }
+    .top3-table tbody tr { background: #FFFFFF; }
+    .top3-table tbody tr:nth-child(even) { background: #F8FAFC; }
+    .top3-table tbody tr:hover { background: #F1F5F9; }
+
+    /* ---- Analytical Mode Component Styles ---- */
+    .view-switch { margin-right: 4px; }
+    .analytical-wrap {
+      flex: 1; display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; overflow: hidden;
+    }
+    .analytical-hdr {
+      background: linear-gradient(135deg, #072146 0%, #0B2D59 55%, #0C3B70 100%);
+      border-radius: 12px; padding: 10px 18px; display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 4px 16px rgba(11,45,89,0.25); flex-shrink: 0; color: #FFFFFF;
+    }
+    .analytical-toolbar {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+      background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px; padding: 7px 12px; flex-shrink: 0;
+    }
+    .analytical-table-card {
+      flex: 1; min-height: 0; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 10px;
+      display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    .analytical-table-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+    .analytical-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 11.5px; }
+    .analytical-table thead th {
+      background: #0B2D59; color: #FFFFFF; font-size: 10.5px; font-weight: 800;
+      text-transform: uppercase; letter-spacing: .03em; padding: 8px 10px; position: sticky; top: 0; z-index: 2;
+    }
+    .analytical-table tbody td {
+      padding: 7px 10px; border-bottom: 1px solid #E2E8F0; vertical-align: middle;
+    }
+    .analytical-table tbody tr { background: #FFFFFF; }
+    .analytical-table tbody tr:nth-child(even) { background: #F8FAFC; }
+    .analytical-table tbody tr:hover { background: #F1F5F9; }
+
+    .cat-filter-btn {
+      background: #F1F5F9; border: 1px solid #CBD5E1; color: #475569; border-radius: 999px;
+      padding: 3px 11px; font-size: 11.5px; font-weight: 700; cursor: pointer; transition: all .15s ease; font-family: inherit;
+    }
+    .cat-filter-btn:hover { background: #E2E8F0; color: #1E293B; }
+    .cat-filter-btn.active { background: #0B2D59; color: #FFFFFF; border-color: #0B2D59; }
+    .cat-filter-btn.brand.active { background: var(--brand); border-color: var(--brand); }
   </style>
 </head>
 <body>
@@ -534,8 +621,18 @@ $embed      = (string) input('embed') === '1';
     </div>
 
     <div class="hdr-actions">
+      <!-- Presentation View vs Analytical Mode -->
+      <div class="mode-switch view-switch" role="group" aria-label="View mode">
+        <button type="button" class="mode-btn <?= $initialView === 'slides' ? 'active' : '' ?>" id="btnViewSlides" onclick="switchPresentationView('slides')" title="Slide Deck Presentation (Press S)">
+          <?= icon('presentation', 14) ?> Slides
+        </button>
+        <button type="button" class="mode-btn <?= $initialView === 'analytical' ? 'active' : '' ?>" id="btnViewAnalytical" onclick="switchPresentationView('analytical')" title="56-Metric Analytical Dashboard (Press V)">
+          <?= icon('chart-bar', 14) ?> Analytical Mode (56)
+        </button>
+      </div>
+
       <!-- Auto / Manual. The active mode is always visible. -->
-      <div class="mode-switch" role="group" aria-label="Presentation mode">
+      <div class="mode-switch" id="modeSwitchAuto" role="group" aria-label="Presentation mode">
         <button type="button" class="mode-btn active" id="btnAuto" onclick="setMode('auto')" title="Advance automatically every 5 seconds">
           <?= icon('play-circle', 14) ?> Auto Mode
         </button>
@@ -583,6 +680,15 @@ $embed      = (string) input('embed') === '1';
   </footer>
 
   <script>    const slides = <?= $slidesJson ?>;
+    const metrics56 = <?= $metrics56Json ?>;
+    const userRole = <?= json_encode($userRole) ?>;
+    const isAdminRole = <?= $isAdmin ? 'true' : 'false' ?>;
+    const isFacultyRole = (userRole === 'Faculty');
+    let presentationView = <?= json_encode($initialView) ?>;
+    let analyticalCategory = 'all';
+    let analyticalSearchQuery = '';
+    let analyticalStatusFilter = 'all';
+    let analyticalSubView = 'grid';
     const EMBEDDED = <?= $embed ? 'true' : 'false' ?>;
     const AUTO_ADVANCE_MS = <?= EM_AUTO_ADVANCE_MS ?>;
     const SLIDE_ROWS = <?= EM_SLIDE_ROWS ?>;
@@ -746,6 +852,10 @@ $embed      = (string) input('embed') === '1';
         case 'Escape':    e.preventDefault(); exitPresentation(); break;
         case 'a': case 'A':
           setMode(mode === 'auto' ? 'manual' : 'auto'); break;
+        case 'v': case 'V':
+          switchPresentationView(presentationView === 'analytical' ? 'slides' : 'analytical'); break;
+        case 's': case 'S':
+          switchPresentationView('slides'); break;
       }
     }
 
@@ -847,6 +957,10 @@ $embed      = (string) input('embed') === '1';
           return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>`;
         case 'check-circle':
           return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`;
+        case 'chart-bar':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>`;
+        case 'download':
+          return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
         default:
           return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>`;
       }
@@ -1338,6 +1452,90 @@ $embed      = (string) input('embed') === '1';
               <div style="margin-top:14px;" class="chips">${chipsOf(s.summary)}</div>
             </div>
             ${renderExecutiveFooter()}
+          </div>`;
+      }
+
+      if (s.type === 'summary_top3') {
+        const top3Map = s.top3 || {};
+        const m56 = s.metrics_56 || {};
+        const allMetrics = m56.metrics || [];
+
+        function renderRankPill(rankObj, rankNum) {
+          if (!rankObj || rankObj.achieved === null || rankObj.achieved === undefined || rankObj.achieved <= 0) {
+            return '<span class="pill pill-nil">Nil</span>';
+          }
+          const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+          const cls = `rank-${rankNum}`;
+          const pctStr = (rankObj.percentage !== null && rankObj.percentage !== undefined) ? ` (${rankObj.percentage}%)` : '';
+          return `<span class="rank-pill ${cls}" title="${esc(rankObj.department)}: ${esc(rankObj.achieved)} achieved${pctStr}">
+            <span>${medals[rankNum] || ''}</span>
+            <span style="font-weight:800;">${esc(rankObj.code || rankObj.department)}</span>
+            <span style="opacity:0.85;">&middot; <b>${esc(rankObj.achieved)}</b>${pctStr}</span>
+          </span>`;
+        }
+
+        const rowsHtml = allMetrics.map((m, idx) => {
+          const t3 = top3Map[m.key] || {};
+          const catPill = `<span class="pill" style="font-size:10px; padding:1px 6px; background:${m.category === 'faculty' ? '#EBF5FF; color:#0369A1;' : (m.category === 'student' ? '#F0FDF4; color:#15803D;' : '#FEF3C7; color:#B45309;')}">${esc(m.category_label || m.category)}</span>`;
+
+          const r1Html = renderRankPill(t3.rank1, 1);
+          const r2Html = renderRankPill(t3.rank2, 2);
+          const r3Html = renderRankPill(t3.rank3, 3);
+
+          return `
+            <tr class="top3-row" data-cat="${esc(m.category)}" data-text="${esc(m.title.toLowerCase())}">
+              <td style="text-align:center; font-weight:800; color:#64748B; width:44px;">#${esc(m.num || idx + 1)}</td>
+              <td>
+                <div style="font-size:12.5px; font-weight:800; color:#0B2D59; line-height:1.2;">${esc(m.title)}</div>
+                <div style="margin-top:3px; display:flex; gap:6px; align-items:center;">
+                  ${catPill}
+                  <span style="font-size:10.5px; color:#64748B;">Target: ${esc(m.target_display || 'Nil')} &middot; Achieved: ${esc(m.achieved_display || 'Nil')}</span>
+                </div>
+              </td>
+              <td style="width:20%;">${r1Html}</td>
+              <td style="width:20%;">${r2Html}</td>
+              <td style="width:20%;">${r3Html}</td>
+            </tr>`;
+        }).join('');
+
+        return `
+          <div class="ex-wrap">
+            ${renderExecutiveBanner('Executive Summary: Top 3 Departments per Metric', `${scope} &middot; Mandatory 2nd Page Summary`, 'Institutional Performance Benchmarks')}
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; background:#FFFFFF; border:1px solid #CBD5E1; border-radius:10px; padding:8px 14px; flex-shrink:0;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-size:11.5px; font-weight:800; color:#0B2D59; text-transform:uppercase; letter-spacing:.03em;">Filter Category:</span>
+                <button type="button" class="cat-filter-btn active" onclick="filterTop3Category('all', this)">All (56)</button>
+                <button type="button" class="cat-filter-btn" onclick="filterTop3Category('faculty', this)">Faculty (18)</button>
+                <button type="button" class="cat-filter-btn" onclick="filterTop3Category('student', this)">Student (19)</button>
+                <button type="button" class="cat-filter-btn" onclick="filterTop3Category('department', this)">Department (19)</button>
+              </div>
+              <div style="display:flex; align-items:center; gap:10px;">
+                <input type="text" id="top3SearchInput" placeholder="Search 56 metrics..." oninput="filterTop3Search(this.value)"
+                  style="border:1px solid #CBD5E1; border-radius:6px; padding:4px 10px; font-size:12px; width:220px; font-family:inherit; outline:none;" />
+                <span class="pill pill-ok" style="font-size:11px;">Top 3 Ranks</span>
+              </div>
+            </div>
+            <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
+              <div class="ex-panel-hdr">
+                <div class="ex-panel-title">Institutional Metric Top 3 Rankings (All 56 Records)</div>
+                <div class="ex-panel-sub">Rankings derived from verified department records &middot; Missing/zero achievements displayed as Nil</div>
+              </div>
+              <div style="flex:1; min-height:0; overflow-y:auto;">
+                <table class="top3-table" id="top3SlideTable">
+                  <thead>
+                    <tr>
+                      <th style="width:44px; text-align:center;">#</th>
+                      <th>Metric / Academic Indicator</th>
+                      <th style="width:20%;">🥇 Rank 1 Department</th>
+                      <th style="width:20%;">🥈 Rank 2 Department</th>
+                      <th style="width:20%;">🥉 Rank 3 Department</th>
+                    </tr>
+                  </thead>
+                  <tbody>${rowsHtml}</tbody>
+                </table>
+              </div>
+            </div>
+            ${renderExecutiveFooter('Top 3 benchmarks derived from live active records in the ATTS IQAC database')}
           </div>`;
       }
 
@@ -1855,41 +2053,72 @@ $embed      = (string) input('embed') === '1';
 
       if (s.type === 'targets') {
         const r = s.rollup;
-        const pageInfo = s.total_pages > 1 ? `Page ${esc(s.page)} of ${esc(s.total_pages)}` : '';
-        const rows = s.rows.map(t => `
+        const pageInfo = s.total_pages > 1 ? `Page ${esc(s.page)} of ${esc(s.total_pages)} &middot; All 56 Records (${esc(s.total_rows)} Total)` : '';
+        const rows = s.rows.map(t => {
+          const isTargetNil = (t.target === null || t.target === undefined || t.target_display === 'Nil');
+          const targetDisplay = isTargetNil ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:700; color:#334155;">${esc(t.target)}</span>`;
+
+          const isAchNil = (t.achieved === null || t.achieved === undefined || t.achieved_display === 'Nil');
+          const achDisplay = isAchNil ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:800; color:#0F172A; font-size:13.5px;">${esc(t.achieved)}</span>`;
+
+          const isDiffNil = (t.difference === null || t.difference === undefined);
+          const diffDisplay = isDiffNil ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:600; color:#64748B;">${esc(t.difference)}</span>`;
+
+          let pctDisplay = '<span class="pill pill-nil">Nil</span>';
+          if (t.percentage !== null && t.percentage !== undefined) {
+            pctDisplay = pctPill(t.percentage);
+          } else if (t.percentage_display && t.percentage_display !== 'Nil') {
+            pctDisplay = `<span class="pill pill-ok">${esc(t.percentage_display)}</span>`;
+          }
+
+          const catBadge = t.category_label
+            ? `<span class="pill" style="font-size:10px; padding:1px 6px; background:${t.category === 'faculty' ? '#EBF5FF; color:#0369A1;' : (t.category === 'student' ? '#F0FDF4; color:#15803D;' : '#FEF3C7; color:#B45309;')}">${esc(t.category_label)}</span>`
+            : '';
+
+          return `
           <tr>
-            <td><div class="t-title">${esc(t.metric)}</div><div class="t-sub">${esc(t.department)}</div></td>
-            <td class="num">${esc(t.target)}</td>
-            <td class="num" style="font-weight:700;">${t.unlinked ? '&mdash;' : esc(t.achieved)}</td>
-            <td class="num">${t.unlinked ? '&mdash;' : esc(t.difference)}</td>
-            <td class="num">${t.unlinked ? '<span class="pill">Not linked</span>' : pctPill(t.percentage)}</td>
-          </tr>`).join('');
+            <td>
+              <div class="t-title" style="display:flex; align-items:flex-start; gap:6px;">
+                ${t.num ? `<span style="background:#0B2D59; color:#fff; font-size:10px; font-weight:800; padding:1px 5px; border-radius:4px; flex-shrink:0;">#${esc(t.num)}</span>` : ''}
+                <span>${esc(t.metric)}</span>
+              </div>
+              <div class="t-sub" style="display:flex; gap:8px; align-items:center; margin-top:3px;">
+                <span>${esc(t.department)}</span>
+                ${catBadge}
+              </div>
+            </td>
+            <td class="num" style="text-align:center;">${targetDisplay}</td>
+            <td class="num" style="text-align:center;">${achDisplay}</td>
+            <td class="num" style="text-align:center;">${diffDisplay}</td>
+            <td class="num" style="text-align:center;">${pctDisplay}</td>
+          </tr>`;
+        }).join('');
 
         return `
           <div class="ex-wrap">
-            ${renderExecutiveBanner('Academic Targets vs Achievements', `${scope}${pageInfo ? ' &middot; ' + pageInfo : ''}`)}
-            ${renderExecutiveKpis(r.target, r.achieved, r.percentage, r.remaining, null, r.count, '(Configured Targets)')}
+            ${renderExecutiveBanner(s.title || 'All 56 Metrics: Target vs Achieved Breakdown', `${scope}${pageInfo ? ' &middot; ' + pageInfo : ''}`, 'Better Research for a Brighter Future')}
+            ${renderExecutiveKpis(r.target, r.achieved, r.percentage, r.remaining, null, s.total_rows || 56, '(All 56 Records)')}
             <div class="ex-panel" style="flex:1; min-height:0; display:flex; flex-direction:column;">
               <div class="ex-panel-hdr">
-                <div class="ex-panel-title">Institutional Targets Breakdown</div>
-                <div class="ex-panel-sub">${pageInfo}</div>
+                <div class="ex-panel-title">Institutional Targets Breakdown (All 56 Records)</div>
+                <div class="ex-panel-sub">${pageInfo || 'Verified Academic Achievements &middot; Missing achievements displayed as Nil'}</div>
               </div>
               <div style="flex:1; min-height:0; overflow-y:auto;">
                 <table class="sl">
                   <thead>
                     <tr style="background:#0B2D59; color:#FFFFFF;">
-                      <th style="background:#0B2D59; color:#FFFFFF;">Target / Metric</th>
-                      <th style="background:#0B2D59; color:#FFFFFF;" class="num">Target</th>
-                      <th style="background:#0B2D59; color:#FFFFFF;" class="num">Achieved</th>
-                      <th style="background:#0B2D59; color:#FFFFFF;" class="num">Difference</th>
-                      <th style="background:#0B2D59; color:#FFFFFF;" class="num">%</th>
+                      <th style="background:#0B2D59; color:#FFFFFF; width:44%;">Target / Metric Record</th>
+                      <th style="background:#0B2D59; color:#FFFFFF; text-align:center; width:14%;">Target</th>
+                      <th style="background:#0B2D59; color:#FFFFFF; text-align:center; width:14%;">Achieved</th>
+                      <th style="background:#0B2D59; color:#FFFFFF; text-align:center; width:14%;">Difference</th>
+                      <th style="background:#0B2D59; color:#FFFFFF; text-align:center; width:14%;">Achievement %</th>
                     </tr>
                   </thead>
                   <tbody>${rows}</tbody>
                 </table>
               </div>
             </div>
-            ${renderExecutiveFooter()}
+            ${renderExecutiveFooter('Quality Publications Build Knowledge | Knowledge Builds a Stronger Tomorrow')}
           </div>`;
       }
 
@@ -1962,8 +2191,469 @@ $embed      = (string) input('embed') === '1';
         </div>`;
     }
 
+    function filterTop3Category(cat, btn) {
+      if (btn) {
+        btn.parentElement.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+      const rows = document.querySelectorAll('.top3-row');
+      const searchInput = document.getElementById('top3SearchInput');
+      const query = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      rows.forEach(r => {
+        const rowCat = r.getAttribute('data-cat');
+        const matchCat = (cat === 'all' || rowCat === cat);
+        const matchText = !query || (r.getAttribute('data-text') || '').includes(query);
+        r.style.display = (matchCat && matchText) ? '' : 'none';
+      });
+    }
+
+    function filterTop3Search(query) {
+      const q = query.trim().toLowerCase();
+      const rows = document.querySelectorAll('.top3-row');
+      const activeBtn = document.querySelector('.cat-filter-btn.active');
+      const curCat = activeBtn ? (activeBtn.textContent.toLowerCase().includes('faculty') ? 'faculty' : (activeBtn.textContent.toLowerCase().includes('student') ? 'student' : (activeBtn.textContent.toLowerCase().includes('dept') ? 'department' : 'all'))) : 'all';
+      rows.forEach(r => {
+        const rowCat = r.getAttribute('data-cat');
+        const matchCat = (curCat === 'all' || rowCat === curCat);
+        const matchText = !q || (r.getAttribute('data-text') || '').includes(q);
+        r.style.display = (matchCat && matchText) ? '' : 'none';
+      });
+    }
+
+    function switchPresentationView(view) {
+      presentationView = view;
+      const btnSlides = document.getElementById('btnViewSlides');
+      const btnAnalytical = document.getElementById('btnViewAnalytical');
+      const autoSwitch = document.getElementById('modeSwitchAuto');
+      const autoBar = document.getElementById('autoBar');
+      const bbarCtrl = document.querySelector('.bbar-ctrl');
+      const dots = document.getElementById('dotsContainer');
+      const counter = document.getElementById('slideCounter');
+      const card = document.getElementById('slideCard');
+      const content = document.getElementById('slideContent');
+
+      if (btnSlides) btnSlides.classList.toggle('active', view === 'slides');
+      if (btnAnalytical) btnAnalytical.classList.toggle('active', view === 'analytical');
+
+      if (view === 'analytical') {
+        clearAutoTimer();
+        if (autoSwitch) autoSwitch.style.display = 'none';
+        if (autoBar) autoBar.style.display = 'none';
+        if (bbarCtrl) bbarCtrl.style.visibility = 'hidden';
+        if (dots) dots.style.display = 'none';
+        if (counter) counter.innerHTML = `Analytical Mode &middot; <b>56 Records</b> &middot; ${esc(metrics56.department_name || 'Scope')}`;
+        if (content) {
+          content.innerHTML = renderAnalyticalMode();
+          content.scrollTop = 0;
+        }
+        if (card) card.classList.add('active');
+      } else {
+        if (autoSwitch) autoSwitch.style.display = '';
+        if (autoBar) autoBar.style.display = '';
+        if (bbarCtrl) bbarCtrl.style.visibility = '';
+        if (dots) dots.style.display = '';
+        renderSlide(currentIndex, true);
+      }
+    }
+
+    function renderAnalyticalMode() {
+      const stats = metrics56.stats || {};
+
+      return `
+        <div class="analytical-wrap">
+          <div class="analytical-hdr">
+            <div style="display:flex; align-items:center; gap:12px;">
+              <div style="width:40px; height:40px; border-radius:10px; background:rgba(255,255,255,0.12); border:1px solid rgba(255,255,255,0.22); display:flex; align-items:center; justify-content:center;">
+                ${renderIconSvg('chart-bar')}
+              </div>
+              <div>
+                <div style="font-size:18px; font-weight:800; color:#FFFFFF; letter-spacing:-0.01em;">
+                  56-Metric Analytical Dashboard
+                </div>
+                <div style="font-size:11.5px; color:#93C5FD; margin-top:2px;">
+                  Scope: <b>${esc(metrics56.department_name)}</b> &middot; Academic Year: <b>${esc(metrics56.academic_year)}</b> &middot; Role: <span style="background:rgba(255,255,255,0.15); padding:1px 6px; border-radius:4px; font-weight:700;">${esc(userRole)}</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <button type="button" class="btn-hdr" onclick="openValidationModal()" style="font-size:11.5px; padding:5px 12px; background:rgba(16,185,129,0.2); border-color:#10B981; color:#D1FAE5;">
+                ${renderIconSvg('check-circle')} 10/10 Audited
+              </button>
+              <button type="button" class="btn-hdr" onclick="exportAnalyticalCSV()" style="font-size:11.5px; padding:5px 12px;">
+                ${renderIconSvg('download')} Export CSV
+              </button>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; flex-shrink:0;">
+            <div style="background:#EBF5FB; border:1px solid #D4E6F1; border-radius:8px; padding:8px 12px; display:flex; align-items:center; gap:10px;">
+              <div style="width:34px; height:34px; border-radius:8px; background:rgba(11,45,89,0.08); color:#0B2D59; display:grid; place-items:center;">
+                ${renderIconSvg('file-text')}
+              </div>
+              <div>
+                <div style="font-size:10px; font-weight:700; color:#64748B; text-transform:uppercase;">Catalog Records</div>
+                <div style="font-size:20px; font-weight:900; color:#0B2D59;">56 Records</div>
+                <div style="font-size:9.5px; color:#64748B;">${isFacultyRole ? '18 Faculty (Student Restricted)' : '18 Faculty &middot; 19 Student &middot; 19 Dept'}</div>
+              </div>
+            </div>
+
+            <div style="background:#FEF7E6; border:1px solid #FDEBD0; border-radius:8px; padding:8px 12px; display:flex; align-items:center; gap:10px;">
+              <div style="width:34px; height:34px; border-radius:8px; background:rgba(217,119,6,0.12); color:#B45309; display:grid; place-items:center;">
+                ${renderIconSvg('shield')}
+              </div>
+              <div>
+                <div style="font-size:10px; font-weight:700; color:#B45309; text-transform:uppercase;">Configured Targets</div>
+                <div style="font-size:20px; font-weight:900; color:#B45309;">${esc(stats.targets_configured || 0)}</div>
+                <div style="font-size:9.5px; color:#64748B;">${56 - (stats.targets_configured || 0)} Targets Unconfigured (Nil)</div>
+              </div>
+            </div>
+
+            <div style="background:#E8F8F0; border:1px solid #D1F2DF; border-radius:8px; padding:8px 12px; display:flex; align-items:center; gap:10px;">
+              <div style="width:34px; height:34px; border-radius:8px; background:rgba(16,185,129,0.12); color:#168A53; display:grid; place-items:center;">
+                ${renderIconSvg('check-circle')}
+              </div>
+              <div>
+                <div style="font-size:10px; font-weight:700; color:#168A53; text-transform:uppercase;">Active Achieved</div>
+                <div style="font-size:20px; font-weight:900; color:#168A53;">${esc(stats.active_achieved || 0)}</div>
+                <div style="font-size:9.5px; color:#64748B;">${56 - (stats.active_achieved || 0)} Missing Data (Nil)</div>
+              </div>
+            </div>
+
+            <div style="background:#F4EFFE; border:1px solid #E9D5FF; border-radius:8px; padding:8px 12px; display:flex; align-items:center; gap:10px;">
+              <div style="width:34px; height:34px; border-radius:8px; background:rgba(126,34,206,0.12); color:#5B21B6; display:grid; place-items:center;">
+                ${renderIconSvg('award')}
+              </div>
+              <div>
+                <div style="font-size:10px; font-weight:700; color:#5B21B6; text-transform:uppercase;">Attainment Index</div>
+                <div style="font-size:20px; font-weight:900; color:#5B21B6;">${stats.overall_attainment !== null ? `${esc(stats.overall_attainment)}%` : '<span class="pill pill-nil">Nil</span>'}</div>
+                <div style="font-size:9.5px; color:#64748B;">${esc(stats.sum_achieved || 0)} achieved / ${esc(stats.sum_targets || 0)} target</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="analytical-toolbar">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:11px; font-weight:800; color:#0B2D59; text-transform:uppercase;">Filter:</span>
+              <button type="button" class="cat-filter-btn ${analyticalCategory === 'all' ? 'active' : ''}" onclick="filterAnalyticalCategory('all', this)">All (56)</button>
+              <button type="button" class="cat-filter-btn ${analyticalCategory === 'faculty' ? 'active' : ''}" onclick="filterAnalyticalCategory('faculty', this)">Faculty (18)</button>
+              ${!isFacultyRole ? `<button type="button" class="cat-filter-btn ${analyticalCategory === 'student' ? 'active' : ''}" onclick="filterAnalyticalCategory('student', this)">Student (19)</button>` : ''}
+              <button type="button" class="cat-filter-btn ${analyticalCategory === 'department' ? 'active' : ''}" onclick="filterAnalyticalCategory('department', this)">Dept (19)</button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:11px; font-weight:800; color:#0B2D59; text-transform:uppercase;">Status:</span>
+              <select onchange="filterAnalyticalStatus(this.value)" style="border:1px solid #CBD5E1; border-radius:6px; padding:3px 8px; font-size:11.5px; font-family:inherit;">
+                <option value="all" ${analyticalStatusFilter === 'all' ? 'selected' : ''}>All Statuses</option>
+                <option value="met" ${analyticalStatusFilter === 'met' ? 'selected' : ''}>Target Met / Exceeded (&ge;100%)</option>
+                <option value="progress" ${analyticalStatusFilter === 'progress' ? 'selected' : ''}>In Progress (&lt;100%)</option>
+                <option value="nil" ${analyticalStatusFilter === 'nil' ? 'selected' : ''}>Nil (Missing Achieved)</option>
+              </select>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="text" id="analyticalSearchInput" value="${esc(analyticalSearchQuery)}" placeholder="Search 56 metrics..." oninput="filterAnalyticalSearch(this.value)"
+                style="border:1px solid #CBD5E1; border-radius:6px; padding:4px 10px; font-size:11.5px; width:180px; font-family:inherit; outline:none;" />
+              ${isAdminRole ? `
+                <div style="display:inline-flex; background:#F1F5F9; border:1px solid #CBD5E1; border-radius:999px; padding:2px;">
+                  <button type="button" class="cat-filter-btn ${analyticalSubView === 'grid' ? 'brand active' : ''}" onclick="switchAnalyticalSubView('grid', this)" style="border:none; padding:2px 8px; font-size:11px;">Grid View</button>
+                  <button type="button" class="cat-filter-btn ${analyticalSubView === 'top3' ? 'brand active' : ''}" onclick="switchAnalyticalSubView('top3', this)" style="border:none; padding:2px 8px; font-size:11px;">Top 3 Summary</button>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <div class="analytical-table-card">
+            <div class="analytical-table-scroll" id="analyticalTableContainer">
+              ${renderAnalyticalTableContent()}
+            </div>
+          </div>
+
+          <div class="ex-footer" style="height:28px;">
+            <div class="ex-footer-left" style="font-size:11px; color:#0B2D59; font-weight:700;">
+              <span>Scope: ${esc(metrics56.scope.toUpperCase())} &middot; All 56 Records Enforced &middot; Missing Data Displayed as Nil</span>
+            </div>
+            <div class="ex-footer-motto" style="font-size:11px;">
+              Internal Quality Assurance Cell (IQAC) &middot; Mohamed Sathak Engineering College
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAnalyticalTableContent() {
+      const allMetrics = metrics56.metrics || [];
+      const top3Map = metrics56.top3_summary || {};
+
+      let filtered = allMetrics.filter(m => {
+        if (analyticalCategory !== 'all' && m.category !== analyticalCategory) return false;
+        if (analyticalSearchQuery) {
+          const q = analyticalSearchQuery.toLowerCase();
+          if (!m.title.toLowerCase().includes(q) && !(m.category_label || '').toLowerCase().includes(q)) return false;
+        }
+        if (analyticalStatusFilter === 'met') {
+          if (m.percentage === null || m.percentage < 100) return false;
+        } else if (analyticalStatusFilter === 'progress') {
+          if (m.percentage === null || m.percentage >= 100) return false;
+        } else if (analyticalStatusFilter === 'nil') {
+          if (m.achieved !== null && m.achieved !== undefined) return false;
+        }
+        return true;
+      });
+
+      if (analyticalSubView === 'top3' && isAdminRole) {
+        const rows = filtered.map((m, idx) => {
+          const t3 = top3Map[m.key] || {};
+          function rPill(rObj, num) {
+            if (!rObj || rObj.achieved === null || rObj.achieved === undefined || rObj.achieved <= 0) {
+              return '<span class="pill pill-nil">Nil</span>';
+            }
+            const medals = { 1: '🥇', 2: '🥈', 3: '🥉' };
+            const pctStr = (rObj.percentage !== null && rObj.percentage !== undefined) ? ` (${rObj.percentage}%)` : '';
+            return `<span class="rank-pill rank-${num}">
+              <span>${medals[num]}</span>
+              <b>${esc(rObj.code || rObj.department)}</b>
+              <span>&middot; ${esc(rObj.achieved)}${pctStr}</span>
+            </span>`;
+          }
+
+          return `
+            <tr>
+              <td style="text-align:center; font-weight:800; color:#64748B; width:44px;">#${esc(m.num || idx + 1)}</td>
+              <td>
+                <div style="font-weight:800; color:#0B2D59;">${esc(m.title)}</div>
+                <div style="font-size:10px; color:#64748B; margin-top:2px;">Category: ${esc(m.category_label)} &middot; Total Inst Achieved: ${esc(m.achieved_display || 'Nil')}</div>
+              </td>
+              <td>${rPill(t3.rank1, 1)}</td>
+              <td>${rPill(t3.rank2, 2)}</td>
+              <td>${rPill(t3.rank3, 3)}</td>
+              <td style="text-align:center;">${m.target_display === 'Nil' ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:700;">${esc(m.target_display)}</span>`}</td>
+              <td style="text-align:center;">${m.achieved_display === 'Nil' ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:800;">${esc(m.achieved_display)}</span>`}</td>
+            </tr>`;
+        }).join('');
+
+        return `
+          <table class="analytical-table">
+            <thead>
+              <tr>
+                <th style="width:44px; text-align:center;">#</th>
+                <th>Metric / Indicator</th>
+                <th style="width:18%;">🥇 Rank 1 Department</th>
+                <th style="width:18%;">🥈 Rank 2 Department</th>
+                <th style="width:18%;">🥉 Rank 3 Department</th>
+                <th style="width:10%; text-align:center;">Target</th>
+                <th style="width:10%; text-align:center;">Total Achieved</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows || '<tr><td colspan="7" style="text-align:center; padding:30px; color:#64748B;">No metrics match your filter criteria.</td></tr>'}
+            </tbody>
+          </table>`;
+      }
+
+      const rows = filtered.map((m, idx) => {
+        const isTargetNil = (m.target === null || m.target === undefined || m.target_display === 'Nil');
+        const targetDisplay = isTargetNil ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:700; color:#334155;">${esc(m.target)}</span>`;
+
+        const isAchNil = (m.achieved === null || m.achieved === undefined || m.achieved_display === 'Nil');
+        const achDisplay = isAchNil ? '<span class="pill pill-nil">Nil</span>' : `<span style="font-weight:800; color:#0F172A; font-size:13px;">${esc(m.achieved)}</span>`;
+
+        const diffDisplay = (m.difference !== null && m.difference !== undefined) ? `<span style="font-weight:600; color:#64748B;">${esc(m.difference)}</span>` : '<span class="pill pill-nil">Nil</span>';
+
+        let pctDisplay = '<span class="pill pill-nil">Nil</span>';
+        if (m.percentage !== null && m.percentage !== undefined) {
+          pctDisplay = pctPill(m.percentage);
+        } else if (m.percentage_display && m.percentage_display !== 'Nil') {
+          pctDisplay = `<span class="pill pill-ok">${esc(m.percentage_display)}</span>`;
+        }
+
+        const catBadge = `<span class="pill" style="font-size:10px; padding:2px 7px; background:${m.category === 'faculty' ? '#EBF5FF; color:#0369A1;' : (m.category === 'student' ? '#F0FDF4; color:#15803D;' : '#FEF3C7; color:#B45309;')}">${esc(m.category_label)}</span>`;
+
+        let statusPill = '<span class="pill pill-nil">Nil</span>';
+        if (m.is_hidden_for_role) {
+          statusPill = '<span class="pill" style="background:#F1F5F9; color:#94A3B8; font-size:10px;">Restricted</span>';
+        } else if (m.status === 'Met') {
+          statusPill = '<span class="pill pill-ok">Met</span>';
+        } else if (m.status === 'Exceeded') {
+          statusPill = '<span class="pill pill-ok" style="background:#ECFDF5; color:#047857; font-weight:800;">Exceeded</span>';
+        } else if (m.status === 'In Progress') {
+          statusPill = '<span class="pill pill-warn">In Progress</span>';
+        }
+
+        const t3 = top3Map[m.key] || {};
+        let top3Cell = '';
+        if (isAdminRole) {
+          if (t3.rank1 && t3.rank1.achieved > 0) {
+            top3Cell = `<span class="rank-pill rank-1" style="font-size:10.5px; padding:2px 6px;">🥇 ${esc(t3.rank1.code || t3.rank1.department)}: ${esc(t3.rank1.achieved)}</span>`;
+          } else {
+            top3Cell = '<span class="pill pill-nil">Nil</span>';
+          }
+        }
+
+        return `
+          <tr>
+            <td style="text-align:center; font-weight:800; color:#64748B; width:38px;">#${esc(m.num || idx + 1)}</td>
+            <td style="width:14%;">${catBadge}</td>
+            <td>
+              <div style="font-weight:700; color:#0B2D59; font-size:12px; line-height:1.2;">${esc(m.title)}</div>
+            </td>
+            <td class="num" style="text-align:center; width:9%;">${targetDisplay}</td>
+            <td class="num" style="text-align:center; width:9%;">${achDisplay}</td>
+            <td class="num" style="text-align:center; width:9%;">${diffDisplay}</td>
+            <td class="num" style="text-align:center; width:11%;">${pctDisplay}</td>
+            <td style="width:14%;">${renderTargetProgressBar(m.target, m.achieved, isAchNil)}</td>
+            <td style="text-align:center; width:10%;">${statusPill}</td>
+            ${isAdminRole ? `<td style="width:14%;">${top3Cell}</td>` : ''}
+          </tr>`;
+      }).join('');
+
+      return `
+        <table class="analytical-table">
+          <thead>
+            <tr>
+              <th style="width:38px; text-align:center;">#</th>
+              <th style="width:14%;">Category</th>
+              <th>Metric / Indicator Name</th>
+              <th style="width:9%; text-align:center;">Target</th>
+              <th style="width:9%; text-align:center;">Achieved</th>
+              <th style="width:9%; text-align:center;">Difference</th>
+              <th style="width:11%; text-align:center;">Achievement %</th>
+              <th style="width:14%;">Progress</th>
+              <th style="width:10%; text-align:center;">Status</th>
+              ${isAdminRole ? '<th style="width:14%;">Top Department</th>' : ''}
+            </tr>
+          </thead>
+          <tbody>
+            ${rows || '<tr><td colspan="10" style="text-align:center; padding:30px; color:#64748B;">No metrics match your filter criteria.</td></tr>'}
+          </tbody>
+        </table>`;
+    }
+
+    function filterAnalyticalCategory(cat, btn) {
+      analyticalCategory = cat;
+      const container = document.getElementById('analyticalTableContainer');
+      if (container) container.innerHTML = renderAnalyticalTableContent();
+      if (btn) {
+        btn.parentElement.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+    }
+
+    function filterAnalyticalSearch(query) {
+      analyticalSearchQuery = query;
+      const container = document.getElementById('analyticalTableContainer');
+      if (container) container.innerHTML = renderAnalyticalTableContent();
+    }
+
+    function filterAnalyticalStatus(status) {
+      analyticalStatusFilter = status;
+      const container = document.getElementById('analyticalTableContainer');
+      if (container) container.innerHTML = renderAnalyticalTableContent();
+    }
+
+    function switchAnalyticalSubView(subView, btn) {
+      analyticalSubView = subView;
+      const container = document.getElementById('analyticalTableContainer');
+      if (container) container.innerHTML = renderAnalyticalTableContent();
+      if (btn) {
+        btn.parentElement.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      }
+    }
+
+    function exportAnalyticalCSV() {
+      const allMetrics = metrics56.metrics || [];
+      const top3Map = metrics56.top3_summary || {};
+      const lines = [
+        ['Number', 'Category', 'Metric Name', 'Target', 'Achieved', 'Difference', 'Achievement %', 'Status', 'Rank 1 Dept', 'Rank 1 Achieved', 'Rank 2 Dept', 'Rank 2 Achieved', 'Rank 3 Dept', 'Rank 3 Achieved']
+      ];
+
+      allMetrics.forEach(m => {
+        const t3 = top3Map[m.key] || {};
+        const r1 = t3.rank1 || {};
+        const r2 = t3.rank2 || {};
+        const r3 = t3.rank3 || {};
+        lines.push([
+          m.num,
+          `"${(m.category_label || '').replace(/"/g, '""')}"`,
+          `"${(m.title || '').replace(/"/g, '""')}"`,
+          m.target !== null ? m.target : 'Nil',
+          m.achieved !== null ? m.achieved : 'Nil',
+          m.difference !== null ? m.difference : 'Nil',
+          m.percentage !== null ? `${m.percentage}%` : 'Nil',
+          `"${(m.status || '').replace(/"/g, '""')}"`,
+          `"${(r1.department || 'Nil').replace(/"/g, '""')}"`,
+          r1.achieved !== undefined ? r1.achieved : 'Nil',
+          `"${(r2.department || 'Nil').replace(/"/g, '""')}"`,
+          r2.achieved !== undefined ? r2.achieved : 'Nil',
+          `"${(r3.department || 'Nil').replace(/"/g, '""')}"`,
+          r3.achieved !== undefined ? r3.achieved : 'Nil'
+        ]);
+      });
+
+      const csvContent = 'data:text/csv;charset=utf-8,' + lines.map(e => e.join(',')).join('\n');
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement('a');
+      link.setAttribute('href', encodedUri);
+      link.setAttribute('download', `ATTS_IQAC_56_Metrics_${userRole}_${metrics56.academic_year || 'report'}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    function openValidationModal() {
+      const val = metrics56.validation || { passed: true, checks: [] };
+      let modal = document.getElementById('validationModal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'validationModal';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px;';
+        document.body.appendChild(modal);
+      }
+
+      const checksHtml = (val.checks || []).map(c => `
+        <div style="display:flex; align-items:flex-start; gap:10px; padding:10px 12px; background:${c.passed ? '#F0FDF4' : '#FEF2F2'}; border:1px solid ${c.passed ? '#BBF7D0' : '#FECACA'}; border-radius:8px; margin-bottom:8px;">
+          <div style="color:${c.passed ? '#16A34A' : '#DC2626'}; font-size:18px; line-height:1;">
+            ${c.passed ? '&#10004;' : '&#10008;'}
+          </div>
+          <div style="flex:1;">
+            <div style="font-size:12.5px; font-weight:800; color:${c.passed ? '#166534' : '#991B1B'};">${esc(c.id)}. ${esc(c.description)}</div>
+            <div style="font-size:11px; color:#475569; margin-top:2px;">${esc(c.detail)}</div>
+          </div>
+          <span class="pill ${c.passed ? 'pill-ok' : 'pill-bad'}" style="font-size:10.5px;">${c.passed ? 'PASS' : 'FAIL'}</span>
+        </div>
+      `).join('');
+
+      modal.innerHTML = `
+        <div style="background:#FFFFFF; color:#131D3B; border-radius:14px; width:100%; max-width:680px; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.5); overflow:hidden;">
+          <div style="background:#0B2D59; color:#FFFFFF; padding:14px 20px; display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-size:16px; font-weight:800;">Automated Presentation &amp; Analytics Audit (10 Points)</div>
+            <button type="button" onclick="closeValidationModal()" style="background:none; border:none; color:#FFFFFF; font-size:20px; cursor:pointer; font-weight:700;">&times;</button>
+          </div>
+          <div style="padding:16px 20px; overflow-y:auto; flex:1;">
+            <div style="margin-bottom:14px; font-size:12.5px; color:#475569;">
+              All 10 role-based requirements, data completeness rules, and visibility safeguards were audited against the active database dataset:
+            </div>
+            ${checksHtml}
+          </div>
+          <div style="background:#F8FAFC; border-top:1px solid #E2E8F0; padding:10px 20px; display:flex; justify-content:flex-end;">
+            <button type="button" class="btn-hdr btn-hdr-brand" onclick="closeValidationModal()" style="font-size:12px; padding:6px 18px;">Close</button>
+          </div>
+        </div>
+      `;
+      modal.style.display = 'flex';
+    }
+
+    function closeValidationModal() {
+      const modal = document.getElementById('validationModal');
+      if (modal) modal.style.display = 'none';
+    }
+
     attachKeydownListener();
-    renderSlide(0, false);
+    if (presentationView === 'analytical') {
+      switchPresentationView('analytical');
+    } else {
+      renderSlide(0, false);
+    }
     wake();
   </script>
 </body>

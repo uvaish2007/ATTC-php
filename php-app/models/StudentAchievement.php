@@ -654,11 +654,16 @@ function can_user_view_student_report(array $currentUser, ?string $studentDept):
 {
     $role = $currentUser['role'] ?? '';
 
+    // Requirement: Faculty must NEVER see student achievement data
+    if ($role === 'Faculty') {
+        return false;
+    }
+
     if (in_array($role, ['Admin', 'Principal', 'Director', 'Dean'], true)) {
         return true;
     }
 
-    if (in_array($role, ['HoD', 'Coordinator', 'Faculty'], true)) {
+    if (in_array($role, ['HoD', 'Coordinator'], true)) {
         $userDept = trim((string)($currentUser['department'] ?? ''));
         if ($userDept === '') {
             return true;
