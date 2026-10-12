@@ -21,6 +21,10 @@ $years       = academic_years();
 $typeKeys    = array_keys($types);
 $activeYear  = active_academic_year();
 
+if (function_exists('inst_handle_ajax_upercent')) {
+    inst_handle_ajax_upercent($user, $activeYear);
+}
+
 if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation', 'conference'], true)) {
     if ($_GET['type'] === 'student_participation') {
         flash('info', 'The Student Participation category is no longer available in Upload Data.');
@@ -1029,6 +1033,12 @@ if ($editId > 0 && isset($types[$selectedType])) {
     // Journal / book authors and publication date back into their selects.
     if ($editRecord && in_array($selectedType, ['journal', 'book'], true)) {
         $editRecord += publication_edit_values($selectedType, $editRecord);
+    }
+    // University Pass Percentage child rows
+    if ($editRecord && $selectedType === 'inst_pass_percentage') {
+        $cStmt = db()->prepare("SELECT * FROM inst_pass_percentage_rows WHERE pass_percentage_id = ? ORDER BY sort_order ASC, id ASC");
+        $cStmt->execute([(int) $editRecord['id']]);
+        $editRecord['rows'] = $cStmt->fetchAll(PDO::FETCH_ASSOC);
     }
 }
 

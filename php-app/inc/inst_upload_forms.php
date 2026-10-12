@@ -46,74 +46,494 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
 ?>
 
 <?php if ($selectedType === 'inst_pass_percentage'): ?>
+  <?php
+    $userDept = $user['department'] ?? '';
+    $initialDept = !empty($editRecord['department']) ? $editRecord['department'] : ($userDept ?: 'CSE');
+    $currSession = $editRecord['exam_session'] ?? '';
+    $currSem = $editRecord['semester'] ?? '';
+    $existingRowsJson = !empty($editRecord['rows']) ? json_encode($editRecord['rows']) : '[]';
+  ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Programme / Course <span class="req">*</span></label><input class="input" name="programme" placeholder="e.g. B.E. CSE" required></div>
-  <div class="field"><label>Class / Year <span class="req">*</span></label><select class="select" name="class_year" required><option>I Year</option><option>II Year</option><option>III Year</option><option>IV Year</option></select></div>
-  <div class="field"><label>Semester <span class="req">*</span></label><select class="select" name="semester" required><option>Sem 1</option><option>Sem 2</option><option>Sem 3</option><option>Sem 4</option><option>Sem 5</option><option>Sem 6</option><option>Sem 7</option><option>Sem 8</option></select></div>
-  <div style="grid-column:span 2;margin-top:12px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-      <strong style="font-size:13px;">Subject-wise / Student-wise Rows</strong>
-      <button type="button" class="btn btn-outline btn-sm" onclick="instPpAddRow()"><?= icon('plus',14) ?> Add Row</button>
-    </div>
-    <div style="overflow-x:auto;">
-    <table class="data" id="instPpTable" style="min-width:860px;font-size:12px;">
-      <thead><tr>
-        <th style="width:40px">S.No</th><th>Subject Code *</th><th>Subject Name *</th>
-        <th>Reg. No</th><th>Student Name</th><th>Pass Status</th>
-        <th style="width:80px">Total *</th><th style="width:80px">Passed *</th>
-        <th style="width:70px">Pass %</th><th style="width:36px"></th>
-      </tr></thead>
-      <tbody id="instPpBody"></tbody>
-    </table>
-    </div>
-    <div id="instPpSummary" style="margin-top:10px;padding:10px 14px;background:var(--bg-subtle,#f3f4f6);border-radius:8px;font-size:12px;display:none;">
-      <span style="margin-right:16px;"><strong>Subjects:</strong> <span id="ppSumSubj">0</span></span>
-      <span style="margin-right:16px;"><strong>Total Students:</strong> <span id="ppSumTot">0</span></span>
-      <span style="margin-right:16px;"><strong>Passed:</strong> <span id="ppSumPass">0</span></span>
-      <span><strong>Overall Pass %:</strong> <span id="ppSumPct">0.00</span>%</span>
-    </div>
-    <input type="hidden" name="pass_percentage_rows" id="instPpRowsJson" value="[]">
+  <div class="field">
+    <label>Academic Year <span class="card-sub">— Locked</span></label>
+    <input class="input" id="upercentAcademicYear" name="academic_year" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
   </div>
+  <div class="field">
+    <label for="upercentExamSession">Exam Session <span class="req">*</span></label>
+    <select class="select" id="upercentExamSession" name="exam_session" required onchange="upercentOnSessionOrDeptChange()">
+      <option value="" disabled <?= empty($currSession) ? 'selected' : '' ?>>Select Exam Session</option>
+      <option value="Apr/May" <?= ($currSession === 'Apr/May' || $currSession === 'Apr-May') ? 'selected' : '' ?>>Apr/May</option>
+      <option value="Nov/Dec" <?= ($currSession === 'Nov/Dec' || $currSession === 'Nov-Dec') ? 'selected' : '' ?>>Nov/Dec</option>
+    </select>
+  </div>
+  <div class="field">
+    <label for="upercentSemester">Semester <span class="req">*</span></label>
+    <select class="select" id="upercentSemester" name="semester" required onchange="upercentOnSemesterChange()">
+      <option value="" disabled selected>Select Semester</option>
+    </select>
+  </div>
+
+  <input type="hidden" name="pass_percentage_rows" id="instPpRowsJson" value="[]">
+  <input type="hidden" name="edit_id" id="upercentEditId" value="<?= (int)($editRecord['id'] ?? 0) ?>">
+  <datalist id="upercentFacultyDatalist"></datalist>
+  <datalist id="upercentSubjectDatalist"></datalist>
+
+  <!-- Year-Wise University Results Table -->
+  <div style="grid-column:span 2; margin-top:14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+      <div>
+        <strong style="font-size:14px; color:var(--navy,#131D3B); display:inline-flex; align-items:center; gap:6px;">
+          <?= icon('award', 16) ?> Year-Wise University Results Table
+        </strong>
+        <div class="card-sub" id="upercentDeptBadge" style="font-size:12px; margin-top:2px;">
+          Displaying year-wise examination statistics and faculty assignments.
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="upercentAddSubjectRow()" style="border-color:#FF4F01; color:#FF4F01; display:inline-flex; align-items:center; gap:5px;">
+          <?= icon('plus', 13) ?> Add Subject Row
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="upercentResetDefaultRows()" title="Reset to default year rows" style="display:inline-flex; align-items:center; gap:4px; font-size:12px;">
+          <?= icon('refresh-cw', 12) ?> Reset Rows
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrap" style="overflow-x:auto; border:1px solid var(--border,#e2e8f0); border-radius:8px; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+      <table class="data" id="upercentTable" style="margin:0; width:100%; min-width:980px; font-size:12.5px;">
+        <thead>
+          <tr style="background:var(--bg-subtle, #f8fafc); border-bottom:2px solid var(--border,#e2e8f0);">
+            <th style="width:45px; text-align:center;">Order</th>
+            <th style="width:100px;">Yr <span class="req">*</span></th>
+            <th style="width:115px;">Sub Code <span class="req">*</span></th>
+            <th style="min-width:170px;">Sub Name <span class="req">*</span></th>
+            <th style="min-width:140px;">Faculty Name</th>
+            <th style="width:95px;">Faculty Dept</th>
+            <th style="width:80px; text-align:right;">Reg <span class="req">*</span></th>
+            <th style="width:80px; text-align:right;">Passed <span class="req">*</span></th>
+            <th style="width:80px; text-align:right;">Failed</th>
+            <th style="width:95px; text-align:right;">Pass %</th>
+            <th style="width:40px; text-align:center;"></th>
+          </tr>
+        </thead>
+        <tbody id="upercentTableBody">
+          <!-- Populated dynamically based on department duration -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Live Calculated Summary Cards -->
+    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; margin-top:12px;">
+      <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:8px; padding:10px 12px; text-align:center;">
+        <div style="font-size:11px; text-transform:uppercase; color:var(--ink-muted,#64748b); font-weight:600;">Total Subjects</div>
+        <div id="upercentSumSubjects" style="font-size:18px; font-weight:700; color:var(--ink,#1e293b); margin-top:2px;">0</div>
+      </div>
+      <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:8px; padding:10px 12px; text-align:center;">
+        <div style="font-size:11px; text-transform:uppercase; color:var(--ink-muted,#64748b); font-weight:600;">Registered (Reg)</div>
+        <div id="upercentSumReg" style="font-size:18px; font-weight:700; color:var(--ink,#1e293b); margin-top:2px;">0</div>
+      </div>
+      <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:8px; padding:10px 12px; text-align:center;">
+        <div style="font-size:11px; text-transform:uppercase; color:#16a34a; font-weight:600;">Passed</div>
+        <div id="upercentSumPassed" style="font-size:18px; font-weight:700; color:#16a34a; margin-top:2px;">0</div>
+      </div>
+      <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:8px; padding:10px 12px; text-align:center;">
+        <div style="font-size:11px; text-transform:uppercase; color:#dc2626; font-weight:600;">Failed</div>
+        <div id="upercentSumFailed" style="font-size:18px; font-weight:700; color:#dc2626; margin-top:2px;">0</div>
+      </div>
+      <div style="background:var(--bg-subtle, #f8fafc); border:1px solid var(--border,#e2e8f0); border-radius:8px; padding:10px 12px; text-align:center;">
+        <div style="font-size:11px; text-transform:uppercase; color:#FF4F01; font-weight:600;">Overall Pass %</div>
+        <div id="upercentSumPct" style="font-size:18px; font-weight:700; color:#FF4F01; margin-top:2px;">0.00%</div>
+      </div>
+    </div>
+  </div>
+
   <script>
-  (function(){
-    var rows=[];
-    function h(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
-    function render(){
-      var tb=document.getElementById('instPpBody');if(!tb)return;tb.innerHTML='';
-      rows.forEach(function(r,i){
-        var tr=document.createElement('tr');
-        var pct=(parseInt(r.total_members)||0)>0?(((parseInt(r.passed_members)||0)/(parseInt(r.total_members)||1))*100).toFixed(2):'0.00';
-        r.pass_percentage=pct;
-        tr.innerHTML='<td style="text-align:center;color:#888">'+(i+1)+'</td>'+
-          '<td><input class="input" style="font-size:11px;min-width:90px" value="'+h(r.subject_code)+'" oninput="ppSet('+i+',\'subject_code\',this.value)" placeholder="Code"></td>'+
-          '<td><input class="input" style="font-size:11px;min-width:130px" value="'+h(r.subject_name)+'" oninput="ppSet('+i+',\'subject_name\',this.value)" placeholder="Subject Name"></td>'+
-          '<td><input class="input" style="font-size:11px;min-width:90px" value="'+h(r.reg_no)+'" oninput="ppSet('+i+',\'reg_no\',this.value)" placeholder="Reg No"></td>'+
-          '<td><input class="input" style="font-size:11px;min-width:120px" value="'+h(r.student_name)+'" oninput="ppSet('+i+',\'student_name\',this.value)" placeholder="Name"></td>'+
-          '<td><select class="select" style="font-size:11px;" onchange="ppSet('+i+',\'pass_status\',this.value)"><option value="Pass"'+(r.pass_status==='Pass'?' selected':'')+'>Pass</option><option value="Fail"'+(r.pass_status==='Fail'?' selected':'')+'>Fail</option></select></td>'+
-          '<td><input class="input" style="font-size:11px;width:68px" type="number" min="1" value="'+h(r.total_members)+'" oninput="ppSet('+i+',\'total_members\',this.value)"></td>'+
-          '<td><input class="input" style="font-size:11px;width:68px" type="number" min="0" value="'+h(r.passed_members)+'" oninput="ppSet('+i+',\'passed_members\',this.value)"></td>'+
-          '<td style="text-align:center;font-weight:600;color:var(--primary)">'+pct+'%</td>'+
-          '<td><button type="button" class="btn btn-ghost btn-sm" style="color:var(--danger,#ef4444)" onclick="ppDel('+i+')">&#x2715;</button></td>';
-        tb.appendChild(tr);
+  (function() {
+    var initialRows = <?= $existingRowsJson ?>;
+    var currentRows = [];
+    var currentUser = {
+      name: <?= json_encode($user['name'] ?? '') ?>,
+      dept: <?= json_encode($user['department'] ?? '') ?>,
+      role: <?= json_encode($user['role'] ?? '') ?>
+    };
+
+    function isArchDept(d) {
+      if (!d) return false;
+      var s = String(d).trim().toLowerCase();
+      return (s === 'arch' || s === 'architecture' || s.indexOf('architect') !== -1);
+    }
+
+    function getSelectedDept() {
+      var dEl = document.querySelector('select[name="department"], input[name="department"]');
+      if (dEl) return dEl.value.trim();
+      return currentUser.dept || 'CSE';
+    }
+
+    function getSelectedSession() {
+      var sEl = document.getElementById('upercentExamSession');
+      return sEl ? sEl.value.trim() : '';
+    }
+
+    function getSelectedSemester() {
+      var smEl = document.getElementById('upercentSemester');
+      return smEl ? smEl.value.trim() : '';
+    }
+
+    function syncSemesterOptions(preserveVal) {
+      var dept = getSelectedDept();
+      var session = getSelectedSession();
+      var isArch = isArchDept(dept);
+      var maxSem = isArch ? 10 : 8;
+      var semSelect = document.getElementById('upercentSemester');
+      if (!semSelect) return;
+
+      var currentVal = preserveVal || semSelect.value;
+      semSelect.innerHTML = '<option value="" disabled>Select Semester</option>';
+
+      var isOddSession = (session === 'Nov/Dec' || session === 'Nov-Dec');
+      var isEvenSession = (session === 'Apr/May' || session === 'Apr-May');
+
+      var primarySems = [];
+      var alternateSems = [];
+
+      for (var s = 1; s <= maxSem; s++) {
+        var semLabel = 'Sem ' + s;
+        if (isOddSession) {
+          if (s % 2 !== 0) primarySems.push(semLabel);
+          else alternateSems.push(semLabel);
+        } else if (isEvenSession) {
+          if (s % 2 === 0) primarySems.push(semLabel);
+          else alternateSems.push(semLabel);
+        } else {
+          primarySems.push(semLabel);
+        }
+      }
+
+      if (session !== '') {
+        var grpPrimary = document.createElement('optgroup');
+        grpPrimary.label = (isOddSession ? 'Odd Semesters (' + session + ')' : 'Even Semesters (' + session + ')');
+        primarySems.forEach(function(sm) {
+          var opt = document.createElement('option');
+          opt.value = sm;
+          opt.textContent = sm;
+          grpPrimary.appendChild(opt);
+        });
+        semSelect.appendChild(grpPrimary);
+
+        if (alternateSems.length > 0) {
+          var grpAlt = document.createElement('optgroup');
+          grpAlt.label = 'Other Semesters (Supplementary)';
+          alternateSems.forEach(function(sm) {
+            var opt = document.createElement('option');
+            opt.value = sm;
+            opt.textContent = sm;
+            grpAlt.appendChild(opt);
+          });
+          semSelect.appendChild(grpAlt);
+        }
+      } else {
+        for (var s = 1; s <= maxSem; s++) {
+          var opt = document.createElement('option');
+          opt.value = 'Sem ' + s;
+          opt.textContent = 'Sem ' + s;
+          semSelect.appendChild(opt);
+        }
+      }
+
+      if (currentVal && semSelect.querySelector('option[value="' + currentVal + '"]')) {
+        semSelect.value = currentVal;
+      } else if (primarySems.length > 0) {
+        semSelect.value = primarySems[0];
+      }
+    }
+
+    function getDefaultYearRows(dept) {
+      var isArch = isArchDept(dept);
+      var years = isArch
+        ? ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
+        : ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+
+      var defaultFac = (currentUser.role === 'Faculty' && currentUser.name) ? currentUser.name : '';
+      var defaultDept = currentUser.dept || dept;
+
+      return years.map(function(yr, idx) {
+        return {
+          class_year: yr,
+          subject_code: '',
+          subject_name: '',
+          faculty_name: defaultFac,
+          faculty_dept: defaultDept,
+          total_members: '',
+          passed_members: '',
+          failed_members: 0,
+          pass_percentage: '0.00',
+          sort_order: idx + 1
+        };
       });
+    }
+
+    function h(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function renderTable() {
+      var tbody = document.getElementById('upercentTableBody');
+      if (!tbody) return;
+      tbody.innerHTML = '';
+
+      var dept = getSelectedDept();
+      var isArch = isArchDept(dept);
+      var badge = document.getElementById('upercentDeptBadge');
+      if (badge) {
+        badge.innerHTML = isArch
+          ? 'Architecture Programme: <strong>5 Academic Years</strong> enabled (1st Year to 5th Year).'
+          : 'Standard Engineering Programme: <strong>4 Academic Years</strong> enabled (1st Year to 4th Year).';
+      }
+
+      currentRows.forEach(function(row, idx) {
+        var tr = document.createElement('tr');
+        var reg = parseInt(row.total_members, 10);
+        var passed = parseInt(row.passed_members, 10);
+        var regVal = isNaN(reg) ? 0 : Math.max(0, reg);
+        var passedVal = isNaN(passed) ? 0 : Math.max(0, passed);
+
+        var failedVal = Math.max(0, regVal - passedVal);
+        row.failed_members = failedVal;
+
+        var pctVal = (regVal > 0) ? ((passedVal / regVal) * 100).toFixed(2) : '0.00';
+        row.pass_percentage = pctVal;
+
+        var isExceed = (!isNaN(reg) && !isNaN(passed) && passed > reg);
+        var inputStyle = 'font-size:12px; padding:5px 8px; width:100%;';
+        var numStyle = inputStyle + 'text-align:right;' + (isExceed ? 'border-color:#ef4444; background:#fef2f2;' : '');
+
+        var yrOptions = isArch
+          ? ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year']
+          : ['1st Year', '2nd Year', '3rd Year', '4th Year'];
+
+        var yrSelectHtml = '<select class="select" style="font-size:12px; padding:4px 6px;" onchange="upercentSet(' + idx + ',\'class_year\',this.value)">';
+        yrOptions.forEach(function(y) {
+          yrSelectHtml += '<option value="' + y + '"' + (row.class_year === y ? ' selected' : '') + '>' + y + '</option>';
+        });
+        yrSelectHtml += '</select>';
+
+        tr.innerHTML =
+          '<td style="text-align:center; color:#64748b; font-weight:600;">' + (idx + 1) + '</td>' +
+          '<td>' + yrSelectHtml + '</td>' +
+          '<td><input class="input" style="' + inputStyle + '" list="upercentSubjectDatalist" value="' + h(row.subject_code) + '" placeholder="e.g. CS101" required oninput="upercentSet(' + idx + ',\'subject_code\',this.value)"></td>' +
+          '<td><input class="input" style="' + inputStyle + '" value="' + h(row.subject_name) + '" placeholder="Subject Title" required oninput="upercentSet(' + idx + ',\'subject_name\',this.value)"></td>' +
+          '<td><input class="input" style="' + inputStyle + '" list="upercentFacultyDatalist" value="' + h(row.faculty_name) + '" placeholder="Faculty Name" oninput="upercentSet(' + idx + ',\'faculty_name\',this.value)"></td>' +
+          '<td><input class="input" style="' + inputStyle + '" value="' + h(row.faculty_dept || dept) + '" placeholder="Dept" oninput="upercentSet(' + idx + ',\'faculty_dept\',this.value)"></td>' +
+          '<td><input class="input" style="' + numStyle + '" type="number" min="0" value="' + (row.total_members !== '' && row.total_members !== null ? h(row.total_members) : '') + '" placeholder="0" required oninput="upercentSet(' + idx + ',\'total_members\',this.value)"></td>' +
+          '<td><input class="input" style="' + numStyle + '" type="number" min="0" value="' + (row.passed_members !== '' && row.passed_members !== null ? h(row.passed_members) : '') + '" placeholder="0" required oninput="upercentSet(' + idx + ',\'passed_members\',this.value)" title="' + (isExceed ? 'Passed cannot exceed Registered' : '') + '"></td>' +
+          '<td><input class="input" style="' + inputStyle + 'text-align:right; background:var(--bg-subtle,#f3f4f6); cursor:not-allowed;" type="number" readonly value="' + failedVal + '"></td>' +
+          '<td style="text-align:right; font-weight:700; color:' + (parseFloat(pctVal) >= 75 ? '#16a34a' : (parseFloat(pctVal) >= 50 ? '#d97706' : '#dc2626')) + ';">' + pctVal + '%</td>' +
+          '<td style="text-align:center;">' +
+            (currentRows.length > (isArch ? 5 : 4)
+              ? '<button type="button" class="btn btn-ghost btn-sm" style="color:#ef4444; padding:2px 6px;" onclick="upercentDeleteRow(' + idx + ')" title="Remove Row">&#x2715;</button>'
+              : '<span style="color:#cbd5e1;">—</span>') +
+          '</td>';
+
+        tbody.appendChild(tr);
+      });
+
       updateSummary();
-      var el=document.getElementById('instPpRowsJson');if(el)el.value=JSON.stringify(rows);
+      var jsonEl = document.getElementById('instPpRowsJson');
+      if (jsonEl) jsonEl.value = JSON.stringify(currentRows);
     }
-    function updateSummary(){
-      var sm=document.getElementById('instPpSummary');
-      if(rows.length===0){if(sm)sm.style.display='none';return;}
-      if(sm)sm.style.display='';
-      var t=0,p=0;rows.forEach(function(r){t+=parseInt(r.total_members)||0;p+=parseInt(r.passed_members)||0;});
-      document.getElementById('ppSumSubj').textContent=rows.length;
-      document.getElementById('ppSumTot').textContent=t;
-      document.getElementById('ppSumPass').textContent=p;
-      document.getElementById('ppSumPct').textContent=t>0?((p/t)*100).toFixed(2):'0.00';
+
+    function updateSummary() {
+      var tSubj = currentRows.length;
+      var sumReg = 0;
+      var sumPassed = 0;
+      var sumFailed = 0;
+
+      currentRows.forEach(function(r) {
+        var reg = parseInt(r.total_members, 10);
+        var passed = parseInt(r.passed_members, 10);
+        if (!isNaN(reg) && reg > 0) sumReg += reg;
+        if (!isNaN(passed) && passed > 0) sumPassed += passed;
+      });
+
+      sumFailed = Math.max(0, sumReg - sumPassed);
+      var overallPct = sumReg > 0 ? ((sumPassed / sumReg) * 100).toFixed(2) : '0.00';
+
+      var elSubj = document.getElementById('upercentSumSubjects');
+      var elReg = document.getElementById('upercentSumReg');
+      var elPassed = document.getElementById('upercentSumPassed');
+      var elFailed = document.getElementById('upercentSumFailed');
+      var elPct = document.getElementById('upercentSumPct');
+
+      if (elSubj) elSubj.textContent = tSubj;
+      if (elReg) elReg.textContent = sumReg;
+      if (elPassed) elPassed.textContent = sumPassed;
+      if (elFailed) elFailed.textContent = sumFailed;
+      if (elPct) elPct.textContent = overallPct + '%';
     }
-    window.instPpAddRow=function(){rows.push({subject_code:'',subject_name:'',reg_no:'',student_name:'',pass_status:'Pass',total_members:'',passed_members:'',pass_percentage:'0.00'});render();};
-    window.ppDel=function(i){rows.splice(i,1);render();};
-    window.ppSet=function(i,k,v){rows[i][k]=v;render();};
-    document.addEventListener('DOMContentLoaded',function(){if(rows.length===0)instPpAddRow();});
+
+    window.upercentSet = function(idx, key, val) {
+      if (currentRows[idx]) {
+        currentRows[idx][key] = val;
+        renderTable();
+      }
+    };
+
+    window.upercentDeleteRow = function(idx) {
+      if (currentRows[idx]) {
+        currentRows.splice(idx, 1);
+        renderTable();
+      }
+    };
+
+    window.upercentAddSubjectRow = function() {
+      var dept = getSelectedDept();
+      var isArch = isArchDept(dept);
+      var defaultYr = '1st Year';
+      if (currentRows.length > 0) {
+        defaultYr = currentRows[currentRows.length - 1].class_year || '1st Year';
+      }
+
+      currentRows.push({
+        class_year: defaultYr,
+        subject_code: '',
+        subject_name: '',
+        faculty_name: (currentUser.role === 'Faculty' && currentUser.name) ? currentUser.name : '',
+        faculty_dept: currentUser.dept || dept,
+        total_members: '',
+        passed_members: '',
+        failed_members: 0,
+        pass_percentage: '0.00',
+        sort_order: currentRows.length + 1
+      });
+      renderTable();
+    };
+
+    window.upercentResetDefaultRows = function() {
+      var dept = getSelectedDept();
+      currentRows = getDefaultYearRows(dept);
+      renderTable();
+    };
+
+    window.upercentOnSessionOrDeptChange = function() {
+      syncSemesterOptions();
+      upercentFetchExistingData();
+    };
+
+    window.upercentOnSemesterChange = function() {
+      upercentFetchExistingData();
+    };
+
+    function populateDatalists(facultyList, subjectList) {
+      var fDl = document.getElementById('upercentFacultyDatalist');
+      if (fDl && Array.isArray(facultyList)) {
+        fDl.innerHTML = '';
+        facultyList.forEach(function(fn) {
+          var opt = document.createElement('option');
+          opt.value = fn;
+          fDl.appendChild(opt);
+        });
+      }
+      var sDl = document.getElementById('upercentSubjectDatalist');
+      if (sDl && Array.isArray(subjectList)) {
+        sDl.innerHTML = '';
+        subjectList.forEach(function(sub) {
+          var opt = document.createElement('option');
+          opt.value = sub.subject_code;
+          opt.textContent = sub.subject_name ? (sub.subject_code + ' - ' + sub.subject_name) : sub.subject_code;
+          sDl.appendChild(opt);
+        });
+      }
+    }
+
+    function upercentFetchExistingData() {
+      var dept = getSelectedDept();
+      var session = getSelectedSession();
+      var sem = getSelectedSemester();
+      var ayEl = document.getElementById('upercentAcademicYear');
+      var ay = ayEl ? ayEl.value.trim() : '';
+
+      if (!session || !sem) return;
+
+      var params = new URLSearchParams({
+        action: 'fetch_upercent',
+        department: dept,
+        exam_session: session,
+        semester: sem,
+        academic_year: ay
+      });
+
+      fetch('/upload.php?' + params.toString(), {
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(data) {
+        if (!data || !data.success) return;
+
+        if (data.faculty || data.subjects) {
+          populateDatalists(data.faculty || [], data.subjects || []);
+        }
+
+        var editIdEl = document.getElementById('upercentEditId');
+        if (data.found && Array.isArray(data.rows) && data.rows.length > 0) {
+          currentRows = data.rows.map(function(r, idx) {
+            return {
+              class_year: r.class_year || ('Year ' + (idx + 1)),
+              subject_code: r.subject_code || '',
+              subject_name: r.subject_name || '',
+              faculty_name: r.faculty_name || '',
+              faculty_dept: r.faculty_dept || dept,
+              total_members: r.total_members !== null ? r.total_members : '',
+              passed_members: r.passed_members !== null ? r.passed_members : '',
+              failed_members: r.failed_members || 0,
+              pass_percentage: r.pass_percentage || '0.00',
+              sort_order: r.sort_order || (idx + 1)
+            };
+          });
+          if (editIdEl) editIdEl.value = data.record_id || 0;
+        } else {
+          if (editIdEl) editIdEl.value = 0;
+          currentRows = getDefaultYearRows(dept);
+        }
+        renderTable();
+      })
+      .catch(function(err) {
+        console.warn('upercent live fetch notice:', err);
+      });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      var dept = getSelectedDept();
+      syncSemesterOptions(<?= json_encode($currSem) ?>);
+
+      var deptEl = document.querySelector('select[name="department"]');
+      if (deptEl) {
+        deptEl.addEventListener('change', function() {
+          upercentOnSessionOrDeptChange();
+        });
+      }
+
+      if (Array.isArray(initialRows) && initialRows.length > 0) {
+        currentRows = initialRows.map(function(r, idx) {
+          return {
+            class_year: r.class_year || ('Year ' + (idx + 1)),
+            subject_code: r.subject_code || '',
+            subject_name: r.subject_name || '',
+            faculty_name: r.faculty_name || '',
+            faculty_dept: r.faculty_dept || dept,
+            total_members: r.total_members !== null ? r.total_members : '',
+            passed_members: r.passed_members !== null ? r.passed_members : '',
+            failed_members: r.failed_members || 0,
+            pass_percentage: r.pass_percentage || '0.00',
+            sort_order: r.sort_order || (idx + 1)
+          };
+        });
+      } else {
+        currentRows = getDefaultYearRows(dept);
+      }
+
+      renderTable();
+      upercentFetchExistingData();
+    });
   })();
   </script>
 

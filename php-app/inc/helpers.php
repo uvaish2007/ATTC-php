@@ -350,6 +350,14 @@ function department_names_match(?string $deptA, ?string $deptB): bool
     return false;
 }
 
+function is_architecture_dept(?string $dept): bool
+{
+    if ($dept === null) return false;
+    $t = strtolower(trim($dept));
+    if ($t === '' || $t === '__unassigned_dept__') return false;
+    return $t === 'arch' || $t === 'architecture' || str_contains($t, 'architect')
+        || department_names_match($dept, 'Arch') || department_names_match($dept, 'Architecture');
+}
 
 function department_variants(?string $dept): array
 {

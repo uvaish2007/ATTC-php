@@ -2878,6 +2878,17 @@ function record_display_attributes(string $type, array $record): array
         $pubAuthors = publication_authors_for($type, [(int) ($record['id'] ?? 0)])[(int) ($record['id'] ?? 0)] ?? [];
     }
 
+    if ($type === 'inst_pass_percentage') {
+        $ignoreCols[] = 'class_year';
+        $ignoreCols[] = 'programme';
+        $knownLabels['exam_session'] = 'Exam Session';
+        $knownLabels['semester'] = 'Semester';
+        $knownLabels['total_subjects'] = 'Total Subjects';
+        $knownLabels['total_students'] = 'Registered (Total Students)';
+        $knownLabels['total_passed'] = 'Passed Students';
+        $knownLabels['overall_pass_percentage'] = 'Overall Pass %';
+    }
+
     $attributes = [];
     foreach ($record as $k => $v) {
         if (in_array($k, $ignoreCols, true)) {

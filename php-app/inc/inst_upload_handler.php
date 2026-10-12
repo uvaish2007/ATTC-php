@@ -11,7 +11,104 @@
  *   $user, $types, $activeYear, $departments, $type (POST), $nav
  */
 
+require_once __DIR__ . '/compression.php';
+
+function inst_redirect(string $path): void
+{
+    if (PHP_SAPI === 'cli' && defined('TEST_MODE')) {
+        return;
+    }
+    redirect($path);
+}
+
 if (!function_exists('inst_handle_post')) {
+
+/**
+ * Live AJAX Data Fetching for University Pass Percentage (ATTS-UPERCENT)
+ */
+function inst_handle_ajax_upercent(array $user, string $activeYear): void
+{
+    $action = input('action');
+    if ($action !== 'fetch_upercent') {
+        return;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
+
+    // Resolve dept based on permissions
+    $requestedDept = trim((string) input('department', ''));
+    if (in_array($user['role'], ['Faculty', 'Coordinator'], true) && !empty($user['department'])) {
+        $dept = $user['department'];
+    } else {
+        $dept = $requestedDept ?: ($user['department'] ?? 'CSE');
+    }
+
+    $ay = trim((string) input('academic_year', $activeYear)) ?: $activeYear;
+    $rawSession = trim((string) input('exam_session', ''));
+    $sessionNorm = in_array($rawSession, ['Apr/May', 'Apr-May'], true) ? 'Apr/May' : (in_array($rawSession, ['Nov/Dec', 'Nov-Dec'], true) ? 'Nov/Dec' : $rawSession);
+    $semester = trim((string) input('semester', ''));
+
+    $pdo = db();
+    $isArch = is_architecture_dept($dept);
+    $maxYears = $isArch ? 5 : 4;
+    $maxSemesters = $isArch ? 10 : 8;
+
+    // Fetch existing parent record if combination exists
+    $existingRecord = null;
+    $childRows = [];
+    if ($dept !== '' && $ay !== '' && $sessionNorm !== '' && $semester !== '') {
+        $stmt = $pdo->prepare("SELECT * FROM inst_pass_percentage WHERE department = ? AND academic_year = ? AND exam_session = ? AND semester = ? ORDER BY id DESC LIMIT 1");
+        $stmt->execute([$dept, $ay, $sessionNorm, $semester]);
+        $existingRecord = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($existingRecord) {
+            $cStmt = $pdo->prepare("SELECT * FROM inst_pass_percentage_rows WHERE pass_percentage_id = ? ORDER BY sort_order ASC, id ASC");
+            $cStmt->execute([(int) $existingRecord['id']]);
+            $childRows = $cStmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+    }
+
+    // Fetch department faculty list
+    $facultyList = [];
+    try {
+        $fStmt = $pdo->prepare("SELECT name, department FROM users WHERE role IN ('Faculty', 'HoD', 'Coordinator') AND (department = ? OR department IS NOT NULL) AND status = 'Active' ORDER BY name ASC");
+        $fStmt->execute([$dept]);
+        $allFac = $fStmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($allFac as $f) {
+            if (department_names_match($f['department'] ?? '', $dept)) {
+                $facultyList[] = $f['name'];
+            }
+        }
+        $facultyList = array_values(array_unique($facultyList));
+    } catch (\Throwable $e) {}
+
+    // Fetch known department subjects for datalist
+    $knownSubjects = [];
+    try {
+        $sStmt = $pdo->prepare("SELECT DISTINCT subject_code, subject_name FROM inst_pass_percentage_rows r JOIN inst_pass_percentage p ON r.pass_percentage_id = p.id WHERE p.department = ? ORDER BY subject_code ASC LIMIT 100");
+        $sStmt->execute([$dept]);
+        $knownSubjects = $sStmt->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {}
+
+    echo json_encode([
+        'success'           => true,
+        'found'             => !empty($existingRecord),
+        'record_id'         => $existingRecord ? (int) $existingRecord['id'] : 0,
+        'status'            => $existingRecord['status'] ?? 'Draft',
+        'overall_pct'       => $existingRecord['overall_pass_percentage'] ?? '0.00',
+        'proof_file'        => $existingRecord['proof_file'] ?? '',
+        'rows'              => $childRows,
+        'department'        => $dept,
+        'is_arch'           => $isArch,
+        'max_years'         => $maxYears,
+        'max_semesters'     => $maxSemesters,
+        'faculty'           => $facultyList,
+        'subjects'          => $knownSubjects,
+        'current_user_name' => $user['name'] ?? '',
+        'current_user_dept' => $user['department'] ?? $dept,
+    ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    exit;
+}
 
 /**
  * Validate and save an institutional record.
@@ -228,136 +325,263 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// inst_pass_percentage: multi-row handler
+// inst_pass_percentage: multi-row handler (ATTS-UPERCENT)
 // ─────────────────────────────────────────────────────────────────────────────
 function inst_handle_pass_percentage(array $user, string $activeYear, \PDO $pdo, string $nav): bool
 {
     $type = 'inst_pass_percentage';
 
-    // Force dept for Faculty
-    if ($user['role'] === 'Faculty' && !empty($user['department'])) {
+    // Role-based Department Authorization:
+    // Faculty and Coordinator are strictly locked to their authorized department.
+    if (in_array($user['role'], ['Faculty', 'Coordinator'], true) && !empty($user['department'])) {
+        $submittedDept = trim((string) ($_POST['department'] ?? ''));
+        if ($submittedDept !== '' && !department_names_match($submittedDept, $user['department'])) {
+            flash('error', 'You are not authorized to submit data for this department.');
+            inst_redirect('/upload.php?type=' . $type);
+            return false;
+        }
         $_POST['department'] = $user['department'];
     }
 
-    $programme = trim((string) ($_POST['programme'] ?? ''));
-    $classYear = trim((string) ($_POST['class_year'] ?? ''));
-    $semester  = trim((string) ($_POST['semester'] ?? ''));
-    $dept      = trim((string) ($_POST['department'] ?? ''));
-    $errors    = [];
+    $dept = trim((string) ($_POST['department'] ?? ''));
+    if ($dept === '') {
+        flash('error', 'Department is required.');
+        inst_redirect('/upload.php?type=' . $type);
+        return false;
+    }
 
-    if ($dept === '')      $errors[] = 'Department is required.';
-    if ($programme === '') $errors[] = 'Programme / Course is required.';
-    if ($classYear === '') $errors[] = 'Class / Year is required.';
-    if ($semester === '')  $errors[] = 'Semester is required.';
+    $errors = [];
 
-    // Rows come from JSON-encoded hidden field
+    // Department-Specific Duration & Architecture rules:
+    // Architecture has 5 academic years and semesters 1–10.
+    // All other departments have 4 academic years and semesters 1–8.
+    $isArch = is_architecture_dept($dept);
+    $maxYears = $isArch ? 5 : 4;
+    $maxSemesters = $isArch ? 10 : 8;
+
+    // Examination Session Dropdown: exactly Apr/May or Nov/Dec
+    $rawSession = trim((string) ($_POST['exam_session'] ?? ''));
+    $sessionNorm = null;
+    if (in_array($rawSession, ['Apr/May', 'Apr-May'], true)) {
+        $sessionNorm = 'Apr/May';
+    } elseif (in_array($rawSession, ['Nov/Dec', 'Nov-Dec'], true)) {
+        $sessionNorm = 'Nov/Dec';
+    }
+    if ($sessionNorm === null) {
+        $errors[] = 'Exam Session is required: choose Apr/May or Nov/Dec.';
+    }
+
+    // Academic Year
+    $ay = trim((string) ($_POST['academic_year'] ?? $activeYear)) ?: $activeYear;
+
+    // Semester validation
+    $semester = trim((string) ($_POST['semester'] ?? ''));
+    if ($semester === '') {
+        $errors[] = 'Semester is required.';
+    } else {
+        preg_match('/(\d+)/', $semester, $sm);
+        $semNum = (int) ($sm[1] ?? 0);
+        if ($semNum < 1 || $semNum > $maxSemesters) {
+            $errors[] = "Invalid semester for {$dept}. Architecture supports semesters 1–10; other departments support semesters 1–8.";
+        }
+    }
+
+    // Decode Rows (Year-Wise University Results Table)
     $rowsJson = trim((string) ($_POST['pass_percentage_rows'] ?? '[]'));
-    $rows = [];
+    $rawRows = [];
     try {
         $decoded = json_decode($rowsJson, true, 10, JSON_THROW_ON_ERROR);
-        if (is_array($decoded)) $rows = $decoded;
+        if (is_array($decoded)) $rawRows = $decoded;
     } catch (\Throwable $e) {
-        $errors[] = 'Row data is malformed. Please add rows again.';
+        $errors[] = 'Row data is malformed. Please verify the table entries.';
     }
 
-    if (empty($rows)) {
-        $errors[] = 'At least one subject row is required.';
+    if (empty($rawRows)) {
+        $errors[] = 'At least one year result row is required.';
     }
 
-    // Validate & calculate each row
     $validRows = [];
-    foreach ($rows as $i => $row) {
-        $sno      = $i + 1;
-        $subjCode = trim((string) ($row['subject_code'] ?? ''));
-        $subjName = trim((string) ($row['subject_name'] ?? ''));
-        $total    = (int) ($row['total_members'] ?? 0);
-        $passed   = (int) ($row['passed_members'] ?? 0);
-        if ($subjCode === '') { $errors[] = "Row {$sno}: Subject Code required."; continue; }
-        if ($subjName === '') { $errors[] = "Row {$sno}: Subject Name required."; continue; }
-        if ($total < 1) { $errors[] = "Row {$sno}: Total Members must be ≥ 1."; continue; }
-        if ($passed < 0 || $passed > $total) { $errors[] = "Row {$sno}: Passed Members must be 0–{$total}."; continue; }
-        $pct = round(($passed / $total) * 100, 2);
+    foreach ($rawRows as $i => $row) {
+        $sno = $i + 1;
+        $yr = trim((string) ($row['class_year'] ?? $row['yr'] ?? ''));
+        if ($yr === '') {
+            $yr = ($i === 4 ? '5th Year' : (($i + 1) . (['st', 'nd', 'rd', 'th'][$i] ?? 'th') . ' Year'));
+        }
+
+        // Architecture check: 5th Year only allowed for Architecture
+        if (!$isArch && (str_contains(strtolower($yr), '5') || str_contains(strtolower($yr), 'v year'))) {
+            $errors[] = "Row {$sno} ({$yr}): 5th Year is only applicable for Architecture department.";
+            continue;
+        }
+
+        $subCode = trim((string) ($row['subject_code'] ?? ''));
+        $subName = trim((string) ($row['subject_name'] ?? ''));
+        $facName = trim((string) ($row['faculty_name'] ?? ''));
+        $facDept = trim((string) ($row['faculty_dept'] ?? $dept));
+
+        if ($subCode === '') {
+            $errors[] = "Row {$sno} ({$yr}): Subject Code is required.";
+        }
+        if ($subName === '') {
+            $errors[] = "Row {$sno} ({$yr}): Subject Name is required.";
+        }
+
+        // Numeric Registered count validation
+        $rawTotal = $row['total_members'] ?? $row['reg'] ?? null;
+        $total = 0;
+        if ($rawTotal === null || $rawTotal === '' || !is_numeric($rawTotal)) {
+            $errors[] = "Row {$sno} ({$yr}): Registered count must be a non-negative integer.";
+        } else {
+            $total = (int) $rawTotal;
+            if ($total < 0) {
+                $errors[] = "Row {$sno} ({$yr}): Registered count must be a non-negative integer.";
+            }
+        }
+
+        // Numeric Passed count validation
+        $rawPassed = $row['passed_members'] ?? $row['passed'] ?? null;
+        $passed = 0;
+        if ($rawPassed === null || $rawPassed === '' || !is_numeric($rawPassed)) {
+            $errors[] = "Row {$sno} ({$yr}): Passed count must be a non-negative integer.";
+        } else {
+            $passed = (int) $rawPassed;
+            if ($passed < 0) {
+                $errors[] = "Row {$sno} ({$yr}): Passed count must be a non-negative integer.";
+            }
+        }
+
+        // Passed cannot exceed Registered
+        if ($total >= 0 && $passed >= 0 && $passed > $total) {
+            $errors[] = "Row {$sno} ({$yr}): Passed count ({$passed}) cannot exceed registered count ({$total}).";
+        }
+
+        // Automatic Calculation: Failed = Registered - Passed (never negative)
+        $failed = ($total >= 0 && $passed >= 0) ? max(0, $total - $passed) : 0;
+
+        // Automatic Calculation: Pass Percentage = (Passed / Registered) * 100
+        $pct = ($total > 0 && $passed >= 0) ? round(($passed / $total) * 100, 2) : 0.00;
+
         $validRows[] = [
-            'class_year'     => $classYear,
-            'semester'       => $semester,
-            'subject_code'   => $subjCode,
-            'subject_name'   => $subjName,
-            'reg_no'         => trim((string) ($row['reg_no'] ?? '')),
-            'student_name'   => trim((string) ($row['student_name'] ?? '')),
-            'pass_status'    => trim((string) ($row['pass_status'] ?? 'Pass')),
-            'total_members'  => $total,
-            'passed_members' => $passed,
-            'pass_percentage'=> $pct,
-            'sort_order'     => $i,
+            'class_year'      => $yr,
+            'semester'        => $semester,
+            'subject_code'    => $subCode,
+            'subject_name'    => $subName,
+            'faculty_name'    => $facName,
+            'faculty_dept'    => $facDept,
+            'total_members'   => max(0, $total),
+            'passed_members'  => max(0, $passed),
+            'failed_members'  => $failed,
+            'pass_percentage' => $pct,
+            'sort_order'      => $sno,
         ];
     }
 
+    // Optional proof attachment
     [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, false);
-    if ($proofError) $errors[] = $proofError;
+    if ($proofError) {
+        $errors[] = $proofError;
+    }
 
     if (!empty($errors)) {
         flash('error', implode('<br>', $errors));
-        redirect('/upload.php?type=' . $type);
+        inst_redirect('/upload.php?type=' . $type);
+        return false;
     }
 
-    // Summary
+    // Summary calculations
     $totalSubjects = count($validRows);
-    $totalStudents = $totalPassed = 0;
-    foreach ($validRows as $r) {
-        $totalStudents += $r['total_members'];
-        $totalPassed   += $r['passed_members'];
-    }
-    $overallPct = $totalStudents > 0 ? round(($totalPassed / $totalStudents) * 100, 2) : 0;
+    $totalStudents = array_sum(array_column($validRows, 'total_members'));
+    $totalPassed   = array_sum(array_column($validRows, 'passed_members'));
+    $overallPct    = $totalStudents > 0 ? round(($totalPassed / $totalStudents) * 100, 2) : 0.00;
+    $programmeLabel = $dept . ' - ' . $semester . ' (' . $sessionNorm . ')';
 
     try {
         $pdo->beginTransaction();
 
-        // Parent row
-        $parentSql = "INSERT INTO inst_pass_percentage
-            (academic_year, department, programme, class_year, semester,
-             total_subjects, total_students, total_passed, overall_pass_percentage,
-             proof_file, status, created_by, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', ?, NOW())";
-        $pdo->prepare($parentSql)->execute([
-            $activeYear, $dept, $programme, $classYear, $semester,
-            $totalSubjects, $totalStudents, $totalPassed, $overallPct,
-            $proofStored, (int) $user['id'],
-        ]);
-        $parentId = (int) $pdo->lastInsertId();
+        // Check if an existing record is being edited or already exists for this unique combination
+        $editId = (int) input('edit_id');
+        if ($editId <= 0) {
+            $chkStmt = $pdo->prepare("SELECT id, proof_file FROM inst_pass_percentage WHERE department = ? AND academic_year = ? AND exam_session = ? AND semester = ? LIMIT 1");
+            $chkStmt->execute([$dept, $ay, $sessionNorm, $semester]);
+            $existing = $chkStmt->fetch(PDO::FETCH_ASSOC);
+            if ($existing) {
+                $editId = (int) $existing['id'];
+                if (!$proofStored && !empty($existing['proof_file'])) {
+                    $proofStored = $existing['proof_file'];
+                }
+            }
+        }
 
-        // Child rows
+        if ($editId > 0) {
+            // Update parent row
+            $updateSql = "UPDATE inst_pass_percentage SET
+                academic_year = ?, department = ?, programme = ?, semester = ?, exam_session = ?,
+                total_subjects = ?, total_students = ?, total_passed = ?, overall_pass_percentage = ?,
+                proof_file = COALESCE(?, proof_file), status = 'Submitted', updated_at = NOW()
+                WHERE id = ?";
+            $pdo->prepare($updateSql)->execute([
+                $ay, $dept, $programmeLabel, $semester, $sessionNorm,
+                $totalSubjects, $totalStudents, $totalPassed, $overallPct,
+                $proofStored, $editId,
+            ]);
+            $parentId = $editId;
+
+            // Delete old child rows
+            $pdo->prepare("DELETE FROM inst_pass_percentage_rows WHERE pass_percentage_id = ?")->execute([$parentId]);
+        } else {
+            // Insert parent row
+            $parentSql = "INSERT INTO inst_pass_percentage
+                (academic_year, department, programme, class_year, semester, exam_session,
+                 total_subjects, total_students, total_passed, overall_pass_percentage,
+                 proof_file, status, created_by, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Submitted', ?, NOW())";
+            $pdo->prepare($parentSql)->execute([
+                $ay, $dept, $programmeLabel, 'All Years', $semester, $sessionNorm,
+                $totalSubjects, $totalStudents, $totalPassed, $overallPct,
+                $proofStored, (int) $user['id'],
+            ]);
+            $parentId = (int) $pdo->lastInsertId();
+        }
+
+        // Insert Child Rows
         $childSql = "INSERT INTO inst_pass_percentage_rows
             (pass_percentage_id, class_year, semester, subject_code, subject_name,
-             reg_no, student_name, pass_status, total_members, passed_members, pass_percentage, sort_order)
+             faculty_name, faculty_dept, total_members, passed_members, failed_members, pass_percentage, sort_order)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         $childStmt = $pdo->prepare($childSql);
         foreach ($validRows as $r) {
             $childStmt->execute([
                 $parentId,
                 $r['class_year'], $r['semester'], $r['subject_code'], $r['subject_name'],
-                $r['reg_no'], $r['student_name'], $r['pass_status'],
-                $r['total_members'], $r['passed_members'], $r['pass_percentage'], $r['sort_order'],
+                $r['faculty_name'], $r['faculty_dept'],
+                $r['total_members'], $r['passed_members'], $r['failed_members'], $r['pass_percentage'],
+                $r['sort_order'],
             ]);
         }
 
         $pdo->commit();
 
         if (function_exists('record_workflow_audit')) {
-            record_workflow_audit($type, $parentId, 'FACULTY_SUBMITTED', $user, null, 'Submitted',
-                'University Pass Percentage submitted', null, $dept, $activeYear);
+            $action = $editId > 0 ? 'FACULTY_UPDATED' : 'FACULTY_SUBMITTED';
+            record_workflow_audit($type, $parentId, $action, $user, null, 'Submitted',
+                "University Pass Percentage submitted for {$dept} {$semester} ({$sessionNorm})", null, $dept, $ay);
         }
 
-        flash('success', 'University Pass Percentage submitted — ' . $totalSubjects . ' subject rows saved.');
+        flash('success', "University Pass Percentage submitted successfully — {$totalSubjects} year rows saved (Overall Pass %: {$overallPct}%).");
         $_SESSION['submitted_draft_type'] = $type;
+        inst_redirect('/upload.php?type=' . $type);
+        return true;
     } catch (\PDOException $e) {
         $pdo->rollBack();
         if ($proofStored) @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
         error_log('inst_pass_percentage insert failed: ' . $e->getMessage());
         flash('error', 'Save failed: ' . (defined('APP_DEBUG') && APP_DEBUG ? $e->getMessage() : 'database error.'));
-        redirect('/upload.php?type=' . $type);
+        inst_redirect('/upload.php?type=' . $type);
+        return false;
     }
 
-    redirect('/upload.php?type=' . $type);
+    inst_redirect('/upload.php?type=' . $type);
+    return true;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ const MIGRATION_FILES = [
     'journal_authors.sql',
     'book_authors.sql',
     'bulk_import.sql',
+    'upercent_redesign.sql',
 ];
 
 const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (

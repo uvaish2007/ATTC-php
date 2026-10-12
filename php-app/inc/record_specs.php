@@ -328,8 +328,8 @@ function record_report_specs(): array
             'columns' => [
                 ['S.No', '#'],
                 ['Dept', 'department'],
-                ['Programme', 'programme'],
-                ['Class / Year', 'class_year'],
+                ['Academic Year', 'academic_year'],
+                ['Exam Session', 'exam_session'],
                 ['Semester', 'semester'],
                 ['Total Subjects', 'total_subjects'],
                 ['Total Students', 'total_students'],

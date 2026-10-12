@@ -226,6 +226,55 @@ require __DIR__ . '/inc/header.php';
         </div>
       </div>
 
+      <?php if ($type === 'inst_pass_percentage'): ?>
+        <?php
+          $ippRows = db()->prepare("SELECT * FROM inst_pass_percentage_rows WHERE pass_percentage_id = ? ORDER BY sort_order ASC, id ASC");
+          $ippRows->execute([(int) $record['id']]);
+          $passRows = $ippRows->fetchAll(PDO::FETCH_ASSOC);
+        ?>
+        <?php if (!empty($passRows)): ?>
+          <div class="card" style="padding:16px 18px; border:1px solid #E2E8F0; border-radius:10px; background:#fff; margin-top:14px;">
+            <div style="font-size:14px; font-weight:700; color:#0F172A; margin-bottom:10px; display:flex; align-items:center; gap:6px;">
+              <?= icon('award', 15) ?> Year-Wise Subject Pass Results
+            </div>
+            <div style="overflow-x:auto;">
+              <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                <thead>
+                  <tr style="background:#F8FAFC; border-bottom:2px solid #E2E8F0; text-align:left;">
+                    <th style="padding:8px 10px; width:45px; text-align:center;">#</th>
+                    <th style="padding:8px 10px;">Yr</th>
+                    <th style="padding:8px 10px;">Sub Code</th>
+                    <th style="padding:8px 10px;">Sub Name</th>
+                    <th style="padding:8px 10px;">Faculty Name</th>
+                    <th style="padding:8px 10px;">Dept</th>
+                    <th style="padding:8px 10px; text-align:right;">Reg</th>
+                    <th style="padding:8px 10px; text-align:right;">Passed</th>
+                    <th style="padding:8px 10px; text-align:right;">Failed</th>
+                    <th style="padding:8px 10px; text-align:right;">Pass %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <?php foreach ($passRows as $pIdx => $pr): ?>
+                    <tr style="border-bottom:1px solid #F1F5F9; <?= $pIdx % 2 === 1 ? 'background:#FAFAFC;' : '' ?>">
+                      <td style="padding:8px 10px; text-align:center; color:#64748B; font-weight:600;"><?= $pIdx + 1 ?></td>
+                      <td style="padding:8px 10px; font-weight:600; color:#0F172A;"><?= e($pr['class_year']) ?></td>
+                      <td style="padding:8px 10px; font-family:monospace;"><?= e($pr['subject_code']) ?></td>
+                      <td style="padding:8px 10px;"><?= e($pr['subject_name']) ?></td>
+                      <td style="padding:8px 10px;"><?= e($pr['faculty_name'] ?: '—') ?></td>
+                      <td style="padding:8px 10px;"><?= e($pr['faculty_dept'] ?: '—') ?></td>
+                      <td style="padding:8px 10px; text-align:right; font-weight:600;"><?= (int) $pr['total_members'] ?></td>
+                      <td style="padding:8px 10px; text-align:right; font-weight:600; color:#16A34A;"><?= (int) $pr['passed_members'] ?></td>
+                      <td style="padding:8px 10px; text-align:right; font-weight:600; color:#DC2626;"><?= (int) ($pr['failed_members'] ?? max(0, $pr['total_members'] - $pr['passed_members'])) ?></td>
+                      <td style="padding:8px 10px; text-align:right; font-weight:700; color:#FF4F01;"><?= e($pr['pass_percentage']) ?>%</td>
+                    </tr>
+                  <?php endforeach; ?>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        <?php endif; ?>
+      <?php endif; ?>
+
       <!-- Card 2: Governance & Verification History -->
       <div class="card" style="padding:16px 18px; border:1px solid #E2E8F0; border-radius:10px; background:#fff;">
         <div style="font-size:14px; font-weight:700; color:#0F172A; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
