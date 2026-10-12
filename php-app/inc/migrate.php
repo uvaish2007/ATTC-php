@@ -30,6 +30,7 @@ const MIGRATION_FILES = [
     'event_mode.sql',
     'journal_authors.sql',
     'book_authors.sql',
+    'bulk_import.sql',
 ];
 
 const MIGRATIONS_DDL = "CREATE TABLE IF NOT EXISTS schema_migrations (

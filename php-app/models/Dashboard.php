@@ -10,6 +10,7 @@ function all_metrics(): array
     // NPTEL is one table split by participant: faculty certificates count as
     // faculty contributions, student certificates as student records.
     $nptelYear = in_array('academic_year', target_record_table_columns('nptel'), true);
+    $internshipsYear = in_array('academic_year', target_record_table_columns('internships'), true);
 
     return [
         'journals'        => ['label' => 'Journals',        'table' => 'journal_publications',    'group' => 'faculty',  'year' => true],
@@ -24,7 +25,7 @@ function all_metrics(): array
         'nss'             => ['label' => 'NSS/YRC/RRC',      'table' => 'nss',                     'group' => 'activity', 'year' => true],
         'value_added'     => ['label' => 'Value Added',     'table' => 'value_added_courses',     'group' => 'activity', 'year' => true],
         'training'        => ['label' => 'Training',        'table' => 'training',                'group' => 'activity', 'year' => true],
-        'internships'     => ['label' => 'Internships',     'table' => 'internships',             'group' => 'student',  'year' => false],
+        'internships'     => ['label' => 'Internships',     'table' => 'internships',             'group' => 'student',  'year' => $internshipsYear],
         'placements'      => ['label' => 'Placements',      'table' => 'placements',              'group' => 'student',  'year' => false],
         'summer_training' => ['label' => 'Summer Training', 'table' => 'summer_training',         'group' => 'student',  'year' => true],
         'achievements'    => ['label' => 'Achievements',    'table' => 'student_achievements',    'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],

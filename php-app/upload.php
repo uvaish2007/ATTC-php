@@ -8,6 +8,7 @@ require_once __DIR__ . '/models/ExecutiveMeeting.php';
 require_once __DIR__ . '/models/UploadFlow.php';         
 require_once __DIR__ . '/inc/compression.php';
 require_once __DIR__ . '/inc/inst_upload_handler.php'; // Institutional achievement handler
+require_once __DIR__ . '/models/BulkImport.php';
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
 require_module('upload');
@@ -996,7 +997,7 @@ unset($_SESSION['submitted_draft_type']);
 $selectedType = trim((string)($_GET['type'] ?? 'journal'));
 if (!isset($types[$selectedType])) $selectedType = 'journal';
 
-$editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? 0));
+$editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? $_GET['edit'] ?? 0));
 $editRecord = null;
 $activeEditRequest = null;
 if ($editId > 0 && isset($types[$selectedType])) {
@@ -1430,6 +1431,71 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 
+<?php 
+  $supportsBulk = in_array($selectedType, ['internship', 'summer_training'], true);
+  $requestedMode = $_GET['mode'] ?? 'individual';
+  $isBulkMode = $supportsBulk && empty($editRecord) && ($requestedMode === 'bulk');
+?>
+
+<style>
+.btn-mode-toggle {
+  background: transparent;
+  border: none;
+  color: #475569;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.18s ease;
+}
+.btn-mode-toggle:hover {
+  color: #0F172A;
+  background: rgba(255, 255, 255, 0.65);
+}
+.btn-mode-toggle.active {
+  background: #FFFFFF;
+  color: #131D3B;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 700;
+}
+.btn-mode-toggle.active svg {
+  stroke: #FF4F01;
+}
+</style>
+
+<?php if ($supportsBulk && empty($editRecord)): ?>
+<!-- Upload Mode Switcher Segmented Bar -->
+<div class="atts-upload-mode-bar" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background:#FFFFFF; border:1px solid #E2E8F0; padding:10px 16px; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+  <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+    <span style="font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748B;">Upload Method:</span>
+    <div style="display:inline-flex; background:#F1F5F9; padding:3px; border-radius:10px; gap:4px;">
+      <button type="button" id="tabBtnIndividual" class="btn-mode-toggle <?= !$isBulkMode ? 'active' : '' ?>" onclick="switchUploadMode('individual')">
+        <?= icon('user', 14) ?> Individual Student Entry
+      </button>
+      <button type="button" id="tabBtnBulk" class="btn-mode-toggle <?= $isBulkMode ? 'active' : '' ?>" onclick="switchUploadMode('bulk')">
+        <?= icon('upload', 14) ?> SmartBulk Excel Import
+      </button>
+    </div>
+  </div>
+  <div style="font-size:12.5px; color:#64748B;">
+    <span id="modeDescriptionText">
+      <?= $isBulkMode ? 'Batch import multiple students via verified Excel spreadsheet (.xlsx) &amp; companion PDF certificates.' : 'Submit or edit an individual student record with live validation and proof attachment.' ?>
+    </span>
+  </div>
+</div>
+
+<!-- SmartBulk Batch Upload Section -->
+<div id="smartbulkUploadContainer" style="display: <?= $isBulkMode ? 'block' : 'none' ?>; margin-bottom:24px;">
+  <?php require __DIR__ . '/views/bulk_upload_panel.php'; ?>
+</div>
+<?php endif; ?>
+
+<!-- Individual Upload Form Container -->
+<div id="individualUploadContainer" style="display: <?= $isBulkMode ? 'none' : 'block' ?>;">
 <!-- Upload form -->
 <div class="card" style="margin-bottom:20px">
   <div class="card-head">
@@ -1455,9 +1521,16 @@ require __DIR__ . '/inc/header.php';
       </div>
       <div class="card-sub"><?= $editRecord ? 'Make corrections and save to update this record' : 'Fill in the details and submit for review' ?></div>
     </div>
-    <?php if (record_report_spec($selectedType) !== null): ?>
-      <a class="btn btn-secondary btn-sm" href="<?= e(url('record-report.php?type=' . $selectedType . '&format=word')) ?>"><?= icon('download') ?> Download this report</a>
-    <?php endif; ?>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <?php if ($supportsBulk && empty($editRecord)): ?>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="switchUploadMode('bulk')" style="border-color:#FF9566; color:#C2410C; background:#FFF7ED; font-weight:600;">
+          <?= icon('upload', 13) ?> Switch to SmartBulk
+        </button>
+      <?php endif; ?>
+      <?php if (record_report_spec($selectedType) !== null): ?>
+        <a class="btn btn-secondary btn-sm" href="<?= e(url('record-report.php?type=' . $selectedType . '&format=word')) ?>"><?= icon('download') ?> Download this report</a>
+      <?php endif; ?>
+    </div>
   </div>
   <div class="card-body">
     <form method="post" enctype="multipart/form-data">
@@ -1748,15 +1821,15 @@ require __DIR__ . '/inc/header.php';
         </script>
 
       <?php elseif ($selectedType === 'internship'): ?>
-        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-        <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
+        <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
         <?php render_exam_session_field($effectiveYear); ?>
-        <div class="field" style="grid-column:span 2"><label>Title of Internship <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" required></div>
-        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 1 month" required></div>
-        <div class="field"><label>No. of Days <span class="req">*</span></label><input class="input" name="days" type="number" min="1" required></div>
-        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
+        <div class="field" style="grid-column:span 2"><label>Title of Internship <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" value="<?= e($editRecord['industry'] ?? '') ?>" required></div>
+        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" value="<?= e($editRecord['duration'] ?? '') ?>" placeholder="e.g. 1 month" required></div>
+        <div class="field"><label>No. of Days <span class="req">*</span></label><input class="input" name="days" value="<?= e($editRecord['days'] ?? '') ?>" type="number" min="1" required></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" value="<?= e($editRecord['certificate_link'] ?? '') ?>" type="url" required></div>
 
       <?php elseif ($selectedType === 'placement'): ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
@@ -2033,13 +2106,13 @@ require __DIR__ . '/inc/header.php';
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
         <?php render_exam_session_field($effectiveYear); ?>
-        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-        <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
-        <div class="field" style="grid-column:span 2"><label>Title of Training <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" required></div>
-        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" placeholder="e.g. 1 month" required></div>
-        <div class="field"><label>No. of Days <span class="req">*</span></label><input class="input" name="days" type="number" min="1" required></div>
-        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" type="url" required></div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
+        <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Title of Training <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" value="<?= e($editRecord['industry'] ?? '') ?>" required></div>
+        <div class="field"><label>Duration <span class="req">*</span></label><input class="input" name="duration" value="<?= e($editRecord['duration'] ?? '') ?>" placeholder="e.g. 1 month" required></div>
+        <div class="field"><label>No. of Days <span class="req">*</span></label><input class="input" name="days" value="<?= e($editRecord['days'] ?? '') ?>" type="number" min="1" required></div>
+        <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" value="<?= e($editRecord['certificate_link'] ?? '') ?>" type="url" required></div>
 
       <?php elseif ($selectedType === 'value_added'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -2835,9 +2908,42 @@ require __DIR__ . '/inc/header.php';
           initDraftLifecycle();
         }
       })();
+
+      function switchUploadMode(mode) {
+        var indContainer = document.getElementById('individualUploadContainer');
+        var bulkContainer = document.getElementById('smartbulkUploadContainer');
+        var btnInd = document.getElementById('tabBtnIndividual');
+        var btnBulk = document.getElementById('tabBtnBulk');
+        var desc = document.getElementById('modeDescriptionText');
+
+        if (mode === 'bulk') {
+          if (indContainer) indContainer.style.display = 'none';
+          if (bulkContainer) bulkContainer.style.display = 'block';
+          if (btnInd) btnInd.classList.remove('active');
+          if (btnBulk) btnBulk.classList.add('active');
+          if (desc) desc.innerHTML = 'Batch import multiple students via verified Excel spreadsheet (.xlsx) &amp; companion PDF certificates.';
+          try {
+            var u = new URL(window.location.href);
+            u.searchParams.set('mode', 'bulk');
+            window.history.replaceState({}, '', u.toString());
+          } catch (e) {}
+        } else {
+          if (bulkContainer) bulkContainer.style.display = 'none';
+          if (indContainer) indContainer.style.display = 'block';
+          if (btnBulk) btnBulk.classList.remove('active');
+          if (btnInd) btnInd.classList.add('active');
+          if (desc) desc.innerHTML = 'Submit or edit an individual student record with live validation and proof attachment.';
+          try {
+            var u = new URL(window.location.href);
+            u.searchParams.delete('mode');
+            window.history.replaceState({}, '', u.toString());
+          } catch (e) {}
+        }
+      }
     </script>
   </div>
 </div>
+</div> <!-- /#individualUploadContainer -->
 
 <!-- My recent records -->
 <?php
