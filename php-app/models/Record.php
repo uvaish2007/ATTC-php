@@ -148,12 +148,11 @@ function record_categories(): array
         'activity' => ['label' => 'Activities & Outreach', 'icon' => 'calendar',
                        'types' => ['event', 'nss', 'value_added', 'training']],
         // NPTEL sits in both: record_row_category() puts each row on one side.
-        'student'  => ['label' => 'Student Records',       'icon' => 'users',
-<<<<<<< HEAD
-                       'types' => ['internship', 'placement', 'summer_training', 'co_curricular', 'extra_curricular']],
-=======
-                       'types' => ['internship', 'placement', 'summer_training', 'student_achievement', 'student_participation', 'nptel']],
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
+        'student'  => [
+            'label' => 'Student Records',
+            'icon'  => 'users',
+            'types' => ['internship', 'placement', 'summer_training', 'co_curricular', 'extra_curricular', 'student_achievement', 'nptel'],
+        ],
     ];
 
     $known = record_types();
@@ -2838,13 +2837,13 @@ function record_display_attributes(string $type, array $record): array
         'participant_user_id', 'is_topper',
     ];
 
-<<<<<<< HEAD
     if ($type === 'placement' || $type === 'nss' || $type === 'co_curricular' || $type === 'extra_curricular') {
         $ignoreCols[] = 'exam_session';
     }
     if ($type === 'co_curricular' || $type === 'extra_curricular') {
         $ignoreCols[] = 'category';
-=======
+    }
+
     // Events: the mode is always shown (never guessed), and only the location
     // fields that mode uses.
     if (is_event_type($type)) {
@@ -2869,7 +2868,6 @@ function record_display_attributes(string $type, array $record): array
         $knownLabels['author_type']  = 'Main Author Position';
         $knownLabels['doi']          = 'DOI';
         $pubAuthors = publication_authors_for($type, [(int) ($record['id'] ?? 0)])[(int) ($record['id'] ?? 0)] ?? [];
->>>>>>> 2505422ae6fabcfce2155b4b8b3676678dc6761a
     }
 
     $attributes = [];
