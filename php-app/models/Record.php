@@ -1104,7 +1104,8 @@ function book_prepare_submission(array $user, array $in): array
     }
 
     $out['title_key']        = publication_title_key($out['title']);
-    $out['academic_session'] = academic_session_current();
+    $out['exam_session']     = $in['exam_session'] ?? exam_session_current();
+    $out['academic_session'] = $out['exam_session'];
 
     return [$out, $authors, $errors];
 }
@@ -2859,14 +2860,21 @@ function record_display_attributes(string $type, array $record): array
         $knownLabels['mode'] = 'Event Mode';
     }
 
-    // Journals and books: no Exam Session; the lookup keys are internal. The
+    // Journals and books: lookup keys are internal. The
     // recorded authors are listed after the Main Author.
     $pubAuthors = [];
-    if (in_array($type, ['journal', 'book'], true)) {
+    if ($type === 'journal') {
         array_push($ignoreCols, 'exam_session', 'doi_key', 'title_key', 'isbn_key');
         $knownLabels['faculty_name'] = 'Main Author';
         $knownLabels['author_type']  = 'Main Author Position';
         $knownLabels['doi']          = 'DOI';
+        $pubAuthors = publication_authors_for($type, [(int) ($record['id'] ?? 0)])[(int) ($record['id'] ?? 0)] ?? [];
+    } elseif ($type === 'book') {
+        array_push($ignoreCols, 'doi_key', 'title_key', 'isbn_key');
+        $knownLabels['faculty_name'] = 'Main Author';
+        $knownLabels['author_type']  = 'Main Author Position';
+        $knownLabels['doi']          = 'DOI';
+        $knownLabels['exam_session'] = 'Academic Session';
         $pubAuthors = publication_authors_for($type, [(int) ($record['id'] ?? 0)])[(int) ($record['id'] ?? 0)] ?? [];
     }
 

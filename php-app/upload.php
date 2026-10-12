@@ -300,12 +300,13 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         }
     }
 
-    if (in_array($type, ['placement', 'nss', 'co_curricular', 'extra_curricular', 'fdp'], true)) {
-        $sessVal = trim((string)($_POST['academic_session'] ?? $_POST['exam_session'] ?? ''));
-        if ($sessVal !== '') {
-            $_POST['academic_session'] = $sessVal;
-            $_POST['exam_session']     = $sessVal;
-        }
+    if ($type === 'book' && empty($_POST['exam_session'])) {
+        $_POST['exam_session'] = exam_session_current();
+    }
+    $sessVal = trim((string)($_POST['academic_session'] ?? $_POST['exam_session'] ?? ''));
+    if ($sessVal !== '') {
+        $_POST['academic_session'] = $sessVal;
+        $_POST['exam_session']     = $sessVal;
     }
 
     // Server-Side Validation: Every user-editable field is mandatory
@@ -591,7 +592,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         foreach ($pClean as $k => $v) {
             $_POST[$k] = $v === null ? '' : (string) $v;
         }
-        unset($_POST['exam_session']);   // no Exam Session on publications
+        if ($type === 'journal') {
+            unset($_POST['exam_session']);   // no Exam Session on journal
+        }
         if (!$pErrors) {
             // Held until the request ends, so two authors saving the same
             // publication at the same moment cannot both pass the check.
@@ -718,7 +721,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
 
     if (!in_array($type, ['journal', 'book', 'placement', 'nss', 'co_curricular', 'extra_curricular'], true)) {
         if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
-            $sessLabel = in_array($type, ['fdp', 'mou'], true) ? 'Academic Session' : 'Exam Session';
+            $sessLabel = ($type === 'inst_pass_percentage') ? 'Exam Session' : 'Academic Session';
             $validationErrors[] = $sessLabel . ' is required: choose ' . implode(' or ', exam_sessions()) . '.';
         }
     }
@@ -1058,12 +1061,17 @@ function render_dept_field(array $user, array $departments, string $label = 'Dep
 }
 }
 
-function render_exam_session_field(string $academicYear, string $label = 'Exam Session'): void
+function render_exam_session_field(string $academicYear, ?string $label = null): void
 {
+    global $selectedType, $editRecord;
+    if ($label === null) {
+        $label = ($selectedType === 'inst_pass_percentage') ? 'Exam Session' : 'Academic Session';
+    }
+    $currSess = $editRecord['exam_session'] ?? $editRecord['academic_session'] ?? exam_session_current();
     echo '<div class="field"><label>' . e($label) . ' <span class="req">*</span></label>';
     echo '<select class="select" name="exam_session" required>';
     foreach (exam_sessions() as $s) {
-        $sel = $s === exam_session_current() ? ' selected' : '';
+        $sel = $s === $currSess ? ' selected' : '';
         echo '<option value="' . e($s) . '"' . $sel . '>' . e(exam_session_label($s, $academicYear)) . '</option>';
     }
     echo '</select></div>';
@@ -1571,7 +1579,7 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-      <?php if (in_array($selectedType, ['conference','patent','fdp'])): ?>
+      <?php if (in_array($selectedType, ['conference','patent'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -1608,13 +1616,9 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'book'): ?>
         <?php
-          /* Fields follow the IQAC "Book / Book Chapter Publications" report
-             template. Every author is picked from the faculty list. The Academic
-             Session is set by the server from today's date in India (IST). */
-          $bookSession = (string) (($editRecord['academic_session'] ?? '') ?: academic_session_current());
-          $bookSessionField = '<div class="field"><label>Academic Session <span class="card-sub">— set automatically (IST)</span></label>'
-              . '<input class="input" id="bookSession" value="' . e($bookSession) . '" readonly tabindex="-1" style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;"'
-              . ' title="January - June or July - December, from the date the record is submitted."></div>';
+          ob_start();
+          render_exam_session_field($effectiveYear);
+          $bookSessionField = ob_get_clean();
         ?>
         <?php render_publication_author_fields($user, $activeYear, 'book / chapter', $bookSessionField); ?>
 
@@ -1751,6 +1755,7 @@ require __DIR__ . '/inc/header.php';
             <?php endforeach; ?>
           </select></div>
         <div class="field"><label>Academic Year</label><input class="input" value="<?= e($editRecord['academic_year'] ?? $activeYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted in the active academic year."></div>
+        <?php render_exam_session_field($effectiveYear); ?>
 
         <div class="field js-nptel-part" data-for="Faculty" hidden><label>Faculty Participant <span class="req">*</span></label>
           <select class="select" name="participant_user_id" id="nptelFaculty">
@@ -1775,7 +1780,6 @@ require __DIR__ . '/inc/header.php';
 
         <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
         <div class="field"><label>Session <span class="req">*</span></label><input class="input" name="session" placeholder="e.g. Jul 2025 - Dec 2025" required></div>
-        <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Grade <span class="req">*</span></label>
           <select class="select" name="grade" required>
             <option value="" disabled selected>Select grade</option>
@@ -1832,8 +1836,6 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Link to the Certificate / Document <span class="req">*</span></label><input class="input" name="certificate_link" value="<?= e($editRecord['certificate_link'] ?? '') ?>" type="url" required></div>
 
       <?php elseif ($selectedType === 'placement'): ?>
-        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-        <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
         <div class="field">
           <label for="academic_session">Academic Session <span class="req">*</span></label>
@@ -1851,6 +1853,8 @@ require __DIR__ . '/inc/header.php';
             <?php endforeach; ?>
           </select>
         </div>
+        <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
+        <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <div class="field">
           <label for="job_title">Job Role <span class="req">*</span></label>
           <select class="select js-other" id="job_title" name="job_title" data-other="job_title_other" required>
