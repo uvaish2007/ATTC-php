@@ -8,6 +8,7 @@ require_once __DIR__ . '/models/ExecutiveMeeting.php';
 require_once __DIR__ . '/models/UploadFlow.php';         
 require_once __DIR__ . '/inc/compression.php';
 require_once __DIR__ . '/inc/inst_upload_handler.php'; // Institutional achievement handler
+require_once __DIR__ . '/inc/upload_sections.php';
 require_once __DIR__ . '/models/BulkImport.php';
 
 $user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
@@ -15,7 +16,7 @@ require_module('upload');
 $types       = record_types();
 unset($types['student_participation']);
 unset($types['student_achievement']);
-unset($types['conference']);
+// Note: 'conference' is retained as an approved subcategory under Section 4 Quality Publications
 $departments = departments_all();
 $years       = academic_years();
 $typeKeys    = array_keys($types);
@@ -25,15 +26,9 @@ if (function_exists('inst_handle_ajax_upercent')) {
     inst_handle_ajax_upercent($user, $activeYear);
 }
 
-if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation', 'conference'], true)) {
-    if ($_GET['type'] === 'student_participation') {
-        flash('info', 'The Student Participation category is no longer available in Upload Data.');
-        redirect('/upload.php?type=co_curricular');
-    } elseif ($_GET['type'] === 'conference') {
-        flash('info', 'Conference is now submitted under FDP / Workshop activities.');
-        redirect('/upload.php?type=fdp');
-    }
-    redirect('/upload.php?type=co_curricular');
+if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation'], true)) {
+    flash('info', 'Student achievement records are now submitted under Student Participation in Inter-Institute Events and Awards / Medals.');
+    redirect('/upload.php?section=inter_institute&type=co_curricular');
 }
 
 if (!defined('PROOF_MAX_BYTES')) {
@@ -192,7 +187,7 @@ if (upload_flow_applies($user)) {
         redirect('/upload.php');
     }
 
-    if (!$isPost && (!isset($_GET['type']) || isset($_GET['reset']) || isset($_GET['step']))) {
+    if (!$isPost && (!isset($_GET['type']) && !isset($_GET['section']) || isset($_GET['reset']) || isset($_GET['step']))) {
         // Faculty and Coordinators go straight to the upload form; the academic
         // year is picked from the selector inside the form page.
         if ($flowState['year'] === null) {
@@ -202,14 +197,7 @@ if (upload_flow_applies($user)) {
             $homeYear = in_array($activeYear, upload_flow_years(), true) ? $activeYear : (upload_flow_years()[0] ?? $activeYear);
             upload_flow_store($user, ['year' => $homeYear, 'data_type' => null]);
         }
-        if ($isFacultyHome) {
-            $firstType = array_keys($types)[0] ?? 'journal';
-            redirect('/upload.php?type=' . urlencode($firstType));
-        }
-        upload_flow_remember_return($user);
-        upload_flow_store($user, ['data_type' => 'student']);
-        $studentTypes = upload_flow_data_types()['student']['types'];
-        redirect('/upload.php?type=' . urlencode($studentTypes[0] ?? 'internship'));
+        redirect('/upload.php?section=upercent&type=inst_pass_percentage');
     }
 
     $directType = (string) ($isPost ? ($_POST['record_type'] ?? '') : ($_GET['type'] ?? ''));
@@ -283,11 +271,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
     if ($emBlock = em_submission_block_reason($user['role'], $targetYear, null, $meetingParam ?: null)) {
         flash('error', $emBlock);
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
-    }
-
-    if ($type === 'conference') {
-        flash('info', 'Conference is now submitted under FDP / Workshop activities.');
-        redirect('/upload.php?type=fdp');
     }
 
     if (!isset($types[$type])) {
@@ -989,20 +972,30 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
         redirect('/upload.php?type=' . $type);
     }
 
+    $resolved = resolve_upload_section(null, $type);
+    $secId = $resolved['section']['id'];
     if ($nav === 'next') {
-        $idx  = array_search($type, $typeKeys, true);
-        $dest = $typeKeys[$idx + 1] ?? $type;
-        redirect('/upload.php?type=' . $dest);
+        $nextSec = upload_section_next($secId);
+        if ($nextSec) {
+            redirect('/upload.php?section=' . $nextSec['id'] . '&type=' . $nextSec['default_type']);
+        }
     }
-    redirect('/upload.php?type=' . $type);   
+    redirect('/upload.php?section=' . $secId . '&type=' . $type);   
 }
 
 $effectiveYear = $uploadFlow ? $uploadFlow['year'] : $activeYear;
 $myRecords = my_records($user['id']);
 $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
 unset($_SESSION['submitted_draft_type']);
-$selectedType = trim((string)($_GET['type'] ?? 'journal'));
-if (!isset($types[$selectedType])) $selectedType = 'journal';
+
+$reqSection = trim((string)($_GET['section'] ?? ''));
+$reqType    = trim((string)($_GET['type'] ?? ''));
+$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null);
+$activeSection       = $resolvedSectionData['section'];
+$selectedType        = $resolvedSectionData['type'];
+if (!isset($types[$selectedType])) {
+    $selectedType = $activeSection['default_type'];
+}
 
 $editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? $_GET['edit'] ?? 0));
 $editRecord = null;
@@ -1042,10 +1035,11 @@ if ($editId > 0 && isset($types[$selectedType])) {
     }
 }
 
-$selIdx    = array_search($selectedType, $typeKeys, true);
-$isLast    = $selIdx === count($typeKeys) - 1;
-$nextType  = $typeKeys[$selIdx + 1] ?? null;
-$prevType  = $selIdx > 0 ? $typeKeys[$selIdx - 1] : null;
+$prevSec   = upload_section_prev($activeSection['id']);
+$nextSec   = upload_section_next($activeSection['id']);
+$isLast    = ($nextSec === null);
+$nextType  = $nextSec ? $nextSec['default_type'] : null;
+$prevType  = $prevSec ? $prevSec['default_type'] : null;
 
 /**
  * Render department input: locked readonly for Faculty (preserving their department),
@@ -1249,14 +1243,52 @@ require __DIR__ . '/inc/header.php';
     </div>
   </div>
 <?php endif; ?>
-<!-- Type selector tabs -->
-<div class="card" style="margin-bottom:16px">
-  <div class="card-body js-category-nav-container" style="padding:8px 16px 14px; overflow-x:auto; white-space:nowrap; position:relative; scrollbar-width:thin;">
-    <?php foreach ($types as $key => $t): ?>
-      <a href="<?= e(url('upload.php?type=' . $key)) ?>"
-         class="btn btn-sm js-category-tab <?= $selectedType === $key ? 'btn-primary active' : 'btn-ghost' ?>"
-         data-type="<?= e($key) ?>"
-         style="margin:4px 3px; height:32px; font-size:12px; position:relative; z-index:1; flex-shrink:0"><?= e($t['label']) ?></a>
+<?php
+  $approvedSections = upload_approved_sections();
+  $sectionsByGroup  = upload_sections_by_group();
+?>
+<!-- Approved Top-Level Upload Navigation (Exactly 30 Approved Sections in Exact Order) -->
+<div class="card" style="margin-bottom:16px; border:1px solid var(--border, #E2E8F0); box-shadow:0 1px 3px rgba(0,0,0,0.03);">
+  <div style="padding:10px 16px 8px; border-bottom:1px solid #F1F5F9; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#FAFAFA;">
+    <div style="display:flex; align-items:center; gap:8px;">
+      <span style="font-size:12px; font-weight:700; color:var(--ink, #1E293B); text-transform:uppercase; letter-spacing:0.04em; display:inline-flex; align-items:center; gap:6px;">
+        <?= icon('target', 14) ?> Institutional Academic Targets
+      </span>
+      <span class="badge badge-neutral" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px;">30 Sections</span>
+      <span class="badge badge-primary" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px;"><?= e($activeSection['group']) ?></span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <label for="quickJumpSelect" style="font-size:11.5px; font-weight:600; color:#64748B; margin:0;">Quick Jump:</label>
+      <select class="select" id="quickJumpSelect" onchange="if(this.value) window.location.href=this.value" style="height:28px; font-size:11.5px; padding:0 24px 0 8px; border-radius:6px; width:auto; max-width:280px;">
+        <?php foreach ($sectionsByGroup as $grpName => $grpSecs): ?>
+          <optgroup label="<?= e($grpName) ?>">
+            <?php foreach ($grpSecs as $s): ?>
+              <option value="<?= e(url('upload.php?section=' . $s['id'] . '&type=' . $s['default_type'])) ?>" <?= ($activeSection['id'] === $s['id']) ? 'selected' : '' ?>>
+                <?= e($s['title']) ?>
+              </option>
+            <?php endforeach; ?>
+          </optgroup>
+        <?php endforeach; ?>
+      </select>
+
+      <div style="display:inline-flex; gap:3px;">
+        <button type="button" class="btn btn-ghost btn-sm" id="navScrollLeft" title="Scroll left" style="height:28px; width:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; border:1px solid #E2E8F0; border-radius:6px; background:#FFFFFF;">
+          <?= icon('chevron-left', 14) ?>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm" id="navScrollRight" title="Scroll right" style="height:28px; width:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; border:1px solid #E2E8F0; border-radius:6px; background:#FFFFFF;">
+          <?= icon('chevron-right', 14) ?>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-body js-category-nav-container" style="padding:10px 16px 14px; overflow-x:auto; white-space:nowrap; position:relative; scrollbar-width:thin; scroll-behavior:smooth;">
+    <?php foreach ($approvedSections as $secId => $sec): ?>
+      <a href="<?= e(url('upload.php?section=' . $sec['id'] . '&type=' . $sec['default_type'])) ?>"
+         class="btn btn-sm js-category-tab <?= ($activeSection['id'] === $sec['id']) ? 'btn-primary active' : 'btn-ghost' ?>"
+         data-section="<?= e($sec['id']) ?>"
+         title="<?= e($sec['title']) ?>"
+         style="margin:3px 2px; height:32px; font-size:12px; position:relative; z-index:1; flex-shrink:0; max-width:320px; overflow:hidden; text-overflow:ellipsis;"><?= e($sec['title']) ?></a>
     <?php endforeach; ?>
     <!-- Sliding active-tab indicator line -->
     <div class="js-category-indicator" id="categoryNavIndicator"
@@ -1264,11 +1296,50 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
+<?php if (!empty($activeSection['subcategories'])): ?>
+  <!-- Merged Subcategory Selector Bar -->
+  <div class="card" style="margin-top:-8px; margin-bottom:16px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px;">
+    <div style="padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <span style="font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.04em; display:inline-flex; align-items:center; gap:6px;">
+        <?= icon('layers', 14) ?> Subcategory / Record Type:
+      </span>
+      <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
+        <?php foreach ($activeSection['subcategories'] as $subKey => $subLabel): ?>
+          <a href="<?= e(url('upload.php?section=' . $activeSection['id'] . '&type=' . $subKey)) ?>"
+             class="btn btn-sm <?= ($selectedType === $subKey) ? 'btn-primary' : 'btn-outline' ?>"
+             style="height:30px; font-size:12px; font-weight:<?= ($selectedType === $subKey) ? '700' : '500' ?>; border-radius:20px; padding:0 14px; display:inline-flex; align-items:center; gap:5px;">
+            <?php if ($selectedType === $subKey): ?><?= icon('check', 12) ?><?php endif; ?>
+            <?= e($subLabel) ?>
+          </a>
+        <?php endforeach; ?>
+      </div>
+      <?php if (!empty($activeSection['description'])): ?>
+        <div style="font-size:12px; color:#64748B; margin-left:auto;">
+          <?= e($activeSection['description']) ?>
+        </div>
+      <?php endif; ?>
+    </div>
+  </div>
+<?php endif; ?>
+
 <script>
 (function () {
   var container = document.querySelector('.js-category-nav-container');
   var indicator = document.getElementById('categoryNavIndicator');
+  var btnLeft   = document.getElementById('navScrollLeft');
+  var btnRight  = document.getElementById('navScrollRight');
   if (!container || !indicator) return;
+
+  if (btnLeft) {
+    btnLeft.addEventListener('click', function () {
+      container.scrollBy({ left: -260, behavior: 'smooth' });
+    });
+  }
+  if (btnRight) {
+    btnRight.addEventListener('click', function () {
+      container.scrollBy({ left: 260, behavior: 'smooth' });
+    });
+  }
 
   function getActiveTab() {
     return container.querySelector('.js-category-tab.active') ||
@@ -1648,12 +1719,91 @@ require __DIR__ . '/inc/header.php';
         <?php render_publication_date_fields(); ?>
         <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
+      <?php elseif ($selectedType === 'conference'): ?>
+        <div class="field"><label>Author Type <span class="req">*</span></label>
+          <select class="select" name="author_type" required>
+            <option value="" disabled selected>Select Author Type</option>
+            <option value="First Author" <?= ($editRecord['author_type'] ?? '') === 'First Author' ? 'selected' : '' ?>>First Author</option>
+            <option value="Corresponding Author" <?= ($editRecord['author_type'] ?? '') === 'Corresponding Author' ? 'selected' : '' ?>>Corresponding Author</option>
+            <option value="Co-Author" <?= ($editRecord['author_type'] ?? '') === 'Co-Author' ? 'selected' : '' ?>>Co-Author</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column:span 2"><label>Title of the Paper <span class="req">*</span></label>
+          <input class="input js-trim" name="paper_title" maxlength="500" value="<?= e($editRecord['paper_title'] ?? '') ?>" autocomplete="off" required>
+        </div>
+        <div class="field" style="grid-column:span 2"><label>Conference Name <span class="req">*</span></label>
+          <input class="input js-trim" name="conference_name" maxlength="255" value="<?= e($editRecord['conference_name'] ?? '') ?>" required>
+        </div>
+        <div class="field"><label>Type <span class="req">*</span></label>
+          <select class="select" name="conference_type" required>
+            <option value="" disabled selected>Select Type</option>
+            <option value="National" <?= ($editRecord['conference_type'] ?? '') === 'National' ? 'selected' : '' ?>>National</option>
+            <option value="International" <?= ($editRecord['conference_type'] ?? '') === 'International' ? 'selected' : '' ?>>International</option>
+          </select>
+        </div>
+        <div class="field"><label>ISBN / ISSN Number</label>
+          <input class="input js-upper" name="isbn" maxlength="30" value="<?= e($editRecord['isbn'] ?? '') ?>" placeholder="e.g. 978-93-5019-123-4">
+        </div>
+        <div class="field"><label>Venue <span class="req">*</span></label>
+          <input class="input" name="venue" maxlength="255" value="<?= e($editRecord['venue'] ?? '') ?>" placeholder="e.g. Chennai, India" required>
+        </div>
+        <div class="field"><label>Conference Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label>
+          <input class="input" name="conference_date" type="date" value="<?= e($editRecord['conference_date'] ?? '') ?>" required>
+        </div>
+        <div class="field"><label>Proceedings Link <span class="card-sub">(if available)</span></label>
+          <input class="input" name="proceedings_link" type="url" value="<?= e($editRecord['proceedings_link'] ?? '') ?>" placeholder="https://...">
+        </div>
+        <div class="field"><label>Document Link <span class="req">*</span></label>
+          <input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required>
+        </div>
+
       <?php elseif ($selectedType === 'patent'): ?>
-        <div class="field"><label>Patent / Copyright <span class="req">*</span></label><select class="select" name="category" required><option>Patent</option><option>Copyright</option></select></div>
-        <div class="field" style="grid-column:span 2"><label>Title of the Patent / Copyright <span class="req">*</span></label><input class="input" name="title" required></div>
-        <div class="field"><label>Patent / Copyright Number <span class="req">*</span></label><input class="input" name="patent_number" required></div>
-        <div class="field"><label>Date of Publication <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" required></div>
-        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
+        <?php
+          $patentCategories = ['Patent Published', 'Patent Granted', 'Design', 'Copyrights'];
+          $currCat = $editRecord['category'] ?? 'Patent Published';
+          if ($currCat === 'Patent') $currCat = 'Patent Published';
+          if ($currCat === 'Copyright') $currCat = 'Copyrights';
+        ?>
+        <div class="field"><label>Category <span class="req">*</span></label>
+          <select class="select" name="category" id="patentCategorySelect" required onchange="updatePatentLabels(this.value)">
+            <?php foreach ($patentCategories as $pc): ?>
+              <option value="<?= e($pc) ?>" <?= ($currCat === $pc) ? 'selected' : '' ?>><?= e($pc) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field" style="grid-column:span 2"><label id="patentTitleLabel">Title of the Patent / Copyright / Design <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
+        <div class="field"><label id="patentNumberLabel">Patent / Registration Number <span class="req">*</span></label><input class="input" name="patent_number" value="<?= e($editRecord['patent_number'] ?? '') ?>" required></div>
+        <div class="field"><label id="patentDateLabel">Date of Publication / Grant <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" value="<?= e($editRecord['publication_date'] ?? '') ?>" required></div>
+        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required></div>
+        <script>
+        function updatePatentLabels(cat) {
+          var numLbl = document.getElementById('patentNumberLabel');
+          var dateLbl = document.getElementById('patentDateLabel');
+          var titleLbl = document.getElementById('patentTitleLabel');
+          if (!numLbl || !dateLbl) return;
+          if (cat === 'Patent Granted') {
+            numLbl.innerHTML = 'Patent Grant Number <span class="req">*</span>';
+            dateLbl.innerHTML = 'Date of Grant <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span>';
+            if (titleLbl) titleLbl.innerHTML = 'Title of the Granted Patent <span class="req">*</span>';
+          } else if (cat === 'Patent Published') {
+            numLbl.innerHTML = 'Patent Application / Publication Number <span class="req">*</span>';
+            dateLbl.innerHTML = 'Date of Publication <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span>';
+            if (titleLbl) titleLbl.innerHTML = 'Title of the Published Patent <span class="req">*</span>';
+          } else if (cat === 'Design') {
+            numLbl.innerHTML = 'Design Registration Number <span class="req">*</span>';
+            dateLbl.innerHTML = 'Date of Design Registration <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span>';
+            if (titleLbl) titleLbl.innerHTML = 'Title of the Design <span class="req">*</span>';
+          } else if (cat === 'Copyrights') {
+            numLbl.innerHTML = 'Copyright Number / ROC Number <span class="req">*</span>';
+            dateLbl.innerHTML = 'Date of Registration / Issue <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span>';
+            if (titleLbl) titleLbl.innerHTML = 'Title of Work / Copyright <span class="req">*</span>';
+          }
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+          var sel = document.getElementById('patentCategorySelect');
+          if (sel) updatePatentLabels(sel.value);
+        });
+        </script>
 
       <?php elseif ($selectedType === 'fdp'): ?>
         <?php
@@ -2173,12 +2323,12 @@ require __DIR__ . '/inc/header.php';
           <?php if ($editRecord): ?>
             <a class="btn btn-ghost" href="<?= e(url('approvals.php')) ?>"><?= icon('arrow-left') ?> Back to Approvals</a>
           <?php else: ?>
-            <?php if ($prevType): ?>
-              <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
+            <?php if ($prevSec): ?>
+              <a class="btn btn-ghost" href="<?= e(url('upload.php?section=' . $prevSec['id'] . '&type=' . $prevSec['default_type'])) ?>"><?= icon('arrow-left') ?> Back: <?= e($prevSec['title']) ?></a>
             <?php endif; ?>
-            <?php if (!$isLast): ?>
-              <a href="<?= e(url('upload.php?type=' . $nextType)) ?>" class="btn btn-outline">
-                Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
+            <?php if ($nextSec): ?>
+              <a href="<?= e(url('upload.php?section=' . $nextSec['id'] . '&type=' . $nextSec['default_type'])) ?>" class="btn btn-outline">
+                Next: <?= e($nextSec['title']) ?> <?= icon('arrow-right') ?>
               </a>
             <?php endif; ?>
           <?php endif; ?>
@@ -2191,17 +2341,16 @@ require __DIR__ . '/inc/header.php';
         <?php else: ?>
           <button type="submit" name="nav" value="add" class="btn btn-outline"><?= icon('plus') ?> Save &amp; add another</button>
           <div class="spacer"></div>
-          <?php if ($prevType): ?>
-            <a class="btn btn-ghost" href="<?= e(url('upload.php?type=' . $prevType)) ?>"><?= icon('arrow-left') ?> Back</a>
+          <?php if ($prevSec): ?>
+            <a class="btn btn-ghost" href="<?= e(url('upload.php?section=' . $prevSec['id'] . '&type=' . $prevSec['default_type'])) ?>"><?= icon('arrow-left') ?> Back: <?= e($prevSec['title']) ?></a>
           <?php endif; ?>
-          <?php if (!$isLast): ?>
+          <?php if ($nextSec): ?>
             <button type="submit" name="nav" value="next" class="btn btn-primary">
-              Next: <?= e($types[$nextType]['label']) ?> <?= icon('arrow-right') ?>
+              Next: <?= e($nextSec['title']) ?> <?= icon('arrow-right') ?>
             </button>
           <?php else: ?>
             <button type="submit" name="nav" value="submit" class="btn btn-primary"><?= icon('check') ?> Submit for Review</button>
           <?php endif; ?>
-
         <?php endif; ?>
       </div>
 

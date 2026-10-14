@@ -973,21 +973,56 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
 <?php elseif ($selectedType === 'inst_awards_recognitions'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
   <?php inst_yr($iYear); ?>
+  <?php
+    $recogTypes = [
+      'Department Awards / Recognition',
+      'Faculty Awards / Recognition',
+      'BoS Member',
+      'DC Member',
+      'Question Paper / Key Setting',
+      'Journal Reviewer',
+      'Resource Person',
+      'Others',
+    ];
+    $currRecog = $editRecord['recognition_type'] ?? 'Department Awards / Recognition';
+    if ($currRecog === 'Department Award') $currRecog = 'Department Awards / Recognition';
+    if ($currRecog === 'Faculty Award' || $currRecog === 'Recognition') $currRecog = 'Faculty Awards / Recognition';
+    if ($currRecog === 'QP / Question Paper Setting' || $currRecog === 'Key Setting') $currRecog = 'Question Paper / Key Setting';
+    if ($currRecog === 'Other') $currRecog = 'Others';
+  ?>
   <div class="field"><label>Recognition Type <span class="req">*</span></label>
-    <select class="select" name="recognition_type" required>
-      <option>Department Award</option><option>Faculty Award</option><option>Recognition</option>
-      <option>BoS Member</option><option>DC Member</option>
-      <option>QP / Question Paper Setting</option><option>Key Setting</option><option>Other</option>
+    <select class="select" name="recognition_type" id="recogTypeSelect" required onchange="toggleRecogOther(this.value)">
+      <?php foreach ($recogTypes as $rt): ?>
+        <option value="<?= e($rt) ?>" <?= ($currRecog === $rt) ? 'selected' : '' ?>><?= e($rt) ?></option>
+      <?php endforeach; ?>
     </select>
   </div>
-  <div class="field"><label>Person Name <span class="req">*</span></label><input class="input" name="person_name" required></div>
-  <div class="field"><label>Faculty Name (if applicable)</label><input class="input" name="faculty_name" value="<?= e($iName) ?>"></div>
-  <div class="field" style="grid-column:span 2"><label>Title / Award <span class="req">*</span></label><input class="input" name="title" required></div>
-  <div class="field"><label>Organization</label><input class="input" name="organization"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
-  <div class="field"><label>Role / Responsibility</label><input class="input" name="role_responsibility"></div>
-  <div class="field"><label>Reference Number</label><input class="input" name="reference_number"></div>
-  <div class="field" style="grid-column:span 2"><label>Remarks</label><input class="input" name="remarks"></div>
+  <div class="field"><label>Person Name <span class="req">*</span></label><input class="input" name="person_name" value="<?= e($editRecord['person_name'] ?? '') ?>" required></div>
+  <div class="field"><label>Faculty Name (if applicable)</label><input class="input" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? $iName) ?>"></div>
+  <div class="field" style="grid-column:span 2"><label>Title / Award <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title_award'] ?? $editRecord['title'] ?? '') ?>" required></div>
+  <div class="field"><label>Organization</label><input class="input" name="organization" value="<?= e($editRecord['organization'] ?? '') ?>"></div>
+  <div class="field"><label>Date</label><input class="input" name="achievement_date" type="date" value="<?= e($editRecord['achievement_date'] ?? $editRecord['event_date'] ?? '') ?>"></div>
+  <div class="field"><label>Role / Responsibility</label><input class="input" name="role_responsibility" value="<?= e($editRecord['role_responsibility'] ?? '') ?>"></div>
+  <div class="field"><label>Reference Number</label><input class="input" name="reference_number" value="<?= e($editRecord['reference_number'] ?? '') ?>"></div>
+  <div class="field js-recog-other-box" style="grid-column:span 2; display:<?= ($currRecog === 'Others') ? 'block' : 'none' ?>;">
+    <label>Other Details / Description <span class="req">*</span></label>
+    <input class="input" name="other_details" id="recogOtherInput" placeholder="Specify recognition details..." value="<?= e($editRecord['remarks'] ?? '') ?>">
+  </div>
+  <div class="field" style="grid-column:span 2"><label>Remarks</label><input class="input" name="remarks" value="<?= e($editRecord['remarks'] ?? '') ?>"></div>
+  <script>
+  function toggleRecogOther(val) {
+    var box = document.querySelector('.js-recog-other-box');
+    var inp = document.getElementById('recogOtherInput');
+    if (!box) return;
+    if (val === 'Others') {
+      box.style.display = 'block';
+      if (inp) inp.required = true;
+    } else {
+      box.style.display = 'none';
+      if (inp) inp.required = false;
+    }
+  }
+  </script>
 
 <?php elseif ($selectedType === 'inst_spoken_tutorials'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>

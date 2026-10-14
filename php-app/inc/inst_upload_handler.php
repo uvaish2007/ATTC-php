@@ -12,6 +12,7 @@
  */
 
 require_once __DIR__ . '/compression.php';
+require_once __DIR__ . '/upload_sections.php';
 
 function inst_redirect(string $path): void
 {
@@ -274,6 +275,15 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
             $values[] = date('Y-m-d H:i:s');
         }
 
+        if ($type === 'inst_awards_recognitions') {
+            if (!empty($_POST['title']) && empty($_POST['title_award'])) {
+                $_POST['title_award'] = $_POST['title'];
+            }
+            if (!empty($_POST['other_details']) && empty($_POST['remarks'])) {
+                $_POST['remarks'] = $_POST['other_details'];
+            }
+        }
+
         foreach ($_POST as $k => $v) {
             if (!in_array($k, $allowed, true) || trim((string) $v) === '') continue;
             $fields[] = $k;
@@ -313,15 +323,20 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
         }
         error_log('inst upload failed: ' . $e->getMessage());
         flash('error', 'Save failed: ' . (defined('APP_DEBUG') && APP_DEBUG ? $e->getMessage() : 'database error.'));
-        redirect('/upload.php?type=' . $type);
+        $resolved = resolve_upload_section(null, $type);
+        redirect('/upload.php?section=' . $resolved['section']['id'] . '&type=' . $type);
     }
 
-    $typeKeys = array_keys($types);
     $nav = (string) input('nav', 'add');
-    if ($nav === 'add') {
-        redirect('/upload.php?type=' . $type);
+    $resolved = resolve_upload_section(null, $type);
+    $secId = $resolved['section']['id'];
+    if ($nav === 'next') {
+        $nextSec = upload_section_next($secId);
+        if ($nextSec) {
+            redirect('/upload.php?section=' . $nextSec['id'] . '&type=' . $nextSec['default_type']);
+        }
     }
-    redirect('/upload.php?type=' . $type);
+    redirect('/upload.php?section=' . $secId . '&type=' . $type);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -569,14 +584,21 @@ function inst_handle_pass_percentage(array $user, string $activeYear, \PDO $pdo,
 
         flash('success', "University Pass Percentage submitted successfully — {$totalSubjects} year rows saved (Overall Pass %: {$overallPct}%).");
         $_SESSION['submitted_draft_type'] = $type;
-        inst_redirect('/upload.php?type=' . $type);
+        if ($nav === 'next') {
+            $nextSec = upload_section_next('upercent');
+            if ($nextSec) {
+                inst_redirect('/upload.php?section=' . $nextSec['id'] . '&type=' . $nextSec['default_type']);
+                return true;
+            }
+        }
+        inst_redirect('/upload.php?section=upercent&type=' . $type);
         return true;
     } catch (\PDOException $e) {
         $pdo->rollBack();
         if ($proofStored) @unlink(rtrim(UPLOAD_DIR, '/\\') . '/' . $proofStored);
         error_log('inst_pass_percentage insert failed: ' . $e->getMessage());
         flash('error', 'Save failed: ' . (defined('APP_DEBUG') && APP_DEBUG ? $e->getMessage() : 'database error.'));
-        inst_redirect('/upload.php?type=' . $type);
+        inst_redirect('/upload.php?section=upercent&type=' . $type);
         return false;
     }
 
