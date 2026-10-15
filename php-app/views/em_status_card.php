@@ -73,25 +73,62 @@ if ($canPresent) {
         <?php endforeach; ?>
       </div>
 
-      <?php if ($canPresent): ?>
         <div class="em-dash-actions" style="display:flex; gap:8px;">
-          <a class="btn btn-secondary em-dash-present-btn" id="emDashboardAnalyticalBtn"
-             href="<?= e($dashPresentUrl . '&view=analytical') ?>"
-             onclick="return openEmDashboardPresentation(this.href, event);"
-             title="Open 56-metric analytical mode">
-            <?= icon('chart-bar', 16) ?> Analytics (56)
-          </a>
-          <a class="btn btn-primary em-dash-present-btn" id="emDashboardPresentBtn"
-             href="<?= e($dashPresentUrl) ?>"
-             onclick="return openEmDashboardPresentation(this.href, event);"
-             title="Present <?= $activeMeeting === 'em1' ? 'Executive Meeting 1' : 'Executive Meeting 2' ?> Full Screen">
-            <?= icon('presentation', 16) ?> Present
+          <a class="btn btn-primary em-dash-present-btn" id="presentTargetsBtn"
+             href="<?= e(url('present-targets.php')) ?>"
+             onclick="return openTargetsPresentation(this.href, event);"
+             title="Present Institutional &amp; Departmental Targets Full Screen">
+            <?= icon('presentation', 16) ?> Present Targets
           </a>
         </div>
-      <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>
+
+<!-- Targets Presentation View Full-Screen Modal -->
+<dialog id="targetsPresentDlg" class="em-present-modal" aria-label="Targets presentation" style="width:100vw; height:100vh; max-width:100vw; max-height:100vh; border:none; padding:0; margin:0; background:#0D1427; overflow:hidden;">
+  <iframe id="targetsPresentFrame" title="Targets presentation" allowfullscreen allow="fullscreen" style="width:100%; height:100%; border:none; display:block;"></iframe>
+</dialog>
+
+<script>
+  function openTargetsPresentation(url, evt) {
+    var dlg = document.getElementById('targetsPresentDlg');
+    var frame = document.getElementById('targetsPresentFrame');
+    if (!dlg || !frame || typeof dlg.showModal !== 'function') {
+      return true; // Fallback to normal navigation
+    }
+    if (evt) evt.preventDefault();
+    var embedUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    frame.src = embedUrl;
+    dlg.showModal();
+    frame.onload = function() {
+      try { frame.contentWindow.focus(); } catch (err) {}
+    };
+    return false;
+  }
+
+  function closeTargetsPresentation() {
+    var dlg = document.getElementById('targetsPresentDlg');
+    var frame = document.getElementById('targetsPresentFrame');
+    if (dlg) {
+      if (typeof dlg.close === 'function') {
+        dlg.close();
+      } else {
+        dlg.removeAttribute('open');
+      }
+    }
+    if (frame) {
+      frame.removeAttribute('src');
+    }
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.atts === 'targets-present-close') {
+      closeTargetsPresentation();
+    }
+  });
+</script>
 
 <?php if ($canPresent): ?>
 <!-- EM-SPEC-05: Full-screen interactive presentation modal over the dashboard -->

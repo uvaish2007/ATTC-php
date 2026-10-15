@@ -237,6 +237,13 @@ require __DIR__ . '/inc/header.php';
       <a class="report-dl-fmt" href="<?= $reportUrl('pdf') ?>" target="_blank" rel="noopener">PDF</a>
     </div>
 
+    <a class="btn btn-primary btn-sm" id="targetsPagePresentBtn"
+       href="<?= e(url('present-targets.php')) ?>"
+       onclick="return openTargetsPresentation(this.href, event);"
+       title="Present Institutional &amp; Departmental Targets Full Screen">
+      <?= icon('presentation', 15) ?> Present Targets
+    </a>
+
     <?php if ($canCreate): ?>
       <a class="btn btn-outline btn-sm" href="<?= e(url('target-import.php')) ?>" title="Bulk-import targets from a CSV">
         <?= icon('upload', 15) ?> Import CSV
@@ -1245,4 +1252,50 @@ function confirmBulkApprove(e, form) {
   return false;
 }
 </script>
+
+<!-- Targets Presentation View Full-Screen Modal -->
+<dialog id="targetsPresentDlg" class="em-present-modal" aria-label="Targets presentation" style="width:100vw; height:100vh; max-width:100vw; max-height:100vh; border:none; padding:0; margin:0; background:#0D1427; overflow:hidden;">
+  <iframe id="targetsPresentFrame" title="Targets presentation" allowfullscreen allow="fullscreen" style="width:100%; height:100%; border:none; display:block;"></iframe>
+</dialog>
+
+<script>
+  function openTargetsPresentation(url, evt) {
+    var dlg = document.getElementById('targetsPresentDlg');
+    var frame = document.getElementById('targetsPresentFrame');
+    if (!dlg || !frame || typeof dlg.showModal !== 'function') {
+      return true; // Fallback to normal navigation
+    }
+    if (evt) evt.preventDefault();
+    var embedUrl = url + (url.indexOf('?') === -1 ? '?' : '&') + 'embed=1';
+    frame.src = embedUrl;
+    dlg.showModal();
+    frame.onload = function() {
+      try { frame.contentWindow.focus(); } catch (err) {}
+    };
+    return false;
+  }
+
+  function closeTargetsPresentation() {
+    var dlg = document.getElementById('targetsPresentDlg');
+    var frame = document.getElementById('targetsPresentFrame');
+    if (dlg) {
+      if (typeof dlg.close === 'function') {
+        dlg.close();
+      } else {
+        dlg.removeAttribute('open');
+      }
+    }
+    if (frame) {
+      frame.removeAttribute('src');
+    }
+  }
+
+  window.addEventListener('message', function (e) {
+    if (e.origin !== window.location.origin) return;
+    if (e.data && e.data.atts === 'targets-present-close') {
+      closeTargetsPresentation();
+    }
+  });
+</script>
+
 <?php require __DIR__ . '/inc/footer.php'; ?>

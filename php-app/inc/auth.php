@@ -49,6 +49,12 @@ function auth_ensure_master_accounts(): void
             ON DUPLICATE KEY UPDATE status = 1, password = VALUES(password)");
             $stmt->execute([$hash, $hash, $hash, $hash, $hash, $hash]);
         }
+        $eceCount = (int) db()->query("SELECT COUNT(*) FROM users WHERE email = 'ece_hod@atts.local'")->fetchColumn();
+        if ($eceCount === 0) {
+            $eceHash = password_hash('hod12345', PASSWORD_BCRYPT);
+            $stmt = db()->prepare("INSERT INTO users (name, email, password, role, department, status) VALUES ('HoD - ECE', 'ece_hod@atts.local', ?, 'HoD', 'ECE', 1)");
+            $stmt->execute([$eceHash]);
+        }
     } catch (\Throwable $e) {
         // Safe ignore
     }

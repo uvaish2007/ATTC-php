@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/../inc/db.php';
+require_once __DIR__ . '/../inc/helpers.php';
 require_once __DIR__ . '/Setting.php';
 
 $GLOBALS['_unlock_active_cache'] = [];
