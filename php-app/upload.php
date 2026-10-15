@@ -257,7 +257,19 @@ if (upload_flow_applies($user)) {
     }
 }
 
-if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
+    csrf_check();
+
+    // Check if this is a generic record delete action
+    if (!empty($_POST['delete_generic_id'])) {
+        require_once __DIR__ . '/inc/metric_studio.php';
+        $delId = (int)$_POST['delete_generic_id'];
+        $secKey = (string)($_POST['section_key'] ?? '');
+        [$ok, $msg] = generic_metric_record_delete($delId, (int)$user['id'], ($user['role'] === 'Admin'));
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/upload.php?section=' . urlencode($secKey));
+    }
+
     $type = (string) input('record_type');
     $nav  = (string) input('nav', 'add');   
 
@@ -274,6 +286,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {    csrf_check();
     }
 
     if (!isset($types[$type])) {
+        require_once __DIR__ . '/inc/metric_studio.php';
+        $genMetricKey = str_starts_with($type, 'gen_') ? substr($type, 4) : $type;
+        $genMetric = metric_studio_find($genMetricKey);
+        if ($genMetric) {
+            [$ok, $msg, $recId] = generic_metric_record_submit($genMetricKey, $user, $targetYear, $_POST, $_FILES['proof'] ?? null);
+            flash($ok ? 'success' : 'error', $msg);
+            redirect('/upload.php?section=' . urlencode($genMetricKey) . '&type=' . urlencode($type));
+        }
+
         flash('error', 'Invalid record type.');
         redirect('/upload.php');
     }
@@ -988,13 +1009,38 @@ $myRecords = my_records($user['id']);
 $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
 unset($_SESSION['submitted_draft_type']);
 
+$userRole = $user['role'] ?? 'Faculty';
 $reqSection = trim((string)($_GET['section'] ?? ''));
 $reqType    = trim((string)($_GET['type'] ?? ''));
-$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null);
+$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null, $userRole);
 $activeSection       = $resolvedSectionData['section'];
 $selectedType        = $resolvedSectionData['type'];
 if (!isset($types[$selectedType])) {
     $selectedType = $activeSection['default_type'];
+}
+
+// Dynamically register active generic metrics into $types map
+$allActiveSections = upload_approved_sections($userRole);
+foreach ($allActiveSections as $sSec) {
+    if (($sSec['metric_type'] ?? '') === 'generic') {
+        $dt = $sSec['default_type'];
+        if (!isset($types[$dt])) {
+            $types[$dt] = [
+                'label'             => $sSec['title'],
+                'table'             => 'generic_metric_records',
+                'requires_approval' => false,
+                'metric_type'       => 'generic',
+            ];
+        }
+    }
+}
+if (!isset($types[$selectedType]) && ($activeSection['metric_type'] ?? '') === 'generic') {
+    $types[$selectedType] = [
+        'label'             => $activeSection['title'],
+        'table'             => 'generic_metric_records',
+        'requires_approval' => false,
+        'metric_type'       => 'generic',
+    ];
 }
 
 $editId = (int) input('edit_id', (int)($_GET['edit_id'] ?? $_GET['edit'] ?? 0));
@@ -1244,77 +1290,147 @@ require __DIR__ . '/inc/header.php';
   </div>
 <?php endif; ?>
 <?php
-  $approvedSections = upload_approved_sections();
-  $sectionsByGroup  = upload_sections_by_group();
+  $approvedSections = upload_approved_sections($userRole);
+  $sectionsByGroup  = upload_sections_by_group($userRole);
+  $prevSection      = upload_section_prev($activeSection['id'], $userRole);
+  $nextSection      = upload_section_next($activeSection['id'], $userRole);
+  $prevUrl          = $prevSection ? url('upload.php?section=' . $prevSection['id'] . '&type=' . $prevSection['default_type']) : '#';
+  $nextUrl          = $nextSection ? url('upload.php?section=' . $nextSection['id'] . '&type=' . $nextSection['default_type']) : '#';
 ?>
 <!-- Approved Top-Level Upload Navigation (Exactly 30 Approved Sections in Exact Order) -->
-<div class="card" style="margin-bottom:16px; border:1px solid var(--border, #E2E8F0); box-shadow:0 1px 3px rgba(0,0,0,0.03);">
-  <div style="padding:10px 16px 8px; border-bottom:1px solid #F1F5F9; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#FAFAFA;">
-    <div style="display:flex; align-items:center; gap:8px;">
-      <span style="font-size:12px; font-weight:700; color:var(--ink, #1E293B); text-transform:uppercase; letter-spacing:0.04em; display:inline-flex; align-items:center; gap:6px;">
+<div class="card atts-metric-nav-card">
+  <div class="atts-targets-header">
+    <div class="atts-targets-header-left">
+      <span class="atts-targets-title">
         <?= icon('target', 14) ?> Institutional Academic Targets
       </span>
-      <span class="badge badge-neutral" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px;">30 Sections</span>
-      <span class="badge badge-primary" style="font-size:11px; font-weight:600; padding:2px 8px; border-radius:12px;"><?= e($activeSection['group']) ?></span>
+      <span class="badge badge-neutral">30 Sections</span>
+      <span class="badge badge-primary"><?= e($activeSection['group']) ?></span>
     </div>
-    <div style="display:flex; align-items:center; gap:8px;">
-      <label for="quickJumpSelect" style="font-size:11.5px; font-weight:600; color:#64748B; margin:0;">Quick Jump:</label>
-      <select class="select" id="quickJumpSelect" onchange="if(this.value) window.location.href=this.value" style="height:28px; font-size:11.5px; padding:0 24px 0 8px; border-radius:6px; width:auto; max-width:280px;">
-        <?php foreach ($sectionsByGroup as $grpName => $grpSecs): ?>
-          <optgroup label="<?= e($grpName) ?>">
-            <?php foreach ($grpSecs as $s): ?>
-              <option value="<?= e(url('upload.php?section=' . $s['id'] . '&type=' . $s['default_type'])) ?>" <?= ($activeSection['id'] === $s['id']) ? 'selected' : '' ?>>
-                <?= e($s['title']) ?>
-              </option>
-            <?php endforeach; ?>
-          </optgroup>
-        <?php endforeach; ?>
-      </select>
+    <div class="atts-targets-header-right">
+      <div class="atts-quick-jump-wrap">
+        <label for="quickJumpSelect" class="atts-quick-jump-label">Quick Jump:</label>
+        <select class="select atts-quick-jump-select" id="quickJumpSelect" onchange="if(this.value) window.location.href=this.value" aria-label="Quick Jump to Metric">
+          <?php foreach ($sectionsByGroup as $grpName => $grpSecs): ?>
+            <optgroup label="<?= e($grpName) ?>">
+              <?php foreach ($grpSecs as $s): ?>
+                <option value="<?= e(url('upload.php?section=' . $s['id'] . '&type=' . $s['default_type'])) ?>" <?= ($activeSection['id'] === $s['id']) ? 'selected' : '' ?>>
+                  <?= (int)$s['order'] ?>. <?= e($s['title']) ?>
+                </option>
+              <?php endforeach; ?>
+            </optgroup>
+          <?php endforeach; ?>
+        </select>
+      </div>
 
-      <div style="display:inline-flex; gap:3px;">
-        <button type="button" class="btn btn-ghost btn-sm" id="navScrollLeft" title="Scroll left" style="height:28px; width:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; border:1px solid #E2E8F0; border-radius:6px; background:#FFFFFF;">
-          <?= icon('chevron-left', 14) ?>
+      <div class="atts-nav-step-group" role="group" aria-label="Metric Navigation">
+        <a href="<?= e($prevUrl) ?>"
+           class="btn btn-sm btn-outline atts-nav-btn <?= !$prevSection ? 'disabled' : '' ?>"
+           id="metricPrevBtn"
+           title="<?= $prevSection ? 'Previous: ' . e($prevSection['order'] . '. ' . $prevSection['title']) : 'First metric reached' ?>"
+           <?= !$prevSection ? 'aria-disabled="true" tabindex="-1"' : '' ?>>
+          <?= icon('chevron-left', 14) ?> <span>Previous</span>
+        </a>
+        <a href="<?= e($nextUrl) ?>"
+           class="btn btn-sm btn-outline atts-nav-btn <?= !$nextSection ? 'disabled' : '' ?>"
+           id="metricNextBtn"
+           title="<?= $nextSection ? 'Next: ' . e($nextSection['order'] . '. ' . $nextSection['title']) : 'Last metric reached' ?>"
+           <?= !$nextSection ? 'aria-disabled="true" tabindex="-1"' : '' ?>>
+          <span>Next</span> <?= icon('chevron-right', 14) ?>
+        </a>
+      </div>
+
+      <div class="atts-nav-scroll-group" role="group" aria-label="Scroll metric tabs">
+        <button type="button" class="btn btn-ghost btn-sm atts-scroll-btn" id="navScrollLeft" title="Scroll tabs left" aria-label="Scroll tabs left">
+          <?= icon('chevron-left', 13) ?>
         </button>
-        <button type="button" class="btn btn-ghost btn-sm" id="navScrollRight" title="Scroll right" style="height:28px; width:28px; padding:0; display:inline-flex; align-items:center; justify-content:center; border:1px solid #E2E8F0; border-radius:6px; background:#FFFFFF;">
-          <?= icon('chevron-right', 14) ?>
+        <button type="button" class="btn btn-ghost btn-sm atts-scroll-btn" id="navScrollRight" title="Scroll tabs right" aria-label="Scroll tabs right">
+          <?= icon('chevron-right', 13) ?>
         </button>
       </div>
     </div>
   </div>
 
-  <div class="card-body js-category-nav-container" style="padding:10px 16px 14px; overflow-x:auto; white-space:nowrap; position:relative; scrollbar-width:thin; scroll-behavior:smooth;">
-    <?php foreach ($approvedSections as $secId => $sec): ?>
-      <a href="<?= e(url('upload.php?section=' . $sec['id'] . '&type=' . $sec['default_type'])) ?>"
-         class="btn btn-sm js-category-tab <?= ($activeSection['id'] === $sec['id']) ? 'btn-primary active' : 'btn-ghost' ?>"
-         data-section="<?= e($sec['id']) ?>"
-         title="<?= e($sec['title']) ?>"
-         style="margin:3px 2px; height:32px; font-size:12px; position:relative; z-index:1; flex-shrink:0; max-width:320px; overflow:hidden; text-overflow:ellipsis;"><?= e($sec['title']) ?></a>
-    <?php endforeach; ?>
-    <!-- Sliding active-tab indicator line -->
-    <div class="js-category-indicator" id="categoryNavIndicator"
-         style="position:absolute; bottom:5px; height:3px; background:var(--orange-500, #FF4F01); border-radius:3px; z-index:2; pointer-events:none; left:0; width:0; transition:transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), width 0.28s cubic-bezier(0.32, 0.72, 0, 1); will-change:transform, width;"></div>
+  <div class="atts-metric-nav-container js-category-nav-container" id="categoryNavContainer" role="tablist" aria-label="Institutional Academic Targets">
+    <div class="atts-metric-nav-track" id="categoryNavTrack">
+      <?php foreach ($approvedSections as $secId => $sec): 
+        $isActive = ($activeSection['id'] === $sec['id']);
+      ?>
+        <a href="<?= e(url('upload.php?section=' . $sec['id'] . '&type=' . $sec['default_type'])) ?>"
+           class="atts-metric-tab js-category-tab <?= $isActive ? 'active' : '' ?>"
+           data-section="<?= e($sec['id']) ?>"
+           role="tab"
+           id="metric-tab-<?= e($sec['id']) ?>"
+           aria-selected="<?= $isActive ? 'true' : 'false' ?>"
+           title="<?= e($sec['order'] . '. ' . $sec['title']) ?>">
+          <span class="atts-metric-tab-badge"><?= (int)$sec['order'] ?></span>
+          <span class="atts-metric-tab-title"><?= e($sec['title']) ?></span>
+        </a>
+      <?php endforeach; ?>
+      <!-- Sliding active-tab indicator line -->
+      <div class="atts-metric-indicator" id="categoryNavIndicator" aria-hidden="true"></div>
+    </div>
   </div>
+  <script>
+  (function () {
+    try {
+      var c = document.getElementById('categoryNavContainer');
+      var t = c ? c.querySelector('.atts-metric-tab.active') : null;
+      var ind = document.getElementById('categoryNavIndicator');
+      if (!c || !t) return;
+
+      // Position active underline indicator immediately with no animation
+      if (ind && t.offsetWidth > 0) {
+        ind.style.left = t.offsetLeft + 'px';
+        ind.style.width = t.offsetWidth + 'px';
+      }
+
+      // Restore saved scroll position or center active metric tab immediately before first paint
+      var activeSec = '<?= e($activeSection['id']) ?>';
+      var savedSec = sessionStorage.getItem('atts_active_section');
+      var savedScroll = sessionStorage.getItem('atts_metric_scroll');
+
+      if (savedSec === activeSec && savedScroll !== null) {
+        c.scrollLeft = parseFloat(savedScroll);
+      } else if (t.offsetLeft > 0) {
+        var cWidth = c.clientWidth || (c.parentElement ? c.parentElement.clientWidth : 0);
+        if (cWidth > 0) {
+          var target = t.offsetLeft - (cWidth / 2) + (t.offsetWidth / 2);
+          var max = Math.max(0, c.scrollWidth - cWidth);
+          c.scrollLeft = Math.max(0, Math.min(target, max));
+        }
+      }
+    } catch (e) {}
+  })();
+  </script>
 </div>
 
 <?php if (!empty($activeSection['subcategories'])): ?>
   <!-- Merged Subcategory Selector Bar -->
-  <div class="card" style="margin-top:-8px; margin-bottom:16px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px;">
-    <div style="padding:10px 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-      <span style="font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; letter-spacing:0.04em; display:inline-flex; align-items:center; gap:6px;">
-        <?= icon('layers', 14) ?> Subcategory / Record Type:
-      </span>
-      <div style="display:inline-flex; gap:6px; flex-wrap:wrap;">
-        <?php foreach ($activeSection['subcategories'] as $subKey => $subLabel): ?>
-          <a href="<?= e(url('upload.php?section=' . $activeSection['id'] . '&type=' . $subKey)) ?>"
-             class="btn btn-sm <?= ($selectedType === $subKey) ? 'btn-primary' : 'btn-outline' ?>"
-             style="height:30px; font-size:12px; font-weight:<?= ($selectedType === $subKey) ? '700' : '500' ?>; border-radius:20px; padding:0 14px; display:inline-flex; align-items:center; gap:5px;">
-            <?php if ($selectedType === $subKey): ?><?= icon('check', 12) ?><?php endif; ?>
-            <?= e($subLabel) ?>
-          </a>
-        <?php endforeach; ?>
+  <div class="card atts-subcategory-card">
+    <div class="atts-subcategory-inner">
+      <div class="atts-subcategory-controls">
+        <span class="atts-subcategory-label">
+          <?= icon('layers', 14) ?> Subcategory / Record Type:
+        </span>
+        <div class="atts-subcategory-pills" role="tablist" aria-label="Subcategory / Record Type">
+          <?php foreach ($activeSection['subcategories'] as $subKey => $subLabel): 
+            $isSubActive = ($selectedType === $subKey);
+          ?>
+            <a href="<?= e(url('upload.php?section=' . $activeSection['id'] . '&type=' . $subKey)) ?>"
+               class="atts-subcat-pill <?= $isSubActive ? 'active' : '' ?>"
+               role="tab"
+               aria-selected="<?= $isSubActive ? 'true' : 'false' ?>">
+              <?php if ($isSubActive): ?>
+                <?= icon('check', 12) ?>
+              <?php endif; ?>
+              <span><?= e($subLabel) ?></span>
+            </a>
+          <?php endforeach; ?>
+        </div>
       </div>
       <?php if (!empty($activeSection['description'])): ?>
-        <div style="font-size:12px; color:#64748B; margin-left:auto;">
+        <div class="atts-subcategory-desc">
           <?= e($activeSection['description']) ?>
         </div>
       <?php endif; ?>
@@ -1324,117 +1440,131 @@ require __DIR__ . '/inc/header.php';
 
 <script>
 (function () {
-  var container = document.querySelector('.js-category-nav-container');
+  var container = document.getElementById('categoryNavContainer');
+  var track     = document.getElementById('categoryNavTrack');
   var indicator = document.getElementById('categoryNavIndicator');
   var btnLeft   = document.getElementById('navScrollLeft');
   var btnRight  = document.getElementById('navScrollRight');
-  if (!container || !indicator) return;
+  if (!container || !indicator || !track) return;
 
   if (btnLeft) {
     btnLeft.addEventListener('click', function () {
-      container.scrollBy({ left: -260, behavior: 'smooth' });
+      container.scrollBy({ left: -320, behavior: 'smooth' });
     });
   }
   if (btnRight) {
     btnRight.addEventListener('click', function () {
-      container.scrollBy({ left: 260, behavior: 'smooth' });
+      container.scrollBy({ left: 320, behavior: 'smooth' });
     });
   }
 
   function getActiveTab() {
-    return container.querySelector('.js-category-tab.active') ||
-           container.querySelector('.js-category-tab.btn-primary') ||
-           container.querySelector('.js-category-tab');
+    return track.querySelector('.atts-metric-tab.active') ||
+           track.querySelector('.atts-metric-tab');
   }
 
-  function updateIndicator(activeElement, smooth) {
-    if (!activeElement || !container || !indicator) return;
+  function updateIndicator(activeElement, animate) {
+    if (!activeElement || !indicator) return;
 
-    var containerRect = container.getBoundingClientRect();
-    var tabRect = activeElement.getBoundingClientRect();
-    var currentScroll = container.scrollLeft;
+    var left = activeElement.offsetLeft;
+    var width = activeElement.offsetWidth;
 
-    var targetLeft = (tabRect.left - containerRect.left - (container.clientLeft || 0)) + currentScroll;
-    var targetWidth = tabRect.width || activeElement.offsetWidth;
-
-    if (smooth) {
-      indicator.style.transition = 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), width 0.28s cubic-bezier(0.32, 0.72, 0, 1)';
+    if (animate) {
+      indicator.classList.add('animated');
     } else {
-      indicator.style.transition = 'none';
+      indicator.classList.remove('animated');
     }
 
-    indicator.style.width = Math.round(targetWidth) + 'px';
-    indicator.style.transform = 'translateX(' + Math.round(targetLeft) + 'px)';
+    indicator.style.left = left + 'px';
+    indicator.style.width = width + 'px';
   }
 
-  function ensureActiveCategoryVisible(activeElement, smooth) {
+  function ensureActiveCategoryVisible(activeElement) {
     if (!activeElement || !container) return;
 
-    var containerRect = container.getBoundingClientRect();
-    var itemRect = activeElement.getBoundingClientRect();
-    var padding = 24;
+    var itemLeft = activeElement.offsetLeft;
+    var itemWidth = activeElement.offsetWidth;
+    var containerWidth = container.clientWidth;
 
-    var itemLeft = itemRect.left - containerRect.left;
-    var itemRight = itemRect.right - containerRect.left;
-
-    var currentScroll = container.scrollLeft;
-    var targetScroll = currentScroll;
-
-    if (itemLeft < padding || itemRight > (container.clientWidth - padding)) {
-      var itemCenter = activeElement.offsetLeft + (activeElement.offsetWidth / 2);
-      targetScroll = itemCenter - (container.clientWidth / 2);
-    } else {
-      return;
-    }
-
-    var maxScroll = Math.max(0, container.scrollWidth - container.clientWidth);
+    var targetScroll = itemLeft - (containerWidth / 2) + (itemWidth / 2);
+    var maxScroll = Math.max(0, container.scrollWidth - containerWidth);
     targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
 
-    if (Math.abs(container.scrollLeft - targetScroll) > 1) {
-      if (smooth && typeof container.scrollTo === 'function') {
-        container.scrollTo({ left: targetScroll, behavior: 'smooth' });
-      } else {
-        container.scrollLeft = targetScroll;
+    // Instant positioning - NEVER smooth scroll from Metric 1 across all metrics
+    container.scrollLeft = targetScroll;
+
+    try {
+      var secId = activeElement.getAttribute('data-section');
+      if (secId) {
+        sessionStorage.setItem('atts_active_section', secId);
+        sessionStorage.setItem('atts_metric_scroll', targetScroll);
       }
-    }
+    } catch (e) {}
   }
 
-  var tabs = container.querySelectorAll('.js-category-tab');
+  var tabs = track.querySelectorAll('.atts-metric-tab');
   tabs.forEach(function (tab) {
     tab.addEventListener('click', function (e) {
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
 
-      tabs.forEach(function (t) {
-        t.classList.remove('btn-primary', 'active');
-        t.classList.add('btn-ghost');
-      });
-      this.classList.remove('btn-ghost');
-      this.classList.add('btn-primary', 'active');
+      var secId = this.getAttribute('data-section');
+      var itemLeft = this.offsetLeft;
+      var itemWidth = this.offsetWidth;
+      var containerWidth = container.clientWidth;
+      var targetScroll = itemLeft - (containerWidth / 2) + (itemWidth / 2);
+      var maxScroll = Math.max(0, container.scrollWidth - containerWidth);
+      targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
 
-      updateIndicator(this, true);
-      ensureActiveCategoryVisible(this, true);
+      try {
+        if (secId) {
+          sessionStorage.setItem('atts_active_section', secId);
+          sessionStorage.setItem('atts_metric_scroll', targetScroll);
+        }
+      } catch (err) {}
+
+      tabs.forEach(function (t) {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      this.classList.add('active');
+      this.setAttribute('aria-selected', 'true');
+      updateIndicator(this, false);
     });
   });
 
-  container.addEventListener('scroll', function () {
-    var activeTab = getActiveTab();
-    if (activeTab) {
-      updateIndicator(activeTab, false);
+  // Quick Jump dropdown: sync sessionStorage on change
+  var quickJump = document.getElementById('quickJumpSelect');
+  if (quickJump) {
+    quickJump.addEventListener('change', function () {
+      if (this.value) {
+        try {
+          sessionStorage.removeItem('atts_active_section');
+          sessionStorage.removeItem('atts_metric_scroll');
+        } catch (e) {}
+        window.location.href = this.value;
+      }
+    });
+  }
+
+  // Prev / Next buttons: clear sessionStorage so target recalculates cleanly
+  var prevBtn = document.getElementById('metricPrevBtn');
+  var nextBtn = document.getElementById('metricNextBtn');
+  [prevBtn, nextBtn].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', function () {
+        try {
+          sessionStorage.removeItem('atts_active_section');
+          sessionStorage.removeItem('atts_metric_scroll');
+        } catch (e) {}
+      });
     }
-  }, { passive: true });
+  });
 
   function initNav() {
     var activeTab = getActiveTab();
     if (activeTab) {
       updateIndicator(activeTab, false);
-      ensureActiveCategoryVisible(activeTab, false);
-      setTimeout(function () {
-        updateIndicator(activeTab, false);
-        ensureActiveCategoryVisible(activeTab, true);
-      }, 50);
-      setTimeout(function () {
-        updateIndicator(activeTab, false);
-      }, 200);
+      ensureActiveCategoryVisible(activeTab);
     }
   }
 
@@ -1448,9 +1578,9 @@ require __DIR__ . '/inc/header.php';
     var activeTab = getActiveTab();
     if (activeTab) {
       updateIndicator(activeTab, false);
-      ensureActiveCategoryVisible(activeTab, false);
+      ensureActiveCategoryVisible(activeTab);
     }
-  });
+  }, { passive: true });
 })();
 </script>
 
@@ -1599,7 +1729,8 @@ require __DIR__ . '/inc/header.php';
                 }
                 echo $editRecord ? 'Edit ' . e($currentEvType) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($currentEvType);
             } else {
-                echo $editRecord ? 'Edit ' . e($types[$selectedType]['label']) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($types[$selectedType]['label']);
+                $typeLabel = $types[$selectedType]['label'] ?? ($activeSection['title'] ?? 'Record');
+                echo $editRecord ? 'Edit ' . e($typeLabel) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($typeLabel);
             }
           ?>
         </span>
@@ -1660,6 +1791,56 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
+      <?php if (($activeSection['metric_type'] ?? '') === 'generic'): ?>
+        <?php
+          require_once __DIR__ . '/inc/metric_studio.php';
+          $genFields = $activeSection['form_config'] ?: [];
+          if (!empty($activeSection['help_text'])):
+        ?>
+          <div style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; color:#475569;">
+            <strong>Instructions:</strong> <?= e($activeSection['help_text']) ?>
+          </div>
+        <?php endif; ?>
+
+        <?php foreach ($genFields as $gf):
+          $isFull = in_array($gf['type'], ['textarea', 'file'], true);
+          $req = !empty($gf['required']);
+          $gridSpan = $isFull ? 'grid-column:span 2;' : '';
+        ?>
+          <div class="field" style="<?= $gridSpan ?>">
+            <label>
+              <?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?>
+              <?php if (!empty($gf['help_text'])): ?>
+                <span class="card-sub">— <?= e($gf['help_text']) ?></span>
+              <?php endif; ?>
+            </label>
+            <?php if ($gf['type'] === 'textarea'): ?>
+              <textarea class="input" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> rows="3"></textarea>
+            <?php elseif ($gf['type'] === 'select'): ?>
+              <select class="select" name="<?= e($gf['key']) ?>" <?= $req ? 'required' : '' ?>>
+                <option value="" disabled selected><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
+                <?php foreach (($gf['options'] ?? []) as $opt): ?>
+                  <option value="<?= e($opt) ?>"><?= e($opt) ?></option>
+                <?php endforeach; ?>
+              </select>
+            <?php elseif ($gf['type'] === 'file'): ?>
+              <input class="input" type="file" name="proof" accept="application/pdf,.pdf" <?= $req ? 'required' : '' ?>>
+              <div class="card-sub" style="font-size:11px; margin-top:3px;">PDF document strictly 2 MB or less</div>
+            <?php elseif ($gf['type'] === 'date'): ?>
+              <input class="input" type="date" name="<?= e($gf['key']) ?>" <?= $req ? 'required' : '' ?>>
+            <?php elseif ($gf['type'] === 'integer'): ?>
+              <input class="input" type="number" step="1" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) ? 'max="' . (int)$gf['max'] . '"' : '' ?>>
+            <?php elseif ($gf['type'] === 'decimal'): ?>
+              <input class="input" type="number" step="any" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) ? 'max="' . (float)$gf['max'] . '"' : '' ?>>
+            <?php elseif ($gf['type'] === 'url'): ?>
+              <input class="input" type="url" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?: 'https://') ?>" <?= $req ? 'required' : '' ?>>
+            <?php else: ?>
+              <input class="input" type="text" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?>>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      <?php endif; ?>
+
       <?php if (in_array($selectedType, ['conference','patent'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
@@ -2308,7 +2489,20 @@ require __DIR__ . '/inc/header.php';
 
         <!-- Proof / attachment — carried onto the report (Journal and FDP place it within their sections).
              Institutional forms keep it optional, matching their handler. -->
-        <?php if (!in_array($selectedType, ['journal', 'fdp'], true)) render_proof_field($editRecord, !str_starts_with($selectedType, 'inst_')); ?>
+        <?php 
+          $hasCustomProof = false;
+          if (($activeSection['metric_type'] ?? '') === 'generic') {
+              foreach (($activeSection['form_config'] ?? []) as $cfgF) {
+                  if (($cfgF['type'] ?? '') === 'file') {
+                      $hasCustomProof = true;
+                      break;
+                  }
+              }
+          }
+          if (!in_array($selectedType, ['journal', 'fdp'], true) && !$hasCustomProof) {
+              render_proof_field($editRecord, !str_starts_with($selectedType, 'inst_'));
+          }
+        ?>
       </div>
       </fieldset>
 
@@ -3109,6 +3303,80 @@ require __DIR__ . '/inc/header.php';
 </div> <!-- /#individualUploadContainer -->
 
 <!-- My recent records -->
+<?php if (($activeSection['metric_type'] ?? '') === 'generic'): ?>
+  <?php
+    require_once __DIR__ . '/inc/metric_studio.php';
+    $genRecords = generic_metric_records_for($activeSection['key'] ?? $activeSection['id'], (int)$user['id']);
+  ?>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <div class="card-title">My Submissions — <?= e($activeSection['title']) ?></div>
+        <div class="card-sub"><?= count($genRecords) ?> records submitted for this metric</div>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <?php if (empty($genRecords)): ?>
+        <div class="empty"><div class="ic"><?= icon('upload', 20) ?></div><p>No submissions yet for <?= e($activeSection['title']) ?>.</p></div>
+      <?php else: ?>
+        <div class="table-wrap"><table class="data"><thead><tr>
+          <th style="padding-left:24px">Record Title</th><th>Academic Year</th><th>Details</th><th>Proof</th><th>Status</th><th>Submitted</th><th>Action</th>
+        </tr></thead><tbody>
+        <?php foreach ($genRecords as $gr): 
+          $statusBadge = ['Draft'=>'neutral','Submitted'=>'info','Approved'=>'success','Rejected'=>'danger'];
+          $summaryBits = [];
+          if (!empty($gr['data_parsed']) && is_array($gr['data_parsed'])) {
+            foreach (array_slice($gr['data_parsed'], 0, 3) as $k => $v) {
+              if (is_scalar($v) && $v !== '') {
+                $summaryBits[] = e($k) . ': <strong>' . e(mb_strimwidth((string)$v, 0, 35, '…')) . '</strong>';
+              }
+            }
+          }
+        ?>
+          <tr>
+            <td style="padding-left:24px">
+              <div style="font-weight:600; color:var(--c-navy, #131d3b);"><?= e($gr['title'] ?: 'Untitled Submission') ?></div>
+            </td>
+            <td><span class="badge badge-neutral"><?= e($gr['academic_year']) ?></span></td>
+            <td style="font-size:12px; color:var(--c-muted, #64748b);">
+              <?= !empty($summaryBits) ? implode(' &bull; ', $summaryBits) : '—' ?>
+            </td>
+            <td>
+              <?php if (!empty($gr['proof_file'])): ?>
+                <a href="<?= e(url('download.php?proof=' . urlencode($gr['proof_file']))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px;">
+                  <?= icon('file-text', 12) ?> View Proof
+                </a>
+              <?php else: ?>
+                <span style="font-size:12px; color:var(--c-muted, #94a3b8);">None</span>
+              <?php endif; ?>
+            </td>
+            <td>
+              <span class="badge badge-<?= $statusBadge[$gr['status']] ?? 'neutral' ?>"><?= e($gr['status']) ?></span>
+            </td>
+            <td class="card-sub" title="<?= e(date('d M Y, h:i A', strtotime($gr['created_at']))) ?>">
+              <?= e(time_ago($gr['created_at'])) ?>
+            </td>
+            <td>
+              <?php if ($gr['status'] !== 'Approved'): ?>
+                <form method="post" onsubmit="return confirm('Delete this record? This action cannot be undone.');" style="display:inline;">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="delete_generic_id" value="<?= (int)$gr['id'] ?>">
+                  <input type="hidden" name="section_key" value="<?= e($activeSection['id']) ?>">
+                  <button type="submit" class="btn btn-ghost btn-sm" style="color:#d9534f; padding:2px 8px;" title="Delete record">
+                    <?= icon('trash-2', 13) ?>
+                  </button>
+                </form>
+              <?php else: ?>
+                <span style="font-size:11px; color:var(--c-muted, #94a3b8); font-weight:600;">Locked</span>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody></table></div>
+      <?php endif; ?>
+    </div>
+  </div>
+<?php else: ?>
 <?php
   $mTypeRaw = isset($_GET['mtype']) ? (string) $_GET['mtype'] : null;
   if ($mTypeRaw === null) {
@@ -3219,5 +3487,6 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
   </div>
 </div>
+<?php endif; ?>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

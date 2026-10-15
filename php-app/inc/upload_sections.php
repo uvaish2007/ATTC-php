@@ -9,7 +9,7 @@
 
 declare(strict_types=1);
 
-function upload_approved_sections(): array
+function upload_approved_sections_built_in(): array
 {
     static $sections = null;
     if ($sections !== null) {
@@ -357,15 +357,93 @@ function upload_approved_sections(): array
 }
 
 /**
+ * Returns the active upload sections, loaded dynamically from the database
+ * via Metric Studio when available, with fallback to built-in sections.
+ *
+ * @param string|null $role If provided, filters according to role visibility.
+ * @param bool $forceRefresh
+ * @return array<string, array>
+ */
+function upload_approved_sections(?string $role = null, bool $forceRefresh = false): array
+{
+    static $cached = [];
+    $cacheKey = ($role ?? 'all') . ($forceRefresh ? '_rf_' . microtime(true) : '');
+    if (!$forceRefresh && isset($cached[$cacheKey])) {
+        return $cached[$cacheKey];
+    }
+
+    try {
+        if (!function_exists('metric_studio_all')) {
+            require_once __DIR__ . '/metric_studio.php';
+        }
+        if (function_exists('metric_studio_all')) {
+            $filters = ['sort' => 'order'];
+            if ($role !== 'all_with_inactive') {
+                $filters['status'] = 'active';
+            }
+            $dbMetrics = metric_studio_all($filters);
+
+            if (!empty($dbMetrics)) {
+                $dynamicSections = [];
+                foreach ($dbMetrics as $m) {
+                    if ($role === 'Faculty' && empty($m['faculty_visible'])) {
+                        continue;
+                    }
+                    if ($role === 'Coordinator' && empty($m['coordinator_visible'])) {
+                        continue;
+                    }
+                    if ($role !== 'all_with_inactive' && empty($m['status'])) {
+                        continue;
+                    }
+
+                    $key = $m['metric_key'] ?: ('sec_' . $m['id']);
+                    $defaultType = !empty($m['default_type']) ? $m['default_type'] : ('gen_' . $key);
+                    $types = !empty($m['types_parsed']) ? $m['types_parsed'] : [$defaultType];
+                    if (!in_array($defaultType, $types, true)) {
+                        array_unshift($types, $defaultType);
+                    }
+
+                    $dynamicSections[$key] = [
+                        'id'           => $key,
+                        'order'        => (int)$m['display_order'],
+                        'title'        => $m['name'],
+                        'group'        => $m['category'],
+                        'default_type' => $defaultType,
+                        'types'        => $types,
+                        'subcategories'=> $m['subcategories_parsed'] ?: [],
+                        'description'  => $m['description'] ?: '',
+                        'help_text'    => $m['help_text'] ?: '',
+                        'metric_type'  => $m['metric_type'] ?: 'specialized',
+                        'form_config'  => $m['form_config_parsed'] ?: [],
+                        'status'       => (int)$m['status'],
+                        'faculty_visible' => (int)$m['faculty_visible'],
+                        'coordinator_visible' => (int)$m['coordinator_visible'],
+                    ];
+                }
+
+                if (!empty($dynamicSections)) {
+                    return $cached[$cacheKey] = $dynamicSections;
+                }
+            }
+        }
+    } catch (Throwable $e) {
+        // Fallback to built-in if database not ready
+    }
+
+    return $cached[$cacheKey] = upload_approved_sections_built_in();
+}
+
+/**
  * Resolves a section and record type from either section ID or record type string.
  *
  * @param string|null $sectionId
  * @param string|null $typeId
+ * @param string|null $role
  * @return array{section: array, type: string}
  */
-function resolve_upload_section(?string $sectionId = null, ?string $typeId = null): array
+function resolve_upload_section(?string $sectionId = null, ?string $typeId = null, ?string $role = null): array
 {
-    $sections = upload_approved_sections();
+    $sections = upload_approved_sections($role);
 
     // 1. Direct section ID lookup
     if (!empty($sectionId) && isset($sections[$sectionId])) {
@@ -459,11 +537,11 @@ function resolve_upload_section(?string $sectionId = null, ?string $typeId = nul
 }
 
 /**
- * Get next section in the exact approved 1 to 30 order.
+ * Get next section in the exact approved order.
  */
-function upload_section_next(string $currentSectionId): ?array
+function upload_section_next(string $currentSectionId, ?string $role = null): ?array
 {
-    $sections = upload_approved_sections();
+    $sections = upload_approved_sections($role);
     $keys = array_keys($sections);
     $idx = array_search($currentSectionId, $keys, true);
     if ($idx !== false && isset($keys[$idx + 1])) {
@@ -473,11 +551,11 @@ function upload_section_next(string $currentSectionId): ?array
 }
 
 /**
- * Get previous section in the exact approved 1 to 30 order.
+ * Get previous section in the exact approved order.
  */
-function upload_section_prev(string $currentSectionId): ?array
+function upload_section_prev(string $currentSectionId, ?string $role = null): ?array
 {
-    $sections = upload_approved_sections();
+    $sections = upload_approved_sections($role);
     $keys = array_keys($sections);
     $idx = array_search($currentSectionId, $keys, true);
     if ($idx !== false && $idx > 0 && isset($keys[$idx - 1])) {
@@ -489,10 +567,10 @@ function upload_section_prev(string $currentSectionId): ?array
 /**
  * Returns sections grouped by their institutional target category headings.
  */
-function upload_sections_by_group(): array
+function upload_sections_by_group(?string $role = null): array
 {
     $grouped = [];
-    foreach (upload_approved_sections() as $sec) {
+    foreach (upload_approved_sections($role) as $sec) {
         $grouped[$sec['group']][] = $sec;
     }
     return $grouped;

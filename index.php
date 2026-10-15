@@ -6,6 +6,13 @@ ini_set('display_errors', '1');
 // Route direct file requests (e.g. /login.php -> /php-app/login.php) or fallback to /php-app/index.php.
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
 
+// Route /admin/metrics to admin-metrics.php
+if (in_array($path, ['/admin/metrics', '/admin/metrics/', '/php-app/admin/metrics', '/php-app/admin/metrics/'], true)) {
+    $queryString = !empty($_SERVER['QUERY_STRING']) ? '?' . $_SERVER['QUERY_STRING'] : '';
+    header('Location: /php-app/admin-metrics.php' . $queryString, true, 302);
+    exit;
+}
+
 // If request is already prefixed with /php-app/, serve/require that file directly.
 if (str_starts_with($path, '/php-app/')) {
     $relPath = substr($path, 9);

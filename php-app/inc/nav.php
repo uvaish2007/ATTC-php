@@ -10,6 +10,7 @@ function navigation_for(string $role): array
 
             ['section' => 'Overview',  'label' => 'Announcement Archive', 'path' => 'announcements-archive.php', 'icon' => 'archive'],
             ['section' => 'Workspace', 'label' => 'Approvals',            'path' => 'approvals.php',            'icon' => 'approvals', 'badge' => 'approvals'],
+            ['section' => 'Workspace', 'label' => 'Metric Management',    'path' => 'admin-metrics.php',        'icon' => 'target'],
             ['section' => 'Workspace', 'label' => 'Academic Year',        'path' => 'academic-years.php',       'icon' => 'calendar'],
             ['section' => 'Workspace', 'label' => 'EM Schedule Manager',  'path' => 'em-schedule.php',          'icon' => 'clock'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
