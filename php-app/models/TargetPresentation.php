@@ -2,7 +2,7 @@
 /**
  * TargetPresentation Model
  * Handles data aggregation, classification, and role summaries for the
- * complete 38-slide Institutional Academic Targets Presentation.
+ * complete 35-slide Institutional Academic Targets Presentation.
  */
 
 declare(strict_types=1);

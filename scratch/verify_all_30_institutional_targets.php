@@ -10,7 +10,7 @@ $sessionFile = __DIR__ . '/test_admin_cookie.txt';
 if (file_exists($sessionFile)) @unlink($sessionFile);
 
 // 1. Authenticate as Admin
-$ch = curl_init('http://localhost:8000/login.php');
+$ch = curl_init('http://localhost:8000/php-app/login.php');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_COOKIEJAR, $sessionFile);
 curl_setopt($ch, CURLOPT_COOKIEFILE, $sessionFile);
@@ -31,16 +31,16 @@ $res = curl_exec($ch);
 
 // 2. Fetch pages
 curl_setopt($ch, CURLOPT_POST, false);
-curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/dashboard.php');
+curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/php-app/dashboard.php');
 $dashHtml = curl_exec($ch);
 
-curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/targets.php');
+curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/php-app/targets.php');
 $targetsHtml = curl_exec($ch);
 
-curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/present-targets.php');
+curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/php-app/present-targets.php');
 $presentHtml = curl_exec($ch);
 
-curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/executive-meeting-report.php');
+curl_setopt($ch, CURLOPT_URL, 'http://localhost:8000/php-app/executive-meeting-report.php');
 $emHtml = curl_exec($ch);
 
 // 3. Inspect dataset
@@ -63,14 +63,12 @@ $tests['Targets Achieved'] = ($sum['achieved_targets'] === 0 && strpos($presentH
 $tests['Pending / In Progress'] = ($sum['in_progress_targets'] === 2 && strpos($presentHtml, 'Pending / In Progress') !== false);
 $tests['Not Completed'] = ($sum['not_completed_targets'] === 2 && strpos($presentHtml, 'Not Completed') !== false);
 
-// TEST 4 — Admin Summary
-$tests['Admin Summary'] = (strpos($presentHtml, 'data-slide-index="2"') !== false && strpos($presentHtml, 'Admin Executive Summary') !== false && !empty($dataset['admin_summary']));
-
-// TEST 5 — Dean Summary
-$tests['Dean Summary'] = (strpos($presentHtml, 'data-slide-index="3"') !== false && strpos($presentHtml, 'Dean Academic Summary') !== false && strpos($presentHtml, 'Targets Awaiting Dean Review') !== false);
-
-// TEST 6 — Principal Summary
-$tests['Principal Summary'] = (strpos($presentHtml, 'data-slide-index="4"') !== false && strpos($presentHtml, 'Principal Executive Scorecard') !== false && !empty($dataset['principal_summary']));
+// TEST 4 — Role summary slides removed
+$tests['Role summary slides removed'] = (
+    strpos($presentHtml, 'Admin Executive Summary') === false &&
+    strpos($presentHtml, 'Dean Academic Summary') === false &&
+    strpos($presentHtml, 'Principal Executive Scorecard') === false
+);
 
 // TEST 7 & TEST 8 — All 30 sections & zero-achievement sections
 $all30Found = true;
@@ -78,7 +76,7 @@ $approvedSecs = upload_approved_sections();
 $missing = [];
 for ($i = 1; $i <= 30; $i++) {
     $sec = $approvedSecs[array_keys($approvedSecs)[$i - 1]];
-    $slideIdx = 7 + $i;
+    $slideIdx = 4 + $i;
     $needle = 'data-slide-index="' . $slideIdx . '"';
     if (strpos($presentHtml, $needle) === false || strpos($presentHtml, 'Section ' . $i . ' of 30') === false) {
         $all30Found = false;
@@ -89,16 +87,19 @@ $tests['All 30 individual target sections'] = $all30Found;
 $tests['Configured section count verified'] = (count($sec30) === 30 && count($approvedSecs) === 30);
 
 // TEST 9 — Faculty/Coordinator data
-$tests['Faculty/Coordinator data'] = ($dataset['admin_summary']['total_uploaded_records'] > 0 && strpos($presentHtml, 'Verified Faculty &amp; Coordinator Submissions') !== false);
+$tests['Faculty/Coordinator data'] = (strpos($presentHtml, 'Verified Faculty &amp; Coordinator Submissions') !== false);
 
 // TEST 10 — Target Fixed vs Achieved
-$tests['Target Fixed vs Achieved'] = (strpos($presentHtml, 'data-slide-index="5"') !== false && strpos($presentHtml, 'Target Fixed vs Target Achieved') !== false && $sum['total_target_fixed'] === 613);
+$tests['Target Fixed vs Achieved'] = (strpos($presentHtml, 'data-slide-index="2"') !== false && strpos($presentHtml, 'Target Fixed vs Target Achieved') !== false && $sum['total_target_fixed'] === 613);
 
 // TEST 11 — Department comparison
-$tests['Department-wise performance'] = (strpos($presentHtml, 'data-slide-index="6"') !== false && strpos($presentHtml, 'Department-Wise Target Performance') !== false && count($dataset['all_departments']) > 0);
+$tests['Department-wise performance'] = (strpos($presentHtml, 'data-slide-index="3"') !== false && strpos($presentHtml, 'Department-Wise Target Performance') !== false && count($dataset['all_departments']) > 0);
 
 // TEST 12 — Department contribution
-$tests['All Departments Contribution'] = (strpos($presentHtml, 'data-slide-index="7"') !== false && strpos($presentHtml, 'All Departments Contribution') !== false);
+$tests['All Departments Contribution'] = (strpos($presentHtml, 'data-slide-index="4"') !== false && strpos($presentHtml, 'All Departments Contribution') !== false);
+
+// TEST 12b — Final Institutional Scorecard
+$tests['Final Institutional Scorecard'] = (strpos($presentHtml, 'data-slide-index="35"') !== false && strpos($presentHtml, 'Final Institutional Target Performance Summary') !== false);
 
 // TEST 13 — Status classification
 $tests['Correct workflow classification'] = ($sum['achieved_targets'] + $sum['in_progress_targets'] + $sum['not_completed_targets'] === $sum['total_targets'] && $dataset['dean_summary']['dean_pending_reviews'] === 1);
