@@ -54,6 +54,8 @@ function record_report_specs(): array
                 ['Type', 'conference_type'],
                 ['Venue', 'venue'],
                 ['Conference Date (dd/mm/yyyy)', 'conference_date'],
+                ['Year of Publication', 'publication_year'],
+                ['DOI', 'doi'],
                 ['Document Link', 'document_link'],
             ],
         ],

@@ -415,6 +415,8 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
                         'help_text'    => $m['help_text'] ?: '',
                         'metric_type'  => $m['metric_type'] ?: 'specialized',
                         'form_config'  => $m['form_config_parsed'] ?: [],
+                        'attachment_config' => $m['attachment_config_parsed'] ?? null,
+                        'form_version' => (int)($m['form_version'] ?? 1),
                         'status'       => (int)$m['status'],
                         'faculty_visible' => (int)$m['faculty_visible'],
                         'coordinator_visible' => (int)$m['coordinator_visible'],

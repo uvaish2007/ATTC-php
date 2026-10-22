@@ -582,10 +582,11 @@ function publication_position_label(int $position): string
     return publication_ordinal($position) . ' Author';
 }
 
-// Years offered for "Month & Year of Publication", newest first.
+// Years offered for "Month & Year of Publication", newest first through 2060.
 function publication_years(): array
 {
-    return range((int) date('Y') + 1, 2000);
+    $maxYear = max(2060, (int) date('Y') + 1);
+    return range($maxYear, 2000);
 }
 
 // The bare DOI ("10.1234/ABC123") from a DOI, a doi: reference or a doi.org
@@ -753,6 +754,11 @@ function publication_prepare_authors(array $user, array $in, string $noun): arra
     $dept = trim((string) $authors[0]['department']);
     if ($dept === '' || department_names_match($dept, $user['department'] ?? '')) {
         $dept = (string) ($user['department'] ?? $dept);
+    }
+
+    // Backend validation: Reject inconsistent department if submitted
+    if (isset($in['department']) && trim((string)$in['department']) !== '' && !department_names_match(trim((string)$in['department']), $dept)) {
+        $errors[] = "Submitted department does not match the selected Main Author's authoritative department ({$dept}).";
     }
     $coText = [];
     foreach (array_slice($authors, 1) as $a) {
@@ -1344,6 +1350,136 @@ function publication_edit_values(string $type, array $record): array
         $vals['pub_year'] = $year;
     }
     return $vals;
+}
+
+/**
+ * Validates a Conference upload server-side and returns the authoritative values to store.
+ *
+ * @return array{0: array, 1: string[]} [clean column values, errors]
+ */
+function conference_prepare_submission(array $user, array $in): array
+{
+    $errors = [];
+    $out    = [];
+
+    $mainOpts = array_column(publication_main_author_options($user), null, 'id');
+    $mainId   = (int) ($in['main_author_id'] ?? 0);
+
+    // Support fallback to matching faculty_name if editing legacy record without main_author_id
+    if ($mainId === 0 && !empty($in['faculty_name'])) {
+        foreach ($mainOpts as $f) {
+            if (trim($f['name']) === trim((string)$in['faculty_name'])) {
+                $mainId = (int) $f['id'];
+                break;
+            }
+        }
+    }
+
+    if (!isset($mainOpts[$mainId])) {
+        $errors[] = ($user['role'] ?? '') === 'Faculty'
+            ? 'The Main Author of a conference publication you upload must be yourself.'
+            : 'Select the Main Author from the faculty list.';
+    }
+
+    $author = $mainOpts[$mainId] ?? null;
+    $dept   = $author ? trim((string) $author['department']) : '';
+    if ($dept === '' || department_names_match($dept, $user['department'] ?? '')) {
+        $dept = (string) ($user['department'] ?? $dept);
+    }
+
+    // Backend validation: Reject inconsistent department if submitted
+    if (isset($in['department']) && trim((string)$in['department']) !== '' && !department_names_match(trim((string)$in['department']), $dept)) {
+        $errors[] = "Submitted department does not match the selected Main Author's authoritative department ({$dept}).";
+    }
+
+    $out['main_author_id'] = $mainId;
+    $out['faculty_name']   = $author ? $author['name'] : trim((string)($in['faculty_name'] ?? ''));
+    $out['department']     = $dept;
+
+    // Validate Author Type
+    $authorTypes = ['First Author', 'Corresponding Author', 'Co-Author'];
+    $authorType  = trim((string) ($in['author_type'] ?? ''));
+    if (!in_array($authorType, $authorTypes, true)) {
+        $errors[] = 'Author Type is required: choose ' . implode(', ', $authorTypes) . '.';
+    }
+    $out['author_type'] = $authorType;
+
+    // Validate Paper Title
+    $paperTitle = trim((string) ($in['paper_title'] ?? ''));
+    if ($paperTitle === '') {
+        $errors[] = 'Title of the Paper is required.';
+    } elseif (mb_strlen($paperTitle) > 500) {
+        $errors[] = 'Title of the Paper must be 500 characters or fewer.';
+    }
+    $out['paper_title'] = $paperTitle;
+
+    // Validate Conference Name
+    $confName = trim((string) ($in['conference_name'] ?? ''));
+    if ($confName === '') {
+        $errors[] = 'Conference Name is required.';
+    } elseif (mb_strlen($confName) > 255) {
+        $errors[] = 'Conference Name must be 255 characters or fewer.';
+    }
+    $out['conference_name'] = $confName;
+
+    // Validate Conference Type
+    $confType = trim((string) ($in['conference_type'] ?? ''));
+    if (!in_array($confType, ['National', 'International'], true)) {
+        $errors[] = 'Type is required: choose National or International.';
+    }
+    $out['conference_type'] = $confType;
+
+    // Validate Venue
+    $venue = trim((string) ($in['venue'] ?? ''));
+    if ($venue === '') {
+        $errors[] = 'Venue is required.';
+    } elseif (mb_strlen($venue) > 255) {
+        $errors[] = 'Venue must be 255 characters or fewer.';
+    }
+    $out['venue'] = $venue;
+
+    // Validate Conference Date
+    $confDate = trim((string) ($in['conference_date'] ?? ''));
+    if ($confDate === '' || strtotime($confDate) === false) {
+        $errors[] = 'Conference Date must be a valid date.';
+    }
+    $out['conference_date'] = $confDate;
+
+    // Validate Publication Year (extended through 2060)
+    $pubYear = trim((string) ($in['publication_year'] ?? ''));
+    if ($pubYear === '' || !in_array((int)$pubYear, publication_years(), true)) {
+        $errors[] = 'Year of Publication must be chosen from the supported list (2000 to 2060).';
+    }
+    $out['publication_year'] = $pubYear;
+
+    // Optional DOI
+    if (!empty($in['doi'])) {
+        [$out['doi'], , $doiError] = publication_doi_input($in['doi']);
+        if ($doiError !== null) {
+            $errors[] = $doiError;
+        }
+    } else {
+        $out['doi'] = null;
+    }
+
+    // Optional ISBN / ISSN
+    $out['isbn'] = trim((string) ($in['isbn'] ?? '')) ?: null;
+
+    // Optional Proceedings Link
+    $procLink = trim((string) ($in['proceedings_link'] ?? ''));
+    if ($procLink !== '') {
+        if (!preg_match('/^https?:\/\/.+/i', $procLink)) {
+            $errors[] = 'Proceedings Link must be a valid URL starting with http:// or https://.';
+        }
+        $out['proceedings_link'] = $procLink;
+    } else {
+        $out['proceedings_link'] = null;
+    }
+
+    // Optional Co-Authors
+    $out['co_authors'] = trim((string) ($in['co_authors'] ?? '')) ?: null;
+
+    return [$out, $errors];
 }
 
 function journal_process_approval_expiry(?int $specificId = null, bool $forceCheck = false): int

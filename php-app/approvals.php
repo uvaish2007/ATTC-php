@@ -318,40 +318,36 @@ require __DIR__ . '/inc/header.php';
 
 <style>
   /* Pending-records table: fixed layout that fits the card (no sideways scroll) */
-  .pr-wrap { overflow-x:visible; }
-  table.data.pr-table { width:100%; table-layout:fixed; border-collapse:collapse; }
+  .pr-wrap { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+  table.data.pr-table { width:100%; min-width:960px; border-collapse:collapse; vertical-align:middle; }
   table.data.pr-table thead th {
-    font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:#64748B;
-    background:#F8FAFC; padding:9px 10px; border-bottom:1px solid #E2E8F0;
+    font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#64748B;
+    background:#F8FAFC; padding:11px 14px; border-bottom:1px solid #E2E8F0; white-space:nowrap;
   }
   table.data.pr-table tbody td {
-    padding:10px; vertical-align:middle; font-size:12.5px;
-    border-bottom:1px solid #F1F5F9; overflow-wrap:anywhere; min-width:0;
+    padding:12px 14px; vertical-align:middle; font-size:12.5px;
+    border-bottom:1px solid #F1F5F9; min-width:0;
   }
   table.data.pr-table thead th:first-child, table.data.pr-table tbody td:first-child { padding-left:18px; }
-  table.data.pr-table thead th:last-child, table.data.pr-table tbody td:last-child { padding-right:16px; }
+  table.data.pr-table thead th:last-child, table.data.pr-table tbody td:last-child { padding-right:18px; }
   table.data.pr-table tbody tr.pr-row:hover { background:#FAFBFD; }
-  table.data.pr-table tbody tr.pr-row td:first-child { box-shadow:inset 3px 0 0 var(--pr-accent, #CBD5E1); }
-  table.data.pr-table .pr-right { text-align:right; }
+  table.data.pr-table tbody tr.pr-row td:first-child { box-shadow:inset 3.5px 0 0 var(--pr-accent, #CBD5E1); }
+  table.data.pr-table .pr-right, table.data.pr-table td.pr-actions-cell { text-align:right; }
   tr.pr-st-submitted{--pr-accent:#3B82F6} tr.pr-st-unlocked{--pr-accent:#10B981} tr.pr-st-requested{--pr-accent:#F59E0B}
   tr.pr-st-resubmitted{--pr-accent:#6366F1} tr.pr-st-approved{--pr-accent:#10B981} tr.pr-st-rejected{--pr-accent:#EF4444}
 
-  .pr-title { display:block; font-weight:600; font-size:13px; color:#0F172A; text-decoration:none;
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:color .15s; }
+  .pr-title { display:block; font-weight:700; font-size:13.5px; color:#0F172A; text-decoration:none;
+    line-height:1.35; margin-bottom:3px; transition:color .15s; word-break:break-word; }
   .pr-title:hover { color:#FF4F01; }
   .pr-sub { font-size:11.5px; color:#64748B; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .pr-meta { display:flex; align-items:center; gap:4px; font-size:11px; color:#94A3B8; margin-top:3px; }
-  .pr-note { font-size:11px; color:#1E40AF; background:#EFF6FF; border:1px solid #DBEAFE; padding:3px 7px; border-radius:6px; margin-top:5px; }
+  .pr-meta { display:flex; align-items:center; gap:5px; font-size:11px; color:#94A3B8; margin-top:3px; }
+  
+  .pr-note { display:inline-flex; align-items:flex-start; gap:6px; font-size:11px; line-height:1.4; color:#1E40AF;
+    background:#EFF6FF; border:1px solid #DBEAFE; border-left:3px solid #3B82F6; padding:4px 9px; border-radius:6px; margin-top:5px; max-width:100%; }
+  .pr-note-tag { font-weight:700; color:#1D4ED8; white-space:nowrap; }
+  .pr-note-text { flex:1; word-break:break-word; }
 
-  .pr-er { display:inline-block; margin-top:4px; font:700 10.5px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
-    color:#1E40AF; background:#EFF6FF; border:1px solid #DBEAFE; padding:0 6px; border-radius:5px; }
-  .pr-dnote { font-size:12px; line-height:1.45; color:#1E3A8A; background:linear-gradient(90deg,#EFF6FF,#F8FAFF);
-    border:1px solid #DBEAFE; border-left:3px solid #3B82F6; padding:6px 10px; border-radius:7px; }
-  .pr-dnote-field { margin-top:4px; padding-top:4px; border-top:1px dashed #BFDBFE; font-size:11px; color:#334155; }
-  .pr-dnote-field code { background:#DBEAFE; color:#1E40AF; padding:0 4px; border-radius:3px; font-size:10.5px; }
-  .pr-dnote-field span { color:#047857; font-weight:600; }
-
-  .pr-stack { display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+  .pr-stack { display:flex; flex-direction:column; align-items:flex-start; gap:4px; }
   .pr-type { display:inline-block; max-width:100%; font-size:11px; font-weight:600; color:#1D4ED8; background:#EFF6FF;
     border:1px solid #DBEAFE; padding:2px 8px; border-radius:999px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .pr-tag { display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:700; padding:2px 8px;
@@ -362,36 +358,65 @@ require __DIR__ . '/inc/header.php';
   .pr-tag.is-indigo { background:#EEF2FF; color:#4338CA; border-color:#C7D2FE; }
   .pr-tag.is-red    { background:#FEF2F2; color:#B91C1C; border-color:#FECACA; }
   .pr-tag.is-grey   { background:#F1F5F9; color:#475569; border-color:#E2E8F0; }
-  .pr-hint { font-size:10.5px; font-weight:600; color:#4338CA; }
 
-  .pr-proof { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
-  .pr-pbtn { display:inline-flex; align-items:center; justify-content:center; gap:4px; height:26px; padding:0 8px;
-    font-size:11px; font-weight:600; color:#334155; background:#fff; border:1px solid #E2E8F0; border-radius:6px;
+  .pr-proof { display:inline-flex; align-items:center; gap:3px; }
+  .pr-pbtn { display:inline-flex; align-items:center; justify-content:center; gap:4px; height:27px; padding:0 8px;
+    font-size:11px; font-weight:600; color:#334155; background:#fff; border:1px solid #CBD5E1; border-radius:6px;
     text-decoration:none; cursor:pointer; transition:all .15s; }
   .pr-pbtn:hover { border-color:#94A3B8; color:#0F172A; }
-  .pr-pbtn.is-icon { width:26px; padding:0; }
+  .pr-pbtn.is-icon { width:27px; padding:0; }
   .pr-pbtn.is-view { color:#1D4ED8; background:#EFF6FF; border-color:#BFDBFE; }
-  .pr-pbtn.is-view:hover { background:#DBEAFE; }
-  .pr-noproof { font-size:11.5px; color:#94A3B8; font-style:italic; }
+  .pr-pbtn.is-view:hover { background:#DBEAFE; border-color:#93C5FD; }
+  .pr-noproof-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:500;
+    color:#94A3B8; background:#F8FAFC; border:1px solid #E2E8F0; padding:3px 8px; border-radius:6px; }
 
-  .pr-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; align-items:center; gap:5px; }
-  .pr-btn { display:inline-flex; align-items:center; gap:4px; height:28px; padding:0 9px; font-size:11.5px; font-weight:600;
-    border-radius:7px; border:1px solid transparent; text-decoration:none; cursor:pointer; white-space:nowrap;
-    transition:background .15s, border-color .15s, color .15s, transform .15s; }
-  .pr-btn:hover { transform:translateY(-1px); }
-  .pr-btn.is-ghost   { background:#fff; color:#334155; border-color:#CBD5E1; }
-  .pr-btn.is-ghost:hover { border-color:#FF4F01; color:#FF4F01; }
+  .dept-icon-pill { width:28px; height:28px; border-radius:7px; background:#EFF6FF; border:1px solid #DBEAFE;
+    color:#1D4ED8; display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .btn-approve-dept { background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:600;
+    height:28px; padding:0 10px; font-size:11.5px; border-radius:6px; display:inline-flex; align-items:center; gap:4px; transition:all .15s ease; }
+  .btn-approve-dept:hover { background:#047857; color:#FFFFFF; border-color:#047857; }
+
+  /* Actions column: strictly unified single-row action cluster */
+  .pr-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 4px;
+    white-space: nowrap !important;
+    flex-wrap: nowrap !important;
+  }
+  .pr-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    height: 27px;
+    padding: 0 7.5px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap !important;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: all .15s ease;
+  }
+  .pr-btn:hover { transform: translateY(-1px); }
+  .pr-btn.is-ghost { background:#FFFFFF; color:#334155; border-color:#CBD5E1; }
+  .pr-btn.is-ghost:hover { border-color:#2563EB; color:#2563EB; background:#EFF6FF; }
   .pr-btn.is-approve { background:#ECFDF5; color:#047857; border-color:#A7F3D0; }
-  .pr-btn.is-approve:hover { background:#047857; color:#fff; border-color:#047857; }
-  .pr-btn.is-reject  { background:#FEF2F2; color:#B91C1C; border-color:#FECACA; }
-  .pr-btn.is-reject:hover { background:#B91C1C; color:#fff; border-color:#B91C1C; }
-  .pr-btn.is-edit    { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
-  .pr-btn.is-edit:hover { background:#1D4ED8; color:#fff; border-color:#1D4ED8; }
-  .pr-btn.is-warn    { background:#FFFBEB; color:#B45309; border-color:#FCD34D; }
-  .pr-btn.is-warn:hover { background:#B45309; color:#fff; border-color:#B45309; }
-  .pr-btn.is-primary { background:#1D4ED8; color:#fff; }
+  .pr-btn.is-approve:hover { background:#047857; color:#FFFFFF; border-color:#047857; }
+  .pr-btn.is-reject { background:#FEF2F2; color:#B91C1C; border-color:#FECACA; }
+  .pr-btn.is-reject:hover { background:#B91C1C; color:#FFFFFF; border-color:#B91C1C; }
+  .pr-btn.is-edit { background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE; }
+  .pr-btn.is-edit:hover { background:#1D4ED8; color:#FFFFFF; border-color:#1D4ED8; }
+  .pr-btn.is-warn { background:#FFFBEB; color:#B45309; border-color:#FCD34D; }
+  .pr-btn.is-warn:hover { background:#B45309; color:#FFFFFF; border-color:#B45309; }
+  .pr-btn.is-primary { background:#1D4ED8; color:#FFFFFF; }
   .pr-btn.is-primary:hover { background:#1E40AF; }
-  .pr-btn.is-success { background:#047857; color:#fff; }
+  .pr-btn.is-success { background:#047857; color:#FFFFFF; }
   .pr-btn.is-success:hover { background:#065F46; }
 
   /* Inline approval card: let the two panes stack instead of forcing width */
@@ -403,7 +428,7 @@ require __DIR__ . '/inc/header.php';
     table.data.pr-table tbody tr.pr-row { border-bottom:1px solid #E2E8F0; box-shadow:inset 3px 0 0 var(--pr-accent, #CBD5E1); padding:4px 0; }
     table.data.pr-table tbody tr.pr-row td { border-bottom:0; padding:5px 14px !important; box-shadow:none !important; }
     table.data.pr-table .pr-stack { flex-direction:row; flex-wrap:wrap; }
-    table.data.pr-table .pr-actions { justify-content:flex-start; }
+    table.data.pr-table .pr-actions { justify-content:flex-start; float:none; }
     table.data.pr-table tr.app-card-row[style*="table-row"] { display:block !important; }
   }
 </style>
@@ -975,10 +1000,10 @@ require __DIR__ . '/inc/header.php';
         <summary>
           <div class="dept-summary-left">
             <span class="dept-arrow-badge" title="Click arrow to toggle department records">
-              <?= icon('chevron-right', 15) ?>
+              <?= icon('chevron-right', 14) ?>
             </span>
-            <span class="dept-code-pill">
-              <?= e(mb_strtoupper(mb_substr($deptName, 0, 4))) ?>
+            <span class="dept-icon-pill" title="Department">
+              <?= icon('building', 13) ?>
             </span>
             <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-width:0">
               <strong class="dept-title-name"><?= e($deptName) ?></strong>
@@ -991,7 +1016,7 @@ require __DIR__ . '/inc/header.php';
           <div class="dept-summary-right">
             <?php if (in_array($user['role'], ['Coordinator', 'Admin'], true) && !$isYearLocked): ?>
               <div style="display:inline-flex; gap:6px" onclick="event.stopPropagation()">
-                <button type="button" class="btn btn-sm" style="background:#ECFDF5; color:#047857; border:1px solid #A7F3D0; font-weight:600; height:28px; padding:0 10px; font-size:11.5px; border-radius:6px; display:inline-flex; align-items:center; gap:4px"
+                <button type="button" class="btn btn-sm btn-approve-dept"
                   onclick="approveAll(event, '<?= e($deptName) ?>', <?= count($deptRecs) ?>)">
                   <?= icon('check', 12) ?> Approve Department Submissions
                 </button>
@@ -1007,7 +1032,7 @@ require __DIR__ . '/inc/header.php';
         </summary>
         <div class="table-wrap pr-wrap"><table class="data pr-table">
           <colgroup>
-            <col style="width:32%"><col style="width:17%"><col style="width:21%"><col style="width:30%">
+            <col style="width:31%"><col style="width:16%"><col style="width:11%"><col style="width:42%">
           </colgroup>
           <thead><tr>
             <th>Record</th>
@@ -1044,7 +1069,10 @@ require __DIR__ . '/inc/header.php';
                   <?= icon('clock', 11) ?> <?= e(time_ago($r['created_at'])) ?>
                 </div>
                 <?php if (!empty($r['review_remark'])): ?>
-                  <div class="pr-note"><strong><?= $r['status'] === 'Unlocked for Edit' ? 'Dean Note' : 'Note' ?>:</strong> <?= e($r['review_remark']) ?></div>
+                  <div class="pr-note">
+                    <span class="pr-note-tag"><?= $r['status'] === 'Unlocked for Edit' ? 'Dean Note:' : 'Note:' ?></span>
+                    <span class="pr-note-text"><?= e($r['review_remark']) ?></span>
+                  </div>
                 <?php endif; ?>
               </td>
               <td>
@@ -1052,7 +1080,7 @@ require __DIR__ . '/inc/header.php';
                   <span class="pr-type" title="<?= e($r['_type_label']) ?>"><?= e($r['_type_label']) ?></span>
                   <?php if ($r['status'] === 'Unlocked for Edit'): ?>
                     <span class="pr-tag is-green"><?= icon('check', 11) ?> Approved by Dean</span>
-                    <span class="pr-hint">Unlocked for Edit</span>
+                    <span class="pr-tag is-indigo" style="font-size:10px; padding:1px 6px;"><?= icon('pencil', 10) ?> Unlocked for Edit</span>
                   <?php else: ?>
                     <span class="pr-tag <?= $prTag ?>"><?= e($r['status']) ?></span>
                   <?php endif; ?>
@@ -1060,9 +1088,9 @@ require __DIR__ . '/inc/header.php';
               </td>
               <td>
                 <?php if ($pProof === ''): ?>
-                  <span class="pr-noproof">No proof attached</span>
+                  <span class="pr-noproof-badge"><?= icon('paperclip', 11) ?> None</span>
                 <?php elseif (!$pOk): ?>
-                  <span class="pr-noproof">Proof unavailable</span>
+                  <span class="pr-noproof-badge" style="color:#DC2626; border-color:#FECACA; background:#FEF2F2;"><?= icon('alert-triangle', 11) ?> Missing</span>
                 <?php else: ?>
                   <div class="pr-proof">
                     <button type="button" class="pr-pbtn is-view"
@@ -1071,23 +1099,24 @@ require __DIR__ . '/inc/header.php';
                       data-who="<?= e($who) ?>"
                       data-dept="<?= e($r['department'] ?? '') ?>"
                       data-label="<?= e($r['_type_label']) ?>"
-                      onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)">
+                      onclick="openProofViewer(this.dataset.url, this.dataset.title, this.dataset.who, this.dataset.dept, this.dataset.label)"
+                      title="View proof document">
                       <?= icon('paperclip', 12) ?> View
                     </button>
                     <a href="<?= e($pUrl . (strpos($pUrl, '?') !== false ? '&download=1' : '?download=1')) ?>" class="pr-pbtn is-icon" title="Download proof file">
-                      <?= icon('download', 12) ?>
+                      <?= icon('download', 11) ?>
                     </a>
                     <a href="<?= e($pUrl) ?>" target="_blank" rel="noopener" class="pr-pbtn is-icon" title="Open proof in a new tab">
-                      <?= icon('link', 12) ?>
+                      <?= icon('link', 11) ?>
                     </a>
                   </div>
                 <?php endif; ?>
               </td>
-              <td>
+              <td class="pr-actions-cell">
                 <?php if (!$isYearLocked || $user['role'] === 'Admin'): ?>
                   <div class="pr-actions">
                     <button type="button" class="pr-btn is-ghost btn-card-toggle" id="btn-card-toggle-<?= (int)$r['id'] ?>" data-card-key="<?= e($r['_type_key']) ?>-<?= (int)$r['id'] ?>"
-                      onclick="toggleApprovalCard(this, <?= (int)$r['id'] ?>, '<?= e($r['_type_key']) ?>')" title="Open approval record card with embedded proof viewer">
+                      onclick="toggleApprovalCard(this, <?= (int)$r['id'] ?>, '<?= e($r['_type_key']) ?>')" title="Open inline approval card with embedded proof viewer">
                       <?= icon('eye', 12) ?> <span id="app-card-btn-text-<?= (int)$r['id'] ?>" class="app-card-btn-text">Approval Card</span>
                     </button>
                     <?php if ($user['role'] === 'HoD'): ?>
