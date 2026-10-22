@@ -74,6 +74,9 @@ function ensure_metric_studio_schema(): void
     if (!isset($existingCols['hod_visible'])) {
         $alters[] = "ADD COLUMN `hod_visible` TINYINT(1) NOT NULL DEFAULT 1 AFTER `coordinator_visible`";
     }
+    if (!isset($existingCols['principal_visible'])) {
+        $alters[] = "ADD COLUMN `principal_visible` TINYINT(1) NOT NULL DEFAULT 1 AFTER `hod_visible`";
+    }
     if (!isset($existingCols['metric_type'])) {
         $alters[] = "ADD COLUMN `metric_type` VARCHAR(32) NOT NULL DEFAULT 'specialized' AFTER `proof_required`";
     }
@@ -100,6 +103,9 @@ function ensure_metric_studio_schema(): void
     }
     if (!isset($existingCols['reporting_category'])) {
         $alters[] = "ADD COLUMN `reporting_category` VARCHAR(100) NULL AFTER `form_version`";
+    }
+    if (!isset($existingCols['settings_json'])) {
+        $alters[] = "ADD COLUMN `settings_json` LONGTEXT NULL AFTER `reporting_category`";
     }
 
     if (!empty($alters)) {
@@ -131,7 +137,7 @@ function ensure_metric_studio_schema(): void
         `user_id` INT NOT NULL,
         `title` VARCHAR(255) NOT NULL,
         `data_json` LONGTEXT NOT NULL,
-        `proof_file` VARCHAR(255) NULL,
+        `proof_file` TEXT NULL,
         `status` VARCHAR(30) NOT NULL DEFAULT 'Submitted',
         `remarks` TEXT NULL,
         `submitted_at` DATETIME NULL,
@@ -145,6 +151,11 @@ function ensure_metric_studio_schema(): void
         INDEX `idx_gen_user` (`user_id`),
         INDEX `idx_gen_status` (`status`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    // Ensure proof_file in generic_metric_records can hold multiple filenames / JSON metadata
+    try {
+        $pdo->exec("ALTER TABLE `generic_metric_records` MODIFY COLUMN `proof_file` TEXT NULL");
+    } catch (Throwable $e) {}
 
     // 4. Ensure metric_option_sets table exists (Shared reusable dropdown sets)
     $pdo->exec("CREATE TABLE IF NOT EXISTS `metric_option_sets` (
@@ -581,6 +592,20 @@ function metric_studio_all(array $filters = []): array
         $params[] = trim((string)$filters['category']);
     }
 
+    // Role visibility filter
+    if (!empty($filters['role']) && $filters['role'] !== 'all') {
+        $roleKey = strtolower(trim((string)$filters['role']));
+        if ($roleKey === 'faculty') {
+            $where[] = "`faculty_visible` = 1";
+        } elseif ($roleKey === 'coordinator') {
+            $where[] = "`coordinator_visible` = 1";
+        } elseif ($roleKey === 'hod') {
+            $where[] = "`hod_visible` = 1";
+        } elseif ($roleKey === 'principal') {
+            $where[] = "`principal_visible` = 1";
+        }
+    }
+
     $sql = "SELECT * FROM `metrics`";
     if (!empty($where)) {
         $sql .= " WHERE " . implode(' AND ', $where);
@@ -615,6 +640,7 @@ function metric_studio_all(array $filters = []): array
         $r['faculty_visible']          = (int)($r['faculty_visible'] ?? 1);
         $r['coordinator_visible']      = (int)($r['coordinator_visible'] ?? 1);
         $r['hod_visible']              = (int)($r['hod_visible'] ?? 1);
+        $r['principal_visible']        = (int)($r['principal_visible'] ?? 1);
         $r['proof_required']           = (int)($r['proof_required'] ?? 0);
         $r['form_config_parsed']       = !empty($r['form_config']) ? json_decode($r['form_config'], true) : [];
         $r['form_config_draft_parsed'] = !empty($r['form_config_draft']) ? json_decode($r['form_config_draft'], true) : $r['form_config_parsed'];
@@ -622,6 +648,7 @@ function metric_studio_all(array $filters = []): array
         $r['form_version']             = (int)($r['form_version'] ?? 1);
         $r['subcategories_parsed']     = !empty($r['subcategories_config']) ? json_decode($r['subcategories_config'], true) : [];
         $r['types_parsed']             = !empty($r['supported_types']) ? json_decode($r['supported_types'], true) : [];
+        $r['settings_parsed']          = !empty($r['settings_json']) ? json_decode($r['settings_json'], true) : [];
         $r['fields_count']             = is_array($r['form_config_parsed']) ? count($r['form_config_parsed']) : 0;
     }
     unset($r);
@@ -662,6 +689,19 @@ function metric_studio_categories(): array
     return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
 }
 
+if (!function_exists('metric_format_cat')) {
+    /**
+     * Formats an institutional metric category into title case.
+     */
+    function metric_format_cat(string $cat): string
+    {
+        $c = strtolower(trim($cat));
+        $c = ucwords($c);
+        $c = str_ireplace(['And', 'In', 'Of', 'From', 'For'], ['and', 'in', 'of', 'from', 'for'], $c);
+        return ucfirst($c);
+    }
+}
+
 /**
  * Finds a single metric by ID or unique key.
  */
@@ -688,6 +728,8 @@ function metric_studio_find(string|int $idOrKey): ?array
     $row['faculty_visible']          = (int)($row['faculty_visible'] ?? 1);
     $row['coordinator_visible']      = (int)($row['coordinator_visible'] ?? 1);
     $row['hod_visible']              = (int)($row['hod_visible'] ?? 1);
+    $row['principal_visible']        = (int)($row['principal_visible'] ?? 1);
+    $row['settings_parsed']          = !empty($row['settings_json']) ? (is_array($row['settings_json']) ? $row['settings_json'] : (json_decode($row['settings_json'], true) ?: [])) : [];
     $row['form_config_parsed']       = !empty($row['form_config']) ? json_decode($row['form_config'], true) : [];
     $row['form_config_draft_parsed'] = !empty($row['form_config_draft']) ? json_decode($row['form_config_draft'], true) : $row['form_config_parsed'];
     $row['attachment_config_parsed'] = !empty($row['attachment_config']) ? json_decode($row['attachment_config'], true) : metric_studio_default_attachment_config();
@@ -760,7 +802,9 @@ function metric_studio_create(array $data): array
     $facVis      = isset($data['faculty_visible']) ? (int)$data['faculty_visible'] : 1;
     $coordVis    = isset($data['coordinator_visible']) ? (int)$data['coordinator_visible'] : 1;
     $hodVis      = isset($data['hod_visible']) ? (int)$data['hod_visible'] : 1;
+    $prinVis     = isset($data['principal_visible']) ? (int)$data['principal_visible'] : 1;
     $status      = isset($data['status']) ? (int)$data['status'] : 1;
+    $settingsJson = isset($data['settings_json']) ? (is_array($data['settings_json']) ? json_encode($data['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$data['settings_json']) : null;
 
     // Default form configuration for generic metrics if none provided
     $formConfig = $data['form_config'] ?? null;
@@ -807,10 +851,10 @@ function metric_studio_create(array $data): array
 
     $insert = $pdo->prepare("INSERT INTO `metrics` (
         `metric_key`, `name`, `category`, `description`, `help_text`,
-        `display_order`, `faculty_visible`, `coordinator_visible`, `hod_visible`,
+        `display_order`, `faculty_visible`, `coordinator_visible`, `hod_visible`, `principal_visible`,
         `proof_required`, `status`, `metric_type`, `default_type`,
-        `supported_types`, `form_config`, `reporting_category`
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)");
+        `supported_types`, `form_config`, `reporting_category`, `settings_json`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)");
 
     $insert->execute([
         $rawKey,
@@ -822,12 +866,14 @@ function metric_studio_create(array $data): array
         $facVis,
         $coordVis,
         $hodVis,
+        $prinVis,
         $status,
         $metricType,
         $defaultType,
         $typesJson,
         $formJson,
-        $category
+        $category,
+        $settingsJson
     ]);
 
     $newId = (int)$pdo->lastInsertId();
@@ -863,8 +909,10 @@ function metric_studio_update(string|int $idOrKey, array $data): array
     $facVis      = isset($data['faculty_visible']) ? (int)$data['faculty_visible'] : (int)$metric['faculty_visible'];
     $coordVis    = isset($data['coordinator_visible']) ? (int)$data['coordinator_visible'] : (int)$metric['coordinator_visible'];
     $hodVis      = isset($data['hod_visible']) ? (int)$data['hod_visible'] : (int)$metric['hod_visible'];
+    $prinVis     = isset($data['principal_visible']) ? (int)$data['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
     $status      = isset($data['status']) ? (int)$data['status'] : (int)$metric['status'];
     $reporting   = isset($data['reporting_category']) ? trim((string)$data['reporting_category']) : $category;
+    $settingsJson = isset($data['settings_json']) ? (is_array($data['settings_json']) ? json_encode($data['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$data['settings_json']) : ($metric['settings_json'] ?? null);
 
     $stmt = $pdo->prepare("UPDATE `metrics` SET
         `name` = ?,
@@ -875,8 +923,10 @@ function metric_studio_update(string|int $idOrKey, array $data): array
         `faculty_visible` = ?,
         `coordinator_visible` = ?,
         `hod_visible` = ?,
+        `principal_visible` = ?,
         `status` = ?,
-        `reporting_category` = ?
+        `reporting_category` = ?,
+        `settings_json` = ?
         WHERE `id` = ?");
 
     $stmt->execute([
@@ -888,8 +938,10 @@ function metric_studio_update(string|int $idOrKey, array $data): array
         $facVis,
         $coordVis,
         $hodVis,
+        $prinVis,
         $status,
         $reporting,
+        $settingsJson,
         (int)$metric['id']
     ]);
 
@@ -1052,9 +1104,10 @@ function metric_studio_clean_field(array $f, int $order = 1): array
     $type  = trim((string)($f['type'] ?? 'text'));
 
     $validTypes = [
-        'text', 'textarea', 'integer', 'decimal', 'date',
+        'text', 'textarea', 'integer', 'decimal', 'date', 'time', 'datetime',
         'select', 'multiselect', 'radio', 'checkbox', 'url',
-        'email', 'file', 'readonly', 'specialized'
+        'email', 'tel', 'file', 'readonly', 'specialized',
+        'section_header', 'heading', 'divider', 'instructions', 'table_grid', 'acknowledgement'
     ];
     $cleanType = in_array($type, $validTypes, true) ? $type : 'text';
 
@@ -1090,14 +1143,57 @@ function metric_studio_clean_field(array $f, int $order = 1): array
     $setKey = !empty($f['option_set_key']) ? trim((string)$f['option_set_key']) : null;
     $optMode = (!empty($f['options_mode']) && $f['options_mode'] === 'copied') ? 'copied' : ($setKey ? 'shared' : 'custom');
 
+    // Layout configuration: support 12-column granular layout, custom width, alignments, dimensions & spacing
+    $rawSpan = isset($f['col_span']) ? (int)$f['col_span'] : null;
+    $rawWidth = isset($f['width']) ? trim((string)$f['width']) : null;
+
+    if ($rawSpan !== null && $rawSpan > 2 && $rawSpan <= 12) {
+        $colSpan = $rawSpan;
+        $width = ($colSpan === 12) ? 'full' : ($colSpan === 6 ? 'half' : ($rawWidth ?: "{$colSpan}/12"));
+    } elseif ($rawSpan === 2 || $rawWidth === 'full' || in_array($cleanType, ['textarea', 'section_header', 'heading', 'divider', 'instructions', 'table_grid', 'acknowledgement'], true)) {
+        $colSpan = 2; // Preserves backward compat with legacy assertions ($pubCfg['fields'][10]['col_span'] === 2)
+        $width = 'full';
+    } elseif ($rawSpan === 1 || $rawWidth === 'half') {
+        $colSpan = 1; // Preserves backward compat with legacy assertions ($draftCfg['fields'][0]['width'] === 'half')
+        $width = 'half';
+    } else {
+        $colSpan = 1;
+        $width = $rawWidth ?: 'half';
+    }
+
+    $align = isset($f['align']) && in_array(strtolower(trim((string)$f['align'])), ['left', 'center', 'right', 'stretch'], true)
+        ? strtolower(trim((string)$f['align']))
+        : 'stretch';
+
+    $verticalAlign = isset($f['vertical_align']) && in_array(strtolower(trim((string)$f['vertical_align'])), ['top', 'center', 'bottom'], true)
+        ? strtolower(trim((string)$f['vertical_align']))
+        : 'top';
+
+    $spacing = isset($f['spacing']) && in_array(strtolower(trim((string)$f['spacing'])), ['compact', 'normal', 'relaxed', 'spacious'], true)
+        ? strtolower(trim((string)$f['spacing']))
+        : 'normal';
+
+    $offset = isset($f['offset']) ? max(0, min(11, (int)$f['offset'])) : 0;
+    $customHeight = !empty($f['custom_height']) ? trim((string)$f['custom_height']) : null;
+    $sectionId = !empty($f['section_id']) ? trim((string)$f['section_id']) : null;
+
     return [
         'order'                => $order,
         'key'                  => $cleanKey,
         'label'                => $label,
         'type'                 => $cleanType,
+        'width'                => $width,
+        'col_span'             => $colSpan,
+        'align'                => $align,
+        'vertical_align'       => $verticalAlign,
+        'custom_height'        => $customHeight,
+        'spacing'              => $spacing,
+        'offset'               => $offset,
+        'section_id'           => $sectionId,
         'placeholder'          => trim((string)($f['placeholder'] ?? '')),
         'help_text'            => trim((string)($f['help_text'] ?? '')),
         'required'             => !empty($f['required']),
+        'readonly'             => !empty($f['readonly']) || $cleanType === 'readonly',
         'default_val'          => isset($f['default_val']) && $f['default_val'] !== '' ? trim((string)$f['default_val']) : null,
         'min'                  => isset($f['min']) && $f['min'] !== '' ? (float)$f['min'] : null,
         'max'                  => isset($f['max']) && $f['max'] !== '' ? (float)$f['max'] : null,
@@ -1107,14 +1203,67 @@ function metric_studio_clean_field(array $f, int $order = 1): array
         'options'              => $cleanOptions,
         'option_set_key'       => $setKey,
         'options_mode'         => $optMode,
+        'section'              => trim((string)($f['section'] ?? '')),
+        'page'                 => max(1, (int)($f['page'] ?? 1)),
+        'conditional'          => !empty($f['conditional']) && is_array($f['conditional']) && !empty($f['conditional']['field']) ? [
+            'field'    => trim((string)$f['conditional']['field']),
+            'operator' => trim((string)($f['conditional']['operator'] ?? 'equals')),
+            'value'    => (string)($f['conditional']['value'] ?? ''),
+        ] : null,
         'faculty_editable'     => !isset($f['faculty_editable']) || !empty($f['faculty_editable']),
         'coordinator_editable' => !isset($f['coordinator_editable']) || !empty($f['coordinator_editable']),
+        'hod_editable'         => !isset($f['hod_editable']) || !empty($f['hod_editable']),
+        'principal_editable'   => !isset($f['principal_editable']) || !empty($f['principal_editable']),
         'include_in_reports'   => !isset($f['include_in_reports']) || !empty($f['include_in_reports']),
         'protected'            => !empty($f['protected']),
         'protected_reason'     => trim((string)($f['protected_reason'] ?? '')),
         'allowed_types'        => !empty($f['allowed_types']) ? (is_array($f['allowed_types']) ? $f['allowed_types'] : array_map('trim', explode(',', (string)$f['allowed_types']))) : ['pdf'],
         'max_file_mb'          => !empty($f['max_file_mb']) ? (int)$f['max_file_mb'] : 2,
+        'grid_columns'         => !empty($f['grid_columns']) && is_array($f['grid_columns']) ? $f['grid_columns'] : [],
     ];
+}
+
+/**
+ * Resolves the effective 12-column grid span for any field definition.
+ * Seamlessly handles:
+ * - 12-column integer spans (1 to 12)
+ * - Percentage representations ('25%', '33%', '50%', '66%', '75%', '100%')
+ * - Fraction representations ('1/4', '1/3', '1/2', '2/3', '3/4', '12/12')
+ * - Legacy 2-column mode (col_span=1 & width='half' -> 6; col_span=2 & width='full' -> 12)
+ */
+function metric_studio_field_grid_span(array $f): int
+{
+    $type = $f['type'] ?? 'text';
+    if (in_array($type, ['section_header', 'heading', 'divider', 'instructions'], true)) {
+        return 12;
+    }
+
+    $rawWidth = strtolower(trim((string)($f['width'] ?? '')));
+    $rawSpan = isset($f['col_span']) ? (int)$f['col_span'] : null;
+
+    // Direct 12-column spans (3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+    if ($rawSpan !== null && $rawSpan > 2 && $rawSpan <= 12) {
+        return $rawSpan;
+    }
+
+    // Common fractions & percentages
+    if ($rawWidth === '25%' || $rawWidth === '1/4' || $rawWidth === '3/12') return 3;
+    if ($rawWidth === '33%' || $rawWidth === '33.3%' || $rawWidth === '1/3' || $rawWidth === '4/12') return 4;
+    if ($rawWidth === '50%' || $rawWidth === '1/2' || $rawWidth === '6/12' || $rawWidth === 'half') return 6;
+    if ($rawWidth === '66%' || $rawWidth === '66.7%' || $rawWidth === '2/3' || $rawWidth === '8/12') return 8;
+    if ($rawWidth === '75%' || $rawWidth === '3/4' || $rawWidth === '9/12') return 9;
+    if ($rawWidth === '100%' || $rawWidth === '1/1' || $rawWidth === '12/12' || $rawWidth === 'full') return 12;
+
+    // Full-width controls
+    if ($rawSpan === 2 || in_array($type, ['textarea', 'file', 'specialized', 'table_grid', 'acknowledgement'], true)) {
+        return 12;
+    }
+    // Half-width controls
+    if ($rawSpan === 1) {
+        return 6;
+    }
+
+    return 6;
 }
 
 /**
@@ -1124,24 +1273,53 @@ function metric_studio_clean_attachment_config(?array $att): array
 {
     $base = metric_studio_default_attachment_config();
     if (!$att) {
+        $base['preset'] = 'pdf_only';
+        $base['max_files'] = 1;
+        $base['min_files'] = 1;
+        $base['summary'] = 'PDF only · Maximum 2 MB per file · Single file';
         return $base;
     }
 
+    $preset = trim((string)($att['preset'] ?? 'custom'));
     $rawAllowed = $att['allowed_types'] ?? $base['allowed_types'];
     if (is_string($rawAllowed)) {
         $rawAllowed = array_map('trim', explode(',', strtolower($rawAllowed)));
     }
 
-    $maxMb = isset($att['max_file_mb']) ? max(1, min(25, (int)$att['max_file_mb'])) : 2;
+    if ($preset === 'pdf_only') {
+        $rawAllowed = ['pdf'];
+    } elseif ($preset === 'images_only') {
+        $rawAllowed = ['png', 'jpg', 'jpeg'];
+    } elseif ($preset === 'office_docs') {
+        $rawAllowed = ['docx', 'doc', 'xlsx', 'xls', 'pptx'];
+    } elseif ($preset === 'pdf_images') {
+        $rawAllowed = ['pdf', 'png', 'jpg', 'jpeg'];
+    } elseif ($preset === 'docs_sheets') {
+        $rawAllowed = ['pdf', 'docx', 'xlsx', 'csv'];
+    }
+
+    $multiple = !empty($att['multiple']);
+    $maxFiles = isset($att['max_files']) ? max(1, min(10, (int)$att['max_files'])) : ($multiple ? 5 : 1);
+    $required = isset($att['required']) ? !empty($att['required']) : true;
+    $minFiles = isset($att['min_files']) ? max(0, min($maxFiles, (int)$att['min_files'])) : ($required ? 1 : 0);
+    $maxMb = isset($att['max_file_mb']) ? max(1, min(50, (int)$att['max_file_mb'])) : 2;
+    $cleanAllowed = !empty($rawAllowed) ? array_values(array_filter($rawAllowed)) : ['pdf'];
+
+    $fmtsDisplay = strtoupper(implode(', ', $cleanAllowed));
+    $summary = $fmtsDisplay . ' · Maximum ' . $maxMb . ' MB per file · ' . ($multiple ? "Up to {$maxFiles} files" : 'Single file');
 
     return [
         'enabled'       => true, // MANDATORY: always enabled
         'label'         => trim((string)($att['label'] ?? '')) ?: 'Proof / Attachment',
-        'required'      => isset($att['required']) ? !empty($att['required']) : true,
-        'allowed_types' => !empty($rawAllowed) ? array_values(array_filter($rawAllowed)) : ['pdf'],
+        'required'      => $required,
+        'allowed_types' => $cleanAllowed,
         'max_file_mb'   => $maxMb,
-        'multiple'      => !empty($att['multiple']),
-        'help_text'     => trim((string)($att['help_text'] ?? '')) ?: 'Upload official document or certificate (PDF strictly 2 MB or less).',
+        'multiple'      => $multiple,
+        'preset'        => $preset,
+        'max_files'     => $maxFiles,
+        'min_files'     => $minFiles,
+        'summary'       => $summary,
+        'help_text'     => trim((string)($att['help_text'] ?? '')) ?: ($fmtsDisplay . ' strictly ' . $maxMb . ' MB or less.'),
     ];
 }
 
@@ -1296,7 +1474,7 @@ function metric_studio_synthesize_specialized_fields(array $metric): array
 /**
  * Saves draft form configuration for a metric without publishing.
  */
-function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?array $attachmentConfig = null): array
+function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?array $attachmentConfig = null, ?array $settings = null): array
 {
     ensure_metric_studio_schema();
     $pdo = db();
@@ -1327,8 +1505,37 @@ function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?arra
     $draftJson  = json_encode($cleanedFields, JSON_UNESCAPED_UNICODE);
     $attJson    = json_encode($cleanedAtt, JSON_UNESCAPED_UNICODE);
 
-    $stmt = $pdo->prepare("UPDATE `metrics` SET `form_config_draft` = ?, `attachment_config` = ? WHERE `id` = ?");
-    $stmt->execute([$draftJson, $attJson, (int)$metric['id']]);
+    // Update settings if provided
+    $name     = isset($settings['name']) && trim((string)$settings['name']) !== '' ? trim((string)$settings['name']) : $metric['name'];
+    $category = isset($settings['category']) && trim((string)$settings['category']) !== '' ? trim((string)$settings['category']) : $metric['category'];
+    $desc     = isset($settings['description']) ? trim((string)$settings['description']) : $metric['description'];
+    $help     = isset($settings['help_text']) ? trim((string)$settings['help_text']) : $metric['help_text'];
+    $facVis   = isset($settings['faculty_visible']) ? (int)$settings['faculty_visible'] : (int)$metric['faculty_visible'];
+    $coordVis = isset($settings['coordinator_visible']) ? (int)$settings['coordinator_visible'] : (int)$metric['coordinator_visible'];
+    $hodVis   = isset($settings['hod_visible']) ? (int)$settings['hod_visible'] : (int)$metric['hod_visible'];
+    $prinVis  = isset($settings['principal_visible']) ? (int)$settings['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
+    $settJson = isset($settings['settings_json']) ? (is_array($settings['settings_json']) ? json_encode($settings['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$settings['settings_json']) : ($metric['settings_json'] ?? null);
+
+    $stmt = $pdo->prepare("UPDATE `metrics` SET
+        `form_config_draft` = ?,
+        `attachment_config` = ?,
+        `name` = ?,
+        `category` = ?,
+        `description` = ?,
+        `help_text` = ?,
+        `faculty_visible` = ?,
+        `coordinator_visible` = ?,
+        `hod_visible` = ?,
+        `principal_visible` = ?,
+        `settings_json` = ?
+        WHERE `id` = ?");
+    $stmt->execute([
+        $draftJson, $attJson,
+        $name, $category, $desc, $help,
+        $facVis, $coordVis, $hodVis, $prinVis,
+        $settJson,
+        (int)$metric['id']
+    ]);
 
     return [true, "Draft saved with " . count($cleanedFields) . " fields and attachment settings."];
 }
@@ -1336,7 +1543,7 @@ function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?arra
 /**
  * Validates, versions, and publishes form configuration for a metric.
  */
-function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $attachmentConfig = null, int $adminId = 0): array
+function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $attachmentConfig = null, int $adminId = 0, ?array $settings = null): array
 {
     ensure_metric_studio_schema();
     $pdo = db();
@@ -1390,15 +1597,41 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
     // Determine new metric_type: if specialized, upgrade to hybrid; if generic, keep generic
     $newType = ($metric['metric_type'] === 'specialized') ? 'hybrid' : $metric['metric_type'];
 
+    // Update settings if provided
+    $name     = isset($settings['name']) && trim((string)$settings['name']) !== '' ? trim((string)$settings['name']) : $metric['name'];
+    $category = isset($settings['category']) && trim((string)$settings['category']) !== '' ? trim((string)$settings['category']) : $metric['category'];
+    $desc     = isset($settings['description']) ? trim((string)$settings['description']) : $metric['description'];
+    $help     = isset($settings['help_text']) ? trim((string)$settings['help_text']) : $metric['help_text'];
+    $facVis   = isset($settings['faculty_visible']) ? (int)$settings['faculty_visible'] : (int)$metric['faculty_visible'];
+    $coordVis = isset($settings['coordinator_visible']) ? (int)$settings['coordinator_visible'] : (int)$metric['coordinator_visible'];
+    $hodVis   = isset($settings['hod_visible']) ? (int)$settings['hod_visible'] : (int)$metric['hod_visible'];
+    $prinVis  = isset($settings['principal_visible']) ? (int)$settings['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
+    $settJson = isset($settings['settings_json']) ? (is_array($settings['settings_json']) ? json_encode($settings['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$settings['settings_json']) : ($metric['settings_json'] ?? null);
+
     // Update metrics table
     $stmt = $pdo->prepare("UPDATE `metrics` SET
         `form_config` = ?,
         `form_config_draft` = ?,
         `attachment_config` = ?,
         `form_version` = ?,
-        `metric_type` = ?
+        `metric_type` = ?,
+        `name` = ?,
+        `category` = ?,
+        `description` = ?,
+        `help_text` = ?,
+        `faculty_visible` = ?,
+        `coordinator_visible` = ?,
+        `hod_visible` = ?,
+        `principal_visible` = ?,
+        `settings_json` = ?
         WHERE `id` = ?");
-    $stmt->execute([$publishedJson, $publishedJson, $attJson, $newVer, $newType, (int)$metric['id']]);
+    $stmt->execute([
+        $publishedJson, $publishedJson, $attJson, $newVer, $newType,
+        $name, $category, $desc, $help,
+        $facVis, $coordVis, $hodVis, $prinVis,
+        $settJson,
+        (int)$metric['id']
+    ]);
 
     // Save snapshot to history
     $histStmt = $pdo->prepare("INSERT INTO `metric_form_history` (
@@ -1687,8 +1920,39 @@ function metric_studio_validate_submission(string $metricKey, array $postData, ?
         $label = $f['label'];
         $type = $f['type'];
 
+        // Skip non-input layout elements
+        if (in_array($type, ['section_header', 'heading', 'divider', 'instructions'], true)) {
+            continue;
+        }
+
         if ($type === 'file') {
             continue; // Handled in mandatory attachment section below
+        }
+
+        // Evaluate conditional visibility if defined
+        if (!empty($f['conditional']) && is_array($f['conditional']) && !empty($f['conditional']['field'])) {
+            $pKey = $f['conditional']['field'];
+            $pOp  = $f['conditional']['operator'] ?? 'equals';
+            $pExp = $f['conditional']['value'] ?? '';
+            $pVal = $postData[$pKey] ?? ($cleanedData[$pKey] ?? '');
+            $isMet = true;
+            if ($pOp === 'equals') {
+                $isMet = (trim((string)$pVal) === trim((string)$pExp));
+            } elseif ($pOp === 'not_equals') {
+                $isMet = (trim((string)$pVal) !== trim((string)$pExp));
+            } elseif ($pOp === 'contains') {
+                $isMet = (stripos((string)$pVal, (string)$pExp) !== false);
+            } elseif ($pOp === 'not_empty') {
+                $isMet = (trim((string)$pVal) !== '');
+            } elseif ($pOp === 'gt') {
+                $isMet = (is_numeric($pVal) && (float)$pVal > (float)$pExp);
+            } elseif ($pOp === 'lt') {
+                $isMet = (is_numeric($pVal) && (float)$pVal < (float)$pExp);
+            }
+            if (!$isMet) {
+                // Condition not satisfied; field is inactive
+                continue;
+            }
         }
 
         // Required check
@@ -1806,63 +2070,98 @@ function metric_studio_validate_submission(string $metricKey, array $postData, ?
     $attLabel    = $attCfg['label'] ?: 'Proof / Attachment';
     $maxBytes    = ($attCfg['max_file_mb'] ?: 2) * 1024 * 1024;
     $allowedExts = array_map('strtolower', $attCfg['allowed_types'] ?: ['pdf']);
+    $maxFiles    = isset($attCfg['max_files']) ? max(1, min(10, (int)$attCfg['max_files'])) : (!empty($attCfg['multiple']) ? 5 : 1);
+    $minFiles    = isset($attCfg['min_files']) ? (int)$attCfg['min_files'] : ($attRequired ? 1 : 0);
 
-    $hasFile = $fileData && !empty($fileData['tmp_name']) && ($fileData['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
-
-    if ($attRequired && !$hasFile) {
-        return [false, "{$attLabel} is mandatory. Please upload your supporting document.", [], null];
-    }
-
-    if ($hasFile) {
-        $err = $fileData['error'] ?? UPLOAD_ERR_OK;
-        if ($err !== UPLOAD_ERR_OK) {
-            return [false, "File upload failed (Error code: {$err}). Please try again.", [], null];
-        }
-
-        $isHttpUpload = is_uploaded_file($fileData['tmp_name']);
-        $isCliTest = (php_sapi_name() === 'cli' && is_file($fileData['tmp_name']));
-        if (!$isHttpUpload && !$isCliTest) {
-            return [false, "The uploaded proof file is invalid.", [], null];
-        }
-
-        $fileExt = strtolower(pathinfo($fileData['name'] ?? '', PATHINFO_EXTENSION));
-        if (!in_array($fileExt, $allowedExts, true)) {
-            $allowedList = strtoupper(implode(', ', $allowedExts));
-            return [false, "The uploaded proof must be in {$allowedList} format.", [], null];
-        }
-
-        if ($fileData['size'] > $maxBytes) {
-            $mbLimit = $attCfg['max_file_mb'] ?: 2;
-            return [false, "The uploaded file exceeds the {$mbLimit} MB limit. Please upload a smaller file.", [], null];
-        }
-
-        // Validate PDF binary header if PDF
-        if ($fileExt === 'pdf') {
-            $handle = @fopen($fileData['tmp_name'], 'rb');
-            $header = $handle ? fread($handle, 4) : '';
-            if ($handle) fclose($handle);
-            if ($header !== '%PDF') {
-                return [false, "The uploaded file is not a valid PDF document.", [], null];
+    // Normalize $_FILES item (single or multi-file)
+    $normalizedFiles = [];
+    if ($fileData && !empty($fileData['name'])) {
+        if (is_array($fileData['name'])) {
+            $count = count($fileData['name']);
+            for ($i = 0; $i < $count; $i++) {
+                if (($fileData['error'][$i] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                    $normalizedFiles[] = [
+                        'name'     => $fileData['name'][$i] ?? '',
+                        'type'     => $fileData['type'][$i] ?? '',
+                        'tmp_name' => $fileData['tmp_name'][$i] ?? '',
+                        'error'    => $fileData['error'][$i] ?? UPLOAD_ERR_OK,
+                        'size'     => $fileData['size'][$i] ?? 0,
+                    ];
+                }
+            }
+        } else {
+            if (($fileData['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE) {
+                $normalizedFiles[] = $fileData;
             }
         }
+    }
 
+    if ($minFiles > 0 && count($normalizedFiles) < $minFiles) {
+        return [false, "{$attLabel} is mandatory. Please upload at least {$minFiles} supporting document.", [], null];
+    }
+    if (count($normalizedFiles) > $maxFiles) {
+        return [false, "You cannot upload more than {$maxFiles} files for {$attLabel}.", [], null];
+    }
+
+    $savedFiles = [];
+    if (!empty($normalizedFiles)) {
         $baseFolder = rtrim(UPLOAD_DIR, '/\\');
         $proofsFolder = $baseFolder . '/proofs';
         if (!is_dir($proofsFolder)) {
             @mkdir($proofsFolder, 0775, true);
         }
 
-        $uniqueId = bin2hex(random_bytes(8));
-        $stored = "proof_{$metricKey}_{$uniqueId}_" . time() . '.' . $fileExt;
-        $destPath = $baseFolder . '/' . $stored;
+        foreach ($normalizedFiles as $singleFile) {
+            $err = $singleFile['error'] ?? UPLOAD_ERR_OK;
+            if ($err !== UPLOAD_ERR_OK) {
+                return [false, "File upload failed (Error code: {$err}). Please try again.", [], null];
+            }
 
-        $saved = $isHttpUpload ? move_uploaded_file($fileData['tmp_name'], $destPath) : @copy($fileData['tmp_name'], $destPath);
-        if ($saved) {
-            @copy($destPath, $proofsFolder . '/' . $stored);
-            $savedProofPath = $stored;
-        } else {
-            return [false, "Failed to save uploaded proof to storage directory.", [], null];
+            $isHttpUpload = is_uploaded_file($singleFile['tmp_name']);
+            $isCliTest = (php_sapi_name() === 'cli' && is_file($singleFile['tmp_name']));
+            if (!$isHttpUpload && !$isCliTest) {
+                return [false, "The uploaded proof file is invalid.", [], null];
+            }
+
+            $fileExt = strtolower(pathinfo($singleFile['name'] ?? '', PATHINFO_EXTENSION));
+            if (!in_array($fileExt, $allowedExts, true)) {
+                $allowedList = strtoupper(implode(', ', $allowedExts));
+                return [false, "The uploaded proof must be in {$allowedList} format.", [], null];
+            }
+
+            if ($singleFile['size'] > $maxBytes) {
+                $mbLimit = $attCfg['max_file_mb'] ?: 2;
+                return [false, "The uploaded file exceeds the {$mbLimit} MB limit. Please upload a smaller file.", [], null];
+            }
+
+            // Binary header magic check
+            if ($fileExt === 'pdf') {
+                $handle = @fopen($singleFile['tmp_name'], 'rb');
+                $header = $handle ? fread($handle, 4) : '';
+                if ($handle) fclose($handle);
+                if ($header !== '%PDF') {
+                    return [false, "The uploaded file is not a valid PDF document.", [], null];
+                }
+            }
+
+            $uniqueId = bin2hex(random_bytes(8));
+            $stored = "proof_{$metricKey}_{$uniqueId}_" . time() . '.' . $fileExt;
+            $destPath = $baseFolder . '/' . $stored;
+
+            $saved = $isHttpUpload ? move_uploaded_file($singleFile['tmp_name'], $destPath) : @copy($singleFile['tmp_name'], $destPath);
+            if ($saved) {
+                @copy($destPath, $proofsFolder . '/' . $stored);
+                $savedFiles[] = $stored;
+            } else {
+                return [false, "Failed to save uploaded proof to storage directory.", [], null];
+            }
         }
+    }
+
+    if (count($savedFiles) === 1) {
+        $savedProofPath = $savedFiles[0];
+    } elseif (count($savedFiles) > 1) {
+        $savedProofPath = json_encode($savedFiles);
     }
 
     $cleanedData['_title'] = $title;
@@ -1954,10 +2253,40 @@ function generic_metric_records_for(string $metricKey, ?int $userId = null, ?str
 
     foreach ($rows as &$r) {
         $r['data_parsed'] = !empty($r['data_json']) ? json_decode($r['data_json'], true) : [];
+        $pf = trim((string)($r['proof_file'] ?? ''));
+        if (str_starts_with($pf, '[') && str_ends_with($pf, ']')) {
+            $r['proof_files'] = json_decode($pf, true) ?: [];
+        } elseif ($pf !== '') {
+            $r['proof_files'] = [$pf];
+        } else {
+            $r['proof_files'] = [];
+        }
     }
     unset($r);
 
     return $rows;
+}
+
+/**
+ * Updates status of a generic metric record (Approved, Rejected, Edit Requested).
+ */
+function generic_metric_record_update_status(int $recordId, string $status, int $userId, string $remarks = ''): array
+{
+    ensure_metric_studio_schema();
+    $pdo = db();
+    $validStatuses = ['Submitted', 'Approved', 'Rejected', 'Edit Requested'];
+    if (!in_array($status, $validStatuses, true)) {
+        return [false, 'Invalid record status.'];
+    }
+
+    $stmt = $pdo->prepare("UPDATE `generic_metric_records` SET
+        `status` = ?,
+        `remarks` = ?,
+        `approved_by` = ?,
+        `approved_at` = NOW()
+        WHERE `id` = ?");
+    $stmt->execute([$status, $remarks, $userId, $recordId]);
+    return [true, "Record status updated to {$status}."];
 }
 
 /**
@@ -1984,12 +2313,21 @@ function generic_metric_record_delete(int $recordId, int $userId, bool $isAdmin 
         return [false, 'Approved records cannot be deleted.'];
     }
 
-    // Delete proof file if present
+    // Delete proof files if present
     if (!empty($rec['proof_file'])) {
         $baseFolder = rtrim(UPLOAD_DIR, '/\\');
-        $fullPath = $baseFolder . '/' . $rec['proof_file'];
-        if (is_file($fullPath)) {
-            @unlink($fullPath);
+        $pf = trim((string)$rec['proof_file']);
+        $filesToDelete = [];
+        if (str_starts_with($pf, '[') && str_ends_with($pf, ']')) {
+            $filesToDelete = json_decode($pf, true) ?: [];
+        } else {
+            $filesToDelete = [$pf];
+        }
+        foreach ($filesToDelete as $fName) {
+            $fullPath = $baseFolder . '/' . basename($fName);
+            if (is_file($fullPath)) {
+                @unlink($fullPath);
+            }
         }
     }
 

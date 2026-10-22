@@ -11,7 +11,7 @@ require_once __DIR__ . '/inc/inst_upload_handler.php'; // Institutional achievem
 require_once __DIR__ . '/inc/upload_sections.php';
 require_once __DIR__ . '/models/BulkImport.php';
 
-$user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
+$user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty', 'Principal']);
 require_module('upload');
 $types       = record_types();
 unset($types['student_participation']);
@@ -1277,7 +1277,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
     $acceptAttr = implode(',', array_unique($acceptParts));
     $formatsBadge = strtoupper(implode(', ', $allowedTypes));
 
-    echo '<div class="field atts-proof-container" style="grid-column:span 2; margin-top:8px;" data-max-bytes="' . ($maxMb * 1024 * 1024) . '" data-max-mb="' . $maxMb . '" data-allowed="' . e(strtolower(implode(',', $allowedTypes))) . '">';
+    echo '<div class="field atts-proof-container" style="grid-column: 1 / -1; margin-top:8px;" data-max-bytes="' . ($maxMb * 1024 * 1024) . '" data-max-mb="' . $maxMb . '" data-allowed="' . e(strtolower(implode(',', $allowedTypes))) . '">';
     echo '<label style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">';
     echo '  <span style="font-size:13px; font-weight:700; color:#131D3B;">' . e($label) . ($needed ? ' <span class="req" style="color:#DC2626;">*</span>' : '') . '</span>';
     echo '  <span class="card-sub" style="font-size:11.5px; color:#64748B;">' . e($formatsBadge) . ' strictly ' . $maxMb . ' MB or less</span>';
@@ -1854,9 +1854,42 @@ require __DIR__ . '/inc/header.php';
         <?php endif; ?>
       <?php endif; ?>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <style>
+      .form-dynamic-grid-12 {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 16px 20px;
+        align-items: start;
+        width: 100%;
+      }
+      @media (min-width: 768px) and (max-width: 1023px) {
+        .form-dynamic-grid-12 {
+          gap: 12px 16px;
+        }
+      }
+      @media (max-width: 767px) {
+        .form-dynamic-grid-12 {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 14px !important;
+        }
+        .form-dynamic-grid-12 > .field,
+        .form-dynamic-grid-12 > .form-section-header,
+        .form-dynamic-grid-12 > .form-heading-element,
+        .form-dynamic-grid-12 > .form-divider-element,
+        .form-dynamic-grid-12 > .form-instructions-callout,
+        .form-dynamic-grid-12 > .atts-proof-container {
+          grid-column: 1 / -1 !important;
+          width: 100% !important;
+          justify-self: stretch !important;
+        }
+      }
+      </style>
+
+      <?php $isGenericMetric = (($activeSection['metric_type'] ?? '') === 'generic'); ?>
+      <div class="<?= $isGenericMetric ? 'form-dynamic-grid-12' : 'form-standard-grid' ?>" style="display:grid; grid-template-columns:<?= $isGenericMetric ? 'repeat(12, 1fr)' : '1fr 1fr' ?>; gap:16px 20px; align-items:start;">
       <?php if (!empty($editRecord)): ?>
-        <div style="grid-column:span 2; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
+        <div style="grid-column:1 / -1; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
             <span class="badge badge-primary" style="font-size:12px; font-weight:700">Authorized Correction</span>
             <span style="font-weight:700; color:#1E3A8A; font-size:14px">Record #<?= (int)$editId ?>: <?= e($editRecord['_title'] ?? '') ?></span>
@@ -1881,14 +1914,14 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-      <?php if (($activeSection['metric_type'] ?? '') === 'generic'): ?>
+      <?php if ($isGenericMetric): ?>
         <?php
           require_once __DIR__ . '/inc/metric_studio.php';
           $genFields = $activeSection['form_config'] ?: [];
           $editDataMap = !empty($editRecord['data_parsed']) && is_array($editRecord['data_parsed']) ? $editRecord['data_parsed'] : ($editRecord ?: []);
           if (!empty($activeSection['help_text'])):
         ?>
-          <div style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; color:#475569;">
+          <div style="grid-column:1 / -1; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; color:#475569;">
             <strong>Instructions:</strong> <?= e($activeSection['help_text']) ?>
           </div>
         <?php endif; ?>
@@ -1896,18 +1929,76 @@ require __DIR__ . '/inc/header.php';
         <?php foreach ($genFields as $gf):
           $fType = $gf['type'] ?? 'text';
           $fKey = $gf['key'] ?? '';
-          if ($fKey === '') continue;
+          if ($fKey === '' && !in_array($fType, ['section_header', 'heading', 'divider', 'instructions'], true)) continue;
 
-          $isFull = in_array($fType, ['textarea', 'file', 'specialized'], true);
-          $req = !empty($gf['required']);
-          $gridSpan = $isFull ? 'grid-column:span 2;' : '';
+          // Layout Elements
+          if ($fType === 'section_header'): ?>
+            <div class="form-section-header" style="grid-column:1 / -1; margin-top:20px; margin-bottom:8px; border-bottom:2px solid #E2E8F0; padding-bottom:6px;">
+              <h3 style="margin:0; font-size:15px; font-weight:700; color:#131D3B;"><?= e($gf['label']) ?></h3>
+              <?php if (!empty($gf['help_text'])): ?>
+                <div style="font-size:12px; color:#64748B; margin-top:3px;"><?= e($gf['help_text']) ?></div>
+              <?php endif; ?>
+            </div>
+            <?php continue;
+          elseif ($fType === 'heading'): ?>
+            <div class="form-heading-element" style="grid-column:1 / -1; margin-top:14px; margin-bottom:4px;">
+              <h4 style="margin:0; font-size:14px; font-weight:700; color:#131D3B;"><?= e($gf['label']) ?></h4>
+            </div>
+            <?php continue;
+          elseif ($fType === 'divider'): ?>
+            <div class="form-divider-element" style="grid-column:1 / -1; border-top:1px solid #E2E8F0; margin:14px 0;"></div>
+            <?php continue;
+          elseif ($fType === 'instructions'): ?>
+            <div class="form-instructions-callout" style="grid-column:1 / -1; background:#F8FAFC; border:1px solid #CBD5E1; border-left:4px solid #3B82F6; border-radius:6px; padding:10px 14px; margin:8px 0; font-size:12.5px; color:#334155;">
+              <?= e($gf['label'] ?: ($gf['help_text'] ?? '')) ?>
+            </div>
+            <?php continue;
+          endif;
 
-          // Role-based field editable rules
-          $disabledAttr = '';
-          if ($userRole === 'Faculty' && isset($gf['faculty_editable']) && $gf['faculty_editable'] === false) {
-              $disabledAttr = 'disabled';
+          // Determine 12-column span, alignment, spacing, custom height, offset
+          $spanNum = metric_studio_field_grid_span($gf);
+          $fieldStyles = ["grid-column: span {$spanNum}"];
+
+          if (!empty($gf['offset']) && (int)$gf['offset'] > 0) {
+              $fieldStyles[] = 'grid-column-start: ' . (1 + (int)$gf['offset']);
           }
-          if ($userRole === 'Coordinator' && isset($gf['coordinator_editable']) && $gf['coordinator_editable'] === false) {
+          if (!empty($gf['align']) && $gf['align'] !== 'stretch') {
+              $fieldStyles[] = 'justify-self: ' . e($gf['align']);
+          }
+          if (!empty($gf['vertical_align'])) {
+              $fieldStyles[] = 'align-self: ' . e($gf['vertical_align']);
+          }
+          if (!empty($gf['spacing'])) {
+              $spacingMap = ['compact' => 'margin-bottom:8px', 'normal' => 'margin-bottom:16px', 'relaxed' => 'margin-bottom:24px', 'spacious' => 'margin-bottom:32px'];
+              if (isset($spacingMap[$gf['spacing']])) {
+                  $fieldStyles[] = $spacingMap[$gf['spacing']];
+              }
+          }
+          if (!empty($gf['custom_height'])) {
+              if (is_numeric($gf['custom_height'])) {
+                  $fieldStyles[] = 'min-height: ' . (int)$gf['custom_height'] . 'px';
+              } elseif ($gf['custom_height'] === 'compact') {
+                  $fieldStyles[] = 'min-height: 36px';
+              } elseif ($gf['custom_height'] === 'tall') {
+                  $fieldStyles[] = 'min-height: 80px';
+              }
+          }
+
+          $gridSpanStyle = implode('; ', $fieldStyles) . ';';
+          $req = !empty($gf['required']);
+          $isReadOnly = !empty($gf['readonly']) || $fType === 'readonly';
+
+          // Role-based field editable rules & read-only enforcement
+          $disabledAttr = '';
+          if ($isReadOnly) {
+              $disabledAttr = 'readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;"';
+          } elseif ($userRole === 'Faculty' && isset($gf['faculty_editable']) && $gf['faculty_editable'] === false) {
+              $disabledAttr = 'disabled';
+          } elseif ($userRole === 'Coordinator' && isset($gf['coordinator_editable']) && $gf['coordinator_editable'] === false) {
+              $disabledAttr = 'disabled';
+          } elseif ($userRole === 'HoD' && isset($gf['hod_editable']) && $gf['hod_editable'] === false) {
+              $disabledAttr = 'disabled';
+          } elseif ($userRole === 'Principal' && isset($gf['principal_editable']) && $gf['principal_editable'] === false) {
               $disabledAttr = 'disabled';
           }
 
@@ -1924,14 +2015,24 @@ require __DIR__ . '/inc/header.php';
           if (empty($resolvedOptions) && !empty($gf['options'])) {
               $resolvedOptions = $gf['options'];
           }
+
+          // Conditional attributes
+          $condAttrs = '';
+          if (!empty($gf['conditional']) && !empty($gf['conditional']['field'])) {
+              $condAttrs = ' data-cond-field="' . e($gf['conditional']['field']) . '"'
+                         . ' data-cond-op="' . e($gf['conditional']['operator'] ?? 'equals') . '"'
+                         . ' data-cond-val="' . e((string)($gf['conditional']['value'] ?? '')) . '"';
+          }
         ?>
-          <div class="field" style="<?= $gridSpan ?>">
-            <label>
-              <?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?>
-              <?php if (!empty($gf['help_text'])): ?>
-                <span class="card-sub">— <?= e($gf['help_text']) ?></span>
-              <?php endif; ?>
-            </label>
+          <div class="field" style="<?= $gridSpanStyle ?>" <?= $condAttrs ?>>
+            <?php if ($fType !== 'acknowledgement'): ?>
+              <label>
+                <?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?>
+                <?php if (!empty($gf['help_text'])): ?>
+                  <span class="card-sub">— <?= e($gf['help_text']) ?></span>
+                <?php endif; ?>
+              </label>
+            <?php endif; ?>
 
             <?php if ($fType === 'textarea'): ?>
               <textarea class="input" name="<?= e($fKey) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> rows="3"><?= e((string)$editVal) ?></textarea>
@@ -1984,14 +2085,34 @@ require __DIR__ . '/inc/header.php';
                 <span><?= e($gf['placeholder'] ?: 'Confirm / Checked') ?></span>
               </label>
 
+            <?php elseif ($fType === 'acknowledgement'): ?>
+              <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:12px 16px; margin:6px 0;">
+                <label style="display:inline-flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:600; color:#92400E; cursor:pointer; margin:0;">
+                  <input type="checkbox" name="<?= e($fKey) ?>" value="1" <?= !empty($editVal) ? 'checked' : '' ?> <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> style="margin-top:2px;">
+                  <span><?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?></span>
+                </label>
+                <?php if (!empty($gf['help_text'])): ?>
+                  <div style="font-size:11.5px; color:#B45309; margin-left:24px; margin-top:3px;"><?= e($gf['help_text']) ?></div>
+                <?php endif; ?>
+              </div>
+
             <?php elseif ($fType === 'date'): ?>
               <input class="input" type="date" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'time'): ?>
+              <input class="input" type="time" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'datetime'): ?>
+              <input class="input" type="datetime-local" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'integer'): ?>
               <input class="input" type="number" step="1" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (int)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'decimal'): ?>
               <input class="input" type="number" step="any" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (float)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'tel'): ?>
+              <input class="input" type="tel" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'e.g. +91 98765 43210') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'url'): ?>
               <input class="input" type="url" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'https://') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
@@ -2005,6 +2126,12 @@ require __DIR__ . '/inc/header.php';
             <?php elseif ($fType === 'specialized'): ?>
               <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:10px 14px; border-radius:6px; font-size:12px; color:#1D4ED8; font-weight:600;">
                 Institutional specialized calculation component: <?= e($gf['label']) ?>
+              </div>
+
+            <?php elseif ($fType === 'table_grid'): ?>
+              <div class="table-grid-wrap" style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px; padding:12px;">
+                <textarea class="input" name="<?= e($fKey) ?>" placeholder="Enter tabular or itemized data..." rows="3" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>><?= e((string)$editVal) ?></textarea>
+                <div style="font-size:11px; color:#64748B; margin-top:4px;">Tabular data entry / itemized details</div>
               </div>
 
             <?php elseif ($fType === 'file'): ?>
@@ -3149,6 +3276,89 @@ require __DIR__ . '/inc/header.php';
           if (proofInfo) proofInfo.style.display = 'inline-flex';
         });
       }
+
+      // Reactive conditional field evaluation for dynamic form studio submissions
+      (function () {
+        function evaluateConditionalFields() {
+          var condEls = document.querySelectorAll('[data-cond-field]');
+          if (!condEls.length) return;
+
+          condEls.forEach(function (el) {
+            var triggerKey = el.getAttribute('data-cond-field');
+            var op = el.getAttribute('data-cond-op') || 'equals';
+            var triggerVal = el.getAttribute('data-cond-val');
+
+            var form = el.closest('form');
+            if (!form) return;
+
+            var triggerInputs = form.querySelectorAll('[name="' + triggerKey + '"], [name="' + triggerKey + '[]"]');
+            var curVal = '';
+            if (triggerInputs.length === 1 && triggerInputs[0].type === 'checkbox') {
+              curVal = triggerInputs[0].checked ? (triggerInputs[0].value || '1') : '';
+            } else if (triggerInputs.length > 0 && triggerInputs[0].type === 'radio') {
+              var checkedRadio = form.querySelector('[name="' + triggerKey + '"]:checked');
+              curVal = checkedRadio ? checkedRadio.value : '';
+            } else if (triggerInputs.length > 0) {
+              curVal = triggerInputs[0].value;
+            }
+
+            var isVisible = false;
+            var strCur = String(curVal).trim().toLowerCase();
+            var strTrig = String(triggerVal).trim().toLowerCase();
+
+            switch (op) {
+              case 'equals':
+                isVisible = (strCur === strTrig);
+                break;
+              case 'not_equals':
+                isVisible = (strCur !== strTrig);
+                break;
+              case 'contains':
+                isVisible = (strCur.indexOf(strTrig) !== -1);
+                break;
+              case 'is_empty':
+                isVisible = (strCur === '');
+                break;
+              case 'is_not_empty':
+                isVisible = (strCur !== '');
+                break;
+              case 'greater_than':
+                isVisible = (parseFloat(curVal) > parseFloat(triggerVal));
+                break;
+              case 'less_than':
+                isVisible = (parseFloat(curVal) < parseFloat(triggerVal));
+                break;
+              default:
+                isVisible = true;
+            }
+
+            if (isVisible) {
+              el.style.display = '';
+              el.querySelectorAll('input, select, textarea').forEach(function (inp) {
+                inp.removeAttribute('disabled');
+                if (el.dataset.wasRequired === '1') inp.setAttribute('required', 'required');
+              });
+            } else {
+              el.style.display = 'none';
+              el.querySelectorAll('input, select, textarea').forEach(function (inp) {
+                if (inp.hasAttribute('required')) {
+                  el.dataset.wasRequired = '1';
+                  inp.removeAttribute('required');
+                }
+                inp.setAttribute('disabled', 'disabled');
+              });
+            }
+          });
+        }
+
+        document.addEventListener('change', evaluateConditionalFields);
+        document.addEventListener('input', evaluateConditionalFields);
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', evaluateConditionalFields);
+        } else {
+          evaluateConditionalFields();
+        }
+      })();
 
       // FDP / Unified Activity Form dynamic title, labels & duration calculation
       (function () {
