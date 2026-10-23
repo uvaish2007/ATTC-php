@@ -559,7 +559,7 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         $downloadUrl = url('proof.php?' . http_build_query($params));
     }
 
-    $isCertType = ($typeKey === 'inst_society_memberships' || in_array($typeKey, ['fdp', 'inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true));
+    $isCertType = ($typeKey === 'inst_society_memberships' || in_array($typeKey, ['fdp', 'inst_student_certifications', 'inst_spoken_tutorials', 'inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true));
     $viewText = $isCertType ? 'View Certificate' : 'View Proof';
     $dlTitle  = $isCertType ? 'Download Certificate' : 'Download Proof';
 
