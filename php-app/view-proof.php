@@ -53,6 +53,18 @@ if (!$isOversight) {
         }
     }
 
+    if (!$record) {
+        try {
+            $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE proof_file = ? OR proof_file LIKE ? LIMIT 1");
+            $stmt->execute([$file, '%"' . $file . '"%']);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $record = $row;
+                $record['created_by'] = (int)($row['user_id'] ?? 0);
+            }
+        } catch (\Exception $e) {}
+    }
+
     if ($record) {
         $recordDept    = $record['department'] ?? '';
         $recordCreated = (int) ($record['created_by'] ?? 0);
@@ -64,8 +76,10 @@ if (!$isOversight) {
             }
         } elseif ($userRole === 'Faculty') {
             $isOwner = ($recordCreated === $userId);
+            $isNamedAuthor = (!empty($record['main_author_id']) && (int)$record['main_author_id'] === $userId)
+                || (!empty($record['faculty_name']) && trim((string)$record['faculty_name']) === trim((string)($user['name'] ?? '')));
             $isSameDeptApproved = ($userDept !== '' && department_names_match($userDept, $recordDept) && ($record['status'] ?? '') === 'Approved');
-            if (!$isOwner && !$isSameDeptApproved) {
+            if (!$isOwner && !$isNamedAuthor && !$isSameDeptApproved) {
                 http_response_code(403);
                 exit('You do not have access to view this document.');
             }

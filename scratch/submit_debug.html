@@ -1,0 +1,2167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload Data · ATTS IQAC</title>
+  <meta name="theme-color" content="#131D3B">
+    <link rel="icon" href="/php-app/assets/img/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/php-app/assets/img/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/php-app/assets/img/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/php-app/assets/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Inter when the machine is online; Segoe UI is the fallback, so the portal
+       looks the same offline on a lab PC. -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/php-app/assets/css/app.css">
+  <script>
+  function toggleNotificationPanel(evt) {
+    if (evt) evt.stopPropagation();
+    const panel = document.getElementById('notif_panel');
+    if (!panel) return;
+    const isHidden = panel.style.display === 'none' || panel.style.display === '';
+    panel.style.display = isHidden ? 'block' : 'none';
+  }
+
+  document.addEventListener('click', function(evt) {
+    const panel = document.getElementById('notif_panel');
+    const btn = document.getElementById('notif_bell_btn');
+    if (panel && !panel.contains(evt.target) && !btn.contains(evt.target)) {
+      panel.style.display = 'none';
+    }
+  });
+
+  function markAllNotificationsRead(evt) {
+    if (evt) evt.preventDefault();
+    const form = document.getElementById('mark_all_read_form');
+    const csrfToken = form ? (form.querySelector('input[name="csrf"]')?.value || '') : '';
+    
+    fetch('/php-app/inc/mark_notifications_read.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Requested-With': 'XMLHttpRequest'
+      },
+      body: 'csrf=' + encodeURIComponent(csrfToken) + '&action=mark_all_notifications_read&ajax=1'
+    })
+    .then(res => res.json())
+    .then(data => {
+      const badge = document.getElementById('notif_badge_dot');
+      if (badge) badge.style.display = 'none';
+      const countBadge = document.getElementById('notif_count_badge');
+      if (countBadge) countBadge.style.display = 'none';
+      
+      document.querySelectorAll('.notif-item.unread').forEach(el => el.classList.remove('unread'));
+      document.querySelectorAll('.notif-item-dot').forEach(el => el.remove());
+      if (form) form.style.display = 'none';
+    })
+    .catch(() => {
+      if (form) form.submit();
+    });
+  }
+  </script>
+</head>
+<body>
+<div class="app">
+
+  <div class="scrim" id="navScrim" aria-hidden="true"></div>
+
+  <aside class="sidebar" id="appSidebar">
+    <div class="sidebar-brand">
+      <div class="brand-logo">A</div>
+      <div>
+        <div class="brand-title">ATTS</div>
+        <div class="brand-sub">IQAC Portal</div>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+              <div>
+          <div class="nav-section-label">Overview</div>
+          <div class="nav-list">
+                                          <a class="nav-link" href="/php-app/dashboard.php" title="Dashboard">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>                  <span class="nav-label">Dashboard</span>
+                                  </a>
+                                                        <a class="nav-link" href="/php-app/announcements.php" title="Announcements">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>                  <span class="nav-label">Announcements</span>
+                                  </a>
+                                    </div>
+        </div>
+              <div>
+          <div class="nav-section-label">Workspace</div>
+          <div class="nav-list">
+                                          <a class="nav-link active" href="/php-app/upload.php" title="Upload Data">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>                  <span class="nav-label">Upload Data</span>
+                                  </a>
+                                                        <a class="nav-link" href="/php-app/faculty-achievements.php" title="Faculty Achievements">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>                  <span class="nav-label">Faculty Achievements</span>
+                                  </a>
+                                                        <a class="nav-link" href="/php-app/individual-faculty-report.php" title="My Report">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>                  <span class="nav-label">My Report</span>
+                                  </a>
+                                    </div>
+        </div>
+              <div>
+          <div class="nav-section-label">Account</div>
+          <div class="nav-list">
+                                          <a class="nav-link" href="/php-app/profile.php" title="Profile">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>                  <span class="nav-label">Profile</span>
+                                  </a>
+                                    </div>
+        </div>
+          </nav>
+
+    <div class="sidebar-foot">
+      <div class="side-user">
+                  <div class="avatar">M(</div>
+                <div class="meta">
+          <div class="nm" title="Master (Faculty)">Master (Faculty)</div>
+          <div class="rl">Faculty · CSBS</div>
+        </div>
+        <form method="post" action="/php-app/logout.php" class="side-logout-form">
+          <input type="hidden" name="csrf" value="9b9f61ba9967f183879d782f1b41c1c173b7892340131b63ab3bf92c78b42bb6">          <button type="submit" class="side-logout" title="Logout" aria-label="Logout"><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+        </form>
+      </div>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button type="button" class="icon-btn nav-toggle" id="navToggle"
+                aria-label="Open navigation" aria-controls="appSidebar" aria-expanded="false">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>        </button>
+        <nav class="breadcrumb" aria-label="Breadcrumb">
+          <button type="button" class="topbar-back-btn" onclick="if (window.history.length > 1) { window.history.back(); } else { window.location.href='/php-app/dashboard.php'; }" title="Go back to past page" aria-label="Back">
+            <span class="topbar-back-arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></span>
+            <span class="topbar-back-text">Back</span>
+          </button>
+                      <a class="root" href="/php-app/dashboard.php">ATTS DASHBOARD</a>
+            <span class="sep"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></span>
+            <span class="cur" title="Upload Data">Upload Data</span>
+                  </nav>
+      </div>
+      <div class="topbar-right">
+        <span class="year-badge" title="ATTS is operating on academic year 2025-26. Set by the Admin; every role sees this same year until it is changed.">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> <span class="yb-label">Academic Year:</span> 2025-26                      <span class="yb-lock" style="color:rgba(255,255,255,0.85);border-left:1px solid rgba(255,255,255,0.3);"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Cycle Open</span>
+                  </span>
+                <span class="role-badge" title="You are signed in as Faculty"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> Faculty</span>
+
+        <div class="notif-wrapper">
+          <button type="button" class="icon-btn notif-bell-btn" id="notif_bell_btn" aria-label="Notifications" onclick="toggleNotificationPanel(event)">
+            <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>                      </button>
+
+          <div class="notif-panel" id="notif_panel" style="display:none;">
+            <div class="notif-header">
+              <div class="notif-title">
+                <span>Notifications</span>
+                              </div>
+                          </div>
+
+            <div class="notif-body" id="notif_body">
+                              <div class="notif-empty">
+                  <div class="notif-empty-icon"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+                  <div class="notif-empty-text">No new notifications</div>
+                </div>
+                          </div>
+          </div>
+        </div>
+
+        <div class="topbar-div"></div>
+        <div class="topbar-user">
+          <div class="nm">Master (Faculty)</div>
+          <div class="rl">Faculty · CSBS</div>
+        </div>
+                  <div class="avatar-dark">M(</div>
+              </div>
+    </header>
+
+    <main class="content">
+      <div class="container">
+                  <div class="alert alert-error">Academic Session is required: choose Nov-Dec or Apr-May.</div>
+        
+<div class="page-head">
+  <div><h1>Upload Data</h1><div class="sub">Submit academic records for review</div></div>
+</div>
+
+  <div class="card" style="margin-bottom:16px;background:linear-gradient(135deg, rgba(37,99,235,0.04), rgba(79,70,229,0.08));border-color:var(--border, #e2e8f0)">
+    <div class="card-body" style="padding:12px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="badge badge-primary" style="font-size:13px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Academic Year: <strong>2025-26</strong>
+        </span>
+              </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <form method="post" action="/php-app/upload.php" style="display:flex;align-items:center;gap:8px;margin:0">
+          <input type="hidden" name="csrf" value="9b9f61ba9967f183879d782f1b41c1c173b7892340131b63ab3bf92c78b42bb6">          <input type="hidden" name="upload_flow_step" value="year">
+          <input type="hidden" name="return_type" value="value_added">
+          <label for="flowYear" style="font-size:12px;font-weight:600;color:var(--ink-muted,#64748b)">Academic Year</label>
+          <select class="select" id="flowYear" name="academic_year" onchange="this.form.submit()" style="height:32px;font-size:12px;padding:0 28px 0 10px;border-radius:8px;width:auto">
+                          <option value="2000-01"  >
+                2000-01              </option>
+                          <option value="2001-02"  >
+                2001-02              </option>
+                          <option value="2002-03"  >
+                2002-03              </option>
+                          <option value="2003-04"  >
+                2003-04              </option>
+                          <option value="2004-05"  >
+                2004-05              </option>
+                          <option value="2005-06"  >
+                2005-06              </option>
+                          <option value="2006-07"  >
+                2006-07              </option>
+                          <option value="2007-08"  >
+                2007-08              </option>
+                          <option value="2008-09"  >
+                2008-09              </option>
+                          <option value="2009-10"  >
+                2009-10              </option>
+                          <option value="2010-11"  >
+                2010-11              </option>
+                          <option value="2011-12"  >
+                2011-12              </option>
+                          <option value="2012-13"  >
+                2012-13              </option>
+                          <option value="2013-14"  >
+                2013-14              </option>
+                          <option value="2014-15"  >
+                2014-15              </option>
+                          <option value="2015-16"  >
+                2015-16              </option>
+                          <option value="2016-17"  >
+                2016-17              </option>
+                          <option value="2017-18"  >
+                2017-18              </option>
+                          <option value="2018-19"  >
+                2018-19              </option>
+                          <option value="2019-20"  >
+                2019-20              </option>
+                          <option value="2020-21"  >
+                2020-21              </option>
+                          <option value="2021-22"  >
+                2021-22              </option>
+                          <option value="2022-23"  >
+                2022-23              </option>
+                          <option value="2023-24"  >
+                2023-24              </option>
+                          <option value="2024-25"  >
+                2024-25              </option>
+                          <option value="2025-26" selected >
+                2025-26 (Active)              </option>
+                          <option value="2026-27"  >
+                2026-27              </option>
+                          <option value="2027-28"  disabled>
+                2027-28 — Future Year              </option>
+                          <option value="2028-29"  disabled>
+                2028-29 — Future Year              </option>
+                          <option value="2029-30"  disabled>
+                2029-30 — Future Year              </option>
+                          <option value="2030-31"  disabled>
+                2030-31 — Future Year              </option>
+                          <option value="2031-32"  disabled>
+                2031-32 — Future Year              </option>
+                          <option value="2032-33"  disabled>
+                2032-33 — Future Year              </option>
+                          <option value="2033-34"  disabled>
+                2033-34 — Future Year              </option>
+                          <option value="2034-35"  disabled>
+                2034-35 — Future Year              </option>
+                          <option value="2035-36"  disabled>
+                2035-36 — Future Year              </option>
+                          <option value="2036-37"  disabled>
+                2036-37 — Future Year              </option>
+                          <option value="2037-38"  disabled>
+                2037-38 — Future Year              </option>
+                          <option value="2038-39"  disabled>
+                2038-39 — Future Year              </option>
+                          <option value="2039-40"  disabled>
+                2039-40 — Future Year              </option>
+                          <option value="2040-41"  disabled>
+                2040-41 — Future Year              </option>
+                          <option value="2041-42"  disabled>
+                2041-42 — Future Year              </option>
+                          <option value="2042-43"  disabled>
+                2042-43 — Future Year              </option>
+                          <option value="2043-44"  disabled>
+                2043-44 — Future Year              </option>
+                          <option value="2044-45"  disabled>
+                2044-45 — Future Year              </option>
+                          <option value="2045-46"  disabled>
+                2045-46 — Future Year              </option>
+                          <option value="2046-47"  disabled>
+                2046-47 — Future Year              </option>
+                          <option value="2047-48"  disabled>
+                2047-48 — Future Year              </option>
+                          <option value="2048-49"  disabled>
+                2048-49 — Future Year              </option>
+                          <option value="2049-50"  disabled>
+                2049-50 — Future Year              </option>
+                      </select>
+        </form>
+      </div>
+    </div>
+  </div>
+<!-- Approved Top-Level Upload Navigation (Exactly 30 Approved Sections in Exact Order) -->
+<div class="card atts-metric-nav-card">
+  <div class="atts-targets-header">
+    <div class="atts-targets-header-left">
+      <span class="atts-targets-title">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> Institutional Academic Targets
+      </span>
+      <span class="badge badge-neutral">30 Sections</span>
+      <span class="badge badge-primary">INSTITUTIONAL AND STUDENT ACTIVITIES</span>
+    </div>
+    <div class="atts-targets-header-right">
+      <div class="atts-quick-jump-wrap">
+        <label for="quickJumpSelect" class="atts-quick-jump-label">Quick Jump:</label>
+        <select class="select atts-quick-jump-select" id="quickJumpSelect" onchange="if(this.value) window.location.href=this.value" aria-label="Quick Jump to Metric">
+                      <optgroup label="UNIVERSITY AND STUDENT PERFORMANCE">
+                              <option value="/php-app/upload.php?section=upercent&amp;type=inst_pass_percentage" >
+                  1. University Pass Percentage                </option>
+                              <option value="/php-app/upload.php?section=student_cgpa&amp;type=inst_student_cgpa" >
+                  2. To Improve II &amp; III Year Students Above 7.5 CGPA                </option>
+                              <option value="/php-app/upload.php?section=placement_mnc&amp;type=inst_placement_mnc" >
+                  3. Place 2024–25 Batch Students in Top MNCs                </option>
+                          </optgroup>
+                      <optgroup label="RESEARCH AND PUBLICATIONS">
+                              <option value="/php-app/upload.php?section=publications&amp;type=journal" >
+                  4. Quality Publications in Scopus / SCI / Springer / UGC CARE / H-Index                </option>
+                              <option value="/php-app/upload.php?section=patents&amp;type=patent" >
+                  5. Patent / Copyrights                </option>
+                              <option value="/php-app/upload.php?section=books&amp;type=book" >
+                  6. Books Publication — Book / Book Chapter                </option>
+                              <option value="/php-app/upload.php?section=sponsored_research&amp;type=inst_sponsored_research" >
+                  7. Sponsored Research Funds / Consultancy Projects (in Lakhs)                </option>
+                              <option value="/php-app/upload.php?section=research_centre&amp;type=inst_research_centre" >
+                  8. Research Centre Recognition from Anna University                </option>
+                              <option value="/php-app/upload.php?section=ipr_programmes&amp;type=inst_ipr_programmes" >
+                  9. Programme on IPR / Higher Studies / Entrepreneurship                </option>
+                          </optgroup>
+                      <optgroup label="CERTIFICATIONS, INDUSTRY AND TRAINING">
+                              <option value="/php-app/upload.php?section=faculty_certifications&amp;type=nptel" >
+                  10. No. of Online Certification Courses Completed by Faculty                </option>
+                              <option value="/php-app/upload.php?section=mou_interactions&amp;type=mou" >
+                  11. Industry Interaction / MoU / Industry Supported Lab                </option>
+                              <option value="/php-app/upload.php?section=internships&amp;type=internship" >
+                  12. Student&#039;s Industry Internship (4 Weeks &amp; Above)                </option>
+                              <option value="/php-app/upload.php?section=summer_training&amp;type=summer_training" >
+                  13. Summer/Winter Training (Less Than 4 Weeks)                </option>
+                              <option value="/php-app/upload.php?section=student_projects&amp;type=inst_student_projects" >
+                  14. Quality Student Projects and Publish the Projects on YouTube                </option>
+                              <option value="/php-app/upload.php?section=faculty_participations&amp;type=fdp" >
+                  15. Faculty Participation in FDP / Training / STTP / Conference                </option>
+                              <option value="/php-app/upload.php?section=society_memberships&amp;type=inst_society_memberships" >
+                  16. Membership in Professional Societies (Student / Faculty)                </option>
+                          </optgroup>
+                      <optgroup label="INSTITUTIONAL AND STUDENT ACTIVITIES">
+                              <option value="/php-app/upload.php?section=newsletters&amp;type=inst_newsletters" >
+                  17. Newsletter                </option>
+                              <option value="/php-app/upload.php?section=student_certifications&amp;type=inst_student_certifications" >
+                  18. Student Online Certification                </option>
+                              <option value="/php-app/upload.php?section=spoken_tutorials&amp;type=inst_spoken_tutorials" >
+                  19. No. of Students Completed IIT-Bombay Spoken Tutorial Courses                </option>
+                              <option value="/php-app/upload.php?section=inter_institute&amp;type=inst_inter_inst_within" >
+                  20. Student Participation in Inter-Institute Events and Awards / Medals                </option>
+                              <option value="/php-app/upload.php?section=value_added&amp;type=value_added" selected>
+                  21. No. of Value Added Courses / Hands-on Training Courses                </option>
+                              <option value="/php-app/upload.php?section=sports&amp;type=inst_sports_state" >
+                  22. Event Participation in Sports — State Level / National Level / Awards                </option>
+                              <option value="/php-app/upload.php?section=innovation_events&amp;type=inst_innovation_events" >
+                  23. Innovation Events to Be Conducted in Every Department                </option>
+                              <option value="/php-app/upload.php?section=iic_activities&amp;type=inst_iic_activities" >
+                  24. IIC Activities                </option>
+                              <option value="/php-app/upload.php?section=website_updations&amp;type=inst_website_updations" >
+                  25. Website Updation                </option>
+                              <option value="/php-app/upload.php?section=google_ratings&amp;type=inst_google_ratings" >
+                  26. Google Rating                </option>
+                              <option value="/php-app/upload.php?section=startups&amp;type=inst_startups" >
+                  27. Start Up                </option>
+                              <option value="/php-app/upload.php?section=alumni_chapters&amp;type=inst_alumni_chapters" >
+                  28. Alumni Chapter                </option>
+                              <option value="/php-app/upload.php?section=awards_recognitions&amp;type=inst_awards_recognitions" >
+                  29. Awards &amp; Recognition                </option>
+                              <option value="/php-app/upload.php?section=nss_activities&amp;type=nss" >
+                  30. No. of Activities Conducted by NSS / YRC                </option>
+                          </optgroup>
+                  </select>
+      </div>
+
+      <div class="atts-nav-step-group" role="group" aria-label="Metric Navigation">
+        <a href="/php-app/upload.php?section=inter_institute&amp;type=inst_inter_inst_within"
+           class="btn btn-sm btn-outline atts-nav-btn "
+           id="metricPrevBtn"
+           title="Previous: 20. Student Participation in Inter-Institute Events and Awards / Medals"
+           >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg> <span>Previous</span>
+        </a>
+        <a href="/php-app/upload.php?section=sports&amp;type=inst_sports_state"
+           class="btn btn-sm btn-outline atts-nav-btn "
+           id="metricNextBtn"
+           title="Next: 22. Event Participation in Sports — State Level / National Level / Awards"
+           >
+          <span>Next</span> <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>        </a>
+      </div>
+
+      <div class="atts-nav-scroll-group" role="group" aria-label="Scroll metric tabs">
+        <button type="button" class="btn btn-ghost btn-sm atts-scroll-btn" id="navScrollLeft" title="Scroll tabs left" aria-label="Scroll tabs left">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>        </button>
+        <button type="button" class="btn btn-ghost btn-sm atts-scroll-btn" id="navScrollRight" title="Scroll tabs right" aria-label="Scroll tabs right">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="atts-metric-nav-container js-category-nav-container" id="categoryNavContainer" role="tablist" aria-label="Institutional Academic Targets">
+    <div class="atts-metric-nav-track" id="categoryNavTrack">
+              <a href="/php-app/upload.php?section=upercent&amp;type=inst_pass_percentage"
+           class="atts-metric-tab js-category-tab "
+           data-section="upercent"
+           role="tab"
+           id="metric-tab-upercent"
+           aria-selected="false"
+           title="1. University Pass Percentage">
+          <span class="atts-metric-tab-badge">1</span>
+          <span class="atts-metric-tab-title">University Pass Percentage</span>
+        </a>
+              <a href="/php-app/upload.php?section=student_cgpa&amp;type=inst_student_cgpa"
+           class="atts-metric-tab js-category-tab "
+           data-section="student_cgpa"
+           role="tab"
+           id="metric-tab-student_cgpa"
+           aria-selected="false"
+           title="2. To Improve II &amp; III Year Students Above 7.5 CGPA">
+          <span class="atts-metric-tab-badge">2</span>
+          <span class="atts-metric-tab-title">To Improve II &amp; III Year Students Above 7.5 CGPA</span>
+        </a>
+              <a href="/php-app/upload.php?section=placement_mnc&amp;type=inst_placement_mnc"
+           class="atts-metric-tab js-category-tab "
+           data-section="placement_mnc"
+           role="tab"
+           id="metric-tab-placement_mnc"
+           aria-selected="false"
+           title="3. Place 2024–25 Batch Students in Top MNCs">
+          <span class="atts-metric-tab-badge">3</span>
+          <span class="atts-metric-tab-title">Place 2024–25 Batch Students in Top MNCs</span>
+        </a>
+              <a href="/php-app/upload.php?section=publications&amp;type=journal"
+           class="atts-metric-tab js-category-tab "
+           data-section="publications"
+           role="tab"
+           id="metric-tab-publications"
+           aria-selected="false"
+           title="4. Quality Publications in Scopus / SCI / Springer / UGC CARE / H-Index">
+          <span class="atts-metric-tab-badge">4</span>
+          <span class="atts-metric-tab-title">Quality Publications in Scopus / SCI / Springer / UGC CARE / H-Index</span>
+        </a>
+              <a href="/php-app/upload.php?section=patents&amp;type=patent"
+           class="atts-metric-tab js-category-tab "
+           data-section="patents"
+           role="tab"
+           id="metric-tab-patents"
+           aria-selected="false"
+           title="5. Patent / Copyrights">
+          <span class="atts-metric-tab-badge">5</span>
+          <span class="atts-metric-tab-title">Patent / Copyrights</span>
+        </a>
+              <a href="/php-app/upload.php?section=books&amp;type=book"
+           class="atts-metric-tab js-category-tab "
+           data-section="books"
+           role="tab"
+           id="metric-tab-books"
+           aria-selected="false"
+           title="6. Books Publication — Book / Book Chapter">
+          <span class="atts-metric-tab-badge">6</span>
+          <span class="atts-metric-tab-title">Books Publication — Book / Book Chapter</span>
+        </a>
+              <a href="/php-app/upload.php?section=sponsored_research&amp;type=inst_sponsored_research"
+           class="atts-metric-tab js-category-tab "
+           data-section="sponsored_research"
+           role="tab"
+           id="metric-tab-sponsored_research"
+           aria-selected="false"
+           title="7. Sponsored Research Funds / Consultancy Projects (in Lakhs)">
+          <span class="atts-metric-tab-badge">7</span>
+          <span class="atts-metric-tab-title">Sponsored Research Funds / Consultancy Projects (in Lakhs)</span>
+        </a>
+              <a href="/php-app/upload.php?section=research_centre&amp;type=inst_research_centre"
+           class="atts-metric-tab js-category-tab "
+           data-section="research_centre"
+           role="tab"
+           id="metric-tab-research_centre"
+           aria-selected="false"
+           title="8. Research Centre Recognition from Anna University">
+          <span class="atts-metric-tab-badge">8</span>
+          <span class="atts-metric-tab-title">Research Centre Recognition from Anna University</span>
+        </a>
+              <a href="/php-app/upload.php?section=ipr_programmes&amp;type=inst_ipr_programmes"
+           class="atts-metric-tab js-category-tab "
+           data-section="ipr_programmes"
+           role="tab"
+           id="metric-tab-ipr_programmes"
+           aria-selected="false"
+           title="9. Programme on IPR / Higher Studies / Entrepreneurship">
+          <span class="atts-metric-tab-badge">9</span>
+          <span class="atts-metric-tab-title">Programme on IPR / Higher Studies / Entrepreneurship</span>
+        </a>
+              <a href="/php-app/upload.php?section=faculty_certifications&amp;type=nptel"
+           class="atts-metric-tab js-category-tab "
+           data-section="faculty_certifications"
+           role="tab"
+           id="metric-tab-faculty_certifications"
+           aria-selected="false"
+           title="10. No. of Online Certification Courses Completed by Faculty">
+          <span class="atts-metric-tab-badge">10</span>
+          <span class="atts-metric-tab-title">No. of Online Certification Courses Completed by Faculty</span>
+        </a>
+              <a href="/php-app/upload.php?section=mou_interactions&amp;type=mou"
+           class="atts-metric-tab js-category-tab "
+           data-section="mou_interactions"
+           role="tab"
+           id="metric-tab-mou_interactions"
+           aria-selected="false"
+           title="11. Industry Interaction / MoU / Industry Supported Lab">
+          <span class="atts-metric-tab-badge">11</span>
+          <span class="atts-metric-tab-title">Industry Interaction / MoU / Industry Supported Lab</span>
+        </a>
+              <a href="/php-app/upload.php?section=internships&amp;type=internship"
+           class="atts-metric-tab js-category-tab "
+           data-section="internships"
+           role="tab"
+           id="metric-tab-internships"
+           aria-selected="false"
+           title="12. Student&#039;s Industry Internship (4 Weeks &amp; Above)">
+          <span class="atts-metric-tab-badge">12</span>
+          <span class="atts-metric-tab-title">Student&#039;s Industry Internship (4 Weeks &amp; Above)</span>
+        </a>
+              <a href="/php-app/upload.php?section=summer_training&amp;type=summer_training"
+           class="atts-metric-tab js-category-tab "
+           data-section="summer_training"
+           role="tab"
+           id="metric-tab-summer_training"
+           aria-selected="false"
+           title="13. Summer/Winter Training (Less Than 4 Weeks)">
+          <span class="atts-metric-tab-badge">13</span>
+          <span class="atts-metric-tab-title">Summer/Winter Training (Less Than 4 Weeks)</span>
+        </a>
+              <a href="/php-app/upload.php?section=student_projects&amp;type=inst_student_projects"
+           class="atts-metric-tab js-category-tab "
+           data-section="student_projects"
+           role="tab"
+           id="metric-tab-student_projects"
+           aria-selected="false"
+           title="14. Quality Student Projects and Publish the Projects on YouTube">
+          <span class="atts-metric-tab-badge">14</span>
+          <span class="atts-metric-tab-title">Quality Student Projects and Publish the Projects on YouTube</span>
+        </a>
+              <a href="/php-app/upload.php?section=faculty_participations&amp;type=fdp"
+           class="atts-metric-tab js-category-tab "
+           data-section="faculty_participations"
+           role="tab"
+           id="metric-tab-faculty_participations"
+           aria-selected="false"
+           title="15. Faculty Participation in FDP / Training / STTP / Conference">
+          <span class="atts-metric-tab-badge">15</span>
+          <span class="atts-metric-tab-title">Faculty Participation in FDP / Training / STTP / Conference</span>
+        </a>
+              <a href="/php-app/upload.php?section=society_memberships&amp;type=inst_society_memberships"
+           class="atts-metric-tab js-category-tab "
+           data-section="society_memberships"
+           role="tab"
+           id="metric-tab-society_memberships"
+           aria-selected="false"
+           title="16. Membership in Professional Societies (Student / Faculty)">
+          <span class="atts-metric-tab-badge">16</span>
+          <span class="atts-metric-tab-title">Membership in Professional Societies (Student / Faculty)</span>
+        </a>
+              <a href="/php-app/upload.php?section=newsletters&amp;type=inst_newsletters"
+           class="atts-metric-tab js-category-tab "
+           data-section="newsletters"
+           role="tab"
+           id="metric-tab-newsletters"
+           aria-selected="false"
+           title="17. Newsletter">
+          <span class="atts-metric-tab-badge">17</span>
+          <span class="atts-metric-tab-title">Newsletter</span>
+        </a>
+              <a href="/php-app/upload.php?section=student_certifications&amp;type=inst_student_certifications"
+           class="atts-metric-tab js-category-tab "
+           data-section="student_certifications"
+           role="tab"
+           id="metric-tab-student_certifications"
+           aria-selected="false"
+           title="18. Student Online Certification">
+          <span class="atts-metric-tab-badge">18</span>
+          <span class="atts-metric-tab-title">Student Online Certification</span>
+        </a>
+              <a href="/php-app/upload.php?section=spoken_tutorials&amp;type=inst_spoken_tutorials"
+           class="atts-metric-tab js-category-tab "
+           data-section="spoken_tutorials"
+           role="tab"
+           id="metric-tab-spoken_tutorials"
+           aria-selected="false"
+           title="19. No. of Students Completed IIT-Bombay Spoken Tutorial Courses">
+          <span class="atts-metric-tab-badge">19</span>
+          <span class="atts-metric-tab-title">No. of Students Completed IIT-Bombay Spoken Tutorial Courses</span>
+        </a>
+              <a href="/php-app/upload.php?section=inter_institute&amp;type=inst_inter_inst_within"
+           class="atts-metric-tab js-category-tab "
+           data-section="inter_institute"
+           role="tab"
+           id="metric-tab-inter_institute"
+           aria-selected="false"
+           title="20. Student Participation in Inter-Institute Events and Awards / Medals">
+          <span class="atts-metric-tab-badge">20</span>
+          <span class="atts-metric-tab-title">Student Participation in Inter-Institute Events and Awards / Medals</span>
+        </a>
+              <a href="/php-app/upload.php?section=value_added&amp;type=value_added"
+           class="atts-metric-tab js-category-tab active"
+           data-section="value_added"
+           role="tab"
+           id="metric-tab-value_added"
+           aria-selected="true"
+           title="21. No. of Value Added Courses / Hands-on Training Courses">
+          <span class="atts-metric-tab-badge">21</span>
+          <span class="atts-metric-tab-title">No. of Value Added Courses / Hands-on Training Courses</span>
+        </a>
+              <a href="/php-app/upload.php?section=sports&amp;type=inst_sports_state"
+           class="atts-metric-tab js-category-tab "
+           data-section="sports"
+           role="tab"
+           id="metric-tab-sports"
+           aria-selected="false"
+           title="22. Event Participation in Sports — State Level / National Level / Awards">
+          <span class="atts-metric-tab-badge">22</span>
+          <span class="atts-metric-tab-title">Event Participation in Sports — State Level / National Level / Awards</span>
+        </a>
+              <a href="/php-app/upload.php?section=innovation_events&amp;type=inst_innovation_events"
+           class="atts-metric-tab js-category-tab "
+           data-section="innovation_events"
+           role="tab"
+           id="metric-tab-innovation_events"
+           aria-selected="false"
+           title="23. Innovation Events to Be Conducted in Every Department">
+          <span class="atts-metric-tab-badge">23</span>
+          <span class="atts-metric-tab-title">Innovation Events to Be Conducted in Every Department</span>
+        </a>
+              <a href="/php-app/upload.php?section=iic_activities&amp;type=inst_iic_activities"
+           class="atts-metric-tab js-category-tab "
+           data-section="iic_activities"
+           role="tab"
+           id="metric-tab-iic_activities"
+           aria-selected="false"
+           title="24. IIC Activities">
+          <span class="atts-metric-tab-badge">24</span>
+          <span class="atts-metric-tab-title">IIC Activities</span>
+        </a>
+              <a href="/php-app/upload.php?section=website_updations&amp;type=inst_website_updations"
+           class="atts-metric-tab js-category-tab "
+           data-section="website_updations"
+           role="tab"
+           id="metric-tab-website_updations"
+           aria-selected="false"
+           title="25. Website Updation">
+          <span class="atts-metric-tab-badge">25</span>
+          <span class="atts-metric-tab-title">Website Updation</span>
+        </a>
+              <a href="/php-app/upload.php?section=google_ratings&amp;type=inst_google_ratings"
+           class="atts-metric-tab js-category-tab "
+           data-section="google_ratings"
+           role="tab"
+           id="metric-tab-google_ratings"
+           aria-selected="false"
+           title="26. Google Rating">
+          <span class="atts-metric-tab-badge">26</span>
+          <span class="atts-metric-tab-title">Google Rating</span>
+        </a>
+              <a href="/php-app/upload.php?section=startups&amp;type=inst_startups"
+           class="atts-metric-tab js-category-tab "
+           data-section="startups"
+           role="tab"
+           id="metric-tab-startups"
+           aria-selected="false"
+           title="27. Start Up">
+          <span class="atts-metric-tab-badge">27</span>
+          <span class="atts-metric-tab-title">Start Up</span>
+        </a>
+              <a href="/php-app/upload.php?section=alumni_chapters&amp;type=inst_alumni_chapters"
+           class="atts-metric-tab js-category-tab "
+           data-section="alumni_chapters"
+           role="tab"
+           id="metric-tab-alumni_chapters"
+           aria-selected="false"
+           title="28. Alumni Chapter">
+          <span class="atts-metric-tab-badge">28</span>
+          <span class="atts-metric-tab-title">Alumni Chapter</span>
+        </a>
+              <a href="/php-app/upload.php?section=awards_recognitions&amp;type=inst_awards_recognitions"
+           class="atts-metric-tab js-category-tab "
+           data-section="awards_recognitions"
+           role="tab"
+           id="metric-tab-awards_recognitions"
+           aria-selected="false"
+           title="29. Awards &amp; Recognition">
+          <span class="atts-metric-tab-badge">29</span>
+          <span class="atts-metric-tab-title">Awards &amp; Recognition</span>
+        </a>
+              <a href="/php-app/upload.php?section=nss_activities&amp;type=nss"
+           class="atts-metric-tab js-category-tab "
+           data-section="nss_activities"
+           role="tab"
+           id="metric-tab-nss_activities"
+           aria-selected="false"
+           title="30. No. of Activities Conducted by NSS / YRC">
+          <span class="atts-metric-tab-badge">30</span>
+          <span class="atts-metric-tab-title">No. of Activities Conducted by NSS / YRC</span>
+        </a>
+            <!-- Sliding active-tab indicator line -->
+      <div class="atts-metric-indicator" id="categoryNavIndicator" aria-hidden="true"></div>
+    </div>
+  </div>
+  <script>
+  (function () {
+    try {
+      var c = document.getElementById('categoryNavContainer');
+      var t = c ? c.querySelector('.atts-metric-tab.active') : null;
+      var ind = document.getElementById('categoryNavIndicator');
+      if (!c || !t) return;
+
+      // Position active underline indicator immediately with no animation
+      if (ind && t.offsetWidth > 0) {
+        ind.style.left = t.offsetLeft + 'px';
+        ind.style.width = t.offsetWidth + 'px';
+      }
+
+      // Restore saved scroll position or center active metric tab immediately before first paint
+      var activeSec = 'value_added';
+      var savedSec = sessionStorage.getItem('atts_active_section');
+      var savedScroll = sessionStorage.getItem('atts_metric_scroll');
+
+      if (savedSec === activeSec && savedScroll !== null) {
+        c.scrollLeft = parseFloat(savedScroll);
+      } else if (t.offsetLeft > 0) {
+        var cWidth = c.clientWidth || (c.parentElement ? c.parentElement.clientWidth : 0);
+        if (cWidth > 0) {
+          var target = t.offsetLeft - (cWidth / 2) + (t.offsetWidth / 2);
+          var max = Math.max(0, c.scrollWidth - cWidth);
+          c.scrollLeft = Math.max(0, Math.min(target, max));
+        }
+      }
+    } catch (e) {}
+  })();
+  </script>
+</div>
+
+
+<script>
+(function () {
+  var container = document.getElementById('categoryNavContainer');
+  var track     = document.getElementById('categoryNavTrack');
+  var indicator = document.getElementById('categoryNavIndicator');
+  var btnLeft   = document.getElementById('navScrollLeft');
+  var btnRight  = document.getElementById('navScrollRight');
+  if (!container || !indicator || !track) return;
+
+  if (btnLeft) {
+    btnLeft.addEventListener('click', function () {
+      container.scrollBy({ left: -320, behavior: 'smooth' });
+    });
+  }
+  if (btnRight) {
+    btnRight.addEventListener('click', function () {
+      container.scrollBy({ left: 320, behavior: 'smooth' });
+    });
+  }
+
+  function getActiveTab() {
+    return track.querySelector('.atts-metric-tab.active') ||
+           track.querySelector('.atts-metric-tab');
+  }
+
+  function updateIndicator(activeElement, animate) {
+    if (!activeElement || !indicator) return;
+
+    var left = activeElement.offsetLeft;
+    var width = activeElement.offsetWidth;
+
+    if (animate) {
+      indicator.classList.add('animated');
+    } else {
+      indicator.classList.remove('animated');
+    }
+
+    indicator.style.left = left + 'px';
+    indicator.style.width = width + 'px';
+  }
+
+  function ensureActiveCategoryVisible(activeElement) {
+    if (!activeElement || !container) return;
+
+    var itemLeft = activeElement.offsetLeft;
+    var itemWidth = activeElement.offsetWidth;
+    var containerWidth = container.clientWidth;
+
+    var targetScroll = itemLeft - (containerWidth / 2) + (itemWidth / 2);
+    var maxScroll = Math.max(0, container.scrollWidth - containerWidth);
+    targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+
+    // Instant positioning - NEVER smooth scroll from Metric 1 across all metrics
+    container.scrollLeft = targetScroll;
+
+    try {
+      var secId = activeElement.getAttribute('data-section');
+      if (secId) {
+        sessionStorage.setItem('atts_active_section', secId);
+        sessionStorage.setItem('atts_metric_scroll', targetScroll);
+      }
+    } catch (e) {}
+  }
+
+  var tabs = track.querySelectorAll('.atts-metric-tab');
+  tabs.forEach(function (tab) {
+    tab.addEventListener('click', function (e) {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+
+      var secId = this.getAttribute('data-section');
+      var itemLeft = this.offsetLeft;
+      var itemWidth = this.offsetWidth;
+      var containerWidth = container.clientWidth;
+      var targetScroll = itemLeft - (containerWidth / 2) + (itemWidth / 2);
+      var maxScroll = Math.max(0, container.scrollWidth - containerWidth);
+      targetScroll = Math.max(0, Math.min(targetScroll, maxScroll));
+
+      try {
+        if (secId) {
+          sessionStorage.setItem('atts_active_section', secId);
+          sessionStorage.setItem('atts_metric_scroll', targetScroll);
+        }
+      } catch (err) {}
+
+      tabs.forEach(function (t) {
+        t.classList.remove('active');
+        t.setAttribute('aria-selected', 'false');
+      });
+      this.classList.add('active');
+      this.setAttribute('aria-selected', 'true');
+      updateIndicator(this, false);
+    });
+  });
+
+  // Quick Jump dropdown: sync sessionStorage on change
+  var quickJump = document.getElementById('quickJumpSelect');
+  if (quickJump) {
+    quickJump.addEventListener('change', function () {
+      if (this.value) {
+        try {
+          sessionStorage.removeItem('atts_active_section');
+          sessionStorage.removeItem('atts_metric_scroll');
+        } catch (e) {}
+        window.location.href = this.value;
+      }
+    });
+  }
+
+  // Prev / Next buttons: clear sessionStorage so target recalculates cleanly
+  var prevBtn = document.getElementById('metricPrevBtn');
+  var nextBtn = document.getElementById('metricNextBtn');
+  [prevBtn, nextBtn].forEach(function (btn) {
+    if (btn) {
+      btn.addEventListener('click', function () {
+        try {
+          sessionStorage.removeItem('atts_active_section');
+          sessionStorage.removeItem('atts_metric_scroll');
+        } catch (e) {}
+      });
+    }
+  });
+
+  function initNav() {
+    var activeTab = getActiveTab();
+    if (activeTab) {
+      updateIndicator(activeTab, false);
+      ensureActiveCategoryVisible(activeTab);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initNav);
+  } else {
+    initNav();
+  }
+
+  window.addEventListener('resize', function () {
+    var activeTab = getActiveTab();
+    if (activeTab) {
+      updateIndicator(activeTab, false);
+      ensureActiveCategoryVisible(activeTab);
+    }
+  }, { passive: true });
+})();
+</script>
+
+
+
+
+<style>
+.btn-mode-toggle {
+  background: transparent;
+  border: none;
+  color: #475569;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 7px 18px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.18s ease;
+}
+.btn-mode-toggle:hover {
+  color: #0F172A;
+  background: rgba(255, 255, 255, 0.65);
+}
+.btn-mode-toggle.active {
+  background: #FFFFFF;
+  color: #131D3B;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 700;
+}
+.btn-mode-toggle.active svg {
+  stroke: #FF4F01;
+}
+</style>
+
+
+<!-- Individual Upload Form Container -->
+<div id="individualUploadContainer" style="display: block;">
+<!-- Upload form -->
+<div class="card" style="margin-bottom:20px">
+  <div class="card-head">
+    <div>
+      <div class="card-title">
+        <span class="js-form-title-text">
+          New Value Added Course        </span>
+                <span class="card-sub js-draft-status" style="font-size:11px; font-weight:normal; margin-left:8px; opacity:0; transition:opacity 0.25s;"></span>
+      </div>
+      <div class="card-sub">Fill in the details and submit for review</div>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+                    <a class="btn btn-secondary btn-sm" href="/php-app/record-report.php?type=value_added&amp;format=word"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Download this report</a>
+          </div>
+  </div>
+  <div class="card-body">
+    <form method="post" enctype="multipart/form-data">
+      <fieldset  style="border:none;padding:0;margin:0;display:contents;">
+      <input type="hidden" name="csrf" value="9b9f61ba9967f183879d782f1b41c1c173b7892340131b63ab3bf92c78b42bb6">      <input type="hidden" name="record_type" value="value_added">
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+            
+      
+              <div class="field"><label>Department <span class="req">*</span></label><input class="input" type="text" value="CSBS" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;"><input type="hidden" name="department" value="CSBS"></div>              <div class="field">
+          <label for="form_ay_academic_year">Academic Year <span class="req">*</span></label>
+      <select class="select" id="form_ay_academic_year" name="academic_year" required>
+                  <option value="2000-01"  >
+            2000-01          </option>
+                  <option value="2001-02"  >
+            2001-02          </option>
+                  <option value="2002-03"  >
+            2002-03          </option>
+                  <option value="2003-04"  >
+            2003-04          </option>
+                  <option value="2004-05"  >
+            2004-05          </option>
+                  <option value="2005-06"  >
+            2005-06          </option>
+                  <option value="2006-07"  >
+            2006-07          </option>
+                  <option value="2007-08"  >
+            2007-08          </option>
+                  <option value="2008-09"  >
+            2008-09          </option>
+                  <option value="2009-10"  >
+            2009-10          </option>
+                  <option value="2010-11"  >
+            2010-11          </option>
+                  <option value="2011-12"  >
+            2011-12          </option>
+                  <option value="2012-13"  >
+            2012-13          </option>
+                  <option value="2013-14"  >
+            2013-14          </option>
+                  <option value="2014-15"  >
+            2014-15          </option>
+                  <option value="2015-16"  >
+            2015-16          </option>
+                  <option value="2016-17"  >
+            2016-17          </option>
+                  <option value="2017-18"  >
+            2017-18          </option>
+                  <option value="2018-19"  >
+            2018-19          </option>
+                  <option value="2019-20"  >
+            2019-20          </option>
+                  <option value="2020-21"  >
+            2020-21          </option>
+                  <option value="2021-22"  >
+            2021-22          </option>
+                  <option value="2022-23"  >
+            2022-23          </option>
+                  <option value="2023-24"  >
+            2023-24          </option>
+                  <option value="2024-25"  >
+            2024-25          </option>
+                  <option value="2025-26" selected >
+            2025-26 (Active)          </option>
+                  <option value="2026-27"  >
+            2026-27          </option>
+                  <option value="2027-28"  disabled>
+            2027-28 — Future Year          </option>
+                  <option value="2028-29"  disabled>
+            2028-29 — Future Year          </option>
+                  <option value="2029-30"  disabled>
+            2029-30 — Future Year          </option>
+                  <option value="2030-31"  disabled>
+            2030-31 — Future Year          </option>
+                  <option value="2031-32"  disabled>
+            2031-32 — Future Year          </option>
+                  <option value="2032-33"  disabled>
+            2032-33 — Future Year          </option>
+                  <option value="2033-34"  disabled>
+            2033-34 — Future Year          </option>
+                  <option value="2034-35"  disabled>
+            2034-35 — Future Year          </option>
+                  <option value="2035-36"  disabled>
+            2035-36 — Future Year          </option>
+                  <option value="2036-37"  disabled>
+            2036-37 — Future Year          </option>
+                  <option value="2037-38"  disabled>
+            2037-38 — Future Year          </option>
+                  <option value="2038-39"  disabled>
+            2038-39 — Future Year          </option>
+                  <option value="2039-40"  disabled>
+            2039-40 — Future Year          </option>
+                  <option value="2040-41"  disabled>
+            2040-41 — Future Year          </option>
+                  <option value="2041-42"  disabled>
+            2041-42 — Future Year          </option>
+                  <option value="2042-43"  disabled>
+            2042-43 — Future Year          </option>
+                  <option value="2043-44"  disabled>
+            2043-44 — Future Year          </option>
+                  <option value="2044-45"  disabled>
+            2044-45 — Future Year          </option>
+                  <option value="2045-46"  disabled>
+            2045-46 — Future Year          </option>
+                  <option value="2046-47"  disabled>
+            2046-47 — Future Year          </option>
+                  <option value="2047-48"  disabled>
+            2047-48 — Future Year          </option>
+                  <option value="2048-49"  disabled>
+            2048-49 — Future Year          </option>
+                  <option value="2049-50"  disabled>
+            2049-50 — Future Year          </option>
+              </select>
+          </div>
+            <div class="field"><label>Academic Session <span class="req">*</span></label><select class="select" name="exam_session" required><option value="Nov-Dec" selected>Nov-Dec 2025</option><option value="Apr-May">Apr-May 2026</option></select></div>        <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" value="" max="2026-10-22" required></div>
+        <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" value="" max="2026-10-22" required></div>
+        <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" value="" placeholder="e.g. Full-Stack Web Development & Cloud Deployment" required></div>
+        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option >Online</option><option selected>Offline</option><option >Hybrid</option></select></div>
+        <div class="field"><label>No. of Participants <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" value="" placeholder="e.g. 45" required></div>
+
+        <!-- Resource Person Information Header -->
+        <div style="grid-column:span 2; margin-top:8px; margin-bottom:2px; padding-bottom:6px; border-bottom:1px solid #E2E8F0;">
+          <h4 style="margin:0; font-size:13.5px; font-weight:700; color:#131D3B; letter-spacing:0.3px;">Resource Person Information</h4>
+        </div>
+
+        
+        <!-- Row 1: Resource Person Name | Designation -->
+        <div class="field"><label>Resource Person Name <span class="req">*</span></label><input class="input" name="resource_person_name" value="" placeholder="e.g. Dr. Example Kumar" required></div>
+        <div class="field"><label>Designation <span class="req">*</span></label><input class="input" name="designation" value="" placeholder="e.g. Senior Research Scientist" required></div>
+
+        <!-- Row 2: Company / Institution Name | Contact Number -->
+        <div class="field"><label>Company / Institution Name <span class="req">*</span></label><input class="input" name="company_name" value="" placeholder="e.g. Example Research Centre" required></div>
+        <div class="field"><label>Contact Number <span class="card-sub">(Optional)</span></label><input class="input" name="contact_number" type="tel" value="" placeholder="e.g. +91 98765 43210"></div>
+
+        <!-- Row 3: Email Address | Resource Person Address -->
+        <div class="field"><label>Email Address <span class="card-sub">(Optional)</span></label><input class="input" name="email" type="email" value="" placeholder="e.g. expert@example.com"></div>
+        <div class="field"><label>Resource Person Address <span class="card-sub">(Optional)</span></label><textarea class="input" name="resource_person_address" rows="2" placeholder="e.g. Personal / professional contact address"></textarea></div>
+
+        <!-- Row 4: Company / Institution Address -->
+        <div class="field" style="grid-column:span 2"><label>Company / Institution Address <span class="card-sub">(Optional)</span></label><textarea class="input" name="company_address" rows="2" placeholder="e.g. Official campus / corporate address"></textarea></div>
+
+      
+      
+        <!-- Proof / attachment — Every metric form includes an anchored Proof / Attachment section -->
+        <div class="field atts-proof-container" style="grid-column:span 2; margin-top:8px;" data-max-bytes="2097152" data-max-mb="2" data-allowed="pdf"><label style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">  <span style="font-size:13px; font-weight:700; color:#131D3B;">Event Report <span class="req" style="color:#DC2626;">*</span></span>  <span class="card-sub" style="font-size:11.5px; color:#64748B;">PDF strictly 2 MB or less</span></label><div class="atts-proof-dropzone" id="proofDropzone" style="border:2px dashed #CBD5E1; border-radius:10px; background:#F8FAFC; padding:14px 18px; transition:border-color 0.2s, background 0.2s; position:relative;">  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">      <div style="width:40px; height:40px; border-radius:8px; background:#FFF7ED; border:1px solid #FFEDD5; display:flex; align-items:center; justify-content:center; color:#FF4F01; flex-shrink:0;">        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></svg>      </div>      <div style="flex:1;">        <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf" required style="font-size:12px; padding:6px 10px; border-radius:6px; background:#FFFFFF; width:100%;">        <div class="card-sub" style="font-size:11px; color:#64748B; margin-top:4px;">PDF document strictly 2 MB or less.</div>      </div>    </div>    <div id="proofSelectedInfo" style="display:none; align-items:center; gap:10px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:6px 12px;">      <div style="font-size:12px; color:#1E40AF;">        <strong id="proofSelectedName">file.pdf</strong> (<span id="proofSelectedSize">0 KB</span>)      </div>      <button type="button" id="proofRemoveBtn" class="btn btn-ghost btn-sm" style="color:#DC2626; padding:0 6px; height:24px; font-size:11px;" title="Clear selected file">&times; Remove</button>    </div>  </div>  <div id="proofSizeError" style="color:#DC2626; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:6px; padding:8px 12px; font-size:12px; font-weight:600; margin-top:8px; display:none;"></div></div></div>      </div>
+      </fieldset>
+
+      <!-- Save this entry and add another of the same type, move on to the next
+           metric, or finish on the last one. -->
+      <div class="upload-actions">
+                  <button type="submit" name="nav" value="add" class="btn btn-outline"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Save &amp; add another</button>
+          <div class="spacer"></div>
+                      <a class="btn btn-ghost" href="/php-app/upload.php?section=inter_institute&amp;type=inst_inter_inst_within"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg> Back: Student Participation in Inter-Institute Events and Awards / Medals</a>
+                                <button type="submit" name="nav" value="next" class="btn btn-primary">
+              Next: Event Participation in Sports — State Level / National Level / Awards <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>            </button>
+                        </div>
+
+          </form>
+
+    <script>
+      document.querySelectorAll('.js-other').forEach(function (sel) {
+        var box = sel.parentElement.querySelector('.js-other-text');
+        if (!box) return;
+        function sync() {
+          var on = sel.value === 'Others';
+          box.style.display = on ? '' : 'none';
+          box.required = on;
+          if (!on) box.value = '';
+        }
+        sel.addEventListener('change', sync);
+        sync();
+      });
+
+      // Co-Curricular Event Type Others Toggle
+      document.querySelectorAll('.js-co-event-type').forEach(function (sel) {
+        var wrap = sel.parentElement.querySelector('.js-other-event-wrap');
+        var input = wrap ? wrap.querySelector('.js-other-event-input') : null;
+        if (!wrap || !input) return;
+        function syncCoType() {
+          var isOther = sel.value === 'Others';
+          wrap.style.display = isOther ? 'block' : 'none';
+          input.required = isOther;
+          if (!isOther) {
+            input.value = '';
+          }
+        }
+        sel.addEventListener('change', syncCoType);
+        syncCoType();
+      });
+
+      // Team / Individual Toggle
+      document.querySelectorAll('.js-team-toggle').forEach(function (sel) {
+        var form = sel.closest('form');
+        if (!form) return;
+        var section = form.querySelector('.js-team-section');
+        if (!section) return;
+        function syncTeam() {
+          var isTeam = sel.value === 'Team';
+          section.style.display = isTeam ? 'block' : 'none';
+          section.querySelectorAll('input').forEach(function (inp) {
+            if (inp.name === 'team_member_reg_no[]' || inp.name === 'team_member_name[]') {
+              inp.required = isTeam;
+            }
+          });
+          if (isTeam) {
+            var container = section.querySelector('.js-members-container');
+            if (container && container.querySelectorAll('.js-member-row').length === 0) {
+              addTeamMemberRow(container);
+            }
+          }
+        }
+        sel.addEventListener('change', syncTeam);
+        syncTeam();
+      });
+
+      function renumberTeamMembers(container) {
+        if (!container) return;
+        var rows = container.querySelectorAll('.js-member-row');
+        rows.forEach(function (row, idx) {
+          var numEl = row.querySelector('.js-member-num');
+          if (numEl) numEl.textContent = (idx + 1);
+        });
+      }
+
+      function addTeamMemberRow(container, regVal, nameVal, deptVal) {
+        if (!container) return;
+        var form = container.closest('form');
+        var teamSel = form ? form.querySelector('.js-team-toggle') : null;
+        var isTeam = teamSel ? teamSel.value === 'Team' : true;
+        var nextNum = container.querySelectorAll('.js-member-row').length + 1;
+        var row = document.createElement('div');
+        row.className = 'js-member-row';
+        row.style.cssText = 'display:grid; grid-template-columns: 1fr 1fr 1fr auto; gap:10px; align-items:end; background:var(--surface, #ffffff); border:1px solid var(--border, #e2e8f0); border-radius:8px; padding:10px 12px; margin-top:6px;';
+        row.innerHTML = '<div>' +
+          '<label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Member <span class="js-member-num">' + nextNum + '</span> Reg. No <span class="req">*</span></label>' +
+          '<input class="input" name="team_member_reg_no[]" value="' + (regVal ? String(regVal).replace(/"/g, '&quot;') : '') + '" placeholder="e.g. 21CS001"' + (isTeam ? ' required' : '') + '>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Student Name <span class="req">*</span></label>' +
+          '<input class="input" name="team_member_name[]" value="' + (nameVal ? String(nameVal).replace(/"/g, '&quot;') : '') + '" placeholder="e.g. Student Name"' + (isTeam ? ' required' : '') + '>' +
+        '</div>' +
+        '<div>' +
+          '<label style="font-size:11px; font-weight:600; color:var(--ink-muted,#64748b);">Department</label>' +
+          '<input class="input" name="team_member_dept[]" value="' + (deptVal ? String(deptVal).replace(/"/g, '&quot;') : '') + '" placeholder="e.g. CSE / IT">' +
+        '</div>' +
+        '<div>' +
+          '<button type="button" class="btn btn-ghost btn-sm js-remove-member-btn" style="color:var(--danger, #dc2626); height:36px; padding:0 10px;" title="Remove Member">' +
+            'Remove' +
+          '</button>' +
+        '</div>';
+        container.appendChild(row);
+        renumberTeamMembers(container);
+      }
+
+      document.addEventListener('click', function (e) {
+        var addBtn = e.target.closest('.js-add-member-btn');
+        if (addBtn) {
+          var form = addBtn.closest('form');
+          if (form) {
+            var container = form.querySelector('.js-members-container');
+            if (container) {
+              addTeamMemberRow(container);
+              container.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }
+          return;
+        }
+
+        var removeBtn = e.target.closest('.js-remove-member-btn');
+        if (removeBtn) {
+          var row = removeBtn.closest('.js-member-row');
+          if (row) {
+            var container = row.parentElement;
+            row.remove();
+            if (container) {
+              renumberTeamMembers(container);
+              container.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+          }
+          return;
+        }
+      });
+
+      // Event Mode: show the venue and / or online fields the chosen mode needs.
+      // Hidden fields keep their values so switching back loses nothing; the
+      // server drops whatever the final mode does not use.
+      (function () {
+        var modeSel = document.querySelector('.js-event-mode');
+        if (!modeSel) return;
+        var blocks = document.querySelectorAll('[data-event-mode-for]');
+        function syncMode() {
+          var mode = modeSel.value;
+          blocks.forEach(function (b) {
+            var on = mode !== '' && b.getAttribute('data-event-mode-for').split(' ').indexOf(mode) !== -1;
+            b.style.display = on ? '' : 'none';
+            b.querySelectorAll('[data-mode-required]').forEach(function (input) { input.required = on; });
+          });
+        }
+        modeSel.addEventListener('change', syncMode);
+        syncMode();
+        window.addEventListener('load', syncMode);   // after edit / draft values are filled in
+      })();
+
+      // Journal / Book authors: show one name + position pair per co-author, offer
+      // positions 1..total only, and flag a repeated faculty member or
+      // position before the form is sent (the server checks all of it again).
+      // Hidden rows keep their values, so lowering the count loses nothing.
+      (function () {
+        var countSel = document.getElementById('pubCoCount');
+        if (!countSel) return;
+        var mainSel  = document.getElementById('pubMainAuthor');
+        var deptBox  = document.getElementById('pubMainDept');
+        var totalBox = document.getElementById('pubTotalAuthors');
+        var msgBox   = document.getElementById('pubAuthorMsg');
+        var mainPos  = document.querySelector('[name="main_author_position"]');
+
+        function ordinal(n) {
+          var s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+          return n + (s[(v - 20) % 10] || s[v] || s[0]) + ' Author';
+        }
+
+        function sync() {
+          var count = parseInt(countSel.value, 10) || 0;
+          var total = count + 1;
+          if (totalBox) totalBox.textContent = total;
+          if (deptBox && mainSel) {
+            var opt = mainSel.options[mainSel.selectedIndex];
+            deptBox.value = opt ? (opt.getAttribute('data-dept') || '') : '';
+          }
+
+          var authors = [{ label: 'Main Author', who: mainSel, pos: mainPos }];
+          document.querySelectorAll('[data-co-row]').forEach(function (box) {
+            var i = parseInt(box.getAttribute('data-co-row'), 10);
+            var on = i <= count;
+            box.style.display = on ? '' : 'none';
+            box.querySelectorAll('select').forEach(function (s) { s.required = on; s.setCustomValidity(''); });
+          });
+          for (var i = 1; i <= count; i++) {
+            authors.push({
+              label: 'Co-Author ' + i,
+              who: document.querySelector('[name="co_author_id_' + i + '"]'),
+              pos: document.querySelector('[name="co_author_pos_' + i + '"]')
+            });
+          }
+
+          document.querySelectorAll('.js-pub-pos').forEach(function (s) {
+            Array.prototype.forEach.call(s.options, function (o) {
+              if (o.value === '') return;
+              var off = parseInt(o.value, 10) > total;
+              o.disabled = off;
+              o.hidden = off;
+            });
+          });
+
+          var problems = [], seenWho = {}, seenPos = {};
+          authors.forEach(function (a) {
+            if (a.who) a.who.setCustomValidity('');
+            if (a.pos) a.pos.setCustomValidity('');
+          });
+          authors.forEach(function (a) {
+            if (a.who && a.who.value) {
+              if (seenWho[a.who.value]) {
+                var m = a.label + ' is the same faculty member as ' + seenWho[a.who.value] + '.';
+                a.who.setCustomValidity(m); problems.push(m);
+              } else {
+                seenWho[a.who.value] = a.label;
+              }
+            }
+            if (a.pos && a.pos.value) {
+              var p = parseInt(a.pos.value, 10);
+              if (p > total) {
+                var m2 = a.label + ': choose a position from 1st Author to ' + ordinal(total) + '.';
+                a.pos.setCustomValidity(m2); problems.push(m2);
+              } else if (seenPos[p]) {
+                var m3 = a.label + ' and ' + seenPos[p] + ' are both ' + ordinal(p) + '. Every author needs a different position.';
+                a.pos.setCustomValidity(m3); problems.push(m3);
+              } else {
+                seenPos[p] = a.label;
+              }
+            }
+          });
+          if (msgBox) {
+            msgBox.textContent = problems.join(' ');
+            msgBox.style.display = problems.length ? '' : 'none';
+          }
+        }
+
+        document.querySelectorAll('#pubCoCount, .js-pub-author, .js-pub-pos').forEach(function (s) {
+          s.addEventListener('change', sync);
+        });
+        sync();
+        window.addEventListener('load', sync);   // after edit / draft values are filled in
+
+        // Title fields: capitals as you type; spaces trimmed and collapsed on leaving.
+        document.querySelectorAll('.js-caps, .js-upper').forEach(function (el) {
+          el.addEventListener('input', function () {
+            var at = el.selectionStart, up = el.value.toUpperCase();
+            if (up !== el.value) { el.value = up; try { el.setSelectionRange(at, at); } catch (e) {} }
+          });
+          el.addEventListener('blur', function () {
+            el.value = el.value.replace(/\s+/g, ' ').trim();
+          });
+        });
+        // Book title / publisher: case and punctuation kept as typed; only
+        // the spaces are trimmed and collapsed on leaving.
+        document.querySelectorAll('.js-trim').forEach(function (el) {
+          el.addEventListener('blur', function () {
+            el.value = el.value.replace(/\s+/g, ' ').trim();
+          });
+        });
+      })();
+
+      // Synchronize Main Author and Department for Journal and Conference forms
+      (function () {
+        function setupAuthorDeptSync(authorSelectId, deptInputId) {
+          var authorSel = document.getElementById(authorSelectId);
+          var deptInput = document.getElementById(deptInputId);
+          if (!authorSel || !deptInput) return;
+
+          function syncDept() {
+            var opt = authorSel.options[authorSel.selectedIndex];
+            deptInput.value = opt ? (opt.getAttribute('data-dept') || '') : '';
+          }
+
+          authorSel.addEventListener('change', syncDept);
+          if (!deptInput.value || authorSel.value) {
+            syncDept();
+          }
+          window.addEventListener('load', syncDept);
+        }
+
+        setupAuthorDeptSync('pubMainAuthor', 'pubMainDept');
+        setupAuthorDeptSync('confMainAuthor', 'confMainDept');
+      })();
+
+      var proofInput = document.getElementById('proofInput');
+      if (proofInput) {
+        var container = proofInput.closest('.atts-proof-container');
+        var maxBytes = container && container.dataset.maxBytes ? parseInt(container.dataset.maxBytes, 10) : (2 * 1024 * 1024);
+        var maxMb = container && container.dataset.maxMb ? parseFloat(container.dataset.maxMb) : 2;
+        var allowedStr = container && container.dataset.allowed ? container.dataset.allowed : 'pdf';
+        var allowedList = allowedStr.split(',').map(function(s) { return s.trim().toLowerCase(); });
+
+        var proofErr = document.getElementById('proofSizeError');
+        var proofInfo = document.getElementById('proofSelectedInfo');
+        var proofName = document.getElementById('proofSelectedName');
+        var proofSize = document.getElementById('proofSelectedSize');
+        var removeBtn = document.getElementById('proofRemoveBtn');
+
+        if (removeBtn) {
+          removeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            proofInput.value = '';
+            if (proofInfo) proofInfo.style.display = 'none';
+            if (proofErr) proofErr.style.display = 'none';
+          });
+        }
+
+        proofInput.addEventListener('change', function () {
+          var file = this.files && this.files[0];
+          if (!file) {
+            if (proofInfo) proofInfo.style.display = 'none';
+            return;
+          }
+
+          // Check file size
+          if (file.size > maxBytes) {
+            var sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            alert('File size exceeds the ' + maxMb + ' MB limit (' + sizeMb + ' MB). Only attachments of ' + maxMb + ' MB or less can be selected.');
+            this.value = '';
+            if (proofInfo) proofInfo.style.display = 'none';
+            if (proofErr) {
+              proofErr.textContent = 'Selected file (' + sizeMb + ' MB) exceeds ' + maxMb + ' MB limit. Selection cleared. Please choose a file ≤ ' + maxMb + ' MB.';
+              proofErr.style.display = 'block';
+            }
+            return false;
+          }
+
+          // Check file extension
+          var ext = file.name.split('.').pop().toLowerCase();
+          if (allowedList.indexOf(ext) === -1) {
+            alert('Only ' + allowedList.join(', ').toUpperCase() + ' files are allowed as proof attachments.');
+            this.value = '';
+            if (proofInfo) proofInfo.style.display = 'none';
+            if (proofErr) {
+              proofErr.textContent = 'Only ' + allowedList.join(', ').toUpperCase() + ' files are supported. Selection cleared.';
+              proofErr.style.display = 'block';
+            }
+            return false;
+          }
+
+          if (proofErr) {
+            proofErr.style.display = 'none';
+          }
+
+          // Format size
+          var formattedSize = (file.size < 1024 * 1024)
+            ? (file.size / 1024).toFixed(1) + ' KB'
+            : (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+
+          if (proofName) proofName.textContent = file.name;
+          if (proofSize) proofSize.textContent = formattedSize;
+          if (proofInfo) proofInfo.style.display = 'inline-flex';
+        });
+      }
+
+      // FDP / Unified Activity Form dynamic title, labels & duration calculation
+      (function () {
+        var evTypeSelect = document.getElementById('fdp_event_type');
+        var fromDateInput = document.getElementById('fdp_from_date');
+        var toDateInput = document.getElementById('fdp_to_date');
+        var durationInput = document.getElementById('fdp_duration');
+        var durationError = document.getElementById('fdp_duration_error');
+        var titleLabelText = document.querySelector('.js-fdp-title-label-text');
+        var formTitleText = document.querySelector('.js-form-title-text');
+        var isEditing = false;
+        var editId = 0;
+
+        var labelMap = {
+          'FDP': 'Name of the FDP',
+          'Workshop': 'Name of the Workshop',
+          'Seminar': 'Name of the Seminar',
+          'STTP': 'Name of the STTP',
+          'Training': 'Name of the Training Programme',
+          'Conference': 'Name of the Conference'
+        };
+
+        function updateLabelsAndTitle() {
+          if (!evTypeSelect) return;
+          var val = evTypeSelect.value || 'FDP';
+          if (titleLabelText) {
+            titleLabelText.textContent = labelMap[val] || ('Name of the ' + val);
+          }
+          if (formTitleText) {
+            if (isEditing && editId > 0) {
+              formTitleText.textContent = 'Edit ' + val + ' #' + editId;
+            } else {
+              formTitleText.textContent = 'New ' + val;
+            }
+          }
+        }
+
+        function calculateDuration() {
+          if (!fromDateInput || !toDateInput || !durationInput) return;
+          var fromVal = fromDateInput.value;
+          var toVal = toDateInput.value;
+
+          if (!fromVal || !toVal) {
+            if (durationError) durationError.style.display = 'none';
+            return;
+          }
+
+          var d1 = new Date(fromVal + 'T00:00:00');
+          var d2 = new Date(toVal + 'T00:00:00');
+
+          if (isNaN(d1.getTime()) || isNaN(d2.getTime())) {
+            return;
+          }
+
+          if (d2 < d1) {
+            if (durationError) {
+              durationError.textContent = 'To Date cannot be before From Date.';
+              durationError.style.display = 'block';
+            }
+            durationInput.value = '';
+            durationInput.setCustomValidity('To Date cannot be before From Date.');
+          } else {
+            if (durationError) {
+              durationError.style.display = 'none';
+            }
+            durationInput.setCustomValidity('');
+            // Inclusive calendar date difference:
+            var diffMs = d2.getTime() - d1.getTime();
+            var diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1;
+            var text = diffDays === 1 ? '1 day' : diffDays + ' days';
+            durationInput.value = text;
+          }
+        }
+
+        if (evTypeSelect) {
+          evTypeSelect.addEventListener('change', function () {
+            updateLabelsAndTitle();
+          });
+          updateLabelsAndTitle();
+        }
+
+        if (fromDateInput && toDateInput) {
+          fromDateInput.addEventListener('change', calculateDuration);
+          toDateInput.addEventListener('change', calculateDuration);
+          fromDateInput.addEventListener('input', calculateDuration);
+          toDateInput.addEventListener('input', calculateDuration);
+          if (fromDateInput.value && toDateInput.value && !durationInput.value) {
+            calculateDuration();
+          }
+        }
+      })();
+
+      (function () {
+        var form = document.querySelector('.card-body form');
+        if (!form) return;
+        var isEditing = false;
+        if (isEditing) return; // Do not overwrite active record edit with unrelated draft!
+        var activeYear = "2025-26";
+        var recordType = "value_added";
+
+        function getStorageKey() {
+          if (recordType === 'fdp') {
+            var evEl = form.querySelector('[name="event_type"]');
+            var ev = (evEl ? evEl.value : 'FDP') || 'FDP';
+            return 'atts_upload_draft_' + activeYear + '_fdp_' + ev;
+          }
+          return 'atts_upload_draft_' + activeYear + '_' + recordType;
+        }
+
+        var submittedDraftType = null;
+        if (submittedDraftType) {
+          try {
+            sessionStorage.removeItem('atts_upload_draft_' + activeYear + '_' + submittedDraftType);
+            sessionStorage.removeItem('faculty_upload_draft_' + 60028 + '_' + submittedDraftType);
+            if (submittedDraftType === 'fdp') {
+              ['Conference', 'FDP', 'Workshop', 'Seminar', 'STTP', 'Training'].forEach(function (et) {
+                sessionStorage.removeItem('atts_upload_draft_' + activeYear + '_fdp_' + et);
+              });
+            }
+          } catch (e) {}
+        }
+
+        function showDraftStatus(text) {
+          var statusEl = document.querySelector('.js-draft-status');
+          if (!statusEl) return;
+          statusEl.textContent = text;
+          statusEl.style.opacity = '1';
+          setTimeout(function () {
+            statusEl.style.opacity = '0';
+          }, 2000);
+        }
+
+        function getDraftData() {
+          var draft = {};
+          var elements = form.querySelectorAll('input, select, textarea');
+          elements.forEach(function (el) {
+            var name = el.name;
+            if (!name || name === 'csrf' || name === 'record_type' || name === 'proof' || name === 'nav') return;
+            if (el.type === 'file' || el.type === 'password' || el.type === 'hidden') return;
+
+            if (name.endsWith('[]')) {
+              var cleanName = name.slice(0, -2);
+              if (!draft[cleanName]) draft[cleanName] = [];
+              draft[cleanName].push(el.value);
+              return;
+            }
+
+            if (el.type === 'checkbox') {
+              draft[name] = el.checked;
+            } else if (el.type === 'radio') {
+              if (el.checked) {
+                draft[name] = el.value;
+              }
+            } else {
+              draft[name] = el.value;
+            }
+          });
+          return draft;
+        }
+
+        function hasDraftData(draft) {
+          if (!draft || typeof draft !== 'object') return false;
+          var keys = Object.keys(draft);
+          for (var i = 0; i < keys.length; i++) {
+            var k = keys[i];
+            if (k === 'faculty_name' || k === 'department' || k === 'academic_year') continue;
+            var val = draft[k];
+            if (Array.isArray(val) && val.some(function(v){ return v && String(v).trim() !== ''; })) return true;
+            if (typeof val === 'string' && val.trim() !== '') return true;
+            if (typeof val === 'boolean' && val) return true;
+          }
+          return false;
+        }
+
+        function saveDraft() {
+          try {
+            var draft = getDraftData();
+            var key = getStorageKey();
+            if (hasDraftData(draft)) {
+              sessionStorage.setItem(key, JSON.stringify(draft));
+              showDraftStatus('Draft saved');
+            } else {
+              sessionStorage.removeItem(key);
+            }
+          } catch (e) {
+            console.warn('Unable to save form draft to sessionStorage:', e);
+          }
+        }
+
+        var saveTimeout = null;
+        function debouncedSaveDraft() {
+          clearTimeout(saveTimeout);
+          saveTimeout = setTimeout(saveDraft, 200);
+        }
+
+        var isRestoring = false;
+        function restoreDraft() {
+          try {
+            var key = getStorageKey();
+            var raw = sessionStorage.getItem(key);
+            if (!raw) return;
+            var draft = JSON.parse(raw);
+            if (!draft || typeof draft !== 'object') return;
+
+            isRestoring = true;
+            var restoredAny = false;
+
+            Object.keys(draft).forEach(function (name) {
+              var el = form.elements[name];
+              if (!el) return;
+              if (el.tagName === 'SELECT') {
+                el.value = draft[name];
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                restoredAny = true;
+              }
+            });
+
+            Object.keys(draft).forEach(function (name) {
+              var el = form.elements[name];
+              if (!el) return;
+              if (el.tagName === 'SELECT') return;
+
+              var nodes = (el instanceof NodeList || el instanceof HTMLCollection) ? Array.prototype.slice.call(el) : [el];
+
+              nodes.forEach(function (input) {
+                if (!input || input.type === 'file' || input.type === 'password' || input.type === 'hidden') return;
+
+                if (input.type === 'checkbox') {
+                  input.checked = !!draft[name];
+                  restoredAny = true;
+                } else if (input.type === 'radio') {
+                  input.checked = (input.value === draft[name]);
+                  restoredAny = true;
+                } else {
+                  input.value = draft[name];
+                  restoredAny = true;
+                }
+              });
+            });
+
+            // If FDP dates were restored, trigger duration recalculation
+            if (recordType === 'fdp') {
+              var fromEl = form.querySelector('[name="from_date"]');
+              if (fromEl) {
+                fromEl.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }
+
+            // Restore dynamic team members
+            if (Array.isArray(draft['team_member_reg_no']) && draft['team_member_reg_no'].length > 0) {
+              var container = form.querySelector('.js-members-container');
+              if (container) {
+                container.innerHTML = '';
+                draft['team_member_reg_no'].forEach(function (reg, i) {
+                  var mName = (draft['team_member_name'] && draft['team_member_name'][i]) || '';
+                  var mDept = (draft['team_member_dept'] && draft['team_member_dept'][i]) || '';
+                  addTeamMemberRow(container, reg, mName, mDept);
+                });
+                restoredAny = true;
+              }
+            }
+
+            document.querySelectorAll('.js-other').forEach(function (sel) {
+              var otherName = sel.getAttribute('data-other');
+              var box = otherName ? form.elements[otherName] : null;
+              if (box) {
+                var on = sel.value === 'Others';
+                box.style.display = on ? '' : 'none';
+                box.required = on;
+                if (on && draft[otherName] !== undefined) {
+                  box.value = draft[otherName];
+                }
+              }
+            });
+
+            var coSel = form.querySelector('.js-co-event-type');
+            if (coSel) {
+              coSel.dispatchEvent(new Event('change', { bubbles: true }));
+              if (coSel.value === 'Others' && draft['other_event_type']) {
+                var oInput = form.querySelector('.js-other-event-input');
+                if (oInput) oInput.value = draft['other_event_type'];
+              }
+            }
+
+            var teamSel = form.querySelector('.js-team-toggle');
+            if (teamSel) {
+              teamSel.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            if (restoredAny) {
+              showDraftStatus('Draft restored');
+            }
+          } catch (e) {
+            console.warn('Unable to restore form draft from sessionStorage:', e);
+          } finally {
+            isRestoring = false;
+          }
+        }
+
+        // FDP draft switching on event type change
+        if (recordType === 'fdp') {
+          var evSelect = form.querySelector('[name="event_type"]');
+          if (evSelect) {
+            evSelect.addEventListener('change', function () {
+              if (isRestoring) return;
+              // Reset event-specific fields before restoring new draft
+              ['title', 'from_date', 'to_date', 'duration', 'certificate_link'].forEach(function (fn) {
+                var fEl = form.elements[fn];
+                if (fEl) fEl.value = '';
+              });
+              restoreDraft();
+            });
+          }
+        }
+
+        form.addEventListener('input', function () {
+          if (isRestoring) return;
+          debouncedSaveDraft();
+        });
+        form.addEventListener('change', function () {
+          if (isRestoring) return;
+          saveDraft();
+        });
+
+        document.querySelectorAll('.js-category-tab').forEach(function (tab) {
+          tab.addEventListener('click', function () {
+            clearTimeout(saveTimeout);
+            saveDraft();
+          });
+        });
+
+        window.addEventListener('beforeunload', function () {
+          clearTimeout(saveTimeout);
+          saveDraft();
+        });
+        window.addEventListener('pagehide', function () {
+          clearTimeout(saveTimeout);
+          saveDraft();
+        });
+        var serverDraft = null;
+        function restoreServerDraft() {
+          if (!serverDraft || typeof serverDraft !== 'object') return false;
+          try {
+            isRestoring = true;
+            Object.keys(serverDraft).forEach(function (name) {
+              var el = form.elements[name];
+              if (!el) return;
+              if (el.tagName === 'SELECT') {
+                el.value = serverDraft[name];
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+              }
+            });
+            Object.keys(serverDraft).forEach(function (name) {
+              var el = form.elements[name];
+              if (!el) return;
+              if (el.type === 'file' || el.type === 'hidden') return;
+              if (el.tagName !== 'SELECT') {
+                el.value = serverDraft[name];
+              }
+            });
+            isRestoring = false;
+            return true;
+          } catch (e) {
+            isRestoring = false;
+            return false;
+          }
+        }
+
+        function initDraftLifecycle() {
+          if (serverDraft) {
+            restoreServerDraft();
+          } else {
+            restoreDraft();
+          }
+          updateDraftUI(getDraftData());
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', initDraftLifecycle);
+        } else {
+          initDraftLifecycle();
+        }
+      })();
+
+      function switchUploadMode(mode) {
+        var indContainer = document.getElementById('individualUploadContainer');
+        var bulkContainer = document.getElementById('smartbulkUploadContainer');
+        var btnInd = document.getElementById('tabBtnIndividual');
+        var btnBulk = document.getElementById('tabBtnBulk');
+        var desc = document.getElementById('modeDescriptionText');
+
+        if (mode === 'bulk') {
+          if (indContainer) indContainer.style.display = 'none';
+          if (bulkContainer) bulkContainer.style.display = 'block';
+          if (btnInd) btnInd.classList.remove('active');
+          if (btnBulk) btnBulk.classList.add('active');
+          if (desc) desc.innerHTML = 'Batch import multiple students via verified Excel spreadsheet (.xlsx) &amp; companion PDF certificates.';
+          try {
+            var u = new URL(window.location.href);
+            u.searchParams.set('mode', 'bulk');
+            window.history.replaceState({}, '', u.toString());
+          } catch (e) {}
+        } else {
+          if (bulkContainer) bulkContainer.style.display = 'none';
+          if (indContainer) indContainer.style.display = 'block';
+          if (btnBulk) btnBulk.classList.remove('active');
+          if (btnInd) btnInd.classList.add('active');
+          if (desc) desc.innerHTML = 'Submit or edit an individual student record with live validation and proof attachment.';
+          try {
+            var u = new URL(window.location.href);
+            u.searchParams.delete('mode');
+            window.history.replaceState({}, '', u.toString());
+          } catch (e) {}
+        }
+      }
+    </script>
+  </div>
+</div>
+</div> <!-- /#individualUploadContainer -->
+
+<!-- My recent records -->
+<div class="card">
+  <div class="card-head">
+    <div><div class="card-title">My Submissions</div>
+      <div class="card-sub">2 of 3 records</div></div>
+  </div>
+  <form method="get" class="fbar fbar-flush">
+    <input type="hidden" name="type" value="value_added">
+
+    <label class="fb-field"><span class="fb-k">Record type</span>
+      <select name="mtype" onchange="this.form.submit()">
+        <option value="">All</option>
+                  <option value="journal" >Journal Publication</option>
+                  <option value="book" >Book / Chapter</option>
+                  <option value="conference" >Conference Publication</option>
+                  <option value="patent" >Patent / Copyright</option>
+                  <option value="fdp" >FDP / Workshop</option>
+                  <option value="mou" >MoU</option>
+                  <option value="event" >Event</option>
+                  <option value="nptel" >NPTEL</option>
+                  <option value="internship" >Internship</option>
+                  <option value="placement" >Placement</option>
+                  <option value="nss" >NSS / YRC / RRC</option>
+                  <option value="online_course" >Online Course</option>
+                  <option value="co_curricular" >Co-Curricular</option>
+                  <option value="extra_curricular" >Extra-Curricular</option>
+                  <option value="summer_training" >Summer / Winter Training</option>
+                  <option value="value_added" selected>Value Added Course</option>
+                  <option value="training" >Training Programme</option>
+                  <option value="inst_pass_percentage" >University Pass Percentage</option>
+                  <option value="inst_college_rank" >Rank in Anna University (College)</option>
+                  <option value="inst_student_rank" >University Rank (Students)</option>
+                  <option value="inst_student_cgpa" >Students Above 7.5 CGPA (II &amp; III Year)</option>
+                  <option value="inst_placement_mnc" >Placement in Top MNCs</option>
+                  <option value="inst_publications" >Quality Publications (Scopus/SCI/Springer)</option>
+                  <option value="inst_books" >Books Publication</option>
+                  <option value="inst_book_chapters" >Book Chapter</option>
+                  <option value="inst_patents_published" >Patent Published / Design</option>
+                  <option value="inst_patents_granted" >Patent Granted</option>
+                  <option value="inst_copyrights" >Copyrights</option>
+                  <option value="inst_sponsored_research" >Sponsored Research (in Lakhs)</option>
+                  <option value="inst_consultancy" >Consultancy Projects (in Lakhs)</option>
+                  <option value="inst_research_centre" >Research Centre Recognition (Anna Univ.)</option>
+                  <option value="inst_ipr_programmes" >Programme on IPR / Higher Studies / Entrepreneurship</option>
+                  <option value="inst_faculty_certifications" >Faculty Online Certification Courses</option>
+                  <option value="inst_mou_interactions" >Industry Interaction / MOU / Industry Supported Lab</option>
+                  <option value="inst_internships" >Student Industry Internship (4 Weeks+)</option>
+                  <option value="inst_summer_trainings" >Summer Training (Less Than 4 Weeks)</option>
+                  <option value="inst_student_projects" >Quality Student Projects (YouTube)</option>
+                  <option value="inst_faculty_participations" >Faculty FDP / Training / STTP / Conference</option>
+                  <option value="inst_society_memberships" >Membership in Professional Societies</option>
+                  <option value="inst_newsletters" >Newsletter</option>
+                  <option value="inst_student_certifications" >Student Online Certification</option>
+                  <option value="inst_nss_events" >Events Conducted by NSS</option>
+                  <option value="inst_inter_inst_within" >Student Participation in Inter-Institute Events and Awards / Medals</option>
+                  <option value="inst_inter_inst_outside" >Inter-Institute Events — Outside State</option>
+                  <option value="inst_inter_inst_awards" >Awards / Medals — Inter-Institute Events</option>
+                  <option value="inst_value_added_courses" >Value Added / Hands-On Training Courses</option>
+                  <option value="inst_sports_state" >Sports Participation — State Level</option>
+                  <option value="inst_sports_national" >Sports Participation — National Level</option>
+                  <option value="inst_innovation_events" >Innovation Events (Every Department)</option>
+                  <option value="inst_iic_activities" >IIC Activities</option>
+                  <option value="inst_website_updations" >Website Updation</option>
+                  <option value="inst_google_ratings" >Google Rating</option>
+                  <option value="inst_startups" >Startup</option>
+                  <option value="inst_alumni_chapters" >Alumni Chapter</option>
+                  <option value="inst_awards_recognitions" >Awards &amp; Recognition / BoS / DC / QP Setting</option>
+                  <option value="inst_spoken_tutorials" >IIT-Bombay Spoken Tutorial Courses</option>
+              </select>
+    </label>
+
+    
+    <label class="fb-field"><span class="fb-k">Status</span>
+      <select name="mstatus" onchange="this.form.submit()">
+        <option value="">All</option>
+                  <option value="Approved" >Approved</option>
+                  <option value="Dean Pending" >Dean Pending</option>
+                  <option value="HOD Pending" >HOD Pending</option>
+                  <option value="Submitted" >Submitted</option>
+                  <option value="Draft" >Draft</option>
+                  <option value="Rejected" >Rejected</option>
+              </select>
+    </label>
+
+    <label class="fb-field fb-search">
+      <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>      <input type="search" name="mq" value="" placeholder="Search title…" aria-label="Search your submissions">
+      <button type="submit" class="fb-go" title="Search" aria-label="Search"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>
+    </label>
+
+    <span class="fbar-end">
+              <span class="fbar-count">1 active</span>
+        <a class="fbar-clear" href="/php-app/upload.php?type=value_added"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Clear all</a>
+          </span>
+  </form>
+  <div class="card-body" style="padding:0">
+          <div class="table-wrap"><table class="data"><thead><tr>
+        <th style="padding-left:24px">Record</th><th>Type</th><th>Proof</th><th>Status</th><th>Submitted</th>
+      </tr></thead><tbody>
+              <tr>
+          <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Historical Pure Link Course</div></td>
+          <td><span class="badge badge-neutral">Value Added Course</span></td>
+          <td>
+            <span class="card-sub">No proof attached</span>          </td>
+          <td>
+            <span class="badge badge-neutral">Draft</span>
+                          <a href="/php-app/upload.php?type=value_added&amp;edit_id=999902" class="btn btn-ghost btn-sm" style="margin-left:6px; padding:2px 8px; font-size:11px;" title="Submit and Review this draft"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Submit and Review</a>
+                      </td>
+          <td class="card-sub" title="22 Oct 2026, 09:33 PM">just now</td>
+        </tr>
+              <tr>
+          <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Ethical Hacking &amp; Network Defense</div></td>
+          <td><span class="badge badge-neutral">Value Added Course</span></td>
+          <td>
+            <div style="display:inline-flex;align-items:center;gap:6px;"><a class="btn btn-ghost btn-sm" href="/php-app/proof.php?type=value_added&amp;id=60001&amp;file=da61fc7ef1214a41655faad2d34fa371.pdf" target="_blank" rel="noopener" title="View Proof"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> View Proof</a><a class="btn btn-ghost btn-sm" href="/php-app/proof.php?type=value_added&amp;id=60001&amp;file=da61fc7ef1214a41655faad2d34fa371.pdf&amp;download=1" download title="Download Proof"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></a></div>          </td>
+          <td>
+            <span class="badge badge-neutral">Draft</span>
+                          <a href="/php-app/upload.php?type=value_added&amp;edit_id=60001" class="btn btn-ghost btn-sm" style="margin-left:6px; padding:2px 8px; font-size:11px;" title="Submit and Review this draft"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Submit and Review</a>
+                      </td>
+          <td class="card-sub" title="10 Sep 2026, 09:55 PM">10 Sep 2026</td>
+        </tr>
+      </tbody></table></div>
+      </div>
+</div>
+
+      </div><!-- .container -->
+    </main>
+  </div><!-- .main -->
+</div><!-- .app -->
+
+<!-- Shown when a locked (maintenance) module is clicked in the sidebar. -->
+<dialog class="modal" id="lockedModuleDlg" style="max-width:26rem">
+  <div class="modal-head"><div><h3 id="lockedModuleTitle">Coming Soon</h3></div></div>
+  <div class="modal-body">
+    <p class="modal-text">
+      This module is in maintenance for the current alpha release. It will be
+      switched on soon — for now the alpha focuses on Targets.
+    </p>
+  </div>
+  <div class="modal-foot">
+    <button type="button" class="btn btn-primary btn-sm" onclick="this.closest('dialog').close()">Got it</button>
+  </div>
+</dialog>
+<script>
+  function showLockedModule(label) {
+    var dlg = document.getElementById('lockedModuleDlg');
+    document.getElementById('lockedModuleTitle').textContent = (label || 'This module') + ' · Coming Soon';
+    if (dlg.showModal) { dlg.showModal(); } else { alert(label + ' is coming soon.'); }
+  }
+
+  (function () {
+    var nav = document.querySelector('.sidebar-nav');
+    if (!nav) return;
+
+    var KEY = 'atts.navScroll';
+
+    function updateFade() {
+      var max = nav.scrollHeight - nav.clientHeight;
+      nav.classList.toggle('fade-top', nav.scrollTop > 2);
+      nav.classList.toggle('fade-bottom', max > 2 && nav.scrollTop < max - 2);
+    }
+
+    try {
+      var saved = parseInt(sessionStorage.getItem(KEY), 10);
+      if (!isNaN(saved)) nav.scrollTop = saved;
+    } catch (e) {}
+
+    var active = nav.querySelector('.nav-link.active');
+    if (active) {
+      var nr = nav.getBoundingClientRect(), ar = active.getBoundingClientRect(), pad = 36;
+      if (ar.bottom > nr.bottom - pad)   nav.scrollTop += ar.bottom - nr.bottom + pad;
+      else if (ar.top < nr.top + pad)    nav.scrollTop -= nr.top - ar.top + pad;
+    }
+
+    nav.addEventListener('scroll', function () {
+      updateFade();
+      try { sessionStorage.setItem(KEY, String(nav.scrollTop)); } catch (e) {}
+    }, { passive: true });
+    window.addEventListener('resize', updateFade);
+    updateFade();
+  })();
+
+  (function () {
+    var meter = document.createElement('span');
+    meter.setAttribute('aria-hidden', 'true');
+    meter.style.cssText = 'position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre';
+    document.body.appendChild(meter);
+    function fit(sel) {
+      var cs = getComputedStyle(sel), opt = sel.options[sel.selectedIndex];
+      meter.style.fontFamily = cs.fontFamily;
+      meter.style.fontSize = cs.fontSize;
+      meter.style.fontWeight = cs.fontWeight;
+      meter.style.letterSpacing = cs.letterSpacing;
+      meter.textContent = opt ? opt.text : '';
+      sel.style.width = Math.ceil(meter.getBoundingClientRect().width
+        + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight) + 4) + 'px';
+    }
+
+    document.querySelectorAll('.fb-field').forEach(function (field) {
+      var sel = field.querySelector(':scope > select');   // not a date picker's own selects
+      if (sel) {
+        fit(sel);
+        sel.addEventListener('change', function () { fit(sel); });
+      }
+      function update() {
+        var set = false;
+        if (sel) {
+          var def = sel.hasAttribute('data-default') ? sel.getAttribute('data-default')
+                  : (sel.options.length ? sel.options[0].value : '');
+          set = sel.value !== def;
+        } else {
+          field.querySelectorAll('input:not([type=hidden])').forEach(function (i) {
+            if (i.value.trim() !== '') set = true;
+          });
+        }
+        field.classList.toggle('is-set', set);
+      }
+      field.addEventListener('change', update);
+      field.addEventListener('input', update);
+      update();
+    });
+
+    // Measured with the fallback font if Inter was still loading; measure again.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () {
+        document.querySelectorAll('.fb-field > select').forEach(fit);
+      });
+    }
+  })();
+
+  (function () {
+    var seq = 0;
+
+    function wire(root) {
+      root.querySelectorAll('.field, .fb-field').forEach(function (field) {
+        var label = field.querySelector(':scope > label');
+        if (!label || label.htmlFor) return;
+
+        var control = field.querySelector('input:not([type=hidden]), select, textarea');
+        if (!control || label.contains(control)) return;
+
+        if (!control.id) { control.id = 'fld-' + (++seq); }
+        label.htmlFor = control.id;
+      });
+    }
+
+    wire(document);
+
+    if (window.MutationObserver) {
+      new MutationObserver(function (records) {
+        records.forEach(function (r) {
+          r.addedNodes.forEach(function (n) {
+            if (n.nodeType === 1) { wire(n.parentNode || document); }
+          });
+        });
+      }).observe(document.body, { childList: true, subtree: true });
+    }
+  })();
+
+  (function () {
+    var toggle = document.getElementById('navToggle');
+    var scrim  = document.getElementById('navScrim');
+    if (!toggle || !scrim) return;
+
+    function setNav(open) {
+      document.body.classList.toggle('nav-open', open);
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      toggle.setAttribute('aria-label', open ? 'Close navigation' : 'Open navigation');
+    }
+
+    toggle.addEventListener('click', function () {
+      setNav(!document.body.classList.contains('nav-open'));
+    });
+    scrim.addEventListener('click', function () { setNav(false); });
+    document.addEventListener('keydown', function (evt) {
+      if (evt.key === 'Escape') setNav(false);
+    });
+
+    // Following a link closes the drawer, so the next page never loads behind it.
+    document.querySelectorAll('.sidebar-nav a').forEach(function (a) {
+      a.addEventListener('click', function () { setNav(false); });
+    });
+
+    var wide = window.matchMedia('(min-width: 1025px)');
+    var onWide = function (m) { if (m.matches) setNav(false); };
+    if (wide.addEventListener) wide.addEventListener('change', onWide);
+    else if (wide.addListener) wide.addListener(onWide);
+  })();
+</script>
+</body>
+</html>

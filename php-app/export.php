@@ -119,18 +119,27 @@ function csv_line($handle, array $fields): void
 /** Build one row of values for a record. */
 function export_row(array $record, int $serial, string $format = 'csv'): array
 {
-    $type  = $record['_type_key'] ?? '';
-    $id    = (int) ($record['id'] ?? 0);
-    $pfile = trim((string) ($record['proof_file'] ?? ''));
+    $type     = $record['_type_key'] ?? '';
+    $id       = (int) ($record['id'] ?? 0);
+    $pfile    = trim((string) ($record['proof_file'] ?? ($record['event_report_file'] ?? '')));
+    $certLink = trim((string) ($record['certificate_link'] ?? ($record['document_link'] ?? ($record['report_link'] ?? ''))));
 
     if ($format === 'excel') {
-        $proofVal = ($pfile !== '')
-            ? ['text' => 'View Proof', 'url' => record_proof_url($type, $id, $pfile, false, true)]
-            : '—';
+        if ($pfile !== '') {
+            $proofVal = ['text' => ($type === 'value_added' ? 'View Event Report' : 'View Proof'), 'url' => record_proof_url($type, $id, $pfile, false, true)];
+        } elseif ($certLink !== '') {
+            $proofVal = ['text' => ($type === 'value_added' ? 'Open Event Report' : 'Open Certificate'), 'url' => $certLink];
+        } else {
+            $proofVal = '—';
+        }
     } elseif ($format === 'csv') {
-        $proofVal = ($pfile !== '')
-            ? record_proof_url($type, $id, $pfile, false, true)
-            : '—';
+        if ($pfile !== '') {
+            $proofVal = record_proof_url($type, $id, $pfile, false, true);
+        } elseif ($certLink !== '') {
+            $proofVal = $certLink;
+        } else {
+            $proofVal = '—';
+        }
     } else { 
         if ($pfile !== '') {
             $meta = record_proof_meta($type, $id, $pfile);
@@ -146,7 +155,7 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
                     $ext = $meta['ext'] ? ' (' . strtoupper($meta['ext']) . ')' : '';
                     $proofVal = '<div style="text-align:center;">'
                               . '<a href="' . e($meta['view_url']) . '" target="_blank" style="color:#0044cc;font-weight:600;text-decoration:underline;font-size:9pt;word-break:break-all;">'
-                              . 'View Proof' . e($ext)
+                              . ($type === 'value_added' ? 'View Event Report' : 'View Proof') . e($ext)
                               . '</a>'
                               . '<div style="font-size:7.5pt;color:#666;margin-top:2px;word-break:break-all;">' . e($meta['filename']) . '</div>'
                               . '</div>';
@@ -154,6 +163,12 @@ function export_row(array $record, int $serial, string $format = 'csv'): array
             } else {
                 $proofVal = '—';
             }
+        } elseif ($certLink !== '') {
+            $proofVal = '<div style="text-align:center;">'
+                      . '<a href="' . e($certLink) . '" target="_blank" rel="noopener noreferrer" style="color:#0044cc;font-weight:600;text-decoration:underline;font-size:9pt;word-break:break-all;">'
+                      . ($type === 'value_added' ? 'Open Event Report' : 'Open Certificate')
+                      . '</a>'
+                      . '</div>';
         } else {
             $proofVal = '—';
         }

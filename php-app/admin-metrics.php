@@ -15,6 +15,32 @@ require_once __DIR__ . '/inc/metric_studio.php';
 // Strict backend authorization — Admin role only
 $user = require_role(['Admin']);
 
+// Route consolidation: If Form Studio is accessed via Metric Management route
+if (input('view') === 'studio' || input('tab') === 'studio' || input('action') === 'studio') {
+    $targetId = input('id');
+    redirect('form-studio.php' . ($targetId ? '?id=' . urlencode((string)$targetId) : ''));
+}
+
+// Handle AJAX GET config fetch
+$isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') || isset($_GET['ajax']) || isset($_POST['ajax']);
+
+if ($isAjax && $_SERVER['REQUEST_METHOD'] === 'GET' && input('action') === 'get_form_config') {
+    $id = input('id');
+    $cfg = metric_studio_get_form_config($id, true);
+    $history = metric_studio_get_form_history($id);
+    $reusable = metric_studio_get_reusable_fields();
+    $optSets = metric_studio_get_option_sets();
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'success'         => true,
+        'config'          => $cfg,
+        'history'         => $history,
+        'reusable_fields' => $reusable,
+        'option_sets'     => $optSets,
+    ]);
+    exit;
+}
+
 // Handle POST actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     csrf_check();
@@ -31,6 +57,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'metric_type'         => input('metric_type', 'generic'),
             'faculty_visible'     => input('faculty_visible') ? 1 : 0,
             'coordinator_visible' => input('coordinator_visible') ? 1 : 0,
+            'hod_visible'         => input('hod_visible') ? 1 : 0,
+            'principal_visible'   => input('principal_visible') ? 1 : 0,
             'status'              => isset($_POST['status']) ? (input('status') ? 1 : 0) : 1,
         ]);
         flash($ok ? 'success' : 'error', $msg);
@@ -54,6 +82,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'display_order'       => (int)input('display_order'),
             'faculty_visible'     => input('faculty_visible') ? 1 : 0,
             'coordinator_visible' => input('coordinator_visible') ? 1 : 0,
+            'hod_visible'         => input('hod_visible') ? 1 : 0,
+            'principal_visible'   => input('principal_visible') ? 1 : 0,
             'status'              => input('status') ? 1 : 0,
         ]);
         flash($ok ? 'success' : 'error', $msg);
@@ -75,11 +105,130 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/admin-metrics.php');
     }
 
-    if ($action === 'save_template') {
-        $id = (int)input('id');
+    if ($action === 'reorder_metrics') {
+        $rawOrder = $_POST['ordered_ids'] ?? $_POST['order'] ?? null;
+        if (is_string($rawOrder)) {
+            $orderedIds = json_decode($rawOrder, true);
+        } else {
+            $orderedIds = $rawOrder;
+        }
+
+        if (!is_array($orderedIds) || empty($orderedIds)) {
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Invalid reorder data received.']);
+                exit;
+            }
+            flash('error', 'Invalid reorder data received.');
+            redirect('/admin-metrics.php');
+        }
+
+        $sanitized = [];
+        foreach ($orderedIds as $item) {
+            if (is_numeric($item) && (int)$item > 0) {
+                $sanitized[] = (int)$item;
+            } elseif (is_string($item) && trim($item) !== '') {
+                $sanitized[] = trim($item);
+            }
+        }
+
+        if (empty($sanitized)) {
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'No valid metric identifiers provided.']);
+                exit;
+            }
+            flash('error', 'No valid metric identifiers provided.');
+            redirect('/admin-metrics.php');
+        }
+
+        [$ok, $msg, $orderMap] = metric_studio_reorder($sanitized);
+
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success'   => $ok,
+                'message'   => $msg,
+                'order'     => $sanitized,
+                'order_map' => $orderMap ?? []
+            ]);
+            exit;
+        }
+
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/admin-metrics.php');
+    }
+
+    if ($action === 'save_form_draft') {
+        $id = input('id');
+        $fields = json_decode((string)input('fields_json'), true) ?: [];
+        $attachment = json_decode((string)input('attachment_json'), true) ?: null;
+        [$ok, $msg] = metric_studio_save_draft_form($id, $fields, $attachment);
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => $ok, 'message' => $msg]);
+            exit;
+        }
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/admin-metrics.php');
+    }
+
+    if ($action === 'publish_form' || $action === 'save_template') {
+        $id = input('id');
         $rawFields = input('fields_json');
         $fields = json_decode((string)$rawFields, true) ?: [];
-        [$ok, $msg] = metric_studio_save_form_template($id, $fields);
+        $attachment = json_decode((string)input('attachment_json'), true) ?: null;
+        [$ok, $msg] = metric_studio_publish_form($id, $fields, $attachment, (int)$user['id']);
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            $updated = metric_studio_find($id);
+            echo json_encode([
+                'success' => $ok,
+                'message' => $msg,
+                'version' => (int)($updated['form_version'] ?? 1)
+            ]);
+            exit;
+        }
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/admin-metrics.php');
+    }
+
+    if ($action === 'restore_form_version') {
+        $id = input('id');
+        $histId = input('history_id') ? (int)input('history_id') : null;
+        [$ok, $msg] = metric_studio_restore_previous_form($id, $histId);
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => $ok, 'message' => $msg]);
+            exit;
+        }
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/admin-metrics.php');
+    }
+
+    if ($action === 'save_reusable_field') {
+        $fieldData = json_decode((string)input('field_json'), true) ?: [];
+        [$ok, $msg] = metric_studio_save_reusable_field($fieldData);
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => $ok, 'message' => $msg, 'reusable_fields' => metric_studio_get_reusable_fields()]);
+            exit;
+        }
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/admin-metrics.php');
+    }
+
+    if ($action === 'save_option_set') {
+        $setKey  = (string)input('set_key');
+        $name    = (string)input('name');
+        $desc    = (string)input('description');
+        $options = json_decode((string)input('options_json'), true) ?: [];
+        [$ok, $msg] = metric_studio_save_option_set($setKey, $name, $options, $desc);
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['success' => $ok, 'message' => $msg, 'option_sets' => metric_studio_get_option_sets()]);
+            exit;
+        }
         flash($ok ? 'success' : 'error', $msg);
         redirect('/admin-metrics.php');
     }
@@ -92,11 +241,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $q        = trim((string)input('q', ''));
 $status   = trim((string)input('status', 'all'));
 $category = trim((string)input('category', 'all'));
+$role     = trim((string)input('role', 'all'));
 $sort     = trim((string)input('sort', 'order'));
 
-$metrics    = metric_studio_all(['q' => $q, 'status' => $status, 'category' => $category, 'sort' => $sort]);
+$metrics    = metric_studio_all(['q' => $q, 'status' => $status, 'category' => $category, 'role' => $role, 'sort' => $sort]);
 $summary    = metric_studio_summary();
 $categories = metric_studio_categories();
+$isFilteredOrSorted = ($q !== '' || ($status !== 'all' && $status !== '') || ($category !== 'all' && $category !== '') || $sort !== 'order');
 
 if (!function_exists('metric_format_cat')) {
     function metric_format_cat(string $cat): string {
@@ -436,13 +587,56 @@ require __DIR__ . '/inc/header.php';
   opacity: 0.78;
 }
 
-/* Order Column Pill & Controls */
+/* Order Column Pill & Drag Controls */
 .order-cell-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  user-select: none;
 }
+.order-cell-wrap.is-disabled {
+  opacity: 0.55;
+}
+
+.metric-drag-handle {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  color: #64748B;
+  cursor: grab;
+  padding: 0;
+  transition: all .15s ease;
+  outline: none;
+  flex-shrink: 0;
+}
+.metric-drag-handle:hover:not(:disabled) {
+  background: #FFF7ED;
+  border-color: #FDBA74;
+  color: #FF4F01;
+  box-shadow: 0 1px 4px rgba(255, 79, 1, 0.15);
+}
+.metric-drag-handle:focus-visible {
+  border-color: #FF4F01;
+  box-shadow: 0 0 0 3px rgba(255, 79, 1, 0.25);
+  color: #FF4F01;
+}
+.metric-drag-handle:active:not(:disabled) {
+  cursor: grabbing;
+}
+.metric-drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  background: #F1F5F9;
+  border-color: #E2E8F0;
+  color: #94A3B8;
+}
+
 .order-number-pill {
   width: 28px;
   height: 28px;
@@ -457,31 +651,110 @@ require __DIR__ . '/inc/header.php';
   justify-content: center;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+  transition: background .2s ease, border-color .2s ease, color .2s ease, transform .15s ease;
 }
-.order-arrows {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
+
+/* Dragging visual states */
+body.table-row-dragging {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
-.order-arrow-btn {
-  width: 18px;
-  height: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 3px;
-  color: #64748B;
-  padding: 0;
-  cursor: pointer;
-  line-height: 0;
-  transition: all .12s ease;
+.metric-row {
+  transition: background .15s ease, box-shadow .15s ease;
 }
-.order-arrow-btn:hover {
-  background: var(--orange-500, #FF4F01);
-  border-color: var(--orange-500, #FF4F01);
+.metric-row.is-dragging {
+  opacity: 0.35 !important;
+  background: #FFF7ED !important;
+}
+.metric-row.drag-over-above > td {
+  border-top: 3px solid #FF4F01 !important;
+}
+.metric-row.drag-over-below > td {
+  border-bottom: 3px solid #FF4F01 !important;
+}
+
+/* Keyboard reordering state */
+.metric-row.is-keyboard-grabbed {
+  background: #FFF7ED !important;
+  outline: 2px solid #FF4F01 !important;
+  outline-offset: -2px;
+  box-shadow: 0 4px 18px rgba(255, 79, 1, 0.22) !important;
+}
+.metric-row.is-keyboard-grabbed .metric-drag-handle {
+  background: #FF4F01 !important;
+  border-color: #FF4F01 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(255, 79, 1, 0.4) !important;
+}
+.metric-row.is-keyboard-grabbed .order-number-pill {
+  background: #FFEDD5 !important;
+  border-color: #FDBA74 !important;
+  color: #C2410C !important;
+  transform: scale(1.08);
+}
+
+/* Toast Notification for Order Save */
+.order-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #131D3B;
   color: #FFFFFF;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 25px rgba(19, 29, 59, 0.35);
+  z-index: 99999;
+  transform: translateY(100px);
+  opacity: 0;
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), opacity .25s ease;
+  pointer-events: none;
+}
+.order-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+.order-toast.toast-success {
+  border-left: 4px solid #10B981;
+}
+.order-toast.toast-error {
+  border-left: 4px solid #EF4444;
+}
+.order-toast.toast-saving {
+  border-left: 4px solid #FF4F01;
+}
+
+@keyframes toastSpin {
+  100% { transform: rotate(360deg); }
+}
+.spin-icon {
+  display: inline-flex;
+  animation: toastSpin 1s linear infinite;
+}
+
+.hint-filtered {
+  background: #FEF2F2 !important;
+  border: 1px solid #FECACA !important;
+  color: #991B1B !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.btn-clear-filters-hint {
+  color: #DC2626;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+.btn-clear-filters-hint:hover {
+  color: #991B1B;
 }
 
 /* Metric Title & Metadata */
@@ -679,6 +952,658 @@ require __DIR__ . '/inc/header.php';
 .dock-deactivate:hover { color: #D97706; background: #FEF3C7; }
 .dock-delete { color: #DC2626; }
 .dock-delete:hover { color: #DC2626; background: #FEE2E2; }
+
+/* ==========================================================================
+   ATTS-DYNAMIC-FORM-STUDIO — Full 3-Column Studio Workspace CSS
+   ========================================================================== */
+dialog.studio-modal {
+  width: 96vw;
+  max-width: 86rem;
+  height: 92vh;
+  max-height: 94vh;
+  border: 0;
+  border-radius: 16px;
+  padding: 0;
+  box-shadow: 0 25px 60px -15px rgba(19, 29, 59, 0.45);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #F8FAFC;
+}
+dialog.studio-modal::backdrop {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(4px);
+}
+.studio-head {
+  background: #131D3B;
+  color: #FFFFFF;
+  padding: 14px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+.studio-head-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.studio-head-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 79, 1, 0.2);
+  border: 1px solid #FF4F01;
+  color: #FF854D;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+.studio-metric-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #FFFFFF;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.studio-key-pill {
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #93C5FD;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.studio-ver-pill {
+  font-size: 11px;
+  font-weight: 700;
+  background: #3B82F6;
+  color: #FFFFFF;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.studio-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.btn-studio-save-draft {
+  background: rgba(255, 255, 255, 0.12);
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  font-size: 12.5px;
+  font-weight: 600;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.btn-studio-save-draft:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+.btn-studio-publish {
+  background: linear-gradient(135deg, #FF4F01 0%, #FF6E33 100%);
+  color: #FFFFFF;
+  border: none;
+  font-size: 12.5px;
+  font-weight: 700;
+  height: 34px;
+  padding: 0 16px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(255, 79, 1, 0.35);
+  transition: all .15s ease;
+}
+.btn-studio-publish:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(255, 79, 1, 0.5);
+}
+.btn-studio-history {
+  background: transparent;
+  color: #CBD5E1;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 12px;
+  font-weight: 600;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.btn-studio-history:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.1);
+}
+.btn-studio-close {
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  font-size: 20px;
+  line-height: 1;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn-studio-close:hover {
+  color: #FFFFFF;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 3-Column Layout */
+.studio-workspace-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr 380px;
+  flex: 1;
+  overflow: hidden;
+  height: calc(92vh - 63px);
+}
+@media (max-width: 1280px) {
+  .studio-workspace-grid {
+    grid-template-columns: 260px 1fr 340px;
+  }
+}
+@media (max-width: 1080px) {
+  .studio-workspace-grid {
+    grid-template-columns: 240px 1fr;
+    height: auto;
+    max-height: calc(94vh - 63px);
+    overflow-y: auto;
+  }
+  .studio-col-preview {
+    grid-column: span 2;
+    border-left: none;
+    border-top: 1px solid #E2E8F0;
+    min-height: 400px;
+  }
+}
+@media (max-width: 768px) {
+  dialog.studio-modal {
+    width: 98vw;
+    height: 96vh;
+    max-height: 98vh;
+  }
+  .studio-workspace-grid {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    max-height: calc(96vh - 75px);
+    overflow-y: auto;
+  }
+  .studio-col-library {
+    max-height: 320px;
+    border-right: none;
+    border-bottom: 1px solid #E2E8F0;
+  }
+  .studio-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    height: auto;
+    padding: 10px 14px;
+  }
+  .studio-head-actions {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .attachment-config-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .att-field-col[style*="span 2"] {
+    grid-column: span 1 !important;
+  }
+}
+
+/* Left Column: Field Library */
+.studio-col-library {
+  background: #FFFFFF;
+  border-right: 1px solid #E2E8F0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+.library-tab-strip {
+  display: flex;
+  align-items: center;
+  background: #F8FAFC;
+  padding: 8px 12px;
+  border-bottom: 1px solid #E2E8F0;
+  gap: 6px;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.library-tab-btn {
+  flex: 1;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748B;
+  padding: 0 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all .15s ease;
+  line-height: 1.2;
+}
+.library-tab-btn.active {
+  background: #FFFFFF;
+  color: #131D3B;
+  border-color: #CBD5E1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  font-weight: 700;
+}
+.library-scroll-pane {
+  padding: 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.library-scroll-pane::-webkit-scrollbar,
+.canvas-scroll-pane::-webkit-scrollbar,
+.preview-scroll-pane::-webkit-scrollbar {
+  width: 6px;
+}
+.library-scroll-pane::-webkit-scrollbar-thumb,
+.canvas-scroll-pane::-webkit-scrollbar-thumb,
+.preview-scroll-pane::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+.library-type-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  color: #1E293B;
+  text-align: left;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+.library-type-btn:hover {
+  background: #FFF7ED;
+  border-color: #FFB38A;
+  color: #C2410C;
+  transform: translateX(2px);
+}
+.library-type-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #475569;
+  flex-shrink: 0;
+}
+.library-type-btn:hover .library-type-icon {
+  background: #FF4F01;
+  border-color: #FF4F01;
+  color: #FFFFFF;
+}
+.library-type-info {
+  flex: 1;
+  min-width: 0;
+}
+.library-type-title {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.library-type-sub {
+  font-size: 11px;
+  color: #64748B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+}
+
+/* Center Column: Form Canvas */
+.studio-col-canvas {
+  background: #F8FAFC;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  height: 100%;
+}
+.canvas-toolbar {
+  background: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 12px;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  box-sizing: border-box;
+}
+.canvas-scroll-pane {
+  padding: 16px 20px 30px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.field-card {
+  background: #FFFFFF;
+  border: 1px solid #CBD5E1;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+  transition: all .15s ease;
+  overflow: hidden;
+}
+.field-card:hover {
+  border-color: #94A3B8;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.06);
+}
+.field-card.protected-card {
+  border-left: 4px solid #3B82F6;
+  background: #FAFCFF;
+}
+.field-card.active-card {
+  border-color: #FF4F01;
+  box-shadow: 0 0 0 2px rgba(255, 79, 1, 0.18), 0 3px 8px rgba(0,0,0,0.06);
+}
+.field-card.active-card .field-card-order {
+  background: #FF4F01;
+  color: #FFFFFF;
+}
+.field-card-head {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #FFFFFF;
+  border-bottom: 1px solid #F1F5F9;
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+}
+.field-card-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.field-card-order {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: #F1F5F9;
+  color: #475569;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.field-card-title {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #1E293B;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.field-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-card-tool {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #64748B;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all .12s ease;
+}
+.btn-card-tool:hover {
+  background: #F1F5F9;
+  color: #0F172A;
+  border-color: #CBD5E1;
+}
+.btn-card-delete:hover {
+  background: #FEE2E2;
+  color: #DC2626;
+  border-color: #FECACA;
+}
+.field-card-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #FFFFFF;
+}
+
+/* Empty Canvas Placeholder */
+.studio-empty-canvas {
+  background: #FFFFFF;
+  border: 2px dashed #CBD5E1;
+  border-radius: 12px;
+  padding: 32px 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.studio-empty-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #FFF7ED;
+  color: #FF4F01;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.studio-empty-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1E293B;
+}
+.studio-empty-desc {
+  font-size: 12.5px;
+  color: #64748B;
+  max-width: 440px;
+  line-height: 1.45;
+}
+
+/* Anchored Attachment Card */
+.studio-attachment-box {
+  background: #FFFBF7;
+  border: 2px dashed #FF854D;
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: 0 1px 3px rgba(255, 79, 1, 0.04);
+}
+.attachment-box-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.attachment-tag-badge {
+  background: #FF4F01;
+  color: #FFFFFF;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Structured Grid inside Attachment Card */
+.attachment-config-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  background: #FFFFFF;
+  border: 1px solid #FED7AA;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+.att-field-col {
+  display: flex;
+  flex-direction: column;
+}
+.att-field-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 6px;
+  display: block;
+}
+.att-field-input {
+  height: 34px !important;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.att-formats-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 34px;
+  flex-wrap: nowrap;
+}
+.att-format-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  margin: 0;
+  font-size: 12px;
+  color: #334155;
+  white-space: nowrap;
+  user-select: none;
+}
+.att-format-pill input[type="checkbox"] {
+  cursor: pointer;
+  margin: 0;
+  width: 15px;
+  height: 15px;
+  accent-color: #FF4F01;
+}
+
+/* Right Column: Live Form Preview */
+.studio-col-preview {
+  background: #FFFFFF;
+  border-left: 1px solid #E2E8F0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  height: 100%;
+}
+.preview-pane-head {
+  background: #F8FAFC;
+  border-bottom: 1px solid #E2E8F0;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  height: 52px;
+  min-height: 52px;
+  max-height: 52px;
+  box-sizing: border-box;
+}
+.preview-scroll-pane {
+  padding: 16px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  flex: 1;
+}
+.preview-form-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.preview-proof-dropzone {
+  border: 2px dashed #CBD5E1;
+  border-radius: 10px;
+  padding: 18px 14px;
+  text-align: center;
+  background: #F8FAFC;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: border-color .15s ease;
+}
+.preview-proof-dropzone:hover {
+  border-color: #FF854D;
+  background: #FFFBF7;
+}
 </style>
 
 <div class="metrics-workspace">
@@ -693,11 +1618,24 @@ require __DIR__ . '/inc/header.php';
         Configure institutional academic targets, dynamic form templates, display order, and faculty upload visibility
       </div>
     </div>
-    <div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <a href="<?= e(url('form-studio.php?action=new')) ?>" class="btn-add-metric" style="background:linear-gradient(135deg, #FF4F01 0%, #FF6E33 100%); text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
+        <?= icon('sliders', 15) ?> Open Form Studio
+      </a>
       <button type="button" class="btn-add-metric" onclick="openAddMetricModal()">
         <?= icon('plus', 16) ?> Add New Metric
       </button>
     </div>
+  </div>
+
+  <!-- Metric Management Sub-Navigation Tabs -->
+  <div class="metric-mgmt-tabs" style="display:flex;gap:6px;border-bottom:2px solid #E2E8F0;margin:18px 0 22px 0;">
+    <a href="<?= e(url('admin-metrics.php')) ?>" style="padding:10px 18px;font-size:14px;font-weight:700;color:var(--orange-500, #FF4F01);border-bottom:3px solid var(--orange-500, #FF4F01);text-decoration:none;display:inline-flex;align-items:center;gap:8px;margin-bottom:-2px;">
+      <?= icon('target', 15) ?> Targets &amp; Metrics Overview
+    </a>
+    <a href="<?= e(url('form-studio.php')) ?>" style="padding:10px 18px;font-size:14px;font-weight:600;color:#64748B;border-bottom:3px solid transparent;text-decoration:none;display:inline-flex;align-items:center;gap:8px;margin-bottom:-2px;transition:color .15s ease;" onmouseover="this.style.color='#1E293B'" onmouseout="this.style.color='#64748B'">
+      <?= icon('sliders', 15) ?> Form Studio (Visual Designer)
+    </a>
   </div>
 
   <!-- KPI Summary Cards Grid -->
@@ -784,8 +1722,20 @@ require __DIR__ . '/inc/header.php';
         </select>
       </div>
 
+      <!-- Role Filter -->
+      <div class="filter-select-group">
+        <label for="filterRole" class="filter-label">Role:</label>
+        <select class="filter-select" id="filterRole" name="role" onchange="this.form.submit()">
+          <option value="all" <?= $role === 'all' ? 'selected' : '' ?>>All Roles</option>
+          <option value="faculty" <?= $role === 'faculty' ? 'selected' : '' ?>>Faculty</option>
+          <option value="coordinator" <?= $role === 'coordinator' ? 'selected' : '' ?>>Coordinator</option>
+          <option value="hod" <?= $role === 'hod' ? 'selected' : '' ?>>HoD</option>
+          <option value="principal" <?= $role === 'principal' ? 'selected' : '' ?>>Principal</option>
+        </select>
+      </div>
+
       <!-- Reset Filter Button -->
-      <?php if ($q !== '' || $status !== 'all' || $category !== 'all' || $sort !== 'order'): ?>
+      <?php if ($q !== '' || $status !== 'all' || $category !== 'all' || $role !== 'all' || $sort !== 'order'): ?>
         <a href="<?= e(url('admin-metrics.php')) ?>" class="btn-reset-filters">
           <?= icon('x', 14) ?> Reset
         </a>
@@ -800,10 +1750,18 @@ require __DIR__ . '/inc/header.php';
         <h2>Institutional Target Metrics</h2>
         <span class="metrics-count-badge"><?= count($metrics) ?> listed</span>
       </div>
-      <div class="metrics-head-hint">
-        <?= icon('info', 14) ?>
-        <span>Use &uarr; / &darr; to adjust sequential order on Faculty Upload page</span>
-      </div>
+      <?php if ($isFilteredOrSorted): ?>
+        <div class="metrics-head-hint hint-filtered">
+          <?= icon('alert-triangle', 14) ?>
+          <span>Drag-and-drop reordering is locked while filters or custom sorts are active.</span>
+          <a href="<?= e(url('admin-metrics.php')) ?>" class="btn-clear-filters-hint">Reset filters</a>
+        </div>
+      <?php else: ?>
+        <div class="metrics-head-hint" id="metricsDragHint">
+          <span style="color:#FF4F01;display:inline-flex;align-items:center;"><?= icon('grip-vertical', 14) ?></span>
+          <span>Drag handle or press Space on handle to reorder metrics for Faculty &amp; Coordinator pages</span>
+        </div>
+      <?php endif; ?>
     </div>
 
     <?php if (empty($metrics)): ?>
@@ -817,7 +1775,7 @@ require __DIR__ . '/inc/header.php';
         <table class="metrics-table">
           <thead>
             <tr>
-              <th style="width:75px;text-align:center;">Order</th>
+              <th style="width:84px;text-align:center;">Order</th>
               <th style="min-width:280px;">Metric Name &amp; Key</th>
               <th style="min-width:190px;">Category / Group</th>
               <th style="min-width:180px;">Form Configuration</th>
@@ -833,33 +1791,26 @@ require __DIR__ . '/inc/header.php';
               $isHybrid = ($m['metric_type'] === 'hybrid');
               $isGeneric = ($m['metric_type'] === 'generic');
             ?>
-              <tr class="<?= !$isActive ? 'row-inactive' : '' ?>">
-                <!-- Order & Move Controls -->
-                <td style="text-align:center;">
-                  <div class="order-cell-wrap">
-                    <span class="order-number-pill">
+              <tr class="metric-row <?= !$isActive ? 'row-inactive' : '' ?>"
+                  data-id="<?= (int)$m['id'] ?>"
+                  data-key="<?= e($m['metric_key']) ?>"
+                  data-name="<?= e($m['name']) ?>"
+                  data-order="<?= (int)$m['display_order'] ?>">
+                <!-- Order & Drag Handle Controls -->
+                <td style="text-align:center;" class="order-cell">
+                  <div class="order-cell-wrap <?= $isFilteredOrSorted ? 'is-disabled' : '' ?>">
+                    <button type="button"
+                            class="metric-drag-handle <?= $isFilteredOrSorted ? 'disabled' : '' ?>"
+                            <?= $isFilteredOrSorted ? 'disabled aria-disabled="true"' : 'draggable="false"' ?>
+                            aria-label="<?= $isFilteredOrSorted ? 'Reordering locked while filtered' : 'Reorder metric ' . e($m['name']) ?>"
+                            aria-grabbed="false"
+                            title="<?= $isFilteredOrSorted ? 'Reordering is disabled while search filters or custom sorts are applied. Reset filters to enable.' : 'Drag to reorder metric (or press Space to pick up)' ?>"
+                            tabindex="<?= $isFilteredOrSorted ? '-1' : '0' ?>">
+                      <?= icon('grip-vertical', 14) ?>
+                    </button>
+                    <span class="order-number-pill" data-order-pill>
                       <?= sprintf('%02d', (int)$m['display_order']) ?>
                     </span>
-                    <div class="order-arrows">
-                      <form method="post" style="margin:0;">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="move">
-                        <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
-                        <input type="hidden" name="direction" value="up">
-                        <button type="submit" class="order-arrow-btn" title="Move Up" aria-label="Move Up">
-                          <?= icon('chevron-up', 10) ?>
-                        </button>
-                      </form>
-                      <form method="post" style="margin:0;">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="move">
-                        <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
-                        <input type="hidden" name="direction" value="down">
-                        <button type="submit" class="order-arrow-btn" title="Move Down" aria-label="Move Down">
-                          <?= icon('chevron-down', 10) ?>
-                        </button>
-                      </form>
-                    </div>
                   </div>
                 </td>
 
@@ -897,27 +1848,32 @@ require __DIR__ . '/inc/header.php';
 
                 <!-- Form Config Status -->
                 <td>
-                  <?php if ($isSpecialized || $isHybrid): ?>
+                  <?php if ($isSpecialized): ?>
                     <div class="form-type-pill form-builtin">
                       <?= icon('shield', 13) ?>
-                      <span>Built-in Logic</span>
+                      <span>Specialized (v<?= (int)($m['form_version'] ?? 1) ?>)</span>
                     </div>
-                    <?php if (!empty($m['subcategories_parsed'])): ?>
-                      <div class="form-sub-info">
-                        <span style="color:#94A3B8;">↳</span> <?= count($m['subcategories_parsed']) ?> subcategories configured
-                      </div>
-                    <?php endif; ?>
+                  <?php elseif ($isHybrid): ?>
+                    <div class="form-type-pill form-builtin" style="background:#FAF5FF;color:#7E22CE;border-color:#F3E8FF;">
+                      <?= icon('layers', 13) ?>
+                      <span>Hybrid (v<?= (int)($m['form_version'] ?? 1) ?>)</span>
+                    </div>
                   <?php else: ?>
                     <div class="form-type-pill form-dynamic">
                       <?= icon('layers', 13) ?>
-                      <span>Dynamic (<?= (int)$m['fields_count'] ?> fields)</span>
-                    </div>
-                    <div>
-                      <button type="button" class="btn-edit-fields" onclick='openFormBuilder(<?= json_encode($m, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) ?>)'>
-                        <?= icon('pencil', 11) ?> Configure Fields
-                      </button>
+                      <span>Dynamic (v<?= (int)($m['form_version'] ?? 1) ?>)</span>
                     </div>
                   <?php endif; ?>
+                  <?php if (!empty($m['subcategories_parsed'])): ?>
+                    <div class="form-sub-info">
+                      <span style="color:#94A3B8;">↳</span> <?= count($m['subcategories_parsed']) ?> subcategories
+                    </div>
+                  <?php endif; ?>
+                  <div style="margin-top:3px;">
+                    <button type="button" class="btn-edit-fields" onclick='openFormStudio(<?= (int)$m['id'] ?>)'>
+                      <?= icon('sliders', 11) ?> Configure Form
+                    </button>
+                  </div>
                 </td>
 
                 <!-- Visibility Status -->
@@ -969,10 +1925,10 @@ require __DIR__ . '/inc/header.php';
                       <?= icon('pencil', 14) ?>
                     </button>
 
-                    <!-- Form Builder (for generic/hybrid) -->
-                    <button type="button" class="dock-btn dock-builder" onclick='openFormBuilder(<?= json_encode($m, JSON_HEX_TAG|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_HEX_AMP) ?>)' title="Configure Form Fields">
-                      <?= icon('layers', 14) ?>
-                    </button>
+                    <!-- Design Form in Visual Form Studio -->
+                    <a href="<?= e(url('form-studio.php?id=' . (int)$m['id'])) ?>" class="dock-btn dock-builder" title="Design Form in Form Studio (Visual Designer)" style="color:var(--orange-500, #FF4F01); text-decoration:none;">
+                      <?= icon('sliders', 14) ?>
+                    </a>
 
                     <!-- Toggle Status -->
                     <button type="button" class="dock-btn <?= $isActive ? 'dock-deactivate' : 'dock-activate' ?>" onclick="openToggleStatusModal(<?= (int)$m['id'] ?>, '<?= e(addslashes($m['name'])) ?>', <?= $isActive ? 'true' : 'false' ?>)" title="<?= $isActive ? 'Deactivate Metric (Hide from Faculty)' : 'Activate Metric (Show to Faculty)' ?>">
@@ -1062,10 +2018,16 @@ require __DIR__ . '/inc/header.php';
           <input type="checkbox" name="status" value="1" checked> Active
         </label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
-          <input type="checkbox" name="faculty_visible" value="1" checked> Visible to Faculty
+          <input type="checkbox" name="faculty_visible" value="1" checked> Faculty
         </label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
-          <input type="checkbox" name="coordinator_visible" value="1" checked> Visible to Coordinator
+          <input type="checkbox" name="coordinator_visible" value="1" checked> Coordinator
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
+          <input type="checkbox" name="hod_visible" value="1" checked> HoD
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
+          <input type="checkbox" name="principal_visible" value="1" checked> Principal
         </label>
       </div>
     </div>
@@ -1133,10 +2095,16 @@ require __DIR__ . '/inc/header.php';
           <input type="checkbox" id="editStatus" name="status" value="1"> Active
         </label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
-          <input type="checkbox" id="editFacultyVis" name="faculty_visible" value="1"> Visible to Faculty
+          <input type="checkbox" id="editFacultyVis" name="faculty_visible" value="1"> Faculty
         </label>
         <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
-          <input type="checkbox" id="editCoordVis" name="coordinator_visible" value="1"> Visible to Coordinator
+          <input type="checkbox" id="editCoordVis" name="coordinator_visible" value="1"> Coordinator
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
+          <input type="checkbox" id="editHodVis" name="hod_visible" value="1"> HoD
+        </label>
+        <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin:0;cursor:pointer;">
+          <input type="checkbox" id="editPrincipalVis" name="principal_visible" value="1"> Principal
         </label>
       </div>
     </div>
@@ -1153,68 +2121,8 @@ require __DIR__ . '/inc/header.php';
   </form>
 </dialog>
 
-<!-- ========================================================================= -->
-<!-- MODAL: FORM TEMPLATE BUILDER                                              -->
-<!-- ========================================================================= -->
-<dialog class="modal" id="builderModal" style="max-width:56rem;width:96vw;border-radius:12px;">
-  <form method="post" action="<?= e(url('admin-metrics.php')) ?>" id="templateBuilderForm">
-    <?= csrf_field() ?>
-    <input type="hidden" name="action" value="save_template">
-    <input type="hidden" name="id" id="builderMetricId">
-    <input type="hidden" name="fields_json" id="builderFieldsJson">
+<!-- Form Studio is consolidated into dedicated visual designer at form-studio.php -->
 
-    <div class="modal-head" style="padding:16px 20px;border-bottom:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;">
-      <div>
-        <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--ink, #1E293B);" id="builderTitle">Form Template Builder</h3>
-        <div class="msub" style="font-size:12px;color:#64748B;margin-top:2px;">
-          Configure fields, validation constraints, and view live interactive preview
-        </div>
-      </div>
-      <button type="button" class="btn btn-sm btn-outline" onclick="addNewFieldRow()" style="gap:4px;">
-        <?= icon('plus', 14) ?> Add Field
-      </button>
-    </div>
-
-    <div class="modal-body" style="padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:20px;max-height:68vh;overflow-y:auto;">
-      <!-- Left Column: Configured Fields Editor -->
-      <div>
-        <div style="font-weight:700;font-size:13px;color:#334155;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
-          <span>Form Fields (<span id="fieldsCountBadge">0</span>)</span>
-          <span style="font-size:11px;color:#64748B;font-weight:normal;">Drag or reorder fields</span>
-        </div>
-        <div id="fieldsContainer" style="display:flex;flex-direction:column;gap:10px;">
-          <!-- Field rows dynamically rendered by JS -->
-        </div>
-      </div>
-
-      <!-- Right Column: Real-Time Live Visual Preview -->
-      <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:16px;">
-        <div style="font-weight:700;font-size:13px;color:#334155;margin-bottom:12px;display:flex;align-items:center;gap:6px;">
-          <span style="color:#FF4F01;"><?= icon('eye', 14) ?></span>
-          <span>Live Form Preview</span>
-          <span class="badge" style="background:#E2E8F0;color:#475569;font-size:10px;margin-left:auto;">Faculty View</span>
-        </div>
-        <div id="livePreviewContainer" style="display:grid;grid-template-columns:1fr 1fr;gap:12px 14px;background:#FFFFFF;border:1px solid #E2E8F0;padding:16px;border-radius:8px;">
-          <!-- Live preview inputs rendered by JS -->
-        </div>
-      </div>
-    </div>
-
-    <div class="modal-foot" style="padding:12px 20px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;">
-      <button type="button" class="btn btn-ghost btn-sm" onclick="openDeleteFromBuilder()" style="color:#DC2626;display:inline-flex;align-items:center;gap:4px;">
-        <?= icon('trash-2', 14) ?> Delete Metric
-      </button>
-      <div style="display:flex;gap:8px;">
-        <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Cancel</button>
-        <button type="submit" class="btn btn-primary btn-sm" onclick="submitBuilderForm()"><?= icon('save', 14) ?> Save Template</button>
-      </div>
-    </div>
-  </form>
-</dialog>
-
-<!-- ========================================================================= -->
-<!-- MODAL: FORM PREVIEW                                                       -->
-<!-- ========================================================================= -->
 <dialog class="modal" id="previewModal" style="max-width:44rem;width:95vw;border-radius:12px;">
   <div class="modal-head" style="padding:16px 20px;border-bottom:1px solid #E2E8F0;">
     <div>
@@ -1224,8 +2132,15 @@ require __DIR__ . '/inc/header.php';
   </div>
   <div class="modal-body" style="padding:20px;max-height:70vh;overflow-y:auto;" id="previewModalBody">
     <!-- Populated by JS -->
-  </div>
-  <div class="modal-foot" style="padding:12px 20px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;">
+  <div class="modal-foot" style="padding:12px 20px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;gap:8px;">
+      <a id="previewModalStudioBtn" href="form-studio.php" class="btn btn-primary btn-sm" style="display:inline-flex;align-items:center;gap:5px;background:var(--orange-500, #FF4F01);border:none;color:#FFFFFF;text-decoration:none;">
+        <?= icon('sliders', 13) ?> Design in Form Studio
+      </a>
+      <a id="previewModalUploadBtn" href="upload.php" target="_blank" class="btn btn-outline btn-sm" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+        <?= icon('external-link', 13) ?> Open in Upload Page
+      </a>
+    </div>
     <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Close Preview</button>
   </div>
 </dialog>
@@ -1293,6 +2208,12 @@ require __DIR__ . '/inc/header.php';
   </form>
 </dialog>
 
+<!-- Order Action Toast Notification -->
+<div id="orderToast" class="order-toast" role="status" aria-live="polite">
+  <span id="orderToastIcon" style="display:inline-flex;align-items:center;"></span>
+  <span id="orderToastMsg"></span>
+</div>
+
 <!-- Metric Management Javascript Engine -->
 <script>
 var currentBuilderFields = [];
@@ -1320,6 +2241,8 @@ function openEditModal(metric) {
   document.getElementById('editStatus').checked = (metric.status == 1);
   document.getElementById('editFacultyVis').checked = (metric.faculty_visible == 1);
   document.getElementById('editCoordVis').checked = (metric.coordinator_visible == 1);
+  document.getElementById('editHodVis').checked = (metric.hod_visible == 1);
+  document.getElementById('editPrincipalVis').checked = (metric.principal_visible == 1);
 
   document.getElementById('editMetricModal').showModal();
 }
@@ -1398,162 +2321,73 @@ function openPreviewModal(metric) {
   }
 
   body.innerHTML = html;
+
+  var studioBtn = document.getElementById('previewModalStudioBtn');
+  if (studioBtn) {
+    studioBtn.href = 'form-studio.php?id=' + encodeURIComponent(metric.id);
+  }
+  var uploadBtn = document.getElementById('previewModalUploadBtn');
+  if (uploadBtn) {
+    uploadBtn.href = 'upload.php?metric=' + encodeURIComponent(metric.metric_key);
+  }
+
   document.getElementById('previewModal').showModal();
 }
 
 function openFormBuilder(metric) {
   currentMetric = metric;
-  document.getElementById('builderMetricId').value = metric.id;
-  document.getElementById('builderTitle').textContent = 'Form Template Builder — ' + metric.name;
-
-  currentBuilderFields = Array.isArray(metric.form_config_parsed) && metric.form_config_parsed.length > 0
-    ? JSON.parse(JSON.stringify(metric.form_config_parsed))
-    : [
-        { key: 'title', label: 'Entry Title / Name', type: 'text', placeholder: 'Enter title...', help_text: 'Primary title for this entry', required: true },
-        { key: 'details', label: 'Details / Description', type: 'textarea', placeholder: 'Detailed summary...', help_text: '', required: false },
-        { key: 'event_date', label: 'Date', type: 'date', placeholder: '', help_text: 'Date of completion or event', required: true },
-        { key: 'proof_file', label: 'Proof Document (PDF)', type: 'file', placeholder: '', help_text: 'Official certificate or document', required: true }
-      ];
-
-  renderBuilderFields();
-  document.getElementById('builderModal').showModal();
+  openFormStudio(metric.id);
 }
 
-function renderBuilderFields() {
-  var container = document.getElementById('fieldsContainer');
-  document.getElementById('fieldsCountBadge').textContent = currentBuilderFields.length;
-  var html = '';
+/* Client-side icon generator */
+function studioIcon(name, size) {
+  size = size || 14;
+  var paths = {
+    'layout': '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/>',
+    'plus': '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    'layers': '<polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>',
+    'copy': '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    'bookmark': '<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>',
+    'upload-cloud': '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><polyline points="16 16 12 12 8 16"/>',
+    'save': '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',
+    'check-circle': '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>',
+    'check': '<polyline points="20 6 9 17 4 12"/>',
+    'sliders': '<line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>',
+    'paperclip': '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+    'shield': '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+    'history': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><polyline points="3 3 3 8 8 8"/><polyline points="12 7 12 12 15 15"/>',
+    'trash-2': '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>',
+    'eye': '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',
+    'pencil': '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    'calendar': '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+    'type': '<polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/>',
+    'align-left': '<line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/>',
+    'hash': '<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>',
+    'percent': '<line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+    'list': '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+    'check-square': '<polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+    'disc': '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/>',
+    'link': '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    'mail': '<path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>',
+    'file': '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    'lock': '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>'
+  };
+  var body = paths[name] || '<circle cx="12" cy="12" r="10"/>';
+  return '<svg xmlns="http://www.w3.org/2000/svg" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+}
+var icon = studioIcon;
 
-  currentBuilderFields.forEach(function(f, idx) {
-    html += '<div class="card" style="padding:12px;border:1px solid #E2E8F0;background:#FFFFFF;border-radius:8px;position:relative;">'
-          + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">'
-          + '  <div style="display:flex;align-items:center;gap:6px;">'
-          + '    <span class="badge badge-neutral" style="font-size:10.5px;font-weight:700;">#' + (idx + 1) + '</span>'
-          + '    <input type="text" class="input" value="' + escapeHtml(f.label) + '" oninput="updateFieldProperty(' + idx + ', \'label\', this.value)" style="height:28px;font-size:12px;font-weight:700;width:180px;" placeholder="Field Label">'
-          + '  </div>'
-          + '  <div style="display:flex;align-items:center;gap:4px;">'
-          + '    <button type="button" class="btn btn-ghost btn-sm" onclick="moveBuilderField(' + idx + ', -1)" ' + (idx === 0 ? 'disabled' : '') + ' style="padding:0 5px;font-size:10px;">&blacktriangle;</button>'
-          + '    <button type="button" class="btn btn-ghost btn-sm" onclick="moveBuilderField(' + idx + ', 1)" ' + (idx === currentBuilderFields.length - 1 ? 'disabled' : '') + ' style="padding:0 5px;font-size:10px;">&blacktriangledown;</button>'
-          + '    <button type="button" class="btn btn-ghost btn-sm" onclick="deleteBuilderField(' + idx + ')" title="Delete this field" style="padding:2px 8px;color:#DC2626;font-size:11px;font-weight:600;display:inline-flex;align-items:center;gap:3px;background:#FEE2E2;border-radius:4px;">&times; Delete Field</button>'
-          + '  </div>'
-          + '</div>'
-          + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;">'
-          + '  <div>'
-          + '    <label style="font-size:11px;font-weight:600;color:#64748B;">Field Key</label>'
-          + '    <input type="text" class="input" value="' + escapeHtml(f.key) + '" oninput="updateFieldProperty(' + idx + ', \'key\', this.value)" style="height:26px;font-size:11px;font-family:monospace;" placeholder="key_name">'
-          + '  </div>'
-          + '  <div>'
-          + '    <label style="font-size:11px;font-weight:600;color:#64748B;">Field Type</label>'
-          + '    <select class="select" onchange="updateFieldProperty(' + idx + ', \'type\', this.value)" style="height:26px;font-size:11px;">'
-          + '      <option value="text"' + (f.type === 'text' ? ' selected' : '') + '>Short Text</option>'
-          + '      <option value="textarea"' + (f.type === 'textarea' ? ' selected' : '') + '>Long Text (Textarea)</option>'
-          + '      <option value="integer"' + (f.type === 'integer' ? ' selected' : '') + '>Integer Number</option>'
-          + '      <option value="decimal"' + (f.type === 'decimal' ? ' selected' : '') + '>Decimal / Amount</option>'
-          + '      <option value="date"' + (f.type === 'date' ? ' selected' : '') + '>Date</option>'
-          + '      <option value="select"' + (f.type === 'select' ? ' selected' : '') + '>Dropdown Options</option>'
-          + '      <option value="url"' + (f.type === 'url' ? ' selected' : '') + '>URL Link</option>'
-          + '      <option value="file"' + (f.type === 'file' ? ' selected' : '') + '>File / PDF Upload</option>'
-          + '    </select>'
-          + '  </div>'
-          + '</div>'
-          + '<div style="display:flex;align-items:center;gap:12px;margin-top:6px;">'
-          + '  <label style="display:inline-flex;align-items:center;gap:4px;font-size:11.5px;color:#334155;cursor:pointer;margin:0;">'
-          + '    <input type="checkbox" ' + (f.required ? 'checked' : '') + ' onchange="updateFieldProperty(' + idx + ', \'required\', this.checked)"> Required'
-          + '  </label>'
-          + '  <input type="text" class="input" value="' + escapeHtml(f.placeholder || '') + '" oninput="updateFieldProperty(' + idx + ', \'placeholder\', this.value)" style="height:24px;font-size:11px;flex:1;" placeholder="Placeholder text...">'
-          + '</div>';
-
-    if (f.type === 'select') {
-      var optsStr = Array.isArray(f.options) ? f.options.join(', ') : (f.options || '');
-      html += '<div style="margin-top:6px;">'
-            + '<label style="font-size:11px;font-weight:600;color:#64748B;">Dropdown Options (comma separated)</label>'
-            + '<input type="text" class="input" value="' + escapeHtml(optsStr) + '" oninput="updateFieldProperty(' + idx + ', \'options\', this.value.split(\',\').map(function(s){return s.trim();}))" style="height:24px;font-size:11px;" placeholder="Option 1, Option 2, Option 3">'
-            + '</div>';
-    }
-
-    html += '</div>';
-  });
-
-  container.innerHTML = html;
-  renderLivePreview();
+/* Consolidated Form Studio Redirection */
+function openFormStudio(metricId) {
+  window.location.href = 'form-studio.php' + (metricId ? '?id=' + encodeURIComponent(metricId) : '');
 }
 
-function updateFieldProperty(idx, prop, val) {
-  if (currentBuilderFields[idx]) {
-    currentBuilderFields[idx][prop] = val;
-    renderLivePreview();
-  }
-}
-
-function addNewFieldRow() {
-  var count = currentBuilderFields.length + 1;
-  currentBuilderFields.push({
-    key: 'field_' + count,
-    label: 'Field ' + count,
-    type: 'text',
-    placeholder: '',
-    help_text: '',
-    required: false
-  });
-  renderBuilderFields();
-}
-
-function moveBuilderField(idx, delta) {
-  var newIdx = idx + delta;
-  if (newIdx < 0 || newIdx >= currentBuilderFields.length) return;
-  var temp = currentBuilderFields[idx];
-  currentBuilderFields[idx] = currentBuilderFields[newIdx];
-  currentBuilderFields[newIdx] = temp;
-  renderBuilderFields();
-}
-
-function deleteBuilderField(idx) {
-  if (currentBuilderFields.length <= 1) {
-    alert('A form must have at least one field.');
-    return;
-  }
-  currentBuilderFields.splice(idx, 1);
-  renderBuilderFields();
-}
-
-function renderLivePreview() {
-  var preview = document.getElementById('livePreviewContainer');
-  var html = '';
-
-  currentBuilderFields.forEach(function(f) {
-    var fullSpan = (f.type === 'textarea' || f.type === 'file') ? 'grid-column:span 2;' : '';
-    var reqStar = f.required ? ' <span style="color:#EF4444;">*</span>' : '';
-
-    html += '<div style="' + fullSpan + '">'
-          + '<label style="display:block;font-size:12px;font-weight:600;color:#1E293B;margin-bottom:3px;">'
-          + escapeHtml(f.label || 'Untitled Field') + reqStar + '</label>';
-
-    if (f.type === 'textarea') {
-      html += '<textarea class="input" rows="2" placeholder="' + escapeHtml(f.placeholder || '') + '" style="font-size:12px;width:100%;"></textarea>';
-    } else if (f.type === 'select') {
-      html += '<select class="select" style="font-size:12px;width:100%;"><option value="">' + escapeHtml(f.placeholder || 'Select option...') + '</option>';
-      if (Array.isArray(f.options)) {
-        f.options.forEach(function(opt) {
-          if (opt) html += '<option>' + escapeHtml(opt) + '</option>';
-        });
-      }
-      html += '</select>';
-    } else if (f.type === 'file') {
-      html += '<input class="input" type="file" style="font-size:11.5px;width:100%;">';
-    } else if (f.type === 'date') {
-      html += '<input class="input" type="date" style="font-size:12px;width:100%;">';
-    } else {
-      html += '<input class="input" type="' + (f.type === 'integer' || f.type === 'decimal' ? 'number' : 'text') + '" placeholder="' + escapeHtml(f.placeholder || '') + '" style="font-size:12px;width:100%;">';
-    }
-    html += '</div>';
-  });
-
-  preview.innerHTML = html;
-}
-
-function submitBuilderForm() {
-  document.getElementById('builderFieldsJson').value = JSON.stringify(currentBuilderFields);
-  document.getElementById('templateBuilderForm').submit();
+function getCsrfToken() {
+  var el = document.querySelector('input[name="csrf"]');
+  if (el && el.value) return el.value;
+  el = document.querySelector('input[name="csrf_token"]');
+  if (el && el.value) return el.value;
+  return '<?= e(csrf_token()) ?>';
 }
 
 function openDeleteModal(id, name, key, type) {
@@ -1572,13 +2406,6 @@ function openDeleteFromEdit() {
   openDeleteModal(id, name, key, 'generic');
 }
 
-function openDeleteFromBuilder() {
-  if (!currentMetric) return;
-  var modal = document.getElementById('builderModal');
-  if (modal && modal.open) modal.close();
-  openDeleteModal(currentMetric.id, currentMetric.name, currentMetric.metric_key, currentMetric.metric_type);
-}
-
 function escapeHtml(text) {
   if (!text) return '';
   return String(text)
@@ -1588,6 +2415,459 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// =========================================================================
+// ATTS-METRIC-DRAG-SORT: Drag-and-Drop & Keyboard Reordering Engine
+// =========================================================================
+var isFilteredOrSorted = <?= $isFilteredOrSorted ? 'true' : 'false' ?>;
+var isSavingOrder = false;
+var previousOrderIds = [];
+var orderToastTimer = null;
+
+function showOrderToast(msg, type, duration) {
+  if (typeof type === 'undefined') type = 'success';
+  if (typeof duration === 'undefined') duration = 3000;
+
+  var toast = document.getElementById('orderToast');
+  var iconSpan = document.getElementById('orderToastIcon');
+  var msgSpan = document.getElementById('orderToastMsg');
+  if (!toast || !iconSpan || !msgSpan) return;
+
+  toast.className = 'order-toast show toast-' + type;
+  msgSpan.textContent = msg;
+
+  if (type === 'saving') {
+    iconSpan.innerHTML = '<span class="spin-icon"><?= icon("refresh", 14) ?></span>';
+  } else if (type === 'error') {
+    iconSpan.innerHTML = '<?= icon("alert-triangle", 14) ?>';
+  } else {
+    iconSpan.innerHTML = '<?= icon("check", 14) ?>';
+  }
+
+  if (orderToastTimer) {
+    clearTimeout(orderToastTimer);
+    orderToastTimer = null;
+  }
+  if (duration > 0) {
+    orderToastTimer = setTimeout(function() {
+      toast.classList.remove('show');
+    }, duration);
+  }
+}
+
+function updateRowOrderNumbers() {
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+  var rows = tbody.querySelectorAll('tr.metric-row');
+  rows.forEach(function(r, idx) {
+    var pill = r.querySelector('[data-order-pill]');
+    var num = idx + 1;
+    if (pill) {
+      pill.textContent = (num < 10 ? '0' : '') + num;
+    }
+    r.dataset.order = String(num);
+  });
+}
+
+function getCurrentlyOrderedIds() {
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return [];
+  var rows = tbody.querySelectorAll('tr.metric-row');
+  var ids = [];
+  rows.forEach(function(r) {
+    if (r.dataset.id) {
+      ids.push(r.dataset.id);
+    }
+  });
+  return ids;
+}
+
+function saveNewMetricOrder(initialSnapshot) {
+  var currentIds = getCurrentlyOrderedIds();
+  if (currentIds.length === 0) return;
+
+  // If nothing changed from before drag started, do nothing
+  if (initialSnapshot && initialSnapshot.join(',') === currentIds.join(',')) {
+    return;
+  }
+
+  if (isSavingOrder) {
+    return;
+  }
+
+  isSavingOrder = true;
+  showOrderToast('Saving new metric order...', 'saving', 0);
+
+  var payload = new FormData();
+  payload.append('action', 'reorder_metrics');
+  payload.append('csrf', getCsrfToken());
+  payload.append('csrf_token', getCsrfToken());
+  payload.append('ajax', '1');
+
+  currentIds.forEach(function(id) {
+    payload.append('ordered_ids[]', id);
+  });
+
+  var postUrl = (window.location.pathname.replace(/\/+$/, '') || 'admin-metrics.php');
+
+  fetch(postUrl, {
+    method: 'POST',
+    body: payload,
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(function(res) {
+    if (!res.ok) {
+      throw new Error('HTTP ' + res.status);
+    }
+    return res.json();
+  })
+  .then(function(data) {
+    isSavingOrder = false;
+    if (data.success) {
+      previousOrderIds = currentIds.slice();
+      showOrderToast('Metric order saved successfully.', 'success', 3000);
+    } else {
+      throw new Error(data.message || 'Server error occurred while saving order.');
+    }
+  })
+  .catch(function(err) {
+    isSavingOrder = false;
+    console.error('Order save error:', err);
+    showOrderToast('Failed to save order: ' + (err.message || 'Unknown error') + '. Restoring previous order...', 'error', 4500);
+    restorePreviousOrder();
+  });
+}
+
+function restorePreviousOrder() {
+  if (!previousOrderIds || previousOrderIds.length === 0) return;
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  var rowMap = {};
+  tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+    if (r.dataset.id) {
+      rowMap[r.dataset.id] = r;
+    }
+  });
+
+  previousOrderIds.forEach(function(id) {
+    if (rowMap[id]) {
+      tbody.appendChild(rowMap[id]);
+    }
+  });
+  updateRowOrderNumbers();
+}
+
+function initMetricDragAndDrop() {
+  if (isFilteredOrSorted) return;
+
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  previousOrderIds = getCurrentlyOrderedIds();
+
+  var draggedRow = null;
+  var initialOrderOnDragStart = null;
+  var autoScrollTimer = null;
+
+  function stopAutoScroll() {
+    if (autoScrollTimer) {
+      cancelAnimationFrame(autoScrollTimer);
+      autoScrollTimer = null;
+    }
+  }
+
+  function handleAutoScroll(clientY) {
+    var edgeThreshold = 65;
+    var speed = 0;
+    if (clientY < edgeThreshold) {
+      speed = -Math.max(4, Math.round((edgeThreshold - clientY) / 3));
+    } else if (window.innerHeight - clientY < edgeThreshold) {
+      speed = Math.max(4, Math.round((edgeThreshold - (window.innerHeight - clientY)) / 3));
+    }
+
+    if (speed !== 0) {
+      window.scrollBy(0, speed);
+      autoScrollTimer = requestAnimationFrame(function() {
+        handleAutoScroll(clientY);
+      });
+    } else {
+      stopAutoScroll();
+    }
+  }
+
+  // Set draggable on row ONLY when mouse is pressed down on drag handle
+  tbody.addEventListener('mousedown', function(e) {
+    var handle = e.target.closest('.metric-drag-handle');
+    if (handle && !handle.disabled) {
+      var row = handle.closest('tr.metric-row');
+      if (row) {
+        row.setAttribute('draggable', 'true');
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', function() {
+    tbody.querySelectorAll('tr.metric-row[draggable="true"]').forEach(function(r) {
+      r.removeAttribute('draggable');
+    });
+    stopAutoScroll();
+  });
+
+  tbody.addEventListener('dragstart', function(e) {
+    var row = e.target.closest('tr.metric-row');
+    if (!row || row.getAttribute('draggable') !== 'true') {
+      e.preventDefault();
+      return;
+    }
+
+    draggedRow = row;
+    initialOrderOnDragStart = getCurrentlyOrderedIds();
+
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.dataset.id || '');
+
+    document.body.classList.add('table-row-dragging');
+
+    setTimeout(function() {
+      if (draggedRow) {
+        draggedRow.classList.add('is-dragging');
+      }
+    }, 0);
+  });
+
+  tbody.addEventListener('dragover', function(e) {
+    if (!draggedRow) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    handleAutoScroll(e.clientY);
+
+    var targetRow = e.target.closest('tr.metric-row');
+    if (!targetRow || targetRow === draggedRow) {
+      clearDropIndicators();
+      return;
+    }
+
+    var rect = targetRow.getBoundingClientRect();
+    var isAbove = (e.clientY - rect.top) < (rect.height / 2);
+
+    clearDropIndicators();
+    if (isAbove) {
+      targetRow.classList.add('drag-over-above');
+    } else {
+      targetRow.classList.add('drag-over-below');
+    }
+  });
+
+  tbody.addEventListener('dragleave', function(e) {
+    var related = e.relatedTarget;
+    if (!tbody.contains(related)) {
+      clearDropIndicators();
+      stopAutoScroll();
+    }
+  });
+
+  tbody.addEventListener('drop', function(e) {
+    if (!draggedRow) return;
+    e.preventDefault();
+    stopAutoScroll();
+
+    var targetRow = e.target.closest('tr.metric-row');
+    if (targetRow && targetRow !== draggedRow) {
+      var rect = targetRow.getBoundingClientRect();
+      var isAbove = (e.clientY - rect.top) < (rect.height / 2);
+
+      if (isAbove) {
+        tbody.insertBefore(draggedRow, targetRow);
+      } else {
+        tbody.insertBefore(draggedRow, targetRow.nextSibling);
+      }
+
+      updateRowOrderNumbers();
+      saveNewMetricOrder(initialOrderOnDragStart);
+    }
+
+    clearDropIndicators();
+  });
+
+  tbody.addEventListener('dragend', function() {
+    stopAutoScroll();
+    if (draggedRow) {
+      draggedRow.classList.remove('is-dragging');
+      draggedRow.removeAttribute('draggable');
+    }
+    draggedRow = null;
+    initialOrderOnDragStart = null;
+    document.body.classList.remove('table-row-dragging');
+    clearDropIndicators();
+  });
+
+  function clearDropIndicators() {
+    tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+      r.classList.remove('drag-over-above', 'drag-over-below');
+    });
+  }
+}
+
+function initKeyboardReordering() {
+  if (isFilteredOrSorted) return;
+
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  var grabbedRow = null;
+  var initialKeyboardOrder = null;
+
+  tbody.addEventListener('keydown', function(e) {
+    var handle = e.target.closest('.metric-drag-handle');
+    if (!handle || handle.disabled) return;
+    var row = handle.closest('tr.metric-row');
+    if (!row) return;
+
+    // Space or Enter: Pick up or Drop
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (!grabbedRow) {
+        // Pick up
+        grabbedRow = row;
+        initialKeyboardOrder = getCurrentlyOrderedIds();
+        grabbedRow.classList.add('is-keyboard-grabbed');
+        handle.setAttribute('aria-grabbed', 'true');
+        showOrderToast('Metric picked up. Use ↑ / ↓ arrows to reorder, Space/Enter to place, Esc to cancel.', 'saving', 0);
+      } else if (grabbedRow === row) {
+        // Drop
+        grabbedRow.classList.remove('is-keyboard-grabbed');
+        handle.setAttribute('aria-grabbed', 'false');
+        grabbedRow = null;
+        updateRowOrderNumbers();
+        saveNewMetricOrder(initialKeyboardOrder);
+        initialKeyboardOrder = null;
+      }
+      return;
+    }
+
+    // Escape: Cancel keyboard reorder
+    if (e.key === 'Escape' && grabbedRow) {
+      e.preventDefault();
+      grabbedRow.classList.remove('is-keyboard-grabbed');
+      handle.setAttribute('aria-grabbed', 'false');
+      grabbedRow = null;
+      if (initialKeyboardOrder) {
+        previousOrderIds = initialKeyboardOrder.slice();
+        restorePreviousOrder();
+        initialKeyboardOrder = null;
+      }
+      showOrderToast('Reordering cancelled.', 'error', 2500);
+      return;
+    }
+
+    // ArrowUp / ArrowDown while grabbed
+    if (grabbedRow) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        var prev = grabbedRow.previousElementSibling;
+        if (prev && prev.classList.contains('metric-row')) {
+          tbody.insertBefore(grabbedRow, prev);
+          updateRowOrderNumbers();
+          grabbedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          handle.focus();
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        var next = grabbedRow.nextElementSibling;
+        if (next && next.classList.contains('metric-row')) {
+          tbody.insertBefore(grabbedRow, next.nextSibling);
+          updateRowOrderNumbers();
+          grabbedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          handle.focus();
+        }
+      }
+    }
+  });
+}
+
+function initTouchReordering() {
+  if (isFilteredOrSorted) return;
+
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  var touchDraggedRow = null;
+  var touchInitialOrder = null;
+  var currentOverRow = null;
+  var currentIsAbove = false;
+
+  tbody.addEventListener('touchstart', function(e) {
+    var handle = e.target.closest('.metric-drag-handle');
+    if (!handle || handle.disabled) return;
+    var row = handle.closest('tr.metric-row');
+    if (!row) return;
+
+    touchDraggedRow = row;
+    touchInitialOrder = getCurrentlyOrderedIds();
+    touchDraggedRow.classList.add('is-dragging');
+    document.body.classList.add('table-row-dragging');
+  }, { passive: true });
+
+  tbody.addEventListener('touchmove', function(e) {
+    if (!touchDraggedRow) return;
+    var touch = e.touches[0];
+    if (!touch) return;
+
+    var el = document.elementFromPoint(touch.clientX, touch.clientY);
+    var targetRow = el ? el.closest('tr.metric-row') : null;
+
+    tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+      r.classList.remove('drag-over-above', 'drag-over-below');
+    });
+
+    if (targetRow && targetRow !== touchDraggedRow) {
+      var rect = targetRow.getBoundingClientRect();
+      currentIsAbove = (touch.clientY - rect.top) < (rect.height / 2);
+      currentOverRow = targetRow;
+      if (currentIsAbove) {
+        targetRow.classList.add('drag-over-above');
+      } else {
+        targetRow.classList.add('drag-over-below');
+      }
+    } else {
+      currentOverRow = null;
+    }
+  }, { passive: true });
+
+  tbody.addEventListener('touchend', function() {
+    if (!touchDraggedRow) return;
+
+    if (currentOverRow && currentOverRow !== touchDraggedRow) {
+      if (currentIsAbove) {
+        tbody.insertBefore(touchDraggedRow, currentOverRow);
+      } else {
+        tbody.insertBefore(touchDraggedRow, currentOverRow.nextSibling);
+      }
+      updateRowOrderNumbers();
+      saveNewMetricOrder(touchInitialOrder);
+    }
+
+    touchDraggedRow.classList.remove('is-dragging');
+    document.body.classList.remove('table-row-dragging');
+    tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+      r.classList.remove('drag-over-above', 'drag-over-below');
+    });
+
+    touchDraggedRow = null;
+    touchInitialOrder = null;
+    currentOverRow = null;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initMetricDragAndDrop();
+  initKeyboardReordering();
+  initTouchReordering();
+});
+
+// Form Studio workspace lives at form-studio.php
 </script>
 
 <?php require __DIR__ . '/inc/footer.php'; ?>

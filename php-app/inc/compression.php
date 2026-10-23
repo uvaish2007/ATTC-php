@@ -16,11 +16,31 @@ if (!defined('COMPRESSION_PNG_LEVEL')) {
 }
 
 if (!function_exists('save_upload_proof')) {
-function save_upload_proof(?array $file, bool $required = false, string $label = 'Proof / Attachment'): array
+function save_upload_proof(?array $file, bool $required = false, ?string $targetTypeOrLabel = null): array
 {
+    $t = null;
+    $customLabel = null;
+    if ($targetTypeOrLabel !== null) {
+        if (in_array($targetTypeOrLabel, ['journal', 'conference', 'fdp', 'inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards', 'value_added', 'inst_society_memberships', 'inst_sports', 'inst_sports_state', 'inst_sports_national'], true)) {
+            $t = $targetTypeOrLabel;
+        } else {
+            $customLabel = $targetTypeOrLabel;
+        }
+    }
+    if ($t === null) {
+        $t = $GLOBALS['selectedType'] ?? null;
+    }
+    $isPaper = in_array($t, ['journal', 'conference'], true);
+    $isCert  = in_array($t, ['fdp'], true);
+    $isInterInst = in_array($t, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
+    $isValueAdded = ($t === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
+    $isSociety = ($t === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
+    $isSports = in_array($t, ['inst_sports', 'inst_sports_state', 'inst_sports_national'], true);
+    $entityLabel = $customLabel ?: ($isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety || $isSports ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment'))));
+
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
-            return [null, $label . ' is required. Please upload a PDF or image file (up to 2 MB).'];
+            return [null, "{$entityLabel} is required. Please upload a PDF file (2 MB or less)."];
         }
         return [null, null];
     }
@@ -42,13 +62,22 @@ function save_upload_proof(?array $file, bool $required = false, string $label =
     }
 
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
+    if ($isValueAdded || $isSociety) {
+        if ($ext !== 'pdf') {
+            return [null, "The {$entityLabel} must be a PDF document (.pdf)."];
+        }
+        if ($file['size'] > PROOF_MAX_BYTES) {
+            return [null, "The {$entityLabel} exceeds the 2 MB size limit. Please upload a smaller file."];
+        }
+    }
+
     $allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
     if (!in_array($ext, $allowedExts, true)) {
-        return [null, 'The proof must be a PDF document (.pdf) or an image (.jpg, .jpeg, .png).'];
+        return [null, "The {$entityLabel} must be a PDF document (.pdf) or an image (.jpg, .jpeg, .png)."];
     }
 
     if ($file['size'] > PROOF_MAX_BYTES) {
-        return [null, 'The proof attachment is larger than 2 MB. Please upload a smaller one.'];
+        return [null, "The {$entityLabel} exceeds the 2 MB size limit. Please upload a smaller one."];
     }
 
     $finfo = @finfo_open(FILEINFO_MIME_TYPE);

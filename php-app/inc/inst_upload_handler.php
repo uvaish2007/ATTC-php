@@ -913,6 +913,36 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
     $requiredMap = inst_required_fields();
     $expected    = $requiredMap[$type] ?? [];
 
+    // Dynamic field requirements for inst_society_memberships based on membership_category
+    if ($type === 'inst_society_memberships') {
+        $cat = trim((string)($_POST['membership_category'] ?? 'Faculty'));
+        if (!in_array($cat, ['Faculty', 'Student'], true)) {
+            $cat = 'Faculty';
+        }
+        $_POST['membership_category'] = $cat;
+
+        if ($cat === 'Student') {
+            $expected = [
+                'reg_no'            => 'Student Register Number',
+                'student_name'      => 'Student Name',
+                'society_name'      => 'Professional Society',
+                'membership_number' => 'Membership Number',
+            ];
+            // Clear faculty fields
+            $_POST['faculty_name'] = null;
+        } else {
+            $expected = [
+                'faculty_name'      => 'Faculty Name',
+                'society_name'      => 'Professional Society',
+                'membership_number' => 'Membership Number',
+            ];
+            // Clear student fields
+            $_POST['reg_no'] = null;
+            $_POST['student_name'] = null;
+            $_POST['class_year'] = null;
+        }
+    }
+
     $errors = [];
     foreach ($expected as $fKey => $fLabel) {
         $val = trim((string) ($_POST[$fKey] ?? ''));
@@ -944,8 +974,15 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
                               'completion_date', 'grant_date', 'registration_date', 'formation_date',
                               'measurement_date', 'application_date', 'publication_date', 'achievement_date',
                               'recognition_date', 'update_date', 'placement_date'], true)) {
-            if ($val !== '' && strtotime($val) === false) {
-                $errors[] = "{$fLabel} must be a valid date.";
+            if ($val !== '') {
+                if (strtotime($val) === false) {
+                    $errors[] = "{$fLabel} must be a valid date.";
+                } elseif (function_exists('validate_submission_date')) {
+                    $dateErr = validate_submission_date($fKey, $val, $fLabel);
+                    if ($dateErr !== null) {
+                        $errors[] = $dateErr;
+                    }
+                }
             }
         }
     }
@@ -1058,14 +1095,41 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
         }
     }
 
+    // inst_sports_national: enforce level = National
+    if ($type === 'inst_sports_national') {
+        $_POST['level'] = 'National';
+    }
+    // inst_sports_state: enforce level = State
+    if ($type === 'inst_sports_state') {
+        $_POST['level'] = 'State';
+    }
+
+    // inst_inter_inst_within: auto-derive achievement_type if not explicitly set
+    if ($type === 'inst_inter_inst_within') {
+        $pt = trim((string) ($_POST['participation_type'] ?? ''));
+        if (empty($_POST['achievement_type'])) {
+            $_POST['achievement_type'] = in_array($pt, ['Winner / First Place', 'Second Runner', 'Third Runner'], true)
+                ? 'Medal'
+                : 'Participation';
+        }
+    }
+
     // Handle proof / certificate upload
+    $editId = (int) input('edit_id');
     $proofLabel = $isSports ? 'Certificate' : match ($type) {
         'inst_research_centre' => 'Recognition Letter',
         'inst_mou_interactions' => 'Report',
         default => 'Proof / Attachment',
     };
-    $proofRequired = $isSports ? ($editId <= 0) : in_array($type, ['inst_research_centre', 'inst_mou_interactions'], true);
-    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $proofRequired, $proofLabel);
+    $isProofRequired = false;
+    if ($isSports) {
+        $isProofRequired = ($editId <= 0);
+    } elseif (($type === 'inst_inter_inst_within' || $type === 'inst_society_memberships') && $editId <= 0) {
+        $isProofRequired = empty($_POST['certificate_link']);
+    } elseif (in_array($type, ['inst_research_centre', 'inst_mou_interactions'], true)) {
+        $isProofRequired = true;
+    }
+    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $isProofRequired, $proofLabel);
     if ($proofError !== null) {
         $errors[] = $proofError;
     }
@@ -1082,6 +1146,21 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
         $protected    = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at', 'academic_year'];
         $tableColumns = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
         $allowed      = array_diff($tableColumns, $protected);
+
+        $submittedAy = trim((string)($_POST['academic_year'] ?? ''));
+        if ($submittedAy === '' || !is_valid_academic_year($submittedAy)) {
+            $submittedAy = $activeYear;
+        }
+        if (is_future_academic_year($submittedAy)) {
+            flash('error', "Academic year {$submittedAy} has not started yet. Data for future academic years cannot be submitted.");
+            redirect('/upload.php?type=' . $type);
+            return false;
+        }
+        if ($user['role'] !== 'Admin' && academic_year_is_locked($submittedAy)) {
+            flash('error', "Academic year {$submittedAy} cycle is currently locked. New record submissions for {$submittedAy} are frozen.");
+            redirect('/upload.php?type=' . $type);
+            return false;
+        }
 
         if ($type === 'inst_awards_recognitions') {
             if (!empty($_POST['title']) && empty($_POST['title_award'])) {
@@ -1109,10 +1188,10 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
             // If switching table (e.g. State <-> National)
             if ($origTable !== $table) {
                 $fields = ['created_by', 'status', 'academic_year', 'created_at'];
-                $values = [(int) ($existingRec['created_by'] ?? $user['id']), 'Submitted', $existingRec['academic_year'] ?? $activeYear, $existingRec['created_at'] ?? date('Y-m-d H:i:s')];
+                $values = [(int) ($existingRec['created_by'] ?? $user['id']), 'Submitted', $existingRec['academic_year'] ?? $submittedAy, $existingRec['created_at'] ?? date('Y-m-d H:i:s')];
 
                 foreach ($_POST as $k => $v) {
-                    if (!in_array($k, $allowed, true) || trim((string) $v) === '') continue;
+                    if (!in_array($k, $allowed, true) || trim((string) $v) === '' || $k === 'academic_year') continue;
                     $fields[] = $k;
                     $values[] = trim((string) $v);
                 }
@@ -1137,7 +1216,7 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
                     record_workflow_audit($type, $newId, 'COORDINATOR_RESUBMITTED', $user,
                         $existingRec['status'] ?? 'Unlocked for Edit', 'Submitted',
                         'Sports record level changed and moved to ' . $table, null,
-                        $_POST['department'] ?? ($user['department'] ?? null), $activeYear);
+                        $_POST['department'] ?? ($user['department'] ?? null), $submittedAy);
                 }
 
                 flash('success', $types[$type]['label'] . ' updated successfully.');
@@ -1146,9 +1225,23 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
                 $setPairs = [];
                 $updateVals = [];
                 foreach ($_POST as $k => $v) {
-                    if (!in_array($k, $allowed, true)) continue;
+                    if (!in_array($k, $allowed, true) || $k === 'academic_year') continue;
                     $setPairs[] = "`{$k}` = ?";
                     $updateVals[] = trim((string) $v);
+                }
+                if ($type === 'inst_society_memberships') {
+                    $cat = trim((string) ($_POST['category'] ?? ''));
+                    if ($cat === 'Faculty') {
+                        $setPairs[] = "`reg_no` = NULL";
+                        $setPairs[] = "`student_name` = NULL";
+                        $setPairs[] = "`class_year` = NULL";
+                    } else {
+                        $setPairs[] = "`faculty_name` = NULL";
+                    }
+                }
+                if (in_array('academic_year', $tableColumns, true)) {
+                    $setPairs[] = "`academic_year` = ?";
+                    $updateVals[] = $submittedAy;
                 }
                 if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
                     $setPairs[] = "`proof_file` = ?";
@@ -1168,22 +1261,26 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
                     record_workflow_audit($type, $editId, 'COORDINATOR_RESUBMITTED', $user,
                         $existingRec['status'] ?? 'Unlocked for Edit', 'Resubmitted',
                         'Record updated and resubmitted', null,
-                        $_POST['department'] ?? ($user['department'] ?? null), $activeYear);
+                        $_POST['department'] ?? ($user['department'] ?? null), $submittedAy);
                 }
 
                 flash('success', $types[$type]['label'] . ' updated successfully.');
             }
         } else {
             // New entry insertion
-            $fields = ['created_by', 'status', 'academic_year'];
-            $values = [(int) $user['id'], 'Submitted', $activeYear];
+            $fields = ['created_by', 'status'];
+            $values = [(int) $user['id'], 'Submitted'];
+            if (in_array('academic_year', $tableColumns, true)) {
+                $fields[] = 'academic_year';
+                $values[] = $submittedAy;
+            }
             if (in_array('created_at', $tableColumns, true)) {
                 $fields[] = 'created_at';
                 $values[] = date('Y-m-d H:i:s');
             }
 
             foreach ($_POST as $k => $v) {
-                if (!in_array($k, $allowed, true) || trim((string) $v) === '') continue;
+                if (!in_array($k, $allowed, true) || trim((string) $v) === '' || $k === 'academic_year') continue;
                 $fields[] = $k;
                 $values[] = trim((string) $v);
             }
@@ -1208,7 +1305,7 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
             if (function_exists('record_workflow_audit')) {
                 record_workflow_audit($type, $newId, 'FACULTY_SUBMITTED', $user, null, 'Submitted',
                     'Institutional record submitted', null,
-                    $_POST['department'] ?? ($user['department'] ?? null), $activeYear);
+                    $_POST['department'] ?? ($user['department'] ?? null), $submittedAy);
             }
 
             flash('success', $types[$type]['label'] . ' submitted for review.');
@@ -1378,6 +1475,13 @@ function inst_handle_pass_percentage(array $user, string $activeYear, \PDO $pdo,
 
     // Academic Year
     $ay = trim((string) ($_POST['academic_year'] ?? $activeYear)) ?: $activeYear;
+    if (!is_valid_academic_year($ay)) {
+        $errors[] = 'Please select a valid academic year.';
+    } elseif (is_future_academic_year($ay)) {
+        $errors[] = "Academic year {$ay} has not started yet. Data for future academic years cannot be submitted.";
+    } elseif ($user['role'] !== 'Admin' && academic_year_is_locked($ay)) {
+        $errors[] = "Academic year {$ay} cycle is currently locked. Submissions are frozen.";
+    }
 
     // Semester validation and session synchronization
     $semester = trim((string) ($_POST['semester'] ?? ''));
@@ -1643,7 +1747,16 @@ function inst_required_fields(): array
         'inst_newsletters'         => ['title' => 'Newsletter Title', 'volume' => 'Volume', 'issue' => 'Issue'],
         'inst_student_certifications' => ['student_name' => 'Student Name', 'reg_no' => 'Register Number', 'course_name' => 'Course Name'],
         'inst_nss_events'          => ['event_name' => 'Event Name', 'event_date' => 'Date', 'venue' => 'Venue'],
-        'inst_inter_inst_within'   => ['student_name' => 'Student Name', 'reg_no' => 'Register Number', 'event_name' => 'Event Name', 'host_institution' => 'Host Institution'],
+        'inst_inter_inst_within'   => [
+            'student_name'       => 'Student Name',
+            'reg_no'             => 'Register Number',
+            'event_name'         => 'Event Name',
+            'host_institution'   => 'Host Institution',
+            'event_level'        => 'Event Level',
+            'location'           => 'Location / City',
+            'event_date'         => 'Event Date',
+            'participation_type' => 'Participation Type',
+        ],
         'inst_inter_inst_outside'  => ['student_name' => 'Student Name', 'reg_no' => 'Register Number', 'event_name' => 'Event Name', 'host_institution' => 'Host Institution', 'state' => 'State'],
         'inst_inter_inst_awards'   => ['student_name' => 'Student Name', 'reg_no' => 'Register Number', 'event_name' => 'Event Name', 'award' => 'Award / Medal'],
         'inst_value_added_courses' => ['course_name' => 'Course Name', 'organizer' => 'Organizer'],

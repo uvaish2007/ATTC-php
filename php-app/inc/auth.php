@@ -441,7 +441,7 @@ function csrf_field(): string
 function csrf_verify(?string $token = null): bool
 {
     auth_boot();
-    $token = $token ?? ($_POST['csrf'] ?? '');
+    $token = $token ?? ($_POST['csrf'] ?? ($_POST['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? '')));
     if (!is_string($token) || $token === '' || empty($_SESSION['csrf'])) {
         return false;
     }

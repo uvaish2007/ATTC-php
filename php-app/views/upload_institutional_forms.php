@@ -170,10 +170,7 @@
     }
   </style>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field">
-    <label>Academic Year <span class="card-sub">— Locked</span></label>
-    <input class="input" id="upercentAcademicYear" name="academic_year" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
-  </div>
+  <?php render_academic_year_field($editRecord['academic_year'] ?? $effectiveYear, 'academic_year', 'Academic Year', true, 'upercentAcademicYear'); ?>
   <div class="field">
     <label for="upercentExamSession">Exam Session <span class="req">*</span></label>
     <select class="select" id="upercentExamSession" name="exam_session" required onchange="upercentOnSessionChange(this)">
@@ -1017,7 +1014,7 @@
 
 <?php elseif ($selectedType === 'inst_college_rank'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Programme / Course</label><input class="input" name="programme" placeholder="e.g. B.E. Mechanical Engineering"></div>
   <div class="field"><label>Student Name</label><input class="input" name="student_name" placeholder="Student name (if applicable)"></div>
@@ -1031,7 +1028,7 @@
 
 <?php elseif ($selectedType === 'inst_student_rank'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Programme / Course</label><input class="input" name="programme" placeholder="e.g. B.Tech Information Technology"></div>
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
@@ -1049,7 +1046,8 @@
     $cgpaProof    = $editRecord['proof_file'] ?? '';
   ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
+  <?php render_exam_session_field($effectiveYear); ?>
   <div class="field">
     <label for="cgpaProgramme">Programme / Course</label>
     <input class="input" id="cgpaProgramme" name="programme" placeholder="e.g. B.E. ECE" value="<?= e($editRecord['programme'] ?? '') ?>">
@@ -1193,7 +1191,7 @@
 
 <?php elseif ($selectedType === 'inst_placement_mnc'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Batch <span class="req">*</span></label><input class="input" name="batch" value="<?= e($effectiveYear) ?>" required></div>
   <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
@@ -1208,7 +1206,7 @@
 <?php elseif ($selectedType === 'inst_publications'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Author(s) <span class="req">*</span></label><input class="input" name="authors" placeholder="Comma-separated authors" required></div>
   <div class="field" style="grid-column:span 2"><label>Title of the Paper <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -1233,7 +1231,7 @@
 <?php elseif ($selectedType === 'inst_books'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Book Title <span class="req">*</span></label><input class="input" name="book_title" required></div>
   <div class="field" style="grid-column:span 2"><label>Author(s) <span class="req">*</span></label><input class="input" name="authors" required></div>
@@ -1246,7 +1244,7 @@
 <?php elseif ($selectedType === 'inst_book_chapters'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Chapter Title <span class="req">*</span></label><input class="input" name="chapter_title" required></div>
   <div class="field" style="grid-column:span 2"><label>Book Title <span class="req">*</span></label><input class="input" name="book_title" required></div>
@@ -1260,7 +1258,7 @@
 <?php elseif ($selectedType === 'inst_patents_published'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Inventor(s) <span class="req">*</span></label><input class="input" name="inventors" placeholder="Comma-separated inventors" required></div>
   <div class="field" style="grid-column:span 2"><label>Title of Patent / Design <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -1274,7 +1272,7 @@
 <?php elseif ($selectedType === 'inst_patents_granted'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Inventor(s) <span class="req">*</span></label><input class="input" name="inventors" required></div>
   <div class="field" style="grid-column:span 2"><label>Title of Patent <span class="req">*</span></label><input class="input" name="title" required></div>
@@ -1287,7 +1285,7 @@
 <?php elseif ($selectedType === 'inst_copyrights'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Title / Work <span class="req">*</span></label><input class="input" name="title" required></div>
   <div class="field"><label>Copyright Number <span class="req">*</span></label><input class="input" name="copyright_number" placeholder="Registration / Diary No." required></div>
@@ -1298,7 +1296,7 @@
 <?php elseif ($selectedType === 'inst_sponsored_research'): ?>
   <div class="field"><label>Faculty Name / Principal Investigator (PI) <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Project Title <span class="req">*</span></label><input class="input" name="project_title" required></div>
   <div class="field"><label>Funding Agency <span class="req">*</span></label><input class="input" name="funding_agency" placeholder="e.g. DST, SERB, AICTE, DRDO, ICMR" required></div>
@@ -1311,7 +1309,7 @@
 <?php elseif ($selectedType === 'inst_consultancy'): ?>
   <div class="field"><label>Faculty Name / Consultant <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Project Title <span class="req">*</span></label><input class="input" name="project_title" required></div>
   <div class="field"><label>Client / Organization <span class="req">*</span></label><input class="input" name="client_org" placeholder="Client industry name" required></div>
@@ -1323,7 +1321,7 @@
 
 <?php elseif ($selectedType === 'inst_research_centre'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Recognition Name / Recognized Department <span class="req">*</span></label><input class="input" name="recognition_name" placeholder="e.g. Research Centre Recognition for CSE" required></div>
   <div class="field"><label>Recognizing Authority <span class="req">*</span></label><input class="input" name="recognizing_authority" value="Anna University" required></div>
@@ -1334,7 +1332,7 @@
 
 <?php elseif ($selectedType === 'inst_ipr_programmes'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Programme Type <span class="req">*</span></label>
     <select class="select" name="programme_type" required>
@@ -1354,7 +1352,7 @@
 <?php elseif ($selectedType === 'inst_faculty_certifications'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Course Name <span class="req">*</span></label><input class="input" name="course_name" required></div>
   <div class="field"><label>Platform / Provider <span class="req">*</span></label>
@@ -1377,7 +1375,7 @@
 
 <?php elseif ($selectedType === 'inst_mou_interactions'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Industry / Organization Name <span class="req">*</span></label><input class="input" name="industry_name" required></div>
   <div class="field"><label>Type <span class="req">*</span></label>
@@ -1396,7 +1394,7 @@
 
 <?php elseif ($selectedType === 'inst_internships'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
   <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
@@ -1412,7 +1410,7 @@
 
 <?php elseif ($selectedType === 'inst_summer_trainings'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
   <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
@@ -1428,7 +1426,7 @@
 
 <?php elseif ($selectedType === 'inst_student_projects'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
   <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
@@ -1445,7 +1443,7 @@
 <?php elseif ($selectedType === 'inst_faculty_participations'): ?>
   <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Programme Type <span class="req">*</span></label>
     <select class="select" name="programme_type" required>
@@ -1464,20 +1462,138 @@
   <div class="field"><label>Certificate Number</label><input class="input" name="certificate_number"></div>
 
 <?php elseif ($selectedType === 'inst_society_memberships'): ?>
-  <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
-  <?php render_exam_session_field($effectiveYear); ?>
-  <div class="field"><label>Professional Society <span class="req">*</span></label><input class="input" name="society_name" placeholder="e.g. IEEE, ACM, CSI, ISTE, ASME" required></div>
-  <div class="field"><label>Membership Number <span class="req">*</span></label><input class="input" name="membership_number" required></div>
-  <div class="field"><label>Membership Type</label><input class="input" name="membership_type" placeholder="Life Member / Annual / Fellow"></div>
-  <div class="field"><label>Start Date</label><input class="input" name="start_date" type="date"></div>
-  <div class="field"><label>Expiry Date</label><input class="input" name="expiry_date" type="date"></div>
-  <div class="field"><label>Status</label><input class="input" name="membership_status" placeholder="Active / Permanent"></div>
+  <?php
+    $socCategory = $editRecord['membership_category'] ?? ($_GET['category'] ?? 'Faculty');
+    if (!in_array($socCategory, ['Faculty', 'Student'], true)) {
+        $socCategory = 'Faculty';
+    }
+    $socMode = $_GET['mode'] ?? 'individual';
+    $isSocBulk = ($socMode === 'bulk') && empty($editRecord);
+    $memTypesFaculty = ['Life Member', 'Annual Member', 'Fellow', 'Senior Member', 'Associate Member', 'Member'];
+    $memTypesStudent = ['Student Member', 'Annual Member', 'Life Member', 'Member'];
+  ?>
+
+  <!-- Top Form Control 1: Membership Category Dropdown -->
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 6px;">
+    <label style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <span style="font-size:13px; font-weight:700; color:#131D3B;">Membership Category <span class="req" style="color:#DC2626;">*</span></span>
+      <span class="card-sub" style="font-size:11.5px; color:#64748B;">Select member classification to update entry controls and validation rules</span>
+    </label>
+    <select class="select" id="socCategorySelect" name="membership_category" style="font-size:13.5px; font-weight:600; color:#131D3B; border-color:#FF4F01; background-color:#FFF7ED; padding:9px 14px;" required>
+      <option value="Faculty" <?= $socCategory === 'Faculty' ? 'selected' : '' ?>>Faculty</option>
+      <option value="Student" <?= $socCategory === 'Student' ? 'selected' : '' ?>>Student</option>
+    </select>
+  </div>
+
+  <!-- Top Form Control 2: Individual Entry / Bulk Upload Selector -->
+  <?php if (empty($editRecord)): ?>
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:8px 14px;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748B;">Upload Mode:</span>
+        <div style="display:inline-flex; background:#E2E8F0; padding:3px; border-radius:8px; gap:4px;">
+          <button type="button" id="socBtnModeInd" class="btn-mode-toggle <?= !$isSocBulk ? 'active' : '' ?>" onclick="setSocietyInputMode('individual')">
+            <?= icon('user', 14) ?> Individual Entry
+          </button>
+          <button type="button" id="socBtnModeBulk" class="btn-mode-toggle <?= $isSocBulk ? 'active' : '' ?>" onclick="setSocietyInputMode('bulk')">
+            <?= icon('upload', 14) ?> Bulk Upload
+          </button>
+        </div>
+      </div>
+      <span id="socModeHelpText" style="font-size:12px; color:#64748B;">
+        <?= $isSocBulk ? 'Batch import multiple records via validated Excel spreadsheet (.xlsx)' : 'Submit an individual membership record with certificate upload' ?>
+      </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Individual Fields Container (Displayed when mode is Individual Entry) -->
+  <div id="socIndividualFieldsGroup" style="display: contents;">
+    <!-- Dynamic Faculty Fields Container -->
+    <div id="socFacultyFieldsRow" style="display: <?= $socCategory === 'Faculty' ? 'contents' : 'none' ?>;">
+      <div class="field" id="socFieldFacultyName">
+        <label>Faculty Name <span class="req">*</span></label>
+        <input class="input" id="socInputFacultyName" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? ($user['name'] ?? '')) ?>" placeholder="Faculty member full name" <?= $socCategory === 'Faculty' ? 'required' : '' ?>>
+      </div>
+    </div>
+
+    <!-- Dynamic Student Fields Container -->
+    <div id="socStudentFieldsRow" style="display: <?= $socCategory === 'Student' ? 'contents' : 'none' ?>;">
+      <div class="field" id="socFieldRegNo">
+        <label style="display:flex; align-items:center; justify-content:space-between;">
+          <span>Student Register Number <span class="req">*</span></span>
+          <span id="socLookupBadge" style="font-size:11px; font-weight:600; display:none;"></span>
+        </label>
+        <input class="input" id="socInputRegNo" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001" autocomplete="off" <?= $socCategory === 'Student' ? 'required' : '' ?>>
+      </div>
+      <div class="field" id="socFieldStudentName">
+        <label>Student Name <span class="req">*</span></label>
+        <input class="input" id="socInputStudentName" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="Student full name" <?= $socCategory === 'Student' ? 'required' : '' ?>>
+      </div>
+      <div class="field" id="socFieldClassYear">
+        <label>Class / Year of Study</label>
+        <select class="select" id="socInputClassYear" name="class_year">
+          <option value="">-- Select Year --</option>
+          <option value="I Year" <?= ($editRecord['class_year'] ?? '') === 'I Year' ? 'selected' : '' ?>>I Year</option>
+          <option value="II Year" <?= ($editRecord['class_year'] ?? '') === 'II Year' ? 'selected' : '' ?>>II Year</option>
+          <option value="III Year" <?= ($editRecord['class_year'] ?? '') === 'III Year' ? 'selected' : '' ?>>III Year</option>
+          <option value="IV Year" <?= ($editRecord['class_year'] ?? '') === 'IV Year' ? 'selected' : '' ?>>IV Year</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Common Fields across Faculty and Student -->
+    <?php render_dept_field($user, $departments, 'Department', true); ?>
+    <?php render_academic_year_field(); ?>
+
+    <div class="field">
+      <label>Professional Society <span class="req">*</span></label>
+      <input class="input" id="socInputSocietyName" name="society_name" placeholder="e.g. IEEE, CSI, ISTE, ACM, ASME" value="<?= e($editRecord['society_name'] ?? '') ?>" required>
+    </div>
+
+    <div class="field">
+      <label>Membership Number <span class="req">*</span></label>
+      <input class="input" id="socInputMembershipNumber" name="membership_number" placeholder="e.g. 98765432" value="<?= e($editRecord['membership_number'] ?? '') ?>" required>
+    </div>
+
+    <div class="field">
+      <label>Membership Type</label>
+      <select class="select" id="socMembershipTypeSelect" name="membership_type">
+        <?php
+          $currentMType = $editRecord['membership_type'] ?? '';
+          $typeList = ($socCategory === 'Student') ? $memTypesStudent : $memTypesFaculty;
+          foreach ($typeList as $mt):
+        ?>
+          <option value="<?= e($mt) ?>" <?= $currentMType === $mt ? 'selected' : '' ?>><?= e($mt) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Start Date</label>
+      <input class="input" name="start_date" type="date" value="<?= e($editRecord['start_date'] ?? '') ?>">
+    </div>
+
+    <div class="field">
+      <label>Expiry Date</label>
+      <input class="input" name="expiry_date" type="date" value="<?= e($editRecord['expiry_date'] ?? '') ?>">
+    </div>
+
+    <div class="field">
+      <label>Status</label>
+      <select class="select" name="membership_status">
+        <option value="Active" <?= ($editRecord['membership_status'] ?? '') === 'Active' ? 'selected' : '' ?>>Active</option>
+        <option value="Permanent" <?= ($editRecord['membership_status'] ?? '') === 'Permanent' ? 'selected' : '' ?>>Permanent</option>
+        <option value="Expired" <?= ($editRecord['membership_status'] ?? '') === 'Expired' ? 'selected' : '' ?>>Expired</option>
+        <option value="Renewed" <?= ($editRecord['membership_status'] ?? '') === 'Renewed' ? 'selected' : '' ?>>Renewed</option>
+      </select>
+    </div>
+  </div>
+  <!-- End Individual Fields Container -->
 
 <?php elseif ($selectedType === 'inst_newsletters'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Newsletter Title <span class="req">*</span></label><input class="input" name="newsletter_title" required></div>
   <div class="field"><label>Volume</label><input class="input" name="volume" placeholder="e.g. Volume 5"></div>
@@ -1489,7 +1605,7 @@
 
 <?php elseif ($selectedType === 'inst_student_certifications'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
   <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
@@ -1513,7 +1629,7 @@
 
 <?php elseif ($selectedType === 'inst_nss_events'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
   <div class="field"><label>Date <span class="req">*</span></label><input class="input" name="event_date" type="date" required></div>
@@ -1524,51 +1640,95 @@
   <div class="field" style="grid-column:span 2"><label>Description</label><textarea class="input" name="description" rows="2"></textarea></div>
   <div class="field" style="grid-column:span 2"><label>Outcome</label><textarea class="input" name="outcome" rows="2"></textarea></div>
 
-<?php elseif ($selectedType === 'inst_inter_inst_within'): ?>
+<?php elseif (in_array($selectedType, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true)): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>Location (Within State) <span class="req">*</span></label><input class="input" name="location" placeholder="e.g. Chennai, Coimbatore, Madurai" required></div>
-  <div class="field"><label>Event Date <span class="req">*</span></label><input class="input" name="event_date" type="date" required></div>
-  <div class="field"><label>Participation Type</label><input class="input" name="participation_type" placeholder="Symposium / Hackathon / Paper"></div>
-  <div class="field"><label>Position / Award</label><input class="input" name="position_award" placeholder="1st Prize / Runner / Participation"></div>
-
-<?php elseif ($selectedType === 'inst_inter_inst_outside'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
-  <?php render_exam_session_field($effectiveYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>State (Outside State) <span class="req">*</span></label><input class="input" name="state_name" placeholder="e.g. Karnataka, Kerala, Maharashtra" required></div>
-  <div class="field"><label>City <span class="req">*</span></label><input class="input" name="city" placeholder="e.g. Bengaluru, Kochi, Mumbai" required></div>
-  <div class="field"><label>Location / Campus</label><input class="input" name="location"></div>
-  <div class="field"><label>Event Date <span class="req">*</span></label><input class="input" name="event_date" type="date" required></div>
-  <div class="field"><label>Participation Type</label><input class="input" name="participation_type" placeholder="Symposium / Hackathon / Conference"></div>
-  <div class="field"><label>Position / Award</label><input class="input" name="position_award" placeholder="Winner / 1st Prize / Participant"></div>
-
-<?php elseif ($selectedType === 'inst_inter_inst_awards'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
-  <?php render_exam_session_field($effectiveYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>State</label><input class="input" name="state_name" placeholder="State"></div>
-  <div class="field"><label>Location <span class="req">*</span></label><input class="input" name="location" required></div>
-  <div class="field"><label>Award / Medal <span class="req">*</span></label><input class="input" name="award_medal" placeholder="e.g. Gold Medal / 1st Prize / Cash Award" required></div>
-  <div class="field"><label>Position Secured</label><input class="input" name="position_secured" placeholder="1st / 2nd / Winner"></div>
-  <div class="field"><label>Event Date <span class="req">*</span></label><input class="input" name="event_date" type="date" required></div>
+  <?php
+    $currentLevel = $editRecord['event_level'] ?? 'State — Within State';
+    if ($selectedType === 'inst_inter_inst_outside' && empty($editRecord['event_level'])) {
+        $currentLevel = 'State — Outside State';
+    }
+    $currentPType = $editRecord['participation_type'] ?? 'Participant';
+    if (empty($currentPType) && !empty($editRecord['award_medal'])) {
+        $currentPType = 'Winner / First Place';
+    }
+    $currentAchType = $editRecord['achievement_type'] ?? (in_array($currentPType, ['Winner / First Place', 'Second Runner', 'Third Runner'], true) ? 'Medal' : 'Participation');
+  ?>
+  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="e.g. Aravind Kumar"></div>
+  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001"></div>
+  <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required value="<?= e($editRecord['event_name'] ?? '') ?>" placeholder="e.g. National Level Technical Symposium / Hackathon"></div>
+  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required value="<?= e($editRecord['host_institution'] ?? '') ?>" placeholder="e.g. PSG College of Technology"></div>
+  <div class="field">
+    <label>Event Level <span class="req">*</span></label>
+    <select class="select" name="event_level" id="inter_inst_event_level" required>
+      <option value="District" <?= ($currentLevel === 'District') ? 'selected' : '' ?>>District</option>
+      <option value="State — Within State" <?= in_array($currentLevel, ['State — Within State', 'State', 'Within State'], true) ? 'selected' : '' ?>>State — Within State</option>
+      <option value="State — Outside State" <?= in_array($currentLevel, ['State — Outside State', 'Outside State'], true) ? 'selected' : '' ?>>State — Outside State</option>
+      <option value="National" <?= ($currentLevel === 'National') ? 'selected' : '' ?>>National</option>
+      <option value="International" <?= ($currentLevel === 'International') ? 'selected' : '' ?>>International</option>
+    </select>
+  </div>
+  <div class="field"><label>Location / City <span class="req">*</span></label><input class="input" name="location" required value="<?= e($editRecord['location'] ?? ($editRecord['city'] ?? '')) ?>" placeholder="e.g. Madurai, Chennai, Bengaluru"></div>
+  <div class="field"><label>District / State Name <span class="card-sub">(Contextual)</span></label><input class="input" name="state_name" value="<?= e($editRecord['state_name'] ?? ($editRecord['district_name'] ?? ($editRecord['state'] ?? ''))) ?>" placeholder="e.g. Madurai / Tamil Nadu / Karnataka"></div>
+  <div class="field"><label>Event Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required value="<?= e($editRecord['event_date'] ?? '') ?>" max="<?= app_ist_today() ?>"></div>
+  <div class="field">
+    <label>Participation Type <span class="req">*</span></label>
+    <select class="select" name="participation_type" id="inter_inst_participation_type" required>
+      <option value="Participant" <?= ($currentPType === 'Participant') ? 'selected' : '' ?>>Participant</option>
+      <option value="Winner / First Place" <?= in_array($currentPType, ['Winner / First Place', 'Winner', 'First Place', '1st Place'], true) ? 'selected' : '' ?>>Winner / First Place</option>
+      <option value="Second Runner" <?= in_array($currentPType, ['Second Runner', '2nd Runner', 'Runner-up', 'Second Place'], true) ? 'selected' : '' ?>>Second Runner</option>
+      <option value="Third Runner" <?= in_array($currentPType, ['Third Runner', '3rd Runner', 'Third Place'], true) ? 'selected' : '' ?>>Third Runner</option>
+      <option value="Presenter" <?= ($currentPType === 'Presenter') ? 'selected' : '' ?>>Presenter</option>
+    </select>
+  </div>
+  <div class="field"><label>Position / Medal <span class="card-sub">(if won)</span></label><input class="input" name="position_award" id="inter_inst_position_award" value="<?= e($editRecord['position_award'] ?? ($editRecord['award_medal'] ?? ($editRecord['award'] ?? ''))) ?>" placeholder="e.g. First Place / 2nd Runner / Gold Medal"></div>
+  <div class="field">
+    <label>Event Participation / Achievement Type</label>
+    <select class="select" name="achievement_type" id="inter_inst_achievement_type">
+      <option value="Participation" <?= ($currentAchType === 'Participation') ? 'selected' : '' ?>>Participation</option>
+      <option value="Medal" <?= in_array($currentAchType, ['Medal', 'Award / Prize Winner', 'Award'], true) ? 'selected' : '' ?>>Medal</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Participation Format</label>
+    <select class="select" name="team_individual">
+      <option value="Individual" <?= (($editRecord['team_individual'] ?? '') !== 'Team') ? 'selected' : '' ?>>Individual</option>
+      <option value="Team" <?= (($editRecord['team_individual'] ?? '') === 'Team') ? 'selected' : '' ?>>Team</option>
+    </select>
+  </div>
+  <div class="field" style="grid-column:span 2">
+    <label for="inter_inst_cert_link_2">Certificate Link (Optional) <span class="card-sub">(https://...)</span></label>
+    <input class="input" name="certificate_link" id="inter_inst_cert_link_2" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" placeholder="https://example.com/certificate.pdf">
+  </div>
+  <script>
+    (function(){
+      var pSel = document.getElementById('inter_inst_participation_type');
+      var aSel = document.getElementById('inter_inst_achievement_type');
+      var posInp = document.getElementById('inter_inst_position_award');
+      if (pSel && aSel) {
+        pSel.addEventListener('change', function(){
+          var v = pSel.value;
+          if (v === 'Winner / First Place') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'First Place';
+          } else if (v === 'Second Runner') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'Second Runner';
+          } else if (v === 'Third Runner') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'Third Runner';
+          } else {
+            aSel.value = 'Participation';
+          }
+        });
+      }
+    })();
+  </script>
 
 <?php elseif ($selectedType === 'inst_value_added_courses'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Course Name <span class="req">*</span></label><input class="input" name="course_name" required></div>
   <div class="field"><label>Course Type</label><select class="select" name="course_type"><option value="Value Added Course">Value Added Course</option><option value="Hands-on Training">Hands-on Training</option><option value="Bootcamp">Bootcamp</option><option value="Technical Workshop">Technical Workshop</option></select></div>
@@ -1613,7 +1773,7 @@
   <input type="hidden" name="orig_type" value="<?= e($selectedType) ?>">
 
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
 
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" id="sports_student_name" placeholder="e.g. Deepak S" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
@@ -1942,7 +2102,7 @@
 
 <?php elseif ($selectedType === 'inst_innovation_events'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" placeholder="e.g. Department Hackathon / Ideathon" required></div>
   <div class="field"><label>Event Type <span class="req">*</span></label>
@@ -1963,7 +2123,7 @@
 
 <?php elseif ($selectedType === 'inst_iic_activities'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Activity Name <span class="req">*</span></label><input class="input" name="activity_name" required></div>
   <div class="field"><label>Activity Type <span class="req">*</span></label>
@@ -1982,7 +2142,7 @@
 
 <?php elseif ($selectedType === 'inst_website_updations'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Update Title <span class="req">*</span></label><input class="input" name="update_title" placeholder="e.g. Faculty Profile Update / New Syllabus" required></div>
   <div class="field"><label>Page / Section Updated <span class="req">*</span></label><input class="input" name="page_section" placeholder="e.g. Dept Homepage, Labs, Research" required></div>
@@ -1993,7 +2153,7 @@
 
 <?php elseif ($selectedType === 'inst_google_ratings'): ?>
   <?php render_dept_field($user, $departments, 'Institution / Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Google Rating <span class="req">*</span> <span class="card-sub">(1.0 to 5.0)</span></label>
     <input class="input" name="google_rating" type="number" step="0.1" min="1.0" max="5.0" placeholder="e.g. 4.6" required>
@@ -2010,7 +2170,7 @@
 
 <?php elseif ($selectedType === 'inst_startups'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field" style="grid-column:span 2"><label>Startup Name <span class="req">*</span></label><input class="input" name="startup_name" required></div>
   <div class="field" style="grid-column:span 2"><label>Founder(s) <span class="req">*</span></label><input class="input" name="founders" placeholder="Names of student / faculty founders" required></div>
@@ -2031,7 +2191,7 @@
 
 <?php elseif ($selectedType === 'inst_alumni_chapters'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Chapter Name <span class="req">*</span></label><input class="input" name="chapter_name" placeholder="e.g. Chennai Chapter, USA Chapter" required></div>
   <div class="field"><label>Location / City <span class="req">*</span></label><input class="input" name="location" required></div>
@@ -2043,7 +2203,7 @@
 
 <?php elseif ($selectedType === 'inst_awards_recognitions'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Person Name <span class="req">*</span></label><input class="input" name="person_name" value="<?= e($user['name']) ?>" required></div>
   <div class="field"><label>Faculty Name (if applicable)</label><input class="input" name="faculty_name" placeholder="Faculty name"></div>
@@ -2068,7 +2228,7 @@
 
 <?php elseif ($selectedType === 'inst_spoken_tutorials'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field"><label>Academic Year <span class="card-sub">— Locked by Admin</span></label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Locked by Admin"></div>
+  <?php render_academic_year_field(); ?>
   <?php render_exam_session_field($effectiveYear); ?>
   <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
   <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>

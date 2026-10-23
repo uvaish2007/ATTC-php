@@ -82,12 +82,12 @@ function record_types(): array
         'inst_student_certifications' => ['table' => 'inst_student_certifications', 'label' => 'Student Online Certification', 'title_col' => 'student_name', 'approval_required' => true],
         // 25. NSS Events
         'inst_nss_events'          => ['table' => 'inst_nss_events',          'label' => 'Events Conducted by NSS',                  'title_col' => 'event_name',   'approval_required' => true],
-        // 26. Inter-Institute Events — Within State
-        'inst_inter_inst_within'   => ['table' => 'inst_inter_inst_within',   'label' => 'Inter-Institute Events — Within State',    'title_col' => 'student_name', 'approval_required' => true],
-        // 27. Inter-Institute Events — Outside State
-        'inst_inter_inst_outside'  => ['table' => 'inst_inter_inst_outside',  'label' => 'Inter-Institute Events — Outside State',   'title_col' => 'student_name', 'approval_required' => true],
-        // 28. Awards/Medals in Inter-Institute Events
-        'inst_inter_inst_awards'   => ['table' => 'inst_inter_inst_awards',   'label' => 'Awards / Medals — Inter-Institute Events', 'title_col' => 'student_name', 'approval_required' => true],
+        // 26. Inter-Institute Events (Unified)
+        'inst_inter_inst_within'   => ['table' => 'inst_inter_inst_within',   'label' => 'Student Participation in Inter-Institute Events and Awards / Medals',    'title_col' => 'student_name', 'approval_required' => true],
+        // 27. Inter-Institute Events — Outside State (Legacy Map)
+        'inst_inter_inst_outside'  => ['table' => 'inst_inter_inst_within',  'label' => 'Inter-Institute Events — Outside State',   'title_col' => 'student_name', 'approval_required' => true],
+        // 28. Awards/Medals in Inter-Institute Events (Legacy Map)
+        'inst_inter_inst_awards'   => ['table' => 'inst_inter_inst_within',   'label' => 'Awards / Medals — Inter-Institute Events', 'title_col' => 'student_name', 'approval_required' => true],
         // 29. Value Added / Hands-On Training Courses
         'inst_value_added_courses' => ['table' => 'inst_value_added_courses', 'label' => 'Value Added / Hands-On Training Courses',  'title_col' => 'course_name',  'approval_required' => true],
         // 30. Sports — State Level
@@ -581,10 +581,11 @@ function publication_position_label(int $position): string
     return publication_ordinal($position) . ' Author';
 }
 
-// Years offered for "Month & Year of Publication", newest first.
+// Years offered for "Month & Year of Publication", newest first through 2060.
 function publication_years(): array
 {
-    return range((int) date('Y') + 1, 2000);
+    $maxYear = max(2060, (int) date('Y') + 1);
+    return range($maxYear, 2000);
 }
 
 // The bare DOI ("10.1234/ABC123") from a DOI, a doi: reference or a doi.org
@@ -753,6 +754,11 @@ function publication_prepare_authors(array $user, array $in, string $noun): arra
     if ($dept === '' || department_names_match($dept, $user['department'] ?? '')) {
         $dept = (string) ($user['department'] ?? $dept);
     }
+
+    // Backend validation: Reject inconsistent department if submitted
+    if (isset($in['department']) && trim((string)$in['department']) !== '' && !department_names_match(trim((string)$in['department']), $dept)) {
+        $errors[] = "Submitted department does not match the selected Main Author's authoritative department ({$dept}).";
+    }
     $coText = [];
     foreach (array_slice($authors, 1) as $a) {
         $coText[] = $a['name'] . ($a['position'] ? ' (' . publication_position_label($a['position']) . ')' : '');
@@ -777,7 +783,17 @@ function publication_month_year(array $in): array
         || !preg_match('/^\d{4}$/', $year) || !in_array((int) $year, publication_years(), true)) {
         return ['', '', 'Choose the Month and Year of Publication from the lists.'];
     }
-    return [sprintf('%02d/%s', (int) $month, $year), $year, null];
+
+    $mInt = (int) $month;
+    $yInt = (int) $year;
+    if (function_exists('validate_submission_month_year')) {
+        $err = validate_submission_month_year($mInt, $yInt, 'Publication month and year');
+        if ($err !== null) {
+            return ['', '', $err];
+        }
+    }
+
+    return [sprintf('%02d/%s', $mInt, $year), $year, null];
 }
 
 // Optional DOI: [doi, doi_key, error].
@@ -1345,6 +1361,136 @@ function publication_edit_values(string $type, array $record): array
     return $vals;
 }
 
+/**
+ * Validates a Conference upload server-side and returns the authoritative values to store.
+ *
+ * @return array{0: array, 1: string[]} [clean column values, errors]
+ */
+function conference_prepare_submission(array $user, array $in): array
+{
+    $errors = [];
+    $out    = [];
+
+    $mainOpts = array_column(publication_main_author_options($user), null, 'id');
+    $mainId   = (int) ($in['main_author_id'] ?? 0);
+
+    // Support fallback to matching faculty_name if editing legacy record without main_author_id
+    if ($mainId === 0 && !empty($in['faculty_name'])) {
+        foreach ($mainOpts as $f) {
+            if (trim($f['name']) === trim((string)$in['faculty_name'])) {
+                $mainId = (int) $f['id'];
+                break;
+            }
+        }
+    }
+
+    if (!isset($mainOpts[$mainId])) {
+        $errors[] = ($user['role'] ?? '') === 'Faculty'
+            ? 'The Main Author of a conference publication you upload must be yourself.'
+            : 'Select the Main Author from the faculty list.';
+    }
+
+    $author = $mainOpts[$mainId] ?? null;
+    $dept   = $author ? trim((string) $author['department']) : '';
+    if ($dept === '' || department_names_match($dept, $user['department'] ?? '')) {
+        $dept = (string) ($user['department'] ?? $dept);
+    }
+
+    // Backend validation: Reject inconsistent department if submitted
+    if (isset($in['department']) && trim((string)$in['department']) !== '' && !department_names_match(trim((string)$in['department']), $dept)) {
+        $errors[] = "Submitted department does not match the selected Main Author's authoritative department ({$dept}).";
+    }
+
+    $out['main_author_id'] = $mainId;
+    $out['faculty_name']   = $author ? $author['name'] : trim((string)($in['faculty_name'] ?? ''));
+    $out['department']     = $dept;
+
+    // Validate Author Type
+    $authorTypes = ['First Author', 'Corresponding Author', 'Co-Author'];
+    $authorType  = trim((string) ($in['author_type'] ?? ''));
+    if (!in_array($authorType, $authorTypes, true)) {
+        $errors[] = 'Author Type is required: choose ' . implode(', ', $authorTypes) . '.';
+    }
+    $out['author_type'] = $authorType;
+
+    // Validate Paper Title
+    $paperTitle = trim((string) ($in['paper_title'] ?? ''));
+    if ($paperTitle === '') {
+        $errors[] = 'Title of the Paper is required.';
+    } elseif (mb_strlen($paperTitle) > 500) {
+        $errors[] = 'Title of the Paper must be 500 characters or fewer.';
+    }
+    $out['paper_title'] = $paperTitle;
+
+    // Validate Conference Name
+    $confName = trim((string) ($in['conference_name'] ?? ''));
+    if ($confName === '') {
+        $errors[] = 'Conference Name is required.';
+    } elseif (mb_strlen($confName) > 255) {
+        $errors[] = 'Conference Name must be 255 characters or fewer.';
+    }
+    $out['conference_name'] = $confName;
+
+    // Validate Conference Type
+    $confType = trim((string) ($in['conference_type'] ?? ''));
+    if (!in_array($confType, ['National', 'International'], true)) {
+        $errors[] = 'Type is required: choose National or International.';
+    }
+    $out['conference_type'] = $confType;
+
+    // Validate Venue
+    $venue = trim((string) ($in['venue'] ?? ''));
+    if ($venue === '') {
+        $errors[] = 'Venue is required.';
+    } elseif (mb_strlen($venue) > 255) {
+        $errors[] = 'Venue must be 255 characters or fewer.';
+    }
+    $out['venue'] = $venue;
+
+    // Validate Conference Date
+    $confDate = trim((string) ($in['conference_date'] ?? ''));
+    if ($confDate === '' || strtotime($confDate) === false) {
+        $errors[] = 'Conference Date must be a valid date.';
+    }
+    $out['conference_date'] = $confDate;
+
+    // Validate Publication Year (extended through 2060)
+    $pubYear = trim((string) ($in['publication_year'] ?? ''));
+    if ($pubYear === '' || !in_array((int)$pubYear, publication_years(), true)) {
+        $errors[] = 'Year of Publication must be chosen from the supported list (2000 to 2060).';
+    }
+    $out['publication_year'] = $pubYear;
+
+    // Optional DOI
+    if (!empty($in['doi'])) {
+        [$out['doi'], , $doiError] = publication_doi_input($in['doi']);
+        if ($doiError !== null) {
+            $errors[] = $doiError;
+        }
+    } else {
+        $out['doi'] = null;
+    }
+
+    // Optional ISBN / ISSN
+    $out['isbn'] = trim((string) ($in['isbn'] ?? '')) ?: null;
+
+    // Optional Proceedings Link
+    $procLink = trim((string) ($in['proceedings_link'] ?? ''));
+    if ($procLink !== '') {
+        if (!preg_match('/^https?:\/\/.+/i', $procLink)) {
+            $errors[] = 'Proceedings Link must be a valid URL starting with http:// or https://.';
+        }
+        $out['proceedings_link'] = $procLink;
+    } else {
+        $out['proceedings_link'] = null;
+    }
+
+    // Optional Co-Authors
+    $out['co_authors'] = trim((string) ($in['co_authors'] ?? '')) ?: null;
+
+    return [$out, $errors];
+}
+
 function journal_process_approval_expiry(?int $specificId = null, bool $forceCheck = false): int
 {
     static $checkedThisRequest = false;
@@ -1640,7 +1786,7 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
             $row['_person']     = $row['faculty_name']
                 ?? $row['student_name']
                 ?? $row['candidate_name']
-                ?? '';
+                ?? ($row['resource_person_name'] ?? ($row['resource_person'] ?? ''));
             $all[] = $key === 'nptel' ? nptel_decorate_row($row) : $row;
         }
     }
@@ -2823,11 +2969,19 @@ function record_display_attributes(string $type, array $record): array
         'participants_count'  => 'Participants Count',
         'organization'        => 'Organization / Agency',
         'student_name'        => 'Student Name',
-        'company_name'        => 'Company / Institution',
-        'salary_package'      => 'Package / Stipend',
-        'course_title'        => 'Course Title',
-        'score'               => 'Score / Grade',
-        'activity_name'       => 'Activity Name',
+        'company_name'            => 'Company / Institution Name',
+        'salary_package'          => 'Package / Stipend',
+        'course_title'            => 'Course Title',
+        'score'                   => 'Score / Grade',
+        'activity_name'           => 'Activity Name',
+        'resource_person_name'    => 'Resource Person Name',
+        'designation'             => 'Designation',
+        'resource_person_address' => 'Resource Person Address',
+        'company_address'         => 'Company / Institution Address',
+        'contact_number'          => 'Contact Number',
+        'email'                   => 'Email Address',
+        'event_report_file'       => 'Event Report',
+        'resource_person'         => 'Resource Person',
     ];
 
     $ignoreCols = [

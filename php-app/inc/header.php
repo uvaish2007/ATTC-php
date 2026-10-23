@@ -126,6 +126,8 @@ $flashes      = take_flashes();
                 $isActive = (strtok($item['path'], '?') === 'approvals.php');
               } elseif ($active === 'password-requests.php') {
                 $isActive = (strtok($item['path'], '?') === 'settings.php');
+              } elseif ($active === 'form-studio.php') {
+                $isActive = (strtok($item['path'], '?') === 'admin-metrics.php');
               } else {
                 $isActive = (strtok($item['path'], '?') === $active);
               }
@@ -185,6 +187,16 @@ $flashes      = take_flashes();
           </button>
           <?php if ($breadcrumb === 'Dashboard'): ?>
             <span class="topbar-dash-label">ATTS DASHBOARD</span>
+          <?php elseif (is_array($breadcrumb)): ?>
+            <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS DASHBOARD</a>
+            <?php foreach ($breadcrumb as $bc): ?>
+              <span class="sep"><?= icon('chevron', 14) ?></span>
+              <?php if (!empty($bc['url'])): ?>
+                <a class="root" href="<?= e(url($bc['url'])) ?>"><?= e($bc['label']) ?></a>
+              <?php else: ?>
+                <span class="cur" title="<?= e($bc['label']) ?>"><?= e($bc['label']) ?></span>
+              <?php endif; ?>
+            <?php endforeach; ?>
           <?php else: ?>
             <a class="root" href="<?= e(url('dashboard.php')) ?>">ATTS DASHBOARD</a>
             <span class="sep"><?= icon('chevron', 14) ?></span>
