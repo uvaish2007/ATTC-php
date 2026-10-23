@@ -15,8 +15,30 @@ $activeYear = active_academic_year();
 
 $action = trim((string)($_POST['action'] ?? $_GET['action'] ?? ''));
 $module = trim((string)($_POST['module'] ?? $_GET['module'] ?? BulkImport::MODULE_INTERNSHIP));
-if (!in_array($module, [BulkImport::MODULE_INTERNSHIP, BulkImport::MODULE_SUMMER_TRAINING], true)) {
+$validModules = [
+    BulkImport::MODULE_INTERNSHIP,
+    BulkImport::MODULE_SUMMER_TRAINING,
+    BulkImport::MODULE_SOCIETY_FACULTY,
+    BulkImport::MODULE_SOCIETY_STUDENT,
+];
+if (!in_array($module, $validModules, true)) {
     $module = BulkImport::MODULE_INTERNSHIP;
+}
+
+function get_bulk_redirect_url(string $mod, ?string $previewBatch = null): string {
+    if ($mod === BulkImport::MODULE_SOCIETY_FACULTY || $mod === BulkImport::MODULE_SOCIETY_STUDENT) {
+        $cat = ($mod === BulkImport::MODULE_SOCIETY_FACULTY) ? 'Faculty' : 'Student';
+        $url = '/upload.php?section=society_memberships&type=inst_society_memberships&mode=bulk&category=' . $cat;
+        if ($previewBatch) {
+            $url .= '&bulk_preview=' . urlencode($previewBatch);
+        }
+        return $url;
+    }
+    $url = '/upload.php?type=' . urlencode($mod);
+    if ($previewBatch) {
+        $url .= '&bulk_preview=' . urlencode($previewBatch);
+    }
+    return $url;
 }
 
 $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
@@ -49,7 +71,7 @@ if ($action === 'template') {
             exit;
         }
         flash('error', 'Failed to generate template: ' . $e->getMessage());
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 }
 
@@ -68,7 +90,7 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     $file = $_FILES['excel_file'] ?? null;
@@ -80,7 +102,7 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     // Size limit: 10 MB
@@ -92,7 +114,7 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     // Extension check
@@ -105,7 +127,7 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     // Optional Proofs Archive (.zip) - preserved for backward compatibility
@@ -140,7 +162,7 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // Standard redirect with preview token
-        redirect('/upload.php?type=' . urlencode($module) . '&bulk_preview=' . urlencode($previewData['batch_id']));
+        redirect(get_bulk_redirect_url($module, $previewData['batch_id']));
     } catch (\Throwable $e) {
         if ($isAjax) {
             header('Content-Type: application/json');
@@ -148,7 +170,7 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $e->getMessage());
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 }
 
@@ -167,7 +189,7 @@ if ($action === 'confirm_import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     $previewData = $_SESSION['atts_bulk_previews'][$batchId];
@@ -181,7 +203,7 @@ if ($action === 'confirm_import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     try {
@@ -207,8 +229,8 @@ if ($action === 'confirm_import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
 
-        flash('success', "SmartBulk Import Successful: {$result['imported_records']} student records imported for {$result['module_label']}.");
-        redirect('/upload.php?type=' . urlencode($module));
+        flash('success', "SmartBulk Import Successful: {$result['imported_records']} records imported for {$result['module_label']}.");
+        redirect(get_bulk_redirect_url($module));
     } catch (\Throwable $e) {
         if ($isAjax) {
             header('Content-Type: application/json');
@@ -216,7 +238,7 @@ if ($action === 'confirm_import' && $_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         flash('error', 'Import failed: ' . $e->getMessage());
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 }
 
@@ -270,7 +292,7 @@ if ($action === 'download_errors') {
 
     if (empty($errors)) {
         flash('info', 'No validation errors found for this import batch.');
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 
     try {
@@ -289,7 +311,7 @@ if ($action === 'download_errors') {
         exit;
     } catch (\Throwable $e) {
         flash('error', 'Failed to generate error report: ' . $e->getMessage());
-        redirect('/upload.php?type=' . urlencode($module));
+        redirect(get_bulk_redirect_url($module));
     }
 }
 
@@ -318,4 +340,4 @@ if ($action === 'history') {
 }
 
 // Fallback
-redirect('/upload.php?type=' . urlencode($module));
+redirect(get_bulk_redirect_url($module));

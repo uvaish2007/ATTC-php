@@ -818,16 +818,134 @@
   <div class="field"><label>Certificate Number</label><input class="input" name="certificate_number"></div>
 
 <?php elseif ($selectedType === 'inst_society_memberships'): ?>
-  <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php render_academic_year_field(); ?>
-  <?php render_exam_session_field($effectiveYear); ?>
-  <div class="field"><label>Professional Society <span class="req">*</span></label><input class="input" name="society_name" placeholder="e.g. IEEE, ACM, CSI, ISTE, ASME" required></div>
-  <div class="field"><label>Membership Number <span class="req">*</span></label><input class="input" name="membership_number" required></div>
-  <div class="field"><label>Membership Type</label><input class="input" name="membership_type" placeholder="Life Member / Annual / Fellow"></div>
-  <div class="field"><label>Start Date</label><input class="input" name="start_date" type="date"></div>
-  <div class="field"><label>Expiry Date</label><input class="input" name="expiry_date" type="date"></div>
-  <div class="field"><label>Status</label><input class="input" name="membership_status" placeholder="Active / Permanent"></div>
+  <?php
+    $socCategory = $editRecord['membership_category'] ?? ($_GET['category'] ?? 'Faculty');
+    if (!in_array($socCategory, ['Faculty', 'Student'], true)) {
+        $socCategory = 'Faculty';
+    }
+    $socMode = $_GET['mode'] ?? 'individual';
+    $isSocBulk = ($socMode === 'bulk') && empty($editRecord);
+    $memTypesFaculty = ['Life Member', 'Annual Member', 'Fellow', 'Senior Member', 'Associate Member', 'Member'];
+    $memTypesStudent = ['Student Member', 'Annual Member', 'Life Member', 'Member'];
+  ?>
+
+  <!-- Top Form Control 1: Membership Category Dropdown -->
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 6px;">
+    <label style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <span style="font-size:13px; font-weight:700; color:#131D3B;">Membership Category <span class="req" style="color:#DC2626;">*</span></span>
+      <span class="card-sub" style="font-size:11.5px; color:#64748B;">Select member classification to update entry controls and validation rules</span>
+    </label>
+    <select class="select" id="socCategorySelect" name="membership_category" style="font-size:13.5px; font-weight:600; color:#131D3B; border-color:#FF4F01; background-color:#FFF7ED; padding:9px 14px;" required>
+      <option value="Faculty" <?= $socCategory === 'Faculty' ? 'selected' : '' ?>>Faculty</option>
+      <option value="Student" <?= $socCategory === 'Student' ? 'selected' : '' ?>>Student</option>
+    </select>
+  </div>
+
+  <!-- Top Form Control 2: Individual Entry / Bulk Upload Selector -->
+  <?php if (empty($editRecord)): ?>
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:8px 14px;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748B;">Upload Mode:</span>
+        <div style="display:inline-flex; background:#E2E8F0; padding:3px; border-radius:8px; gap:4px;">
+          <button type="button" id="socBtnModeInd" class="btn-mode-toggle <?= !$isSocBulk ? 'active' : '' ?>" onclick="setSocietyInputMode('individual')">
+            <?= icon('user', 14) ?> Individual Entry
+          </button>
+          <button type="button" id="socBtnModeBulk" class="btn-mode-toggle <?= $isSocBulk ? 'active' : '' ?>" onclick="setSocietyInputMode('bulk')">
+            <?= icon('upload', 14) ?> Bulk Upload
+          </button>
+        </div>
+      </div>
+      <span id="socModeHelpText" style="font-size:12px; color:#64748B;">
+        <?= $isSocBulk ? 'Batch import multiple records via validated Excel spreadsheet (.xlsx)' : 'Submit an individual membership record with certificate upload' ?>
+      </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Individual Fields Container (Displayed when mode is Individual Entry) -->
+  <div id="socIndividualFieldsGroup" style="display: contents;">
+    <!-- Dynamic Faculty Fields Container -->
+    <div id="socFacultyFieldsRow" style="display: <?= $socCategory === 'Faculty' ? 'contents' : 'none' ?>;">
+      <div class="field" id="socFieldFacultyName">
+        <label>Faculty Name <span class="req">*</span></label>
+        <input class="input" id="socInputFacultyName" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? ($user['name'] ?? '')) ?>" placeholder="Faculty member full name" <?= $socCategory === 'Faculty' ? 'required' : '' ?>>
+      </div>
+    </div>
+
+    <!-- Dynamic Student Fields Container -->
+    <div id="socStudentFieldsRow" style="display: <?= $socCategory === 'Student' ? 'contents' : 'none' ?>;">
+      <div class="field" id="socFieldRegNo">
+        <label style="display:flex; align-items:center; justify-content:space-between;">
+          <span>Student Register Number <span class="req">*</span></span>
+          <span id="socLookupBadge" style="font-size:11px; font-weight:600; display:none;"></span>
+        </label>
+        <input class="input" id="socInputRegNo" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001" autocomplete="off" <?= $socCategory === 'Student' ? 'required' : '' ?>>
+      </div>
+      <div class="field" id="socFieldStudentName">
+        <label>Student Name <span class="req">*</span></label>
+        <input class="input" id="socInputStudentName" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="Student full name" <?= $socCategory === 'Student' ? 'required' : '' ?>>
+      </div>
+      <div class="field" id="socFieldClassYear">
+        <label>Class / Year of Study</label>
+        <select class="select" id="socInputClassYear" name="class_year">
+          <option value="">-- Select Year --</option>
+          <option value="I Year" <?= ($editRecord['class_year'] ?? '') === 'I Year' ? 'selected' : '' ?>>I Year</option>
+          <option value="II Year" <?= ($editRecord['class_year'] ?? '') === 'II Year' ? 'selected' : '' ?>>II Year</option>
+          <option value="III Year" <?= ($editRecord['class_year'] ?? '') === 'III Year' ? 'selected' : '' ?>>III Year</option>
+          <option value="IV Year" <?= ($editRecord['class_year'] ?? '') === 'IV Year' ? 'selected' : '' ?>>IV Year</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Common Fields across Faculty and Student -->
+    <?php render_dept_field($user, $departments, 'Department', true); ?>
+    <?php render_academic_year_field(); ?>
+
+    <div class="field">
+      <label>Professional Society <span class="req">*</span></label>
+      <input class="input" id="socInputSocietyName" name="society_name" placeholder="e.g. IEEE, CSI, ISTE, ACM, ASME" value="<?= e($editRecord['society_name'] ?? '') ?>" required>
+    </div>
+
+    <div class="field">
+      <label>Membership Number <span class="req">*</span></label>
+      <input class="input" id="socInputMembershipNumber" name="membership_number" placeholder="e.g. 98765432" value="<?= e($editRecord['membership_number'] ?? '') ?>" required>
+    </div>
+
+    <div class="field">
+      <label>Membership Type</label>
+      <select class="select" id="socMembershipTypeSelect" name="membership_type">
+        <?php
+          $currentMType = $editRecord['membership_type'] ?? '';
+          $typeList = ($socCategory === 'Student') ? $memTypesStudent : $memTypesFaculty;
+          foreach ($typeList as $mt):
+        ?>
+          <option value="<?= e($mt) ?>" <?= $currentMType === $mt ? 'selected' : '' ?>><?= e($mt) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Start Date</label>
+      <input class="input" name="start_date" type="date" value="<?= e($editRecord['start_date'] ?? '') ?>">
+    </div>
+
+    <div class="field">
+      <label>Expiry Date</label>
+      <input class="input" name="expiry_date" type="date" value="<?= e($editRecord['expiry_date'] ?? '') ?>">
+    </div>
+
+    <div class="field">
+      <label>Status</label>
+      <select class="select" name="membership_status">
+        <option value="Active" <?= ($editRecord['membership_status'] ?? '') === 'Active' ? 'selected' : '' ?>>Active</option>
+        <option value="Permanent" <?= ($editRecord['membership_status'] ?? '') === 'Permanent' ? 'selected' : '' ?>>Permanent</option>
+        <option value="Expired" <?= ($editRecord['membership_status'] ?? '') === 'Expired' ? 'selected' : '' ?>>Expired</option>
+        <option value="Renewed" <?= ($editRecord['membership_status'] ?? '') === 'Renewed' ? 'selected' : '' ?>>Renewed</option>
+      </select>
+    </div>
+  </div>
+  <!-- End Individual Fields Container -->
 
 <?php elseif ($selectedType === 'inst_newsletters'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>

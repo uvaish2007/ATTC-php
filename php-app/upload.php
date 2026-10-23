@@ -26,6 +26,93 @@ if (function_exists('inst_handle_ajax_upercent')) {
     inst_handle_ajax_upercent($user, $activeYear);
 }
 
+if (isset($_GET['action']) && $_GET['action'] === 'student_lookup') {
+    header('Content-Type: application/json; charset=utf-8');
+    $reg = trim((string)($_GET['reg_no'] ?? ''));
+    $info = null;
+    if ($reg !== '') {
+        $pdo = db();
+        try {
+            $stmt = $pdo->prepare("SELECT student_name, department, class_year FROM inst_society_memberships WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+            $stmt->execute([$reg]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row && !empty($row['student_name'])) {
+                $info = [
+                    'student_name' => $row['student_name'],
+                    'department'   => $row['department'] ?? '',
+                    'class_year'   => $row['class_year'] ?? '',
+                ];
+            }
+        } catch (\Throwable $e) {}
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department, class_year FROM student_participations WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => $row['class_year'] ?? '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM internships WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM summer_training WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department, year_of_study AS class_year FROM student_achievements WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => $row['class_year'] ?? '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+    }
+    echo json_encode([
+        'success' => true,
+        'found'   => (bool)$info,
+        'data'    => $info,
+    ]);
+    exit;
+}
+
 if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation'], true)) {
     flash('info', 'Student achievement records are now submitted under Student Participation in Inter-Institute Events and Awards / Medals.');
     redirect('/upload.php?section=inter_institute&type=co_curricular');
@@ -42,7 +129,8 @@ if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $f
     $isCert  = in_array($t, ['fdp'], true);
     $isInterInst = in_array($t, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
     $isValueAdded = ($t === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
-    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $isSociety = ($t === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
+    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
 
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
@@ -1338,7 +1426,8 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
     $isCert       = in_array($selectedType, ['fdp'], true);
     $isInterInst  = in_array($selectedType, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
     $isValueAdded = ($selectedType === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
-    $defaultLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $isSociety    = ($selectedType === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
+    $defaultLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
     $label        = (!empty($attConfig['label']) && $attConfig['label'] !== 'Proof / Attachment') ? $attConfig['label'] : $defaultLabel;
     $isMandatory  = isset($attConfig['required']) ? (bool)$attConfig['required'] : $required;
     $maxMb        = !empty($attConfig['max_file_mb']) ? (int)$attConfig['max_file_mb'] : 2;
@@ -1375,7 +1464,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
         echo '<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">';
         echo '  <div style="display:flex; align-items:center; gap:8px;">';
         echo '    <span style="color:#16A34A; display:inline-flex;">' . icon('file-text', 16) . '</span>';
-        echo '    <span style="font-size:12.5px; color:#15803D; font-weight:600;">' . ($isPaper ? 'Current Paper Copy:' : ($isCert ? 'Current Certificate:' : ($isInterInst ? 'Current Certificate:' : ($isValueAdded ? 'Current Event Report:' : 'Current Attachment:')))) . '</span>';
+        echo '    <span style="font-size:12.5px; color:#15803D; font-weight:600;">' . ($isPaper ? 'Current Paper Copy:' : ($isCert ? 'Current Certificate:' : ($isInterInst || $isSociety ? 'Current Certificate:' : ($isValueAdded ? 'Current Event Report:' : 'Current Attachment:')))) . '</span>';
         echo '    <code style="font-size:11.5px; background:#DCFCE7; color:#166534; padding:2px 6px; border-radius:4px; font-family:monospace;">' . e($existingProofFile) . '</code>';
         echo '  </div>';
         echo '  <div style="display:flex; align-items:center; gap:8px;">';

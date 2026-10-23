@@ -23,7 +23,8 @@ function save_upload_proof(?array $file, bool $required = false, ?string $target
     $isCert  = in_array($t, ['fdp'], true);
     $isInterInst = in_array($t, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
     $isValueAdded = ($t === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
-    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $isSociety = ($t === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
+    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
 
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
@@ -49,7 +50,7 @@ function save_upload_proof(?array $file, bool $required = false, ?string $target
     }
 
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
-    if ($isValueAdded) {
+    if ($isValueAdded || $isSociety) {
         if ($ext !== 'pdf') {
             return [null, "The {$entityLabel} must be a PDF document (.pdf)."];
         }

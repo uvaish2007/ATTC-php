@@ -674,7 +674,9 @@ function record_report_specs(): array
             'title'   => 'MEMBERSHIP IN PROFESSIONAL SOCIETIES',
             'columns' => [
                 ['S.No', '#'],
-                ['Faculty Name', 'faculty_name'],
+                ['Category', 'membership_category'],
+                ['Faculty / Student Name', 'member_name'],
+                ['Reg No', 'reg_no'],
                 ['Dept', 'department'],
                 ['Society Name', 'society_name'],
                 ['Membership Number', 'membership_number'],
@@ -682,7 +684,7 @@ function record_report_specs(): array
                 ['Start Date', 'start_date'],
                 ['Expiry Date', 'expiry_date'],
                 ['Status', 'membership_status'],
-                ['Proof Attachment', 'proof_file'],
+                ['Certificate', 'proof_file'],
             ],
         ],
         'inst_newsletters' => [

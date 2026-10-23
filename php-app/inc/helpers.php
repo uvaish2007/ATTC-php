@@ -559,10 +559,14 @@ function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $re
         $downloadUrl = url('proof.php?' . http_build_query($params));
     }
 
+    $isCertType = ($typeKey === 'inst_society_memberships' || in_array($typeKey, ['fdp', 'inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true));
+    $viewText = $isCertType ? 'View Certificate' : 'View Proof';
+    $dlTitle  = $isCertType ? 'Download Certificate' : 'Download Proof';
+
     return '<div style="display:inline-flex;align-items:center;gap:6px;">'
-        . '<a class="btn btn-ghost btn-sm" href="' . e($viewUrl) . '" target="_blank" rel="noopener" title="View Proof">'
-        . icon('paperclip', 14) . ' View Proof</a>'
-        . '<a class="btn btn-ghost btn-sm" href="' . e($downloadUrl) . '" download title="Download Proof">'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($viewUrl) . '" target="_blank" rel="noopener" title="' . e($viewText) . '">'
+        . icon('paperclip', 14) . ' ' . e($viewText) . '</a>'
+        . '<a class="btn btn-ghost btn-sm" href="' . e($downloadUrl) . '" download title="' . e($dlTitle) . '">'
         . icon('download', 14) . '</a>'
         . '</div>';
 }

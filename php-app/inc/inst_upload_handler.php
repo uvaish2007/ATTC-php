@@ -157,6 +157,36 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
     $requiredMap = inst_required_fields();
     $expected    = $requiredMap[$type] ?? [];
 
+    // Dynamic field requirements for inst_society_memberships based on membership_category
+    if ($type === 'inst_society_memberships') {
+        $cat = trim((string)($_POST['membership_category'] ?? 'Faculty'));
+        if (!in_array($cat, ['Faculty', 'Student'], true)) {
+            $cat = 'Faculty';
+        }
+        $_POST['membership_category'] = $cat;
+
+        if ($cat === 'Student') {
+            $expected = [
+                'reg_no'            => 'Student Register Number',
+                'student_name'      => 'Student Name',
+                'society_name'      => 'Professional Society',
+                'membership_number' => 'Membership Number',
+            ];
+            // Clear faculty fields
+            $_POST['faculty_name'] = null;
+        } else {
+            $expected = [
+                'faculty_name'      => 'Faculty Name',
+                'society_name'      => 'Professional Society',
+                'membership_number' => 'Membership Number',
+            ];
+            // Clear student fields
+            $_POST['reg_no'] = null;
+            $_POST['student_name'] = null;
+            $_POST['class_year'] = null;
+        }
+    }
+
     $errors = [];
     foreach ($expected as $fKey => $fLabel) {
         $val = trim((string) ($_POST[$fKey] ?? ''));
@@ -270,8 +300,8 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
     // Handle proof / certificate upload
     $editId = (int) input('edit_id');
     $isProofRequired = false;
-    if ($type === 'inst_inter_inst_within' && $editId <= 0) {
-        $isProofRequired = true;
+    if (($type === 'inst_inter_inst_within' || $type === 'inst_society_memberships') && $editId <= 0) {
+        $isProofRequired = empty($_POST['certificate_link']);
     }
     [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $isProofRequired, $type);
     if ($proofError !== null) {
@@ -313,6 +343,15 @@ function inst_handle_post(array $user, array $types, string $activeYear): bool
                 if (!in_array($k, $allowed, true) || trim((string) $v) === '' || $k === 'academic_year') continue;
                 $setPairs[] = "`$k` = ?";
                 $updateValues[] = trim((string) $v);
+            }
+            if ($type === 'inst_society_memberships') {
+                if ($cat === 'Faculty') {
+                    $setPairs[] = "`reg_no` = NULL";
+                    $setPairs[] = "`student_name` = NULL";
+                    $setPairs[] = "`class_year` = NULL";
+                } else {
+                    $setPairs[] = "`faculty_name` = NULL";
+                }
             }
             if (in_array('academic_year', $tableColumns, true)) {
                 $setPairs[] = "`academic_year` = ?";

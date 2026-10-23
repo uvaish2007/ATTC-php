@@ -189,9 +189,11 @@ report_letterhead($mainTitle, $meta, $headingLines);
                     }
                 } elseif ($field === 'resource_person_name') {
                     $val = (string) ($r['resource_person_name'] ?? ($r['resource_person'] ?? ''));
+                } elseif ($field === 'member_name') {
+                    $val = (string) (!empty($r['faculty_name']) ? $r['faculty_name'] : ($r['student_name'] ?? ''));
                 } elseif ($field === 'proof_file') {
                     $pf = (string) ($r['proof_file'] ?? ($r['event_report_file'] ?? ''));
-                    $val = $pf !== '' ? $pf : (string) ($r['report_link'] ?? '—');
+                    $val = $pf !== '' ? $pf : (string) ($r['certificate_link'] ?? ($r['report_link'] ?? '—'));
                 } else {
                     $val = (string) ($r[$field] ?? '');
                 }
