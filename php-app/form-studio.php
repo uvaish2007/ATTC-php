@@ -253,9 +253,18 @@ require __DIR__ . '/inc/header.php';
 
       <div class="studio-tb-divider"></div>
 
-      <!-- Form Switcher Dropdown (Primary Selector) -->
-      <div class="studio-form-select-wrap">
-        <select class="studio-form-select" id="formSelector" onchange="onFormSelectorChange(this.value)" title="Choose a form to edit or create a new one">
+      <!-- Custom Form Switcher Dropdown Menu Component -->
+      <div class="studio-form-menu-wrap" id="formMenuWrap">
+        <button type="button" class="studio-form-menu-trigger" id="formMenuTrigger" onclick="toggleFormMenu(event)" aria-haspopup="true" aria-expanded="false" title="Switch or create dynamic forms">
+          <span class="studio-menu-trigger-icon"><?= icon('file-text', 14) ?></span>
+          <span class="studio-menu-trigger-label" id="formMenuCurrentLabel">
+            #<?= (int)($initialMetric['id'] ?? 11) ?> · <?= e($initialMetric['name'] ?? 'Custom Form') ?>
+          </span>
+          <span class="studio-menu-trigger-chevron"><?= icon('chevron-down', 13) ?></span>
+        </button>
+
+        <!-- Hidden <select id="formSelector"> preserved for automated test compatibility -->
+        <select class="studio-hidden-select" id="formSelector" onchange="onFormSelectorChange(this.value)" style="display:none;" aria-hidden="true">
           <optgroup label="Select Form to Customize">
             <?php foreach ($allMetrics as $m): ?>
               <option value="<?= (int)$m['id'] ?>" <?= ($initialMetric && $initialMetric['id'] === $m['id']) ? 'selected' : '' ?>>
@@ -267,6 +276,59 @@ require __DIR__ . '/inc/header.php';
             <option value="NEW">+ Create New Dynamic Form...</option>
           </optgroup>
         </select>
+
+        <!-- Floating Custom Menu Dropdown Popover -->
+        <div class="studio-form-menu-dropdown" id="formMenuDropdown" style="display:none;" role="menu">
+          <div class="studio-menu-search-wrap">
+            <span class="studio-menu-search-icon"><?= icon('search', 13) ?></span>
+            <input type="text" class="studio-menu-search-input" id="formMenuSearchInput" placeholder="Search forms by name, key, or ID..." oninput="filterFormMenu(this.value)">
+          </div>
+          
+          <div class="studio-menu-list" id="formMenuList">
+            <?php 
+            $metricsByCat = [];
+            foreach ($allMetrics as $m) {
+                $catName = $m['category'] ?: 'GENERAL';
+                $metricsByCat[$catName][] = $m;
+            }
+            foreach ($metricsByCat as $catName => $catMetrics): 
+            ?>
+              <div class="studio-menu-group-header"><?= e(metric_format_cat($catName)) ?></div>
+              <?php foreach ($catMetrics as $m): 
+                $isActive = ($initialMetric && $initialMetric['id'] === $m['id']);
+              ?>
+                <div class="studio-menu-item <?= $isActive ? 'active' : '' ?>" 
+                     data-id="<?= (int)$m['id'] ?>"
+                     data-name="<?= e(strtolower($m['name'])) ?>"
+                     data-key="<?= e(strtolower($m['metric_key'])) ?>"
+                     onclick="selectFormFromMenu(<?= (int)$m['id'] ?>)"
+                     role="menuitem">
+                  <div class="studio-menu-item-left">
+                    <span class="studio-menu-item-id">#<?= (int)$m['id'] ?></span>
+                    <div class="studio-menu-item-info">
+                      <div class="studio-menu-item-title"><?= e($m['name']) ?></div>
+                      <div class="studio-menu-item-sub">
+                        <span class="studio-menu-item-key"><?= e($m['metric_key']) ?></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="studio-menu-item-right">
+                    <span class="studio-menu-item-ver">v<?= (int)($m['form_version'] ?? 1) ?></span>
+                    <?php if ($isActive): ?>
+                      <span class="studio-menu-item-check"><?= icon('check', 13) ?></span>
+                    <?php endif; ?>
+                  </div>
+                </div>
+              <?php endforeach; ?>
+            <?php endforeach; ?>
+          </div>
+
+          <div class="studio-menu-footer">
+            <button type="button" class="studio-menu-new-btn" onclick="openNewFormModalFromMenu()">
+              <?= icon('plus', 13) ?> <span>Create New Dynamic Form...</span>
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Hidden input preserved for script compatibility -->
