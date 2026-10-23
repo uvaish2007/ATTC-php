@@ -1607,15 +1607,595 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   <div class="field"><label>URL</label><input class="input" name="url" type="url" placeholder="https://..."></div>
 
 <?php elseif ($selectedType === 'inst_student_certifications'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Course Name <span class="req">*</span></label><input class="input" name="course_name" required></div>
-  <div class="field"><label>Platform</label><input class="input" name="platform" placeholder="e.g. Coursera, NPTEL"></div>
-  <div class="field"><label>Certification Name</label><input class="input" name="certification_name"></div>
-  <div class="field"><label>Completion Date</label><input class="input" name="completion_date" type="date"></div>
-  <div class="field"><label>Certificate ID</label><input class="input" name="certificate_id"></div>
+  <?php
+    $certMode = $_GET['mode'] ?? 'individual';
+    $isCertBulk = ($certMode === 'bulk') && empty($editRecord);
+  ?>
+
+  <!-- Mode Selector Inside Metric Form -->
+  <?php if (empty($editRecord)): ?>
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:8px 14px;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748B;">Upload Mode:</span>
+        <div style="display:inline-flex; background:#E2E8F0; padding:3px; border-radius:8px; gap:4px;">
+          <button type="button" id="certBtnModeInd" class="btn-mode-toggle <?= !$isCertBulk ? 'active' : '' ?>" onclick="setCertInputMode('individual')">
+            <?= icon('user', 14) ?> Individual Entry
+          </button>
+          <button type="button" id="certBtnModeBulk" class="btn-mode-toggle <?= $isCertBulk ? 'active' : '' ?>" onclick="setCertInputMode('bulk')">
+            <?= icon('upload', 14) ?> Bulk Upload
+          </button>
+        </div>
+      </div>
+      <span id="certModeHelpText" style="font-size:12px; color:#64748B;">
+        <?= $isCertBulk ? 'Batch import multiple certification records via validated Excel spreadsheet (.xlsx)' : 'Submit an individual student certification record with certificate proof' ?>
+      </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Individual Fields Container (Displayed when mode is Individual Entry) -->
+  <div id="certIndividualFieldsGroup" style="display: <?= $isCertBulk ? 'none' : 'contents' ?>;">
+    <?php render_dept_field($user, $departments, 'Department', true); ?>
+    <?php inst_yr($iYear); ?>
+    <div class="field">
+      <label style="display:flex; align-items:center; justify-content:space-between;">
+        <span>Student Register Number <span class="req">*</span></span>
+        <span id="certLookupBadge" style="font-size:11px; font-weight:600; display:none;"></span>
+      </label>
+      <input class="input" id="certInputRegNo" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001" autocomplete="off" <?= !$isCertBulk ? 'required' : '' ?>>
+    </div>
+    <div class="field">
+      <label>Student Name <span class="req">*</span></label>
+      <input class="input" id="certInputStudentName" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="Student full name" <?= !$isCertBulk ? 'required' : '' ?>>
+    </div>
+    <div class="field">
+      <label>Course Name <span class="req">*</span></label>
+      <input class="input" id="certInputCourseName" name="course_name" value="<?= e($editRecord['course_name'] ?? '') ?>" placeholder="e.g. Python for Data Science" <?= !$isCertBulk ? 'required' : '' ?>>
+    </div>
+    <div class="field">
+      <label>Platform</label>
+      <input class="input" id="certInputPlatform" name="platform" value="<?= e($editRecord['platform'] ?? '') ?>" placeholder="e.g. Coursera, NPTEL">
+    </div>
+    <div class="field">
+      <label>Certification Name</label>
+      <input class="input" id="certInputCertName" name="certification_name" value="<?= e($editRecord['certification_name'] ?? '') ?>" placeholder="e.g. Deep Learning Specialization">
+    </div>
+    <div class="field">
+      <label>Completion Date</label>
+      <input class="input" id="certInputCompDate" name="completion_date" type="date" value="<?= e($editRecord['completion_date'] ?? '') ?>">
+    </div>
+    <div class="field">
+      <label>Certificate ID</label>
+      <input class="input" id="certInputCertId" name="certificate_id" value="<?= e($editRecord['certificate_id'] ?? '') ?>" placeholder="e.g. CERT-2025-9988">
+    </div>
+  </div>
+  <!-- End Individual Fields Container -->
+
+  <!-- Bulk Upload Container (Integrated within this SAME form card, shown when mode is Bulk Upload) -->
+  <div id="certBulkUploadPanel" style="grid-column: 1 / -1; display: <?= $isCertBulk ? 'block' : 'none' ?>; margin-top: 4px;">
+    <!-- Step 1 & 2 Cards Grid -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:16px;">
+      <!-- Step 1: Download Template -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <span style="background:#131D3B; color:#FFFFFF; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">1</span>
+            <span style="font-size:13px; font-weight:700; color:#131D3B;">Download Official Template</span>
+          </div>
+          <p style="font-size:12px; color:#64748B; margin-bottom:12px; line-height:1.45;">
+            Download the official Student Online Certification Excel spreadsheet (.xlsx). Includes columns for Student Register Number, Student Name, Department, Academic Year, Course Name, Platform, Certification Name, Completion Date, Certificate ID, and Drive Link for Certificate.
+          </p>
+        </div>
+        <div>
+          <a href="<?= e(url('bulk-import.php?action=template&module=student_certification')) ?>" class="btn btn-outline" style="border-color:#FF4F01; color:#FF4F01; font-weight:700; font-size:12.5px; width:100%; justify-content:center;">
+            <?= icon('download', 14) ?> Download Student Online Certification Template (.xlsx)
+          </a>
+        </div>
+      </div>
+
+      <!-- Step 2: Upload Spreadsheet -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="background:#FF4F01; color:#FFFFFF; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">2</span>
+          <span style="font-size:13px; font-weight:700; color:#131D3B;">Upload &amp; Validate Spreadsheet</span>
+        </div>
+        <p style="font-size:12px; color:#64748B; margin-bottom:10px;">Select your filled Excel (.xlsx) file to run row-by-row validation against ATTS rules.</p>
+
+        <!-- Dropzone -->
+        <div id="certBulkDropzone" onclick="document.getElementById('certBulkExcelInput').click()" style="border:2px dashed #CBD5E1; border-radius:8px; background:#FFFFFF; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s;">
+          <input type="file" id="certBulkExcelInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleCertBulkFileSelected(this)">
+          <div style="color:#FF4F01; margin-bottom:4px;"><?= icon('upload', 24) ?></div>
+          <div id="certBulkDropzoneText" style="font-size:12.5px; font-weight:600; color:#1E293B;">Click or Drag &amp; Drop Excel file here</div>
+          <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Supports .xlsx, .xls, .csv strictly up to 10 MB</div>
+        </div>
+
+        <div id="certBulkSelectedFileInfo" style="display:none; margin-top:10px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
+            <span style="color:#2563EB;"><?= icon('file-text', 14) ?></span>
+            <span id="certBulkFileName" style="font-size:12px; font-weight:600; color:#1E40AF; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;"></span>
+            <span id="certBulkFileSize" style="font-size:11px; color:#64748B;"></span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="clearCertBulkFile(event)" style="padding:2px 6px; font-size:11px; color:#DC2626;">Remove</button>
+        </div>
+
+        <button type="button" id="certBtnValidatePreview" class="btn btn-primary" onclick="submitCertBulkPreview()" style="width:100%; margin-top:12px; justify-content:center; font-weight:700;" disabled>
+          <?= icon('check', 14) ?> Validate &amp; Preview
+        </button>
+      </div>
+    </div>
+
+    <!-- Bulk Processing Spinner -->
+    <div id="certBulkSpinner" style="display:none; text-align:center; padding:28px 16px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; margin-bottom:16px;">
+      <div style="display:inline-block; width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#FF4F01; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="font-size:14px; font-weight:700; color:#131D3B; margin-top:12px;">Validating Student Certification Records...</div>
+      <div style="font-size:12px; color:#64748B; margin-top:4px;">Checking headers, required fields, date formats, and duplicates against database</div>
+    </div>
+
+    <!-- Bulk Alert Message -->
+    <div id="certBulkAlert" style="display:none; padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:12.5px;"></div>
+
+    <!-- Bulk Preview & Results Section -->
+    <div id="certBulkPreviewSection" style="display:none; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:18px; margin-bottom:16px;">
+      <!-- Metrics Bar -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:16px;">
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px; text-align:center;">
+          <div id="certMetricTotal" style="font-size:20px; font-weight:800; color:#131D3B;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748B;">Total Rows</div>
+        </div>
+        <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px; text-align:center;">
+          <div id="certMetricValid" style="font-size:20px; font-weight:800; color:#15803D;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#166534;">Valid Rows</div>
+        </div>
+        <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:8px; padding:10px; text-align:center;">
+          <div id="certMetricDuplicate" style="font-size:20px; font-weight:800; color:#C2410C;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#9A3412;">Duplicates</div>
+        </div>
+        <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:10px; text-align:center;">
+          <div id="certMetricInvalid" style="font-size:20px; font-weight:800; color:#DC2626;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#991B1B;">Invalid / Errors</div>
+        </div>
+      </div>
+
+      <!-- Errors Box if any -->
+      <div id="certBulkErrorsBox" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:12px; margin-bottom:16px;">
+        <div style="font-size:12.5px; font-weight:700; color:#991B1B; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+          <?= icon('alert-triangle', 14) ?> Row-Level Issues Detected (<span id="certBulkErrorCount">0</span>)
+        </div>
+        <div style="max-height:160px; overflow-y:auto; border:1px solid #FCA5A5; border-radius:6px; background:#FFFFFF;">
+          <table style="width:100%; border-collapse:collapse; font-size:11.5px; text-align:left;">
+            <thead><tr style="background:#FEE2E2; color:#991B1B;"><th style="padding:4px 8px;">Row</th><th style="padding:4px 8px;">Field</th><th style="padding:4px 8px;">Problem</th><th style="padding:4px 8px;">Value</th></tr></thead>
+            <tbody id="certBulkErrorsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Preview Table Controls: Search & Tabs -->
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+        <div style="display:inline-flex; background:#F1F5F9; padding:2px; border-radius:6px; gap:2px; font-size:11.5px;">
+          <button type="button" class="btn-mode-toggle active" id="certTabAll" onclick="filterCertPreviewTable('all')" style="padding:4px 10px; font-size:11.5px;">All (<span id="certTabCntAll">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="certTabValid" onclick="filterCertPreviewTable('valid')" style="padding:4px 10px; font-size:11.5px; color:#15803D;">Valid (<span id="certTabCntValid">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="certTabDup" onclick="filterCertPreviewTable('duplicate')" style="padding:4px 10px; font-size:11.5px; color:#C2410C;">Duplicates (<span id="certTabCntDup">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="certTabErr" onclick="filterCertPreviewTable('invalid')" style="padding:4px 10px; font-size:11.5px; color:#DC2626;">Invalid (<span id="certTabCntErr">0</span>)</button>
+        </div>
+        <input type="text" id="certPreviewSearchInput" oninput="searchCertPreviewTable(this.value)" placeholder="Search preview rows..." style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+      </div>
+
+      <!-- Preview Table -->
+      <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:8px; max-height:280px; margin-bottom:16px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;" id="certPreviewTable">
+          <thead id="certPreviewTableHead">
+            <tr style="background:#F8FAFC; color:#475569; font-weight:700; border-bottom:1px solid #E2E8F0;">
+              <th style="padding:8px 10px;">#</th>
+              <th style="padding:8px 10px;">Register No</th>
+              <th style="padding:8px 10px;">Student Name</th>
+              <th style="padding:8px 10px;">Dept</th>
+              <th style="padding:8px 10px;">AY</th>
+              <th style="padding:8px 10px;">Course Name</th>
+              <th style="padding:8px 10px;">Platform</th>
+              <th style="padding:8px 10px;">Certification Name</th>
+              <th style="padding:8px 10px;">Completion Date</th>
+              <th style="padding:8px 10px;">Certificate ID</th>
+              <th style="padding:8px 10px;">Certificate Link</th>
+              <th style="padding:8px 10px;">Result</th>
+            </tr>
+          </thead>
+          <tbody id="certPreviewTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Final Action Bar -->
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <button type="button" class="btn btn-outline" onclick="resetCertBulkUpload()" style="font-size:12.5px;">
+          <?= icon('arrow-left', 13) ?> Choose Different File
+        </button>
+        <button type="button" id="certBtnConfirmImport" class="btn btn-primary" onclick="confirmCertBulkImport()" style="background:#16A34A; border-color:#16A34A; font-weight:700; font-size:13px; display:inline-flex; align-items:center; gap:6px;">
+          <?= icon('check', 15) ?> Confirm &amp; Import <span id="certConfirmCount">0</span> Valid Records
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- End Bulk Upload Container -->
+
+  <script>
+  (function() {
+    var currentMode = <?= json_encode($isCertBulk ? 'bulk' : 'individual') ?>;
+    var bulkPreviewData = null;
+    var activePreviewFilter = 'all';
+    var previewSearchQuery = '';
+
+    window.setCertInputMode = function(mode) {
+      if (mode === currentMode) return;
+
+      // Check if dirty unsaved individual data exists before switching to bulk
+      if (currentMode === 'individual' && mode === 'bulk') {
+        var isDirty = false;
+        var regVal = document.getElementById('certInputRegNo')?.value.trim() || '';
+        var stuVal = document.getElementById('certInputStudentName')?.value.trim() || '';
+        var crsVal = document.getElementById('certInputCourseName')?.value.trim() || '';
+        var pltVal = document.getElementById('certInputPlatform')?.value.trim() || '';
+        var cnmVal = document.getElementById('certInputCertName')?.value.trim() || '';
+        var cidVal = document.getElementById('certInputCertId')?.value.trim() || '';
+
+        if (regVal !== '' || stuVal !== '' || crsVal !== '' || pltVal !== '' || cnmVal !== '' || cidVal !== '') {
+          isDirty = true;
+        }
+
+        if (isDirty) {
+          var confirmed = confirm('You have unsaved changes in the Individual Entry form. Switching to Bulk Upload mode will hide this individual entry. Do you want to continue?');
+          if (!confirmed) {
+            return;
+          }
+        }
+      }
+
+      currentMode = mode;
+      var indGroup = document.getElementById('certIndividualFieldsGroup');
+      var bulkPanel = document.getElementById('certBulkUploadPanel');
+      var btnInd = document.getElementById('certBtnModeInd');
+      var btnBulk = document.getElementById('certBtnModeBulk');
+      var helpText = document.getElementById('certModeHelpText');
+      var proofCont = document.querySelector('.atts-proof-container');
+      var uploadActions = document.querySelector('.upload-actions');
+
+      var regInput = document.getElementById('certInputRegNo');
+      var stuNameInput = document.getElementById('certInputStudentName');
+      var crsInput = document.getElementById('certInputCourseName');
+
+      if (mode === 'bulk') {
+        if (indGroup) indGroup.style.display = 'none';
+        if (proofCont) proofCont.style.display = 'none';
+        if (uploadActions) uploadActions.style.display = 'none';
+        if (bulkPanel) bulkPanel.style.display = 'block';
+        if (btnInd) btnInd.classList.remove('active');
+        if (btnBulk) btnBulk.classList.add('active');
+        if (helpText) helpText.textContent = 'Batch import multiple certification records via validated Excel spreadsheet (.xlsx)';
+        if (regInput) regInput.removeAttribute('required');
+        if (stuNameInput) stuNameInput.removeAttribute('required');
+        if (crsInput) crsInput.removeAttribute('required');
+      } else {
+        if (bulkPanel) bulkPanel.style.display = 'none';
+        if (indGroup) indGroup.style.display = 'contents';
+        if (proofCont) proofCont.style.display = '';
+        if (uploadActions) uploadActions.style.display = '';
+        if (btnBulk) btnBulk.classList.remove('active');
+        if (btnInd) btnInd.classList.add('active');
+        if (helpText) helpText.textContent = 'Submit an individual student certification record with certificate proof';
+        if (regInput) regInput.setAttribute('required', 'required');
+        if (stuNameInput) stuNameInput.setAttribute('required', 'required');
+        if (crsInput) crsInput.setAttribute('required', 'required');
+      }
+    };
+
+    // Student Lookup with Debouncing
+    var regInputEl = document.getElementById('certInputRegNo');
+    var lookupTimer = null;
+    if (regInputEl) {
+      function triggerCertStudentLookup() {
+        var reg = regInputEl.value.trim();
+        var badge = document.getElementById('certLookupBadge');
+        if (reg.length < 3) {
+          if (badge) badge.style.display = 'none';
+          return;
+        }
+        if (badge) {
+          badge.textContent = 'Looking up...';
+          badge.style.display = 'inline-block';
+          badge.style.color = '#64748B';
+          badge.style.background = '#F1F5F9';
+          badge.style.padding = '2px 8px';
+          badge.style.borderRadius = '4px';
+        }
+        fetch('upload.php?action=student_lookup&reg_no=' + encodeURIComponent(reg))
+          .then(function(res) { return res.json(); })
+          .then(function(json) {
+            if (json.success && json.found && json.data) {
+              var stuName = document.getElementById('certInputStudentName');
+              if (stuName && json.data.student_name && !stuName.value) {
+                stuName.value = json.data.student_name;
+              }
+              var deptSelect = document.querySelector('select[name="department"]');
+              if (deptSelect && json.data.department) {
+                for (var i = 0; i < deptSelect.options.length; i++) {
+                  if (deptSelect.options[i].value.toLowerCase() === json.data.department.toLowerCase()) {
+                    deptSelect.selectedIndex = i;
+                    break;
+                  }
+                }
+              }
+              if (badge) {
+                badge.textContent = 'Verified Student: ' + (json.data.student_name || reg);
+                badge.style.color = '#15803D';
+                badge.style.background = '#DCFCE7';
+              }
+            } else {
+              if (badge) {
+                badge.textContent = 'New Student';
+                badge.style.color = '#64748B';
+                badge.style.background = '#F1F5F9';
+              }
+            }
+          })
+          .catch(function() {
+            if (badge) badge.style.display = 'none';
+          });
+      }
+
+      regInputEl.addEventListener('input', function() {
+        clearTimeout(lookupTimer);
+        lookupTimer = setTimeout(triggerCertStudentLookup, 400);
+      });
+      regInputEl.addEventListener('blur', triggerCertStudentLookup);
+    }
+
+    // Bulk File Selection
+    var chosenBulkFile = null;
+    window.handleCertBulkFileSelected = function(input) {
+      if (!input.files || input.files.length === 0) return;
+      chosenBulkFile = input.files[0];
+      document.getElementById('certBulkFileName').textContent = chosenBulkFile.name;
+      document.getElementById('certBulkFileSize').textContent = '(' + (chosenBulkFile.size / 1024).toFixed(1) + ' KB)';
+      document.getElementById('certBulkDropzone').style.display = 'none';
+      document.getElementById('certBulkSelectedFileInfo').style.display = 'flex';
+      document.getElementById('certBtnValidatePreview').disabled = false;
+      hideCertBulkAlert();
+    };
+
+    window.clearCertBulkFile = function(e) {
+      if (e) e.stopPropagation();
+      chosenBulkFile = null;
+      var fileInput = document.getElementById('certBulkExcelInput');
+      if (fileInput) fileInput.value = '';
+      document.getElementById('certBulkDropzone').style.display = 'block';
+      document.getElementById('certBulkSelectedFileInfo').style.display = 'none';
+      document.getElementById('certBtnValidatePreview').disabled = true;
+    };
+
+    function showCertBulkAlert(msg, type) {
+      var box = document.getElementById('certBulkAlert');
+      if (!box) return;
+      box.style.display = 'block';
+      box.textContent = msg;
+      if (type === 'error') {
+        box.style.background = '#FEF2F2';
+        box.style.border = '1px solid #FECACA';
+        box.style.color = '#991B1B';
+      } else if (type === 'success') {
+        box.style.background = '#F0FDF4';
+        box.style.border = '1px solid #BBF7D0';
+        box.style.color = '#15803D';
+      } else {
+        box.style.background = '#EFF6FF';
+        box.style.border = '1px solid #BFDBFE';
+        box.style.color = '#1D4ED8';
+      }
+    }
+
+    function hideCertBulkAlert() {
+      var box = document.getElementById('certBulkAlert');
+      if (box) box.style.display = 'none';
+    }
+
+    window.submitCertBulkPreview = function() {
+      if (!chosenBulkFile) return;
+      var csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+
+      var formData = new FormData();
+      formData.append('action', 'upload_preview');
+      formData.append('module', 'student_certification');
+      formData.append('csrf_token', csrf);
+      formData.append('is_ajax', '1');
+      formData.append('excel_file', chosenBulkFile);
+
+      document.getElementById('certBulkSpinner').style.display = 'block';
+      document.getElementById('certBulkPreviewSection').style.display = 'none';
+      hideCertBulkAlert();
+
+      fetch('bulk-import.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        document.getElementById('certBulkSpinner').style.display = 'none';
+        if (!json.success) {
+          showCertBulkAlert(json.error || 'Failed to validate spreadsheet.', 'error');
+          return;
+        }
+        renderCertBulkPreview(json.data);
+      })
+      .catch(function(err) {
+        document.getElementById('certBulkSpinner').style.display = 'none';
+        showCertBulkAlert('Network / Server communication error: ' + err.message, 'error');
+      });
+    };
+
+    function renderCertBulkPreview(data) {
+      bulkPreviewData = data;
+      document.getElementById('certMetricTotal').textContent = data.total_detected;
+      document.getElementById('certMetricValid').textContent = data.valid_count;
+      document.getElementById('certMetricDuplicate').textContent = data.duplicate_count;
+      document.getElementById('certMetricInvalid').textContent = data.invalid_count;
+
+      document.getElementById('certTabCntAll').textContent = data.total_detected;
+      document.getElementById('certTabCntValid').textContent = data.valid_count;
+      document.getElementById('certTabCntDup').textContent = data.duplicate_count;
+      document.getElementById('certTabCntErr').textContent = data.invalid_count;
+
+      document.getElementById('certConfirmCount').textContent = data.valid_count;
+      document.getElementById('certBtnConfirmImport').disabled = (data.valid_count === 0);
+
+      // Render Errors Box
+      var errBox = document.getElementById('certBulkErrorsBox');
+      var errTbody = document.getElementById('certBulkErrorsTableBody');
+      if (data.errors && data.errors.length > 0) {
+        document.getElementById('certBulkErrorCount').textContent = data.errors.length;
+        errTbody.innerHTML = '';
+        data.errors.forEach(function(err) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td style="padding:4px 8px; font-weight:700;">Row ' + esc(err.row) + '</td>'
+            + '<td style="padding:4px 8px; font-weight:600;">' + esc(err.field) + '</td>'
+            + '<td style="padding:4px 8px; color:#DC2626;">' + esc(err.problem) + '</td>'
+            + '<td style="padding:4px 8px; color:#64748B; font-family:monospace;">' + esc(err.value || '—') + '</td>';
+          errTbody.appendChild(tr);
+        });
+        errBox.style.display = 'block';
+      } else {
+        errBox.style.display = 'none';
+      }
+
+      activePreviewFilter = 'all';
+      previewSearchQuery = '';
+      renderCertPreviewRows();
+
+      document.getElementById('certBulkPreviewSection').style.display = 'block';
+    }
+
+    function renderCertPreviewRows() {
+      if (!bulkPreviewData) return;
+      var tbody = document.getElementById('certPreviewTableBody');
+      tbody.innerHTML = '';
+
+      var rows = bulkPreviewData.rows || [];
+      var q = previewSearchQuery.toLowerCase();
+
+      rows.forEach(function(r) {
+        if (activePreviewFilter === 'valid' && r.status !== 'valid') return;
+        if (activePreviewFilter === 'duplicate' && r.status !== 'duplicate') return;
+        if (activePreviewFilter === 'invalid' && r.status !== 'invalid') return;
+
+        if (q !== '') {
+          var haystack = ((r.reg_no || '') + ' ' + (r.student_name || '') + ' ' + (r.course_name || '') + ' ' + (r.platform || '') + ' ' + (r.certification_name || '') + ' ' + (r.certificate_id || '')).toLowerCase();
+          if (haystack.indexOf(q) === -1) return;
+        }
+
+        var tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #F1F5F9';
+
+        var statusBadge = '';
+        if (r.status === 'valid') {
+          statusBadge = '<span style="background:#DCFCE7; color:#15803D; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">VALID</span>';
+        } else if (r.status === 'duplicate') {
+          statusBadge = '<span style="background:#FFEDD5; color:#9A3412; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;" title="' + esc(r.duplicate_reason || 'Duplicate record') + '">DUPLICATE</span>';
+        } else {
+          statusBadge = '<span style="background:#FEE2E2; color:#991B1B; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;" title="' + esc(r.error_message || 'Validation error') + '">INVALID</span>';
+        }
+
+        var certCell = '—';
+        if (r.certificate_link) {
+          certCell = '<a href="' + esc(r.certificate_link) + '" target="_blank" style="color:#FF4F01; font-weight:600; text-decoration:underline;">Link</a>';
+        }
+
+        tr.innerHTML = '<td style="padding:6px 10px; font-weight:600;">' + esc(r.row_num || r.excel_row) + '</td>'
+          + '<td style="padding:6px 10px; font-weight:700; color:#131D3B;">' + esc(r.reg_no) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.student_name) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.department) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.academic_year) + '</td>'
+          + '<td style="padding:6px 10px; font-weight:600;">' + esc(r.course_name) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.platform || '—') + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.certification_name || '—') + '</td>'
+          + '<td style="padding:6px 10px; font-size:11px; color:#64748B;">' + esc(r.completion_date || '—') + '</td>'
+          + '<td style="padding:6px 10px; font-family:monospace;">' + esc(r.certificate_id || '—') + '</td>'
+          + '<td style="padding:6px 10px;">' + certCell + '</td>'
+          + '<td style="padding:6px 10px;">' + statusBadge + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    window.filterCertPreviewTable = function(filter) {
+      activePreviewFilter = filter;
+      ['certTabAll', 'certTabValid', 'certTabDup', 'certTabErr'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      });
+      if (filter === 'all') document.getElementById('certTabAll')?.classList.add('active');
+      if (filter === 'valid') document.getElementById('certTabValid')?.classList.add('active');
+      if (filter === 'duplicate') document.getElementById('certTabDup')?.classList.add('active');
+      if (filter === 'invalid') document.getElementById('certTabErr')?.classList.add('active');
+      renderCertPreviewRows();
+    };
+
+    window.searchCertPreviewTable = function(q) {
+      previewSearchQuery = q;
+      renderCertPreviewRows();
+    };
+
+    window.resetCertBulkUpload = function() {
+      bulkPreviewData = null;
+      clearCertBulkFile();
+      document.getElementById('certBulkPreviewSection').style.display = 'none';
+      hideCertBulkAlert();
+    };
+
+    window.confirmCertBulkImport = function() {
+      if (!bulkPreviewData || !bulkPreviewData.batch_id) return;
+      var csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+
+      var formData = new FormData();
+      formData.append('action', 'confirm_import');
+      formData.append('batch_id', bulkPreviewData.batch_id);
+      formData.append('module', 'student_certification');
+      formData.append('csrf_token', csrf);
+      formData.append('is_ajax', '1');
+
+      var btn = document.getElementById('certBtnConfirmImport');
+      btn.disabled = true;
+      btn.textContent = 'Importing records...';
+
+      fetch('bulk-import.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        if (!json.success) {
+          btn.disabled = false;
+          btn.textContent = 'Confirm & Import Valid Records';
+          showCertBulkAlert(json.error || 'Import failed.', 'error');
+          return;
+        }
+        showCertBulkAlert('Import Successful! ' + json.summary.imported_records + ' records successfully imported into ATTS.', 'success');
+        document.getElementById('certBulkPreviewSection').style.display = 'none';
+        clearCertBulkFile();
+        setTimeout(function() {
+          window.location.reload();
+        }, 1300);
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Import Valid Records';
+        showCertBulkAlert('Import communication failed: ' + err.message, 'error');
+      });
+    };
+
+    function esc(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  })();
+  </script>
 
 <?php elseif ($selectedType === 'inst_nss_events'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -1874,15 +2454,594 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   </script>
 
 <?php elseif ($selectedType === 'inst_spoken_tutorials'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Course Name <span class="req">*</span></label><input class="input" name="course_name" required></div>
-  <div class="field"><label>Tutorial Name</label><input class="input" name="tutorial_name"></div>
-  <div class="field"><label>Completion Date</label><input class="input" name="completion_date" type="date"></div>
-  <div class="field"><label>Certificate ID</label><input class="input" name="certificate_id"></div>
-  <div class="field"><label>Platform</label><input class="input" name="platform" value="IIT Bombay Spoken Tutorial"></div>
+  <?php
+    $tutMode = $_GET['mode'] ?? 'individual';
+    $isTutBulk = ($tutMode === 'bulk') && empty($editRecord);
+  ?>
+
+  <!-- Mode Selector Inside Metric Form -->
+  <?php if (empty($editRecord)): ?>
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:8px 14px;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748B;">Upload Mode:</span>
+        <div style="display:inline-flex; background:#E2E8F0; padding:3px; border-radius:8px; gap:4px;">
+          <button type="button" id="tutBtnModeInd" class="btn-mode-toggle <?= !$isTutBulk ? 'active' : '' ?>" onclick="setTutInputMode('individual')">
+            <?= icon('user', 14) ?> Individual Entry
+          </button>
+          <button type="button" id="tutBtnModeBulk" class="btn-mode-toggle <?= $isTutBulk ? 'active' : '' ?>" onclick="setTutInputMode('bulk')">
+            <?= icon('upload', 14) ?> Bulk Upload
+          </button>
+        </div>
+      </div>
+      <span id="tutModeHelpText" style="font-size:12px; color:#64748B;">
+        <?= $isTutBulk ? 'Batch import multiple spoken tutorial records via validated Excel spreadsheet (.xlsx)' : 'Submit an individual spoken tutorial record with certificate proof' ?>
+      </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Individual Fields Container (Displayed when mode is Individual Entry) -->
+  <div id="tutIndividualFieldsGroup" style="display: <?= $isTutBulk ? 'none' : 'contents' ?>;">
+    <?php render_dept_field($user, $departments, 'Department', true); ?>
+    <?php inst_yr($iYear); ?>
+    <div class="field">
+      <label style="display:flex; align-items:center; justify-content:space-between;">
+        <span>Student Register Number <span class="req">*</span></span>
+        <span id="tutLookupBadge" style="font-size:11px; font-weight:600; display:none;"></span>
+      </label>
+      <input class="input" id="tutInputRegNo" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001" autocomplete="off" <?= !$isTutBulk ? 'required' : '' ?>>
+    </div>
+    <div class="field">
+      <label>Student Name <span class="req">*</span></label>
+      <input class="input" id="tutInputStudentName" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="Student full name" <?= !$isTutBulk ? 'required' : '' ?>>
+    </div>
+    <div class="field">
+      <label>Course Name <span class="req">*</span></label>
+      <input class="input" id="tutInputCourseName" name="course_name" value="<?= e($editRecord['course_name'] ?? '') ?>" placeholder="e.g. C and C++" <?= !$isTutBulk ? 'required' : '' ?>>
+    </div>
+    <div class="field">
+      <label>Tutorial Name</label>
+      <input class="input" id="tutInputTutorialName" name="tutorial_name" value="<?= e($editRecord['tutorial_name'] ?? '') ?>" placeholder="e.g. Introduction to Pointers">
+    </div>
+    <div class="field">
+      <label>Completion Date</label>
+      <input class="input" id="tutInputCompDate" name="completion_date" type="date" value="<?= e($editRecord['completion_date'] ?? '') ?>">
+    </div>
+    <div class="field">
+      <label>Certificate ID</label>
+      <input class="input" id="tutInputCertId" name="certificate_id" value="<?= e($editRecord['certificate_id'] ?? '') ?>" placeholder="e.g. IITB-ST-12345">
+    </div>
+    <div class="field">
+      <label>Platform</label>
+      <input class="input" id="tutInputPlatform" name="platform" value="<?= e($editRecord['platform'] ?? 'IIT Bombay Spoken Tutorial') ?>" placeholder="e.g. IIT Bombay Spoken Tutorial">
+    </div>
+  </div>
+  <!-- End Individual Fields Container -->
+
+  <!-- Bulk Upload Container (Integrated within this SAME form card, shown when mode is Bulk Upload) -->
+  <div id="tutBulkUploadPanel" style="grid-column: 1 / -1; display: <?= $isTutBulk ? 'block' : 'none' ?>; margin-top: 4px;">
+    <!-- Step 1 & 2 Cards Grid -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:16px;">
+      <!-- Step 1: Download Dedicated Template -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <span style="background:#131D3B; color:#FFFFFF; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">1</span>
+            <span style="font-size:13px; font-weight:700; color:#131D3B;">Download Dedicated Template</span>
+          </div>
+          <p style="font-size:12px; color:#64748B; margin-bottom:12px; line-height:1.45;">
+            Download the official IIT-Bombay Spoken Tutorial Excel spreadsheet (.xlsx). Includes columns for Student Register Number, Student Name, Department, Academic Year, Course Name, Tutorial Name, Completion Date, Certificate ID, Platform, and Drive Link for Certificate.
+          </p>
+        </div>
+        <div>
+          <a href="<?= e(url('bulk-import.php?action=template&module=spoken_tutorial')) ?>" class="btn btn-outline" style="border-color:#FF4F01; color:#FF4F01; font-weight:700; font-size:12.5px; width:100%; justify-content:center;">
+            <?= icon('download', 14) ?> Download IIT-Bombay Spoken Tutorial Template (.xlsx)
+          </a>
+        </div>
+      </div>
+
+      <!-- Step 2: Upload Spreadsheet -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="background:#FF4F01; color:#FFFFFF; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">2</span>
+          <span style="font-size:13px; font-weight:700; color:#131D3B;">Upload &amp; Validate Spreadsheet</span>
+        </div>
+        <p style="font-size:12px; color:#64748B; margin-bottom:10px;">Select your filled Excel (.xlsx) file to run row-by-row validation against ATTS rules.</p>
+
+        <!-- Dropzone -->
+        <div id="tutBulkDropzone" onclick="document.getElementById('tutBulkExcelInput').click()" style="border:2px dashed #CBD5E1; border-radius:8px; background:#FFFFFF; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s;">
+          <input type="file" id="tutBulkExcelInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleTutBulkFileSelected(this)">
+          <div style="color:#FF4F01; margin-bottom:4px;"><?= icon('upload', 24) ?></div>
+          <div id="tutBulkDropzoneText" style="font-size:12.5px; font-weight:600; color:#1E293B;">Click or Drag &amp; Drop Excel file here</div>
+          <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Supports .xlsx, .xls, .csv strictly up to 10 MB</div>
+        </div>
+
+        <div id="tutBulkSelectedFileInfo" style="display:none; margin-top:10px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
+            <span style="color:#2563EB;"><?= icon('file-text', 14) ?></span>
+            <span id="tutBulkFileName" style="font-size:12px; font-weight:600; color:#1E40AF; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;"></span>
+            <span id="tutBulkFileSize" style="font-size:11px; color:#64748B;"></span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="clearTutBulkFile(event)" style="padding:2px 6px; font-size:11px; color:#DC2626;">Remove</button>
+        </div>
+
+        <button type="button" id="tutBtnValidatePreview" class="btn btn-primary" onclick="submitTutBulkPreview()" style="width:100%; margin-top:12px; justify-content:center; font-weight:700;" disabled>
+          <?= icon('check', 14) ?> Validate &amp; Preview
+        </button>
+      </div>
+    </div>
+
+    <!-- Bulk Processing Spinner -->
+    <div id="tutBulkSpinner" style="display:none; text-align:center; padding:28px 16px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; margin-bottom:16px;">
+      <div style="display:inline-block; width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#FF4F01; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="font-size:14px; font-weight:700; color:#131D3B; margin-top:12px;">Validating IIT-Bombay Spoken Tutorial Records...</div>
+      <div style="font-size:12px; color:#64748B; margin-top:4px;">Checking headers, required fields, date formats, and duplicates against database</div>
+    </div>
+
+    <!-- Bulk Alert Message -->
+    <div id="tutBulkAlert" style="display:none; padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:12.5px;"></div>
+
+    <!-- Bulk Preview & Results Section -->
+    <div id="tutBulkPreviewSection" style="display:none; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:18px; margin-bottom:16px;">
+      <!-- Metrics Bar -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:16px;">
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px; text-align:center;">
+          <div id="tutMetricTotal" style="font-size:20px; font-weight:800; color:#131D3B;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748B;">Total Rows</div>
+        </div>
+        <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px; text-align:center;">
+          <div id="tutMetricValid" style="font-size:20px; font-weight:800; color:#15803D;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#166534;">Valid Rows</div>
+        </div>
+        <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:8px; padding:10px; text-align:center;">
+          <div id="tutMetricDuplicate" style="font-size:20px; font-weight:800; color:#C2410C;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#9A3412;">Duplicates</div>
+        </div>
+        <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:10px; text-align:center;">
+          <div id="tutMetricInvalid" style="font-size:20px; font-weight:800; color:#DC2626;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#991B1B;">Invalid / Errors</div>
+        </div>
+      </div>
+
+      <!-- Errors Box if any -->
+      <div id="tutBulkErrorsBox" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:12px; margin-bottom:16px;">
+        <div style="font-size:12.5px; font-weight:700; color:#991B1B; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+          <?= icon('alert-triangle', 14) ?> Row-Level Issues Detected (<span id="tutBulkErrorCount">0</span>)
+        </div>
+        <div style="max-height:160px; overflow-y:auto; border:1px solid #FCA5A5; border-radius:6px; background:#FFFFFF;">
+          <table style="width:100%; border-collapse:collapse; font-size:11.5px; text-align:left;">
+            <thead><tr style="background:#FEE2E2; color:#991B1B;"><th style="padding:4px 8px;">Row</th><th style="padding:4px 8px;">Field</th><th style="padding:4px 8px;">Problem</th><th style="padding:4px 8px;">Value</th></tr></thead>
+            <tbody id="tutBulkErrorsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Preview Table Controls: Search & Tabs -->
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+        <div style="display:inline-flex; background:#F1F5F9; padding:2px; border-radius:6px; gap:2px; font-size:11.5px;">
+          <button type="button" class="btn-mode-toggle active" id="tutTabAll" onclick="filterTutPreviewTable('all')" style="padding:4px 10px; font-size:11.5px;">All (<span id="tutTabCntAll">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="tutTabValid" onclick="filterTutPreviewTable('valid')" style="padding:4px 10px; font-size:11.5px; color:#15803D;">Valid (<span id="tutTabCntValid">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="tutTabDup" onclick="filterTutPreviewTable('duplicate')" style="padding:4px 10px; font-size:11.5px; color:#C2410C;">Duplicates (<span id="tutTabCntDup">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="tutTabErr" onclick="filterTutPreviewTable('invalid')" style="padding:4px 10px; font-size:11.5px; color:#DC2626;">Invalid (<span id="tutTabCntErr">0</span>)</button>
+        </div>
+        <input type="text" id="tutPreviewSearchInput" oninput="searchTutPreviewTable(this.value)" placeholder="Search preview rows..." style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+      </div>
+
+      <!-- Preview Table -->
+      <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:8px; max-height:280px; margin-bottom:16px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;" id="tutPreviewTable">
+          <thead id="tutPreviewTableHead">
+            <tr style="background:#F8FAFC; color:#475569; font-weight:700; border-bottom:1px solid #E2E8F0;">
+              <th style="padding:8px 10px;">#</th>
+              <th style="padding:8px 10px;">Register No</th>
+              <th style="padding:8px 10px;">Student Name</th>
+              <th style="padding:8px 10px;">Dept</th>
+              <th style="padding:8px 10px;">AY</th>
+              <th style="padding:8px 10px;">Course Name</th>
+              <th style="padding:8px 10px;">Tutorial Name</th>
+              <th style="padding:8px 10px;">Completion Date</th>
+              <th style="padding:8px 10px;">Certificate ID</th>
+              <th style="padding:8px 10px;">Platform</th>
+              <th style="padding:8px 10px;">Certificate Link</th>
+              <th style="padding:8px 10px;">Result</th>
+            </tr>
+          </thead>
+          <tbody id="tutPreviewTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Final Action Bar -->
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <button type="button" class="btn btn-outline" onclick="resetTutBulkUpload()" style="font-size:12.5px;">
+          <?= icon('arrow-left', 13) ?> Choose Different File
+        </button>
+        <button type="button" id="tutBtnConfirmImport" class="btn btn-primary" onclick="confirmTutBulkImport()" style="background:#16A34A; border-color:#16A34A; font-weight:700; font-size:13px; display:inline-flex; align-items:center; gap:6px;">
+          <?= icon('check', 15) ?> Confirm &amp; Import <span id="tutConfirmCount">0</span> Valid Records
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- End Bulk Upload Container -->
+
+  <script>
+  (function() {
+    var currentMode = <?= json_encode($isTutBulk ? 'bulk' : 'individual') ?>;
+    var bulkPreviewData = null;
+    var activePreviewFilter = 'all';
+    var previewSearchQuery = '';
+
+    window.setTutInputMode = function(mode) {
+      if (mode === currentMode) return;
+
+      // Check if dirty unsaved individual data exists before switching to bulk
+      if (currentMode === 'individual' && mode === 'bulk') {
+        var isDirty = false;
+        var regVal = document.getElementById('tutInputRegNo')?.value.trim() || '';
+        var stuVal = document.getElementById('tutInputStudentName')?.value.trim() || '';
+        var crsVal = document.getElementById('tutInputCourseName')?.value.trim() || '';
+        var tutVal = document.getElementById('tutInputTutorialName')?.value.trim() || '';
+        var cidVal = document.getElementById('tutInputCertId')?.value.trim() || '';
+
+        if (regVal !== '' || stuVal !== '' || crsVal !== '' || tutVal !== '' || cidVal !== '') {
+          isDirty = true;
+        }
+
+        if (isDirty) {
+          var confirmed = confirm('You have unsaved changes in the Individual Entry form. Switching to Bulk Upload mode will hide this individual entry. Do you want to continue?');
+          if (!confirmed) {
+            return;
+          }
+        }
+      }
+
+      currentMode = mode;
+      var indGroup = document.getElementById('tutIndividualFieldsGroup');
+      var bulkPanel = document.getElementById('tutBulkUploadPanel');
+      var btnInd = document.getElementById('tutBtnModeInd');
+      var btnBulk = document.getElementById('tutBtnModeBulk');
+      var helpText = document.getElementById('tutModeHelpText');
+      var proofCont = document.querySelector('.atts-proof-container');
+      var uploadActions = document.querySelector('.upload-actions');
+
+      var regInput = document.getElementById('tutInputRegNo');
+      var stuNameInput = document.getElementById('tutInputStudentName');
+      var crsInput = document.getElementById('tutInputCourseName');
+
+      if (mode === 'bulk') {
+        if (indGroup) indGroup.style.display = 'none';
+        if (proofCont) proofCont.style.display = 'none';
+        if (uploadActions) uploadActions.style.display = 'none';
+        if (bulkPanel) bulkPanel.style.display = 'block';
+        if (btnInd) btnInd.classList.remove('active');
+        if (btnBulk) btnBulk.classList.add('active');
+        if (helpText) helpText.textContent = 'Batch import multiple spoken tutorial records via validated Excel spreadsheet (.xlsx)';
+        if (regInput) regInput.removeAttribute('required');
+        if (stuNameInput) stuNameInput.removeAttribute('required');
+        if (crsInput) crsInput.removeAttribute('required');
+      } else {
+        if (bulkPanel) bulkPanel.style.display = 'none';
+        if (indGroup) indGroup.style.display = 'contents';
+        if (proofCont) proofCont.style.display = '';
+        if (uploadActions) uploadActions.style.display = '';
+        if (btnBulk) btnBulk.classList.remove('active');
+        if (btnInd) btnInd.classList.add('active');
+        if (helpText) helpText.textContent = 'Submit an individual spoken tutorial record with certificate proof';
+        if (regInput) regInput.setAttribute('required', 'required');
+        if (stuNameInput) stuNameInput.setAttribute('required', 'required');
+        if (crsInput) crsInput.setAttribute('required', 'required');
+      }
+    };
+
+    // Student Lookup with Debouncing
+    var regInputEl = document.getElementById('tutInputRegNo');
+    var lookupTimer = null;
+    if (regInputEl) {
+      function triggerTutStudentLookup() {
+        var reg = regInputEl.value.trim();
+        var badge = document.getElementById('tutLookupBadge');
+        if (reg.length < 3) {
+          if (badge) badge.style.display = 'none';
+          return;
+        }
+        if (badge) {
+          badge.textContent = 'Looking up...';
+          badge.style.display = 'inline-block';
+          badge.style.color = '#64748B';
+          badge.style.background = '#F1F5F9';
+          badge.style.padding = '2px 8px';
+          badge.style.borderRadius = '4px';
+        }
+        fetch('upload.php?action=student_lookup&reg_no=' + encodeURIComponent(reg))
+          .then(function(res) { return res.json(); })
+          .then(function(json) {
+            if (json.success && json.found && json.data) {
+              var stuName = document.getElementById('tutInputStudentName');
+              if (stuName && json.data.student_name && !stuName.value) {
+                stuName.value = json.data.student_name;
+              }
+              var deptSelect = document.querySelector('select[name="department"]');
+              if (deptSelect && json.data.department) {
+                for (var i = 0; i < deptSelect.options.length; i++) {
+                  if (deptSelect.options[i].value.toLowerCase() === json.data.department.toLowerCase()) {
+                    deptSelect.selectedIndex = i;
+                    break;
+                  }
+                }
+              }
+              if (badge) {
+                badge.textContent = 'Verified Student: ' + (json.data.student_name || reg);
+                badge.style.color = '#15803D';
+                badge.style.background = '#DCFCE7';
+              }
+            } else {
+              if (badge) {
+                badge.textContent = 'New Student';
+                badge.style.color = '#64748B';
+                badge.style.background = '#F1F5F9';
+              }
+            }
+          })
+          .catch(function() {
+            if (badge) badge.style.display = 'none';
+          });
+      }
+
+      regInputEl.addEventListener('input', function() {
+        clearTimeout(lookupTimer);
+        lookupTimer = setTimeout(triggerTutStudentLookup, 400);
+      });
+      regInputEl.addEventListener('blur', triggerTutStudentLookup);
+    }
+
+    // Bulk File Selection
+    var chosenBulkFile = null;
+    window.handleTutBulkFileSelected = function(input) {
+      if (!input.files || input.files.length === 0) return;
+      chosenBulkFile = input.files[0];
+      document.getElementById('tutBulkFileName').textContent = chosenBulkFile.name;
+      document.getElementById('tutBulkFileSize').textContent = '(' + (chosenBulkFile.size / 1024).toFixed(1) + ' KB)';
+      document.getElementById('tutBulkDropzone').style.display = 'none';
+      document.getElementById('tutBulkSelectedFileInfo').style.display = 'flex';
+      document.getElementById('tutBtnValidatePreview').disabled = false;
+      hideTutBulkAlert();
+    };
+
+    window.clearTutBulkFile = function(e) {
+      if (e) e.stopPropagation();
+      chosenBulkFile = null;
+      var fileInput = document.getElementById('tutBulkExcelInput');
+      if (fileInput) fileInput.value = '';
+      document.getElementById('tutBulkDropzone').style.display = 'block';
+      document.getElementById('tutBulkSelectedFileInfo').style.display = 'none';
+      document.getElementById('tutBtnValidatePreview').disabled = true;
+    };
+
+    function showTutBulkAlert(msg, type) {
+      var box = document.getElementById('tutBulkAlert');
+      if (!box) return;
+      box.style.display = 'block';
+      box.textContent = msg;
+      if (type === 'error') {
+        box.style.background = '#FEF2F2';
+        box.style.border = '1px solid #FECACA';
+        box.style.color = '#991B1B';
+      } else if (type === 'success') {
+        box.style.background = '#F0FDF4';
+        box.style.border = '1px solid #BBF7D0';
+        box.style.color = '#15803D';
+      } else {
+        box.style.background = '#EFF6FF';
+        box.style.border = '1px solid #BFDBFE';
+        box.style.color = '#1D4ED8';
+      }
+    }
+
+    function hideTutBulkAlert() {
+      var box = document.getElementById('tutBulkAlert');
+      if (box) box.style.display = 'none';
+    }
+
+    window.submitTutBulkPreview = function() {
+      if (!chosenBulkFile) return;
+      var csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+
+      var formData = new FormData();
+      formData.append('action', 'upload_preview');
+      formData.append('module', 'spoken_tutorial');
+      formData.append('csrf_token', csrf);
+      formData.append('is_ajax', '1');
+      formData.append('excel_file', chosenBulkFile);
+
+      document.getElementById('tutBulkSpinner').style.display = 'block';
+      document.getElementById('tutBulkPreviewSection').style.display = 'none';
+      hideTutBulkAlert();
+
+      fetch('bulk-import.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        document.getElementById('tutBulkSpinner').style.display = 'none';
+        if (!json.success) {
+          showTutBulkAlert(json.error || 'Failed to validate spreadsheet.', 'error');
+          return;
+        }
+        renderTutBulkPreview(json.data);
+      })
+      .catch(function(err) {
+        document.getElementById('tutBulkSpinner').style.display = 'none';
+        showTutBulkAlert('Network / Server communication error: ' + err.message, 'error');
+      });
+    };
+
+    function renderTutBulkPreview(data) {
+      bulkPreviewData = data;
+      document.getElementById('tutMetricTotal').textContent = data.total_detected;
+      document.getElementById('tutMetricValid').textContent = data.valid_count;
+      document.getElementById('tutMetricDuplicate').textContent = data.duplicate_count;
+      document.getElementById('tutMetricInvalid').textContent = data.invalid_count;
+
+      document.getElementById('tutTabCntAll').textContent = data.total_detected;
+      document.getElementById('tutTabCntValid').textContent = data.valid_count;
+      document.getElementById('tutTabCntDup').textContent = data.duplicate_count;
+      document.getElementById('tutTabCntErr').textContent = data.invalid_count;
+
+      document.getElementById('tutConfirmCount').textContent = data.valid_count;
+      document.getElementById('tutBtnConfirmImport').disabled = (data.valid_count === 0);
+
+      // Render Errors Box
+      var errBox = document.getElementById('tutBulkErrorsBox');
+      var errTbody = document.getElementById('tutBulkErrorsTableBody');
+      if (data.errors && data.errors.length > 0) {
+        document.getElementById('tutBulkErrorCount').textContent = data.errors.length;
+        errTbody.innerHTML = '';
+        data.errors.forEach(function(err) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td style="padding:4px 8px; font-weight:700;">Row ' + esc(err.row) + '</td>'
+            + '<td style="padding:4px 8px; font-weight:600;">' + esc(err.field) + '</td>'
+            + '<td style="padding:4px 8px; color:#DC2626;">' + esc(err.problem) + '</td>'
+            + '<td style="padding:4px 8px; color:#64748B; font-family:monospace;">' + esc(err.value || '—') + '</td>';
+          errTbody.appendChild(tr);
+        });
+        errBox.style.display = 'block';
+      } else {
+        errBox.style.display = 'none';
+      }
+
+      activePreviewFilter = 'all';
+      previewSearchQuery = '';
+      renderTutPreviewRows();
+
+      document.getElementById('tutBulkPreviewSection').style.display = 'block';
+    }
+
+    function renderTutPreviewRows() {
+      if (!bulkPreviewData) return;
+      var tbody = document.getElementById('tutPreviewTableBody');
+      tbody.innerHTML = '';
+
+      var rows = bulkPreviewData.rows || [];
+      var q = previewSearchQuery.toLowerCase();
+
+      rows.forEach(function(r) {
+        if (activePreviewFilter === 'valid' && r.status !== 'valid') return;
+        if (activePreviewFilter === 'duplicate' && r.status !== 'duplicate') return;
+        if (activePreviewFilter === 'invalid' && r.status !== 'invalid') return;
+
+        if (q !== '') {
+          var haystack = ((r.reg_no || '') + ' ' + (r.student_name || '') + ' ' + (r.course_name || '') + ' ' + (r.tutorial_name || '') + ' ' + (r.platform || '') + ' ' + (r.certificate_id || '')).toLowerCase();
+          if (haystack.indexOf(q) === -1) return;
+        }
+
+        var tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #F1F5F9';
+
+        var statusBadge = '';
+        if (r.status === 'valid') {
+          statusBadge = '<span style="background:#DCFCE7; color:#15803D; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">VALID</span>';
+        } else if (r.status === 'duplicate') {
+          statusBadge = '<span style="background:#FFEDD5; color:#9A3412; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;" title="' + esc(r.duplicate_reason || 'Duplicate record') + '">DUPLICATE</span>';
+        } else {
+          statusBadge = '<span style="background:#FEE2E2; color:#991B1B; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;" title="' + esc(r.error_message || 'Validation error') + '">INVALID</span>';
+        }
+
+        var certCell = '—';
+        if (r.certificate_link) {
+          certCell = '<a href="' + esc(r.certificate_link) + '" target="_blank" style="color:#FF4F01; font-weight:600; text-decoration:underline;">Link</a>';
+        }
+
+        tr.innerHTML = '<td style="padding:6px 10px; font-weight:600;">' + esc(r.row_num || r.excel_row) + '</td>'
+          + '<td style="padding:6px 10px; font-weight:700; color:#131D3B;">' + esc(r.reg_no) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.student_name) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.department) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.academic_year) + '</td>'
+          + '<td style="padding:6px 10px; font-weight:600;">' + esc(r.course_name) + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.tutorial_name || '—') + '</td>'
+          + '<td style="padding:6px 10px; font-size:11px; color:#64748B;">' + esc(r.completion_date || '—') + '</td>'
+          + '<td style="padding:6px 10px; font-family:monospace;">' + esc(r.certificate_id || '—') + '</td>'
+          + '<td style="padding:6px 10px;">' + esc(r.platform || '—') + '</td>'
+          + '<td style="padding:6px 10px;">' + certCell + '</td>'
+          + '<td style="padding:6px 10px;">' + statusBadge + '</td>';
+        tbody.appendChild(tr);
+      });
+    }
+
+    window.filterTutPreviewTable = function(filter) {
+      activePreviewFilter = filter;
+      ['tutTabAll', 'tutTabValid', 'tutTabDup', 'tutTabErr'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      });
+      if (filter === 'all') document.getElementById('tutTabAll')?.classList.add('active');
+      if (filter === 'valid') document.getElementById('tutTabValid')?.classList.add('active');
+      if (filter === 'duplicate') document.getElementById('tutTabDup')?.classList.add('active');
+      if (filter === 'invalid') document.getElementById('tutTabErr')?.classList.add('active');
+      renderTutPreviewRows();
+    };
+
+    window.searchTutPreviewTable = function(q) {
+      previewSearchQuery = q;
+      renderTutPreviewRows();
+    };
+
+    window.resetTutBulkUpload = function() {
+      bulkPreviewData = null;
+      clearTutBulkFile();
+      document.getElementById('tutBulkPreviewSection').style.display = 'none';
+      hideTutBulkAlert();
+    };
+
+    window.confirmTutBulkImport = function() {
+      if (!bulkPreviewData || !bulkPreviewData.batch_id) return;
+      var csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+
+      var formData = new FormData();
+      formData.append('action', 'confirm_import');
+      formData.append('batch_id', bulkPreviewData.batch_id);
+      formData.append('module', 'spoken_tutorial');
+      formData.append('csrf_token', csrf);
+      formData.append('is_ajax', '1');
+
+      var btn = document.getElementById('tutBtnConfirmImport');
+      btn.disabled = true;
+      btn.textContent = 'Importing records...';
+
+      fetch('bulk-import.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        if (!json.success) {
+          btn.disabled = false;
+          btn.textContent = 'Confirm & Import Valid Records';
+          showTutBulkAlert(json.error || 'Import failed.', 'error');
+          return;
+        }
+        showTutBulkAlert('Import Successful! ' + json.summary.imported_records + ' records successfully imported into ATTS.', 'success');
+        document.getElementById('tutBulkPreviewSection').style.display = 'none';
+        clearTutBulkFile();
+        setTimeout(function() {
+          window.location.reload();
+        }, 1300);
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Import Valid Records';
+        showTutBulkAlert('Import communication failed: ' + err.message, 'error');
+      });
+    };
+
+    function esc(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  })();
+  </script>
 
 <?php endif; ?>
 

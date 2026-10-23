@@ -15,11 +15,21 @@ $activeYear = active_academic_year();
 
 $action = trim((string)($_POST['action'] ?? $_GET['action'] ?? ''));
 $module = trim((string)($_POST['module'] ?? $_GET['module'] ?? BulkImport::MODULE_INTERNSHIP));
+
+// Normalize module aliases
+if ($module === 'student_certifications' || $module === 'inst_student_certifications') {
+    $module = BulkImport::MODULE_STUDENT_CERTIFICATION;
+} elseif ($module === 'spoken_tutorials' || $module === 'inst_spoken_tutorials') {
+    $module = BulkImport::MODULE_SPOKEN_TUTORIAL;
+}
+
 $validModules = [
     BulkImport::MODULE_INTERNSHIP,
     BulkImport::MODULE_SUMMER_TRAINING,
     BulkImport::MODULE_SOCIETY_FACULTY,
     BulkImport::MODULE_SOCIETY_STUDENT,
+    BulkImport::MODULE_STUDENT_CERTIFICATION,
+    BulkImport::MODULE_SPOKEN_TUTORIAL,
 ];
 if (!in_array($module, $validModules, true)) {
     $module = BulkImport::MODULE_INTERNSHIP;
@@ -29,6 +39,20 @@ function get_bulk_redirect_url(string $mod, ?string $previewBatch = null): strin
     if ($mod === BulkImport::MODULE_SOCIETY_FACULTY || $mod === BulkImport::MODULE_SOCIETY_STUDENT) {
         $cat = ($mod === BulkImport::MODULE_SOCIETY_FACULTY) ? 'Faculty' : 'Student';
         $url = '/upload.php?section=society_memberships&type=inst_society_memberships&mode=bulk&category=' . $cat;
+        if ($previewBatch) {
+            $url .= '&bulk_preview=' . urlencode($previewBatch);
+        }
+        return $url;
+    }
+    if ($mod === BulkImport::MODULE_STUDENT_CERTIFICATION) {
+        $url = '/upload.php?section=student_certifications&type=inst_student_certifications&mode=bulk';
+        if ($previewBatch) {
+            $url .= '&bulk_preview=' . urlencode($previewBatch);
+        }
+        return $url;
+    }
+    if ($mod === BulkImport::MODULE_SPOKEN_TUTORIAL) {
+        $url = '/upload.php?section=spoken_tutorials&type=inst_spoken_tutorials&mode=bulk';
         if ($previewBatch) {
             $url .= '&bulk_preview=' . urlencode($previewBatch);
         }

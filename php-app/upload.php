@@ -104,6 +104,36 @@ if (isset($_GET['action']) && $_GET['action'] === 'student_lookup') {
                 }
             } catch (\Throwable $e) {}
         }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM inst_student_certifications WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM inst_spoken_tutorials WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
     }
     echo json_encode([
         'success' => true,
