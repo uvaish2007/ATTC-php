@@ -406,6 +406,12 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
                     if ($role === 'Coordinator' && empty($m['coordinator_visible'])) {
                         continue;
                     }
+                    if ($role === 'HoD' && isset($m['hod_visible']) && empty($m['hod_visible'])) {
+                        continue;
+                    }
+                    if ($role === 'Principal' && isset($m['principal_visible']) && empty($m['principal_visible'])) {
+                        continue;
+                    }
                     if ($role !== 'all_with_inactive' && empty($m['status'])) {
                         continue;
                     }
@@ -432,8 +438,10 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
                         'attachment_config' => $m['attachment_config_parsed'] ?? null,
                         'form_version' => (int)($m['form_version'] ?? 1),
                         'status'       => (int)$m['status'],
-                        'faculty_visible' => (int)$m['faculty_visible'],
-                        'coordinator_visible' => (int)$m['coordinator_visible'],
+                        'faculty_visible' => (int)($m['faculty_visible'] ?? 1),
+                        'coordinator_visible' => (int)($m['coordinator_visible'] ?? 1),
+                        'hod_visible' => (int)($m['hod_visible'] ?? 1),
+                        'principal_visible' => (int)($m['principal_visible'] ?? 1),
                     ];
                 }
 

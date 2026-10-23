@@ -25,6 +25,7 @@ function navigation_for(string $role): array
         'Principal' => [
             ['section' => 'Overview',  'label' => 'Dashboard',            'path' => 'dashboard.php',            'icon' => 'dashboard'],
             ['section' => 'Overview',  'label' => 'Announcements',        'path' => 'announcements.php',        'icon' => 'megaphone', 'badge' => 'announcements'],
+            ['section' => 'Workspace', 'label' => 'Upload Data',          'path' => 'upload.php',               'icon' => 'upload'],
             ['section' => 'Workspace', 'label' => 'Reports',              'path' => 'reports.php',              'icon' => 'reports'],
             ['section' => 'Workspace', 'label' => 'Faculty Achievements', 'path' => 'faculty-achievements.php', 'icon' => 'award'],
             ['section' => 'Manage',    'label' => 'Targets',              'path' => 'targets.php',              'icon' => 'target', 'badge' => 'targets'],
