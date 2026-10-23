@@ -11,7 +11,7 @@ require_once __DIR__ . '/inc/inst_upload_handler.php'; // Institutional achievem
 require_once __DIR__ . '/inc/upload_sections.php';
 require_once __DIR__ . '/models/BulkImport.php';
 
-$user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty']);
+$user = require_role(['Admin', 'HoD', 'Coordinator', 'Faculty', 'Principal']);
 require_module('upload');
 $types       = record_types();
 unset($types['student_participation']);
@@ -26,6 +26,93 @@ if (function_exists('inst_handle_ajax_upercent')) {
     inst_handle_ajax_upercent($user, $activeYear);
 }
 
+if (isset($_GET['action']) && $_GET['action'] === 'student_lookup') {
+    header('Content-Type: application/json; charset=utf-8');
+    $reg = trim((string)($_GET['reg_no'] ?? ''));
+    $info = null;
+    if ($reg !== '') {
+        $pdo = db();
+        try {
+            $stmt = $pdo->prepare("SELECT student_name, department, class_year FROM inst_society_memberships WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+            $stmt->execute([$reg]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row && !empty($row['student_name'])) {
+                $info = [
+                    'student_name' => $row['student_name'],
+                    'department'   => $row['department'] ?? '',
+                    'class_year'   => $row['class_year'] ?? '',
+                ];
+            }
+        } catch (\Throwable $e) {}
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department, class_year FROM student_participations WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => $row['class_year'] ?? '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM internships WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM summer_training WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department, year_of_study AS class_year FROM student_achievements WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => $row['class_year'] ?? '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+    }
+    echo json_encode([
+        'success' => true,
+        'found'   => (bool)$info,
+        'data'    => $info,
+    ]);
+    exit;
+}
+
 if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation'], true)) {
     flash('info', 'Student achievement records are now submitted under Student Participation in Inter-Institute Events and Awards / Medals.');
     redirect('/upload.php?section=inter_institute&type=co_curricular');
@@ -35,11 +122,19 @@ if (!defined('PROOF_MAX_BYTES')) {
     define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   
 }
 
-if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false): array
+if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false, ?string $targetType = null): array
 {
+    $t = $targetType ?: ($GLOBALS['selectedType'] ?? null);
+    $isPaper = in_array($t, ['journal', 'conference'], true);
+    $isCert  = in_array($t, ['fdp'], true);
+    $isInterInst = in_array($t, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
+    $isValueAdded = ($t === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
+    $isSociety = ($t === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
+    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
-            return [null, 'Proof / Attachment is required. Please upload a PDF file (2 MB or less).'];
+            return [null, "{$entityLabel} is required. Please upload a PDF file (2 MB or less)."];
         }
         return [null, null];
     }
@@ -47,7 +142,7 @@ if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $f
     $errorCode = $file['error'] ?? UPLOAD_ERR_OK;
     if ($errorCode !== UPLOAD_ERR_OK) {
         return match ($errorCode) {
-            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => [null, 'The uploaded proof exceeds the 2 MB size limit. Please upload a smaller file.'],
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => [null, "The uploaded {$entityLabel} exceeds the 2 MB size limit. Please upload a smaller file."],
             UPLOAD_ERR_PARTIAL   => [null, 'The file was only partially uploaded. Please try again.'],
             UPLOAD_ERR_NO_TMP_DIR => [null, 'Server configuration error: missing temporary folder.'],
             UPLOAD_ERR_CANT_WRITE => [null, 'Server error: failed to write file to disk.'],
@@ -57,17 +152,17 @@ if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $f
     }
 
     if (!is_uploaded_file($file['tmp_name'])) {
-        return [null, 'The proof could not be uploaded (invalid temporary file).'];
+        return [null, "The {$entityLabel} could not be uploaded (invalid temporary file)."];
     }
 
     // PDF only, by extension and by actual content.
     $ext = strtolower(pathinfo($file['name'] ?? '', PATHINFO_EXTENSION));
     if ($ext !== 'pdf') {
-        return [null, 'The proof must be a PDF file (.pdf).'];
+        return [null, "The {$entityLabel} must be a PDF file (.pdf)."];
     }
 
     if ($file['size'] > PROOF_MAX_BYTES) {
-        return [null, 'The PDF is larger than 2 MB. Please upload a smaller one.'];
+        return [null, "The {$entityLabel} exceeds the 2 MB size limit. Please upload a smaller file."];
     }
 
     // Validate MIME type and binary header magic bytes (%PDF-)
@@ -76,7 +171,7 @@ if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $f
     if ($finfo && PHP_VERSION_ID < 80500) {
         @finfo_close($finfo);    }
     if ($mime !== '' && stripos($mime, 'pdf') === false && stripos($mime, 'octet-stream') === false) {
-        return [null, 'That file is not a valid PDF document.'];
+        return [null, "That file is not a valid PDF document for {$entityLabel}."];
     }
 
     $handle = @fopen($file['tmp_name'], 'rb');
@@ -85,7 +180,7 @@ if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $f
         fclose($handle);
     }
     if ($header !== '%PDF') {
-        return [null, 'That file is not a valid PDF document.'];
+        return [null, "That file is not a valid PDF document for {$entityLabel}."];
     }
 
     $baseFolder = rtrim(UPLOAD_DIR, '/\\');
@@ -274,6 +369,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $nav  = (string) input('nav', 'add');   
 
     $targetYear = trim((string) input('academic_year', $activeYear));
+    if (!is_valid_academic_year($targetYear)) {
+        flash('error', "Please select a valid academic year from the supported list.");
+        redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
+    }
+    if (is_future_academic_year($targetYear)) {
+        flash('error', "Academic year {$targetYear} has not started yet. Data for future academic years cannot be submitted.");
+        redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
+    }
     if ($user['role'] !== 'Admin' && (academic_year_is_locked($activeYear) || academic_year_is_locked($targetYear))) {
         flash('error', "Academic year {$targetYear} cycle is currently locked by the Administrator. New record submissions for {$targetYear} are frozen.");
         redirect('/upload.php' . ($type ? '?type=' . urlencode($type) : ''));
@@ -320,27 +423,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     // Server-Side Validation: Every user-editable field is mandatory
     $requiredMap = [
         // Authors, title, journal, type, ISSN, volume, date and DOI are
-        // checked by journal_prepare_submission(); the links here.
+        // checked by journal_prepare_submission(); the website link here.
         'journal' => [
             'journal_link' => 'Link to Journal Website',
-            'document_link' => 'Document Link',
         ],
         // Authors, category, title, publisher, ISBN, DOI and date are checked
         // by book_prepare_submission(); the link here.
         'book' => [
             'document_link' => 'Document Link',
         ],
-        'conference' => [
-            'faculty_name' => 'Faculty Name',
-            'department' => 'Department',
-            'academic_year' => 'Academic Year',
-            'author_type' => 'Author Type',
-            'paper_title' => 'Paper Title',
-            'conference_name' => 'Conference Name',
-            'conference_type' => 'Type',
-            'venue' => 'Venue',
-            'conference_date' => 'Conference Date',
-        ],
+        // Authors, type, title, conference name, type, venue, date and year are
+        // checked by conference_prepare_submission().
+        'conference' => [],
         'patent' => [
             'faculty_name' => 'Faculty Name',
             'department' => 'Department',
@@ -503,8 +597,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             'course_title' => 'Course Title',
             'mode' => 'Mode',
             'participants' => 'No. of Participants',
-            'resource_person' => 'Resource Person',
-            'report_link' => 'Web Link to Event Report',
+            'resource_person_name' => 'Resource Person Name',
+            'designation' => 'Designation',
+            'company_name' => 'Company / Institution Name',
         ],
         'training' => [
             'department' => 'Department',
@@ -519,9 +614,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         ],
     ];
 
-    // NPTEL, Journal and Book take their department from the participant /
+    // NPTEL, Journal, Book and Conference take their department from the participant /
     // Main Author (checked below), never the uploader.
-    if (!in_array($type, ['nptel', 'journal', 'book'], true) && !user_can_choose_department($user) && !empty($user['department'])) {
+    if (!in_array($type, ['nptel', 'journal', 'book', 'conference'], true) && !user_can_choose_department($user) && !empty($user['department'])) {
         $_POST['department'] = $user['department'];
     }
     $validationErrors = [];
@@ -541,9 +636,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         if ($fromDateStr === '' || $fromTs === false) {
             $validationErrors[] = 'From Date must be a valid date.';
+        } elseif (function_exists('validate_submission_date')) {
+            $dErr = validate_submission_date('from_date', $fromDateStr, 'From Date');
+            if ($dErr !== null) $validationErrors[] = $dErr;
         }
         if ($toDateStr === '' || $toTs === false) {
             $validationErrors[] = 'To Date must be a valid date.';
+        } elseif (function_exists('validate_submission_date')) {
+            $dErr = validate_submission_date('to_date', $toDateStr, 'To Date');
+            if ($dErr !== null) $validationErrors[] = $dErr;
         }
 
         if ($fromTs !== false && $toTs !== false && $fromDateStr !== '' && $toDateStr !== '') {
@@ -565,6 +666,28 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $certLink = trim((string)($_POST['certificate_link'] ?? ''));
         if ($certLink !== '' && !preg_match('/^https?:\/\/.+/i', $certLink)) {
             $validationErrors[] = 'Certificate Link must be a valid URL starting with http:// or https://.';
+        }
+    }
+
+    if ($type === 'value_added') {
+        $contactNum = trim((string)($_POST['contact_number'] ?? ''));
+        if ($contactNum !== '' && !preg_match('/^[0-9+\-\s(),.]{7,25}$/', $contactNum)) {
+            $validationErrors[] = 'Contact Number must be a valid telephone number (e.g. +91 98765 43210).';
+        }
+        $emailAddr = trim((string)($_POST['email'] ?? ''));
+        if ($emailAddr !== '' && !filter_var($emailAddr, FILTER_VALIDATE_EMAIL)) {
+            $validationErrors[] = 'Email Address must be a valid email format (e.g. expert@example.com).';
+        }
+        // Auto-synthesize legacy resource_person string for backward compatibility
+        if (!empty($_POST['resource_person_name'])) {
+            $parts = array_filter([
+                trim((string)$_POST['resource_person_name']),
+                trim((string)($_POST['designation'] ?? '')),
+                trim((string)($_POST['company_name'] ?? '')),
+                !empty($_POST['contact_number']) ? 'Contact: ' . trim((string)$_POST['contact_number']) : '',
+                !empty($_POST['email']) ? 'Email: ' . trim((string)$_POST['email']) : '',
+            ]);
+            $_POST['resource_person'] = implode(', ', $parts);
         }
     }
 
@@ -621,6 +744,14 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
     }
 
+    if ($type === 'conference') {
+        [$cClean, $cErrors] = conference_prepare_submission($user, $_POST);
+        $validationErrors = array_merge($validationErrors, $cErrors);
+        foreach ($cClean as $k => $v) {
+            $_POST[$k] = $v === null ? '' : (string) $v;
+        }
+    }
+
     foreach ($expectedFields as $fKey => $fLabel) {
         if ($fKey === 'academic_year') {
             continue; 
@@ -630,6 +761,15 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         }
         $val = trim((string) ($_POST[$fKey] ?? ''));
         if ($val === '') {
+            if ($type === 'value_added' && in_array($fKey, ['resource_person_name', 'designation', 'company_name'], true)) {
+                $editId = (int) input('edit_id');
+                if ($editId > 0) {
+                    $exRec = record_find($type, $editId);
+                    if (!empty($exRec['resource_person'])) {
+                        continue; // Preserve historical combined resource person when editing without upgrading
+                    }
+                }
+            }
             $validationErrors[] = "{$fLabel} is required.";
             continue;
         }
@@ -643,6 +783,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if (in_array($fKey, ['conference_date', 'publication_date', 'from_date', 'to_date', 'signed_date', 'valid_upto', 'event_date', 'activity_date'], true)) {
             if (strtotime($val) === false) {
                 $validationErrors[] = "{$fLabel} must be a valid date.";
+            } elseif (function_exists('validate_submission_date')) {
+                $dateErr = validate_submission_date($fKey, $val, $fLabel);
+                if ($dateErr !== null) {
+                    $validationErrors[] = $dateErr;
+                }
             }
         }
 
@@ -670,6 +815,24 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             } else {
                 $_POST['pay_scale'] = (string)(float)$val;
             }
+        }
+    }
+
+    if ($type === 'online_course') {
+        $myVal = trim((string)($_POST['month_year'] ?? ''));
+        if (preg_match('/^(\d{1,2})\/(\d{4})$/', $myVal, $mym)) {
+            $mErr = validate_submission_month_year((int)$mym[1], (int)$mym[2], 'Month & Year of Course');
+            if ($mErr !== null) {
+                $validationErrors[] = $mErr;
+            }
+        }
+    }
+
+    if ($type === 'conference') {
+        $pubYr = (int)($_POST['publication_year'] ?? 0);
+        $currIstYear = (int)app_ist_now()->format('Y');
+        if ($pubYr > $currIstYear) {
+            $validationErrors[] = "Publication year cannot be in the future (current year is {$currIstYear} IST).";
         }
     }
 
@@ -727,7 +890,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         redirect('/upload.php?type=' . $type);
     }
 
-    if (!in_array($type, ['journal', 'book', 'placement', 'nss', 'co_curricular', 'extra_curricular'], true)) {
+    if (!in_array($type, ['journal', 'book', 'conference', 'placement', 'nss', 'co_curricular', 'extra_curricular'], true)) {
         if (!in_array((string) ($_POST['exam_session'] ?? ''), exam_sessions(), true)) {
             $sessLabel = ($type === 'inst_pass_percentage') ? 'Exam Session' : 'Academic Session';
             $validationErrors[] = $sessLabel . ' is required: choose ' . implode(' or ', exam_sessions()) . '.';
@@ -743,6 +906,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $stmt->execute([$proofEditId]);
             $proofRow = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
             $proofRequired = empty($proofRow['proof_file']) && empty($proofRow['proofs']);
+            if ($type === 'value_added' && !empty($proofRow['report_link'])) {
+                $proofRequired = false; // Historical records with an existing web link do not force file re-upload
+            }
         } catch (Throwable $e) {
             // fall back to requiring a proof
         }
@@ -761,7 +927,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $pdo   = db();
 
     try {
-        $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at', 'academic_year'];
+        $protected = ['id', 'created_by', 'status', 'approved_by', 'review_remark', 'created_at', 'updated_at'];
         $tableColumns = $pdo->query("SHOW COLUMNS FROM `$table`")->fetchAll(PDO::FETCH_COLUMN);
         $allowed      = array_diff($tableColumns, $protected);
 
@@ -837,6 +1003,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             $updateValues[] = $proofStored;
             $newValues['proof_file'] = $proofStored;
         }
+        if ($proofStored !== null && in_array('event_report_file', $tableColumns, true)) {
+            $setPairs[] = "`event_report_file` = ?";
+            $updateValues[] = $proofStored;
+            $newValues['event_report_file'] = $proofStored;
+        }
         $setPairs[] = "`status` = ?";
         $updateValues[] = 'Resubmitted';
         $setPairs[] = "`review_remark` = ?";
@@ -903,7 +1074,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     $fields[] = 'created_by'; $values[] = $user['id']; $placeholders[] = '?';
     $fields[] = 'status';     $values[] = $initialStatus; $placeholders[] = '?';
     if (in_array('academic_year', $tableColumns, true)) {
-        $fields[] = 'academic_year'; $values[] = $activeYear; $placeholders[] = '?';
+        $fields[] = 'academic_year'; $values[] = $targetYear; $placeholders[] = '?';
     }
     if (in_array('created_at', $tableColumns, true)) {
         $fields[] = 'created_at';
@@ -911,12 +1082,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $placeholders[] = '?';
     }
 
-        if (!in_array($type, ['nptel', 'journal', 'book'], true) && !user_can_choose_department($user) && !empty($user['department'])) {
+        if (!in_array($type, ['nptel', 'journal', 'book', 'conference'], true) && !user_can_choose_department($user) && !empty($user['department'])) {
             $_POST['department'] = $user['department'];
         }
 
     foreach ($_POST as $k => $v) {
-        if (!in_array($k, $allowed, true) || $v === '') continue;
+        if (!in_array($k, $allowed, true) || $v === '' || $k === 'academic_year') continue;
         $fields[] = $k;
         $values[] = $v;
         $placeholders[] = '?';
@@ -930,6 +1101,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
 
         if ($proofStored !== null && in_array('proof_file', $tableColumns, true)) {
             $fields[] = 'proof_file'; $values[] = $proofStored; $placeholders[] = '?';
+        }
+        if ($proofStored !== null && in_array('event_report_file', $tableColumns, true)) {
+            $fields[] = 'event_report_file'; $values[] = $proofStored; $placeholders[] = '?';
         }
         if ($proofStored !== null && in_array('proofs', $tableColumns, true) && !in_array('proofs', $fields, true)) {
             $fields[] = 'proofs'; $values[] = json_encode([$proofStored]); $placeholders[] = '?';
@@ -1073,6 +1247,21 @@ if ($editId > 0 && isset($types[$selectedType])) {
     if ($editRecord && in_array($selectedType, ['journal', 'book'], true)) {
         $editRecord += publication_edit_values($selectedType, $editRecord);
     }
+    if ($editRecord && $selectedType === 'conference') {
+        if (empty($editRecord['main_author_id']) && !empty($editRecord['faculty_name'])) {
+            foreach (publication_main_author_options($user) as $ma) {
+                if (trim($ma['name']) === trim((string)$editRecord['faculty_name'])) {
+                    $editRecord['main_author_id'] = (string) $ma['id'];
+                    break;
+                }
+            }
+        }
+        if (empty($editRecord['publication_year']) && !empty($editRecord['conference_date'])) {
+            if (preg_match('/(?:19|20)\d{2}/', $editRecord['conference_date'], $ym)) {
+                $editRecord['publication_year'] = $ym[0];
+            }
+        }
+    }
     // University Pass Percentage child rows
     if ($editRecord && $selectedType === 'inst_pass_percentage') {
         $cStmt = db()->prepare("SELECT * FROM inst_pass_percentage_rows WHERE pass_percentage_id = ? ORDER BY sort_order ASC, id ASC");
@@ -1174,9 +1363,8 @@ function render_publication_author_fields(array $user, string $activeYear, strin
             <?php endforeach; ?>
           </select></div>
         <div class="field"><label>Department <span class="card-sub">— the Main Author's</span></label>
-          <input class="input" id="pubMainDept" readonly tabindex="-1" style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;"></div>
-        <div class="field"><label>Academic Year</label>
-          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year."></div>
+          <input class="input" id="pubMainDept" name="department" readonly tabindex="-1" style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;"></div>
+        <?php render_academic_year_field(); ?>
         <?= $afterYear ?>
         <div class="field"><label>Number of Co-Authors <span class="req">*</span> <span class="card-sub">— MSEC faculty besides the Main Author</span></label>
           <select class="select" name="co_author_count" id="pubCoCount" required>
@@ -1218,16 +1406,106 @@ function render_publication_date_fields(): void
     <?php
 }
 
-function render_proof_field(?array $editRecord = null, bool $required = true): void
+function render_proof_field(?array $editRecord = null, bool $required = true, ?array $attConfig = null): void
 {
-    // Required on every new entry; a record being edited that already has a proof keeps it.
+    // Resolve attachment config if not passed
+    if ($attConfig === null) {
+        if (!empty($GLOBALS['activeSection']['attachment_config'])) {
+            $attConfig = $GLOBALS['activeSection']['attachment_config'];
+        } elseif (!empty($GLOBALS['activeSection']['id'])) {
+            require_once __DIR__ . '/inc/metric_studio.php';
+            $foundM = metric_studio_find($GLOBALS['activeSection']['id']);
+            if ($foundM && !empty($foundM['attachment_config_parsed'])) {
+                $attConfig = $foundM['attachment_config_parsed'];
+            }
+        }
+    }
+
+    global $selectedType;
+    $isPaper      = in_array($selectedType, ['journal', 'conference'], true);
+    $isCert       = in_array($selectedType, ['fdp'], true);
+    $isInterInst  = in_array($selectedType, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
+    $isValueAdded = ($selectedType === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
+    $isSociety    = ($selectedType === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
+    $defaultLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $label        = (!empty($attConfig['label']) && $attConfig['label'] !== 'Proof / Attachment') ? $attConfig['label'] : $defaultLabel;
+    $isMandatory  = isset($attConfig['required']) ? (bool)$attConfig['required'] : $required;
+    $maxMb        = !empty($attConfig['max_file_mb']) ? (int)$attConfig['max_file_mb'] : 2;
+    $allowedTypes = !empty($attConfig['allowed_types']) ? $attConfig['allowed_types'] : ['pdf'];
+    $helpText     = $isPaper ? ('PDF document strictly ' . $maxMb . ' MB or less.') : (!empty($attConfig['help_text']) ? $attConfig['help_text'] : (strtoupper(implode(', ', $allowedTypes)) . ' document strictly ' . $maxMb . ' MB or less.'));
+
     $hasProof = $editRecord && (!empty($editRecord['proof_file']) || !empty($editRecord['proofs']));
-    $needed   = $required && !$hasProof;
-    echo '<div class="field" style="grid-column:span 2">';
-    echo '<label>Proof / Attachment' . ($needed ? ' <span class="req">*</span>' : '') . ' <span class="card-sub">— PDF only, strictly 2 MB or less'
-        . ($hasProof ? ' (leave empty to keep the current file)' : '') . '</span></label>';
-    echo '<input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf"' . ($needed ? ' required' : '') . '>';
-    echo '<div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>';
+    $hasReportLink = $isValueAdded && $editRecord && !empty($editRecord['report_link']);
+    $existingProofFile = $editRecord['proof_file'] ?? ($editRecord['proofs'][0] ?? null);
+    $needed   = $isMandatory && !$hasProof && !$hasReportLink;
+
+    // MIME / Extension accept attribute
+    $acceptParts = [];
+    foreach ($allowedTypes as $ext) {
+        $ext = strtolower(trim($ext));
+        if ($ext === 'pdf') {
+            $acceptParts[] = 'application/pdf';
+            $acceptParts[] = '.pdf';
+        } else {
+            $acceptParts[] = '.' . $ext;
+        }
+    }
+    $acceptAttr = implode(',', array_unique($acceptParts));
+    $formatsBadge = strtoupper(implode(', ', $allowedTypes));
+
+    echo '<div class="field atts-proof-container" style="grid-column: 1 / -1; margin-top:8px;" data-max-bytes="' . ($maxMb * 1024 * 1024) . '" data-max-mb="' . $maxMb . '" data-allowed="' . e(strtolower(implode(',', $allowedTypes))) . '">';
+    echo '<label style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:6px;">';
+    echo '  <span style="font-size:13px; font-weight:700; color:#131D3B;">' . e($label) . ($needed ? ' <span class="req" style="color:#DC2626;">*</span>' : '') . '</span>';
+    echo '  <span class="card-sub" style="font-size:11.5px; color:#64748B;">' . e($formatsBadge) . ' strictly ' . $maxMb . ' MB or less</span>';
+    echo '</label>';
+
+    // Existing proof badge if editing
+    if ($hasProof && !empty($existingProofFile)) {
+        echo '<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">';
+        echo '  <div style="display:flex; align-items:center; gap:8px;">';
+        echo '    <span style="color:#16A34A; display:inline-flex;">' . icon('file-text', 16) . '</span>';
+        echo '    <span style="font-size:12.5px; color:#15803D; font-weight:600;">' . ($isPaper ? 'Current Paper Copy:' : ($isCert ? 'Current Certificate:' : ($isInterInst || $isSociety ? 'Current Certificate:' : ($isValueAdded ? 'Current Event Report:' : 'Current Attachment:')))) . '</span>';
+        echo '    <code style="font-size:11.5px; background:#DCFCE7; color:#166534; padding:2px 6px; border-radius:4px; font-family:monospace;">' . e($existingProofFile) . '</code>';
+        echo '  </div>';
+        echo '  <div style="display:flex; align-items:center; gap:8px;">';
+        echo '    <a href="' . e(url('view-proof.php?file=' . urlencode($existingProofFile))) . '" target="_blank" class="btn btn-sm btn-outline" style="font-size:11.5px; border-color:#86EFAC; color:#15803D; background:#FFFFFF;">' . icon('external-link', 12) . ' View Document</a>';
+        echo '    <span style="font-size:11px; color:#64748B;">(Leave empty to retain this file)</span>';
+        echo '  </div>';
+        echo '</div>';
+    }
+
+    // Historical Event Report Link notice if editing a record with report_link but no uploaded file
+    if ($hasReportLink && empty($existingProofFile)) {
+        echo '<div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">';
+        echo '  <div style="display:flex; align-items:center; gap:8px;">';
+        echo '    <span style="color:#2563EB; display:inline-flex;">' . icon('external-link', 16) . '</span>';
+        echo '    <span style="font-size:12.5px; color:#1D4ED8; font-weight:600;">Historical Web Link to Event Report:</span>';
+        echo '    <a href="' . e($editRecord['report_link']) . '" target="_blank" rel="noopener noreferrer" style="font-size:12px; color:#2563EB; text-decoration:underline; word-break:break-all;">' . e($editRecord['report_link']) . '</a>';
+        echo '  </div>';
+        echo '  <span style="font-size:11px; color:#64748B;">(Historical web link preserved &mdash; upload a PDF to attach report file)</span>';
+        echo '</div>';
+    }
+
+    echo '<div class="atts-proof-dropzone" id="proofDropzone" style="border:2px dashed #CBD5E1; border-radius:10px; background:#F8FAFC; padding:14px 18px; transition:border-color 0.2s, background 0.2s; position:relative;">';
+    echo '  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">';
+    echo '    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">';
+    echo '      <div style="width:40px; height:40px; border-radius:8px; background:#FFF7ED; border:1px solid #FFEDD5; display:flex; align-items:center; justify-content:center; color:#FF4F01; flex-shrink:0;">';
+    echo '        ' . icon('upload-cloud', 22);
+    echo '      </div>';
+    echo '      <div style="flex:1;">';
+    echo '        <input class="input" type="file" name="proof" id="proofInput" accept="' . e($acceptAttr) . '"' . ($needed ? ' required' : '') . ' style="font-size:12px; padding:6px 10px; border-radius:6px; background:#FFFFFF; width:100%;">';
+    echo '        <div class="card-sub" style="font-size:11px; color:#64748B; margin-top:4px;">' . e($helpText) . '</div>';
+    echo '      </div>';
+    echo '    </div>';
+    echo '    <div id="proofSelectedInfo" style="display:none; align-items:center; gap:10px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:6px 12px;">';
+    echo '      <div style="font-size:12px; color:#1E40AF;">';
+    echo '        <strong id="proofSelectedName">file.pdf</strong> (<span id="proofSelectedSize">0 KB</span>)';
+    echo '      </div>';
+    echo '      <button type="button" id="proofRemoveBtn" class="btn btn-ghost btn-sm" style="color:#DC2626; padding:0 6px; height:24px; font-size:11px;" title="' . ($isPaper ? 'Clear selected paper' : ($isCert ? 'Clear selected certificate' : 'Clear selected file')) . '">&times; Remove</button>';
+    echo '    </div>';
+    echo '  </div>';
+    echo '  <div id="proofSizeError" style="color:#DC2626; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:6px; padding:8px 12px; font-size:12px; font-weight:600; margin-top:8px; display:none;"></div>';
+    echo '</div>';
     echo '</div>';
 }
 
@@ -1278,9 +1556,9 @@ require __DIR__ . '/inc/header.php';
           <input type="hidden" name="return_type" value="<?= e($selectedType) ?>">
           <label for="flowYear" style="font-size:12px;font-weight:600;color:var(--ink-muted,#64748b)">Academic Year</label>
           <select class="select" id="flowYear" name="academic_year" onchange="this.form.submit()" style="height:32px;font-size:12px;padding:0 28px 0 10px;border-radius:8px;width:auto">
-            <?php foreach (upload_flow_years() as $y): ?>
-              <option value="<?= e($y) ?>" <?= $uploadFlow['year'] === $y ? 'selected' : '' ?>>
-                <?= e($y . ($y === $activeYear ? ' (Active)' : '') . (academic_year_is_locked($y) ? ' — Locked' : '')) ?>
+            <?php foreach (academic_year_options($uploadFlow['year'] ?? $activeYear, true, 'asc') as $opt): ?>
+              <option value="<?= e($opt['value']) ?>" <?= $opt['selected'] ? 'selected' : '' ?> <?= $opt['disabled'] ? 'disabled' : '' ?>>
+                <?= e($opt['label']) ?>
               </option>
             <?php endforeach; ?>
           </select>
@@ -1764,9 +2042,42 @@ require __DIR__ . '/inc/header.php';
         <?php endif; ?>
       <?php endif; ?>
 
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0 16px;">
+      <style>
+      .form-dynamic-grid-12 {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 16px 20px;
+        align-items: start;
+        width: 100%;
+      }
+      @media (min-width: 768px) and (max-width: 1023px) {
+        .form-dynamic-grid-12 {
+          gap: 12px 16px;
+        }
+      }
+      @media (max-width: 767px) {
+        .form-dynamic-grid-12 {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 14px !important;
+        }
+        .form-dynamic-grid-12 > .field,
+        .form-dynamic-grid-12 > .form-section-header,
+        .form-dynamic-grid-12 > .form-heading-element,
+        .form-dynamic-grid-12 > .form-divider-element,
+        .form-dynamic-grid-12 > .form-instructions-callout,
+        .form-dynamic-grid-12 > .atts-proof-container {
+          grid-column: 1 / -1 !important;
+          width: 100% !important;
+          justify-self: stretch !important;
+        }
+      }
+      </style>
+
+      <?php $isGenericMetric = (($activeSection['metric_type'] ?? '') === 'generic'); ?>
+      <div class="<?= $isGenericMetric ? 'form-dynamic-grid-12' : 'form-standard-grid' ?>" style="display:grid; grid-template-columns:<?= $isGenericMetric ? 'repeat(12, 1fr)' : '1fr 1fr' ?>; gap:16px 20px; align-items:start;">
       <?php if (!empty($editRecord)): ?>
-        <div style="grid-column:span 2; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
+        <div style="grid-column:1 / -1; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
             <span class="badge badge-primary" style="font-size:12px; font-weight:700">Authorized Correction</span>
             <span style="font-weight:700; color:#1E3A8A; font-size:14px">Record #<?= (int)$editId ?>: <?= e($editRecord['_title'] ?? '') ?></span>
@@ -1791,63 +2102,242 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-      <?php if (($activeSection['metric_type'] ?? '') === 'generic'): ?>
+      <?php if ($isGenericMetric): ?>
         <?php
           require_once __DIR__ . '/inc/metric_studio.php';
           $genFields = $activeSection['form_config'] ?: [];
+          $editDataMap = !empty($editRecord['data_parsed']) && is_array($editRecord['data_parsed']) ? $editRecord['data_parsed'] : ($editRecord ?: []);
           if (!empty($activeSection['help_text'])):
         ?>
-          <div style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; color:#475569;">
+          <div style="grid-column:1 / -1; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:12.5px; color:#475569;">
             <strong>Instructions:</strong> <?= e($activeSection['help_text']) ?>
           </div>
         <?php endif; ?>
 
         <?php foreach ($genFields as $gf):
-          $isFull = in_array($gf['type'], ['textarea', 'file'], true);
-          $req = !empty($gf['required']);
-          $gridSpan = $isFull ? 'grid-column:span 2;' : '';
-        ?>
-          <div class="field" style="<?= $gridSpan ?>">
-            <label>
-              <?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?>
+          $fType = $gf['type'] ?? 'text';
+          $fKey = $gf['key'] ?? '';
+          if ($fKey === '' && !in_array($fType, ['section_header', 'heading', 'divider', 'instructions'], true)) continue;
+
+          // Layout Elements
+          if ($fType === 'section_header'): ?>
+            <div class="form-section-header" style="grid-column:1 / -1; margin-top:20px; margin-bottom:8px; border-bottom:2px solid #E2E8F0; padding-bottom:6px;">
+              <h3 style="margin:0; font-size:15px; font-weight:700; color:#131D3B;"><?= e($gf['label']) ?></h3>
               <?php if (!empty($gf['help_text'])): ?>
-                <span class="card-sub">— <?= e($gf['help_text']) ?></span>
+                <div style="font-size:12px; color:#64748B; margin-top:3px;"><?= e($gf['help_text']) ?></div>
               <?php endif; ?>
-            </label>
-            <?php if ($gf['type'] === 'textarea'): ?>
-              <textarea class="input" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> rows="3"></textarea>
-            <?php elseif ($gf['type'] === 'select'): ?>
-              <select class="select" name="<?= e($gf['key']) ?>" <?= $req ? 'required' : '' ?>>
-                <option value="" disabled selected><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
-                <?php foreach (($gf['options'] ?? []) as $opt): ?>
-                  <option value="<?= e($opt) ?>"><?= e($opt) ?></option>
+            </div>
+            <?php continue;
+          elseif ($fType === 'heading'): ?>
+            <div class="form-heading-element" style="grid-column:1 / -1; margin-top:14px; margin-bottom:4px;">
+              <h4 style="margin:0; font-size:14px; font-weight:700; color:#131D3B;"><?= e($gf['label']) ?></h4>
+            </div>
+            <?php continue;
+          elseif ($fType === 'divider'): ?>
+            <div class="form-divider-element" style="grid-column:1 / -1; border-top:1px solid #E2E8F0; margin:14px 0;"></div>
+            <?php continue;
+          elseif ($fType === 'instructions'): ?>
+            <div class="form-instructions-callout" style="grid-column:1 / -1; background:#F8FAFC; border:1px solid #CBD5E1; border-left:4px solid #3B82F6; border-radius:6px; padding:10px 14px; margin:8px 0; font-size:12.5px; color:#334155;">
+              <?= e($gf['label'] ?: ($gf['help_text'] ?? '')) ?>
+            </div>
+            <?php continue;
+          endif;
+
+          // Determine 12-column span, alignment, spacing, custom height, offset
+          $spanNum = metric_studio_field_grid_span($gf);
+          $fieldStyles = ["grid-column: span {$spanNum}"];
+
+          if (!empty($gf['offset']) && (int)$gf['offset'] > 0) {
+              $fieldStyles[] = 'grid-column-start: ' . (1 + (int)$gf['offset']);
+          }
+          if (!empty($gf['align']) && $gf['align'] !== 'stretch') {
+              $fieldStyles[] = 'justify-self: ' . e($gf['align']);
+          }
+          if (!empty($gf['vertical_align'])) {
+              $fieldStyles[] = 'align-self: ' . e($gf['vertical_align']);
+          }
+          if (!empty($gf['spacing'])) {
+              $spacingMap = ['compact' => 'margin-bottom:8px', 'normal' => 'margin-bottom:16px', 'relaxed' => 'margin-bottom:24px', 'spacious' => 'margin-bottom:32px'];
+              if (isset($spacingMap[$gf['spacing']])) {
+                  $fieldStyles[] = $spacingMap[$gf['spacing']];
+              }
+          }
+          if (!empty($gf['custom_height'])) {
+              if (is_numeric($gf['custom_height'])) {
+                  $fieldStyles[] = 'min-height: ' . (int)$gf['custom_height'] . 'px';
+              } elseif ($gf['custom_height'] === 'compact') {
+                  $fieldStyles[] = 'min-height: 36px';
+              } elseif ($gf['custom_height'] === 'tall') {
+                  $fieldStyles[] = 'min-height: 80px';
+              }
+          }
+
+          $gridSpanStyle = implode('; ', $fieldStyles) . ';';
+          $req = !empty($gf['required']);
+          $isReadOnly = !empty($gf['readonly']) || $fType === 'readonly';
+
+          // Role-based field editable rules & read-only enforcement
+          $disabledAttr = '';
+          if ($isReadOnly) {
+              $disabledAttr = 'readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;"';
+          } elseif ($userRole === 'Faculty' && isset($gf['faculty_editable']) && $gf['faculty_editable'] === false) {
+              $disabledAttr = 'disabled';
+          } elseif ($userRole === 'Coordinator' && isset($gf['coordinator_editable']) && $gf['coordinator_editable'] === false) {
+              $disabledAttr = 'disabled';
+          } elseif ($userRole === 'HoD' && isset($gf['hod_editable']) && $gf['hod_editable'] === false) {
+              $disabledAttr = 'disabled';
+          } elseif ($userRole === 'Principal' && isset($gf['principal_editable']) && $gf['principal_editable'] === false) {
+              $disabledAttr = 'disabled';
+          }
+
+          $editVal = $editDataMap[$fKey] ?? ($gf['default_val'] ?? '');
+
+          // Resolve dropdown/choice options (shared option sets or custom options)
+          $resolvedOptions = [];
+          if (($gf['options_mode'] ?? '') === 'shared' && !empty($gf['option_set_key'])) {
+              $set = metric_studio_find_option_set($gf['option_set_key']);
+              if ($set && !empty($set['options_parsed'])) {
+                  $resolvedOptions = $set['options_parsed'];
+              }
+          }
+          if (empty($resolvedOptions) && !empty($gf['options'])) {
+              $resolvedOptions = $gf['options'];
+          }
+
+          // Conditional attributes
+          $condAttrs = '';
+          if (!empty($gf['conditional']) && !empty($gf['conditional']['field'])) {
+              $condAttrs = ' data-cond-field="' . e($gf['conditional']['field']) . '"'
+                         . ' data-cond-op="' . e($gf['conditional']['operator'] ?? 'equals') . '"'
+                         . ' data-cond-val="' . e((string)($gf['conditional']['value'] ?? '')) . '"';
+          }
+        ?>
+          <div class="field" style="<?= $gridSpanStyle ?>" <?= $condAttrs ?>>
+            <?php if ($fType !== 'acknowledgement'): ?>
+              <label>
+                <?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?>
+                <?php if (!empty($gf['help_text'])): ?>
+                  <span class="card-sub">— <?= e($gf['help_text']) ?></span>
+                <?php endif; ?>
+              </label>
+            <?php endif; ?>
+
+            <?php if ($fType === 'textarea'): ?>
+              <textarea class="input" name="<?= e($fKey) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> rows="3"><?= e((string)$editVal) ?></textarea>
+
+            <?php elseif ($fType === 'select'): ?>
+              <select class="select" name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+                <option value="" disabled <?= $editVal === '' ? 'selected' : '' ?>><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
+                <?php foreach ($resolvedOptions as $opt):
+                  $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                  $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                ?>
+                  <option value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'selected' : '' ?>><?= e($optLbl) ?></option>
                 <?php endforeach; ?>
               </select>
-            <?php elseif ($gf['type'] === 'file'): ?>
-              <input class="input" type="file" name="proof" accept="application/pdf,.pdf" <?= $req ? 'required' : '' ?>>
-              <div class="card-sub" style="font-size:11px; margin-top:3px;">PDF document strictly 2 MB or less</div>
-            <?php elseif ($gf['type'] === 'date'): ?>
-              <input class="input" type="date" name="<?= e($gf['key']) ?>" <?= $req ? 'required' : '' ?>>
-            <?php elseif ($gf['type'] === 'integer'): ?>
-              <input class="input" type="number" step="1" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) ? 'max="' . (int)$gf['max'] . '"' : '' ?>>
-            <?php elseif ($gf['type'] === 'decimal'): ?>
-              <input class="input" type="number" step="any" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) ? 'max="' . (float)$gf['max'] . '"' : '' ?>>
-            <?php elseif ($gf['type'] === 'url'): ?>
-              <input class="input" type="url" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?: 'https://') ?>" <?= $req ? 'required' : '' ?>>
+
+            <?php elseif ($fType === 'multiselect'): ?>
+              <?php
+                $selectedArr = is_array($editVal) ? $editVal : (explode(',', (string)$editVal));
+                $selectedArr = array_map('trim', $selectedArr);
+              ?>
+              <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px; padding:10px 14px; max-height:140px; overflow-y:auto; display:flex; flex-direction:column; gap:6px;">
+                <?php foreach ($resolvedOptions as $opt):
+                  $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                  $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                  $isSel = in_array((string)$optVal, $selectedArr, true) || in_array((string)$optLbl, $selectedArr, true);
+                ?>
+                  <label style="display:inline-flex; align-items:center; gap:8px; font-size:12px; font-weight:normal; cursor:pointer; margin:0;">
+                    <input type="checkbox" name="<?= e($fKey) ?>[]" value="<?= e($optVal) ?>" <?= $isSel ? 'checked' : '' ?> <?= $disabledAttr ?>>
+                    <span><?= e($optLbl) ?></span>
+                  </label>
+                <?php endforeach; ?>
+              </div>
+
+            <?php elseif ($fType === 'radio'): ?>
+              <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:4px;">
+                <?php foreach ($resolvedOptions as $opt):
+                  $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                  $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                ?>
+                  <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:normal; cursor:pointer; margin:0;">
+                    <input type="radio" name="<?= e($fKey) ?>" value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'checked' : '' ?> <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+                    <span><?= e($optLbl) ?></span>
+                  </label>
+                <?php endforeach; ?>
+              </div>
+
+            <?php elseif ($fType === 'checkbox'): ?>
+              <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:normal; cursor:pointer; margin-top:6px;">
+                <input type="checkbox" name="<?= e($fKey) ?>" value="1" <?= !empty($editVal) ? 'checked' : '' ?> <?= $disabledAttr ?>>
+                <span><?= e($gf['placeholder'] ?: 'Confirm / Checked') ?></span>
+              </label>
+
+            <?php elseif ($fType === 'acknowledgement'): ?>
+              <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:8px; padding:12px 16px; margin:6px 0;">
+                <label style="display:inline-flex; align-items:flex-start; gap:10px; font-size:13px; font-weight:600; color:#92400E; cursor:pointer; margin:0;">
+                  <input type="checkbox" name="<?= e($fKey) ?>" value="1" <?= !empty($editVal) ? 'checked' : '' ?> <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> style="margin-top:2px;">
+                  <span><?= e($gf['label']) ?> <?= $req ? '<span class="req">*</span>' : '' ?></span>
+                </label>
+                <?php if (!empty($gf['help_text'])): ?>
+                  <div style="font-size:11.5px; color:#B45309; margin-left:24px; margin-top:3px;"><?= e($gf['help_text']) ?></div>
+                <?php endif; ?>
+              </div>
+
+            <?php elseif ($fType === 'date'): ?>
+              <?php $isWhitelistedDate = in_array($fKey, ['valid_upto', 'expiry_date', 'planned_end_date', 'project_end_date'], true); ?>
+              <input class="input" type="date" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= !$isWhitelistedDate ? 'max="' . app_ist_today() . '"' : '' ?> <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'time'): ?>
+              <input class="input" type="time" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'datetime'): ?>
+              <input class="input" type="datetime-local" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'integer'): ?>
+              <input class="input" type="number" step="1" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (int)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'decimal'): ?>
+              <input class="input" type="number" step="any" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (float)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'tel'): ?>
+              <input class="input" type="tel" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'e.g. +91 98765 43210') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'url'): ?>
+              <input class="input" type="url" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'https://') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'email'): ?>
+              <input class="input" type="email" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'user@example.com') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
+            <?php elseif ($fType === 'readonly'): ?>
+              <input class="input" type="text" name="<?= e($fKey) ?>" value="<?= e((string)($editVal ?: ($gf['placeholder'] ?? 'Calculated Automatically'))) ?>" readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;">
+
+            <?php elseif ($fType === 'specialized'): ?>
+              <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:10px 14px; border-radius:6px; font-size:12px; color:#1D4ED8; font-weight:600;">
+                Institutional specialized calculation component: <?= e($gf['label']) ?>
+              </div>
+
+            <?php elseif ($fType === 'table_grid'): ?>
+              <div class="table-grid-wrap" style="background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px; padding:12px;">
+                <textarea class="input" name="<?= e($fKey) ?>" placeholder="Enter tabular or itemized data..." rows="3" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>><?= e((string)$editVal) ?></textarea>
+                <div style="font-size:11px; color:#64748B; margin-top:4px;">Tabular data entry / itemized details</div>
+              </div>
+
+            <?php elseif ($fType === 'file'): ?>
+              <input class="input" type="file" name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+
             <?php else: ?>
-              <input class="input" type="text" name="<?= e($gf['key']) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?>>
+              <input class="input" type="text" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min_length']) && $gf['min_length'] !== null ? 'minlength="' . (int)$gf['min_length'] . '"' : '' ?> <?= isset($gf['max_length']) && $gf['max_length'] !== null ? 'maxlength="' . (int)$gf['max_length'] . '"' : '' ?> <?= $disabledAttr ?>>
             <?php endif; ?>
           </div>
         <?php endforeach; ?>
       <?php endif; ?>
 
-      <?php if (in_array($selectedType, ['conference','patent'])): ?>
+      <?php if ($selectedType === 'patent'): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
           <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label>
-          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
-        </div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
       <?php endif; ?>
 
@@ -1872,9 +2362,8 @@ require __DIR__ . '/inc/header.php';
         <?php render_publication_date_fields(); ?>
         <div class="field"><label>DOI <span class="card-sub">(if the article has one — e.g. 10.1234/ABC123)</span></label>
           <input class="input" name="doi" maxlength="255" placeholder="10.1234/ABC123 or https://doi.org/10.1234/ABC123" autocomplete="off"></div>
-        <?php render_proof_field($editRecord); ?>
         <div class="field"><label>Link to Journal Website <span class="req">*</span></label><input class="input" name="journal_link" type="url" required></div>
-        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
+        <?php render_proof_field($editRecord); ?>
 
       <?php elseif ($selectedType === 'book'): ?>
         <?php
@@ -1901,9 +2390,45 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
 
       <?php elseif ($selectedType === 'conference'): ?>
+        <?php
+          $confMain = publication_main_author_options($user);
+          $selectedMainAuthorId = (int)($editRecord['main_author_id'] ?? 0);
+          if ($selectedMainAuthorId === 0 && !empty($editRecord['faculty_name'])) {
+              foreach ($confMain as $f) {
+                  if (trim($f['name']) === trim((string)$editRecord['faculty_name'])) {
+                      $selectedMainAuthorId = (int)$f['id'];
+                      break;
+                  }
+              }
+          }
+          if ($selectedMainAuthorId === 0 && count($confMain) === 1) {
+              $selectedMainAuthorId = (int)$confMain[0]['id'];
+          }
+          $initialConfDept = $editRecord['department'] ?? '';
+          if ($initialConfDept === '' && $selectedMainAuthorId > 0) {
+              foreach ($confMain as $f) {
+                  if ((int)$f['id'] === $selectedMainAuthorId) {
+                      $initialConfDept = $f['department'] ?? '';
+                      break;
+                  }
+              }
+          }
+        ?>
+        <div class="field"><label>Main Author <span class="req">*</span> <span class="card-sub">— from the faculty list</span></label>
+          <select class="select" name="main_author_id" id="confMainAuthor" required>
+            <?php if (count($confMain) !== 1): ?><option value="" disabled <?= $selectedMainAuthorId === 0 ? 'selected' : '' ?>>Select faculty</option><?php endif; ?>
+            <?php foreach ($confMain as $f): ?>
+              <option value="<?= (int) $f['id'] ?>" data-dept="<?= e($f['department'] ?? '') ?>" <?= $selectedMainAuthorId === (int)$f['id'] ? 'selected' : '' ?>><?= e($f['name'] . ' — ' . ($f['department'] ?: 'No dept')) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label>Department <span class="card-sub">— the Main Author's</span></label>
+          <input class="input" id="confMainDept" name="department" readonly tabindex="-1" style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" value="<?= e($initialConfDept) ?>">
+        </div>
+        <?php render_academic_year_field(); ?>
         <div class="field"><label>Author Type <span class="req">*</span></label>
           <select class="select" name="author_type" required>
-            <option value="" disabled selected>Select Author Type</option>
+            <option value="" disabled <?= empty($editRecord['author_type']) ? 'selected' : '' ?>>Select Author Type</option>
             <option value="First Author" <?= ($editRecord['author_type'] ?? '') === 'First Author' ? 'selected' : '' ?>>First Author</option>
             <option value="Corresponding Author" <?= ($editRecord['author_type'] ?? '') === 'Corresponding Author' ? 'selected' : '' ?>>Corresponding Author</option>
             <option value="Co-Author" <?= ($editRecord['author_type'] ?? '') === 'Co-Author' ? 'selected' : '' ?>>Co-Author</option>
@@ -1912,12 +2437,12 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label>Title of the Paper <span class="req">*</span></label>
           <input class="input js-trim" name="paper_title" maxlength="500" value="<?= e($editRecord['paper_title'] ?? '') ?>" autocomplete="off" required>
         </div>
-        <div class="field" style="grid-column:span 2"><label>Conference Name <span class="req">*</span></label>
+        <div class="field"><label>Conference Name <span class="req">*</span></label>
           <input class="input js-trim" name="conference_name" maxlength="255" value="<?= e($editRecord['conference_name'] ?? '') ?>" required>
         </div>
         <div class="field"><label>Type <span class="req">*</span></label>
           <select class="select" name="conference_type" required>
-            <option value="" disabled selected>Select Type</option>
+            <option value="" disabled <?= empty($editRecord['conference_type']) ? 'selected' : '' ?>>Select Type</option>
             <option value="National" <?= ($editRecord['conference_type'] ?? '') === 'National' ? 'selected' : '' ?>>National</option>
             <option value="International" <?= ($editRecord['conference_type'] ?? '') === 'International' ? 'selected' : '' ?>>International</option>
           </select>
@@ -1929,14 +2454,26 @@ require __DIR__ . '/inc/header.php';
           <input class="input" name="venue" maxlength="255" value="<?= e($editRecord['venue'] ?? '') ?>" placeholder="e.g. Chennai, India" required>
         </div>
         <div class="field"><label>Conference Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label>
-          <input class="input" name="conference_date" type="date" value="<?= e($editRecord['conference_date'] ?? '') ?>" required>
+          <input class="input" name="conference_date" type="date" value="<?= e($editRecord['conference_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required>
+        </div>
+        <div class="field"><label>Year of Publication <span class="req">*</span></label>
+          <select class="select" name="publication_year" required>
+            <option value="" disabled <?= empty($editRecord['publication_year']) ? 'selected' : '' ?>>Select year</option>
+            <?php foreach (publication_years() as $y): ?>
+              <option value="<?= $y ?>" <?= ((string)($editRecord['publication_year'] ?? '') === (string)$y) ? 'selected' : '' ?>><?= $y ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label>DOI <span class="card-sub">(if available — e.g. 10.1234/ABC123)</span></label>
+          <input class="input" name="doi" maxlength="255" value="<?= e($editRecord['doi'] ?? '') ?>" placeholder="10.1234/ABC123 or https://doi.org/10.1234/ABC123" autocomplete="off">
         </div>
         <div class="field"><label>Proceedings Link <span class="card-sub">(if available)</span></label>
           <input class="input" name="proceedings_link" type="url" value="<?= e($editRecord['proceedings_link'] ?? '') ?>" placeholder="https://...">
         </div>
-        <div class="field"><label>Document Link <span class="req">*</span></label>
-          <input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required>
+        <div class="field" style="grid-column:span 2"><label>Co-Authors <span class="card-sub">(optional — other authors separated by commas)</span></label>
+          <input class="input js-trim" name="co_authors" maxlength="500" value="<?= e($editRecord['co_authors'] ?? '') ?>" placeholder="e.g. Dr. A. Kumar, Prof. S. Devi">
         </div>
+        <?php render_proof_field($editRecord, true); ?>
 
       <?php elseif ($selectedType === 'patent'): ?>
         <?php
@@ -1954,7 +2491,7 @@ require __DIR__ . '/inc/header.php';
         </div>
         <div class="field" style="grid-column:span 2"><label id="patentTitleLabel">Title of the Patent / Copyright / Design <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
         <div class="field"><label id="patentNumberLabel">Patent / Registration Number <span class="req">*</span></label><input class="input" name="patent_number" value="<?= e($editRecord['patent_number'] ?? '') ?>" required></div>
-        <div class="field"><label id="patentDateLabel">Date of Publication / Grant <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" value="<?= e($editRecord['publication_date'] ?? '') ?>" required></div>
+        <div class="field"><label id="patentDateLabel">Date of Publication / Grant <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" value="<?= e($editRecord['publication_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
         <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required></div>
         <script>
         function updatePatentLabels(cat) {
@@ -2007,9 +2544,7 @@ require __DIR__ . '/inc/header.php';
           <input class="input" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? $user['name']) ?>" required>
         </div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label>
-          <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
-        </div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear, 'Academic Session'); ?>
         <div class="field"><label for="fdp_event_type">Event Type <span class="req">*</span></label>
           <select class="select" name="event_type" id="fdp_event_type" required>
@@ -2032,33 +2567,31 @@ require __DIR__ . '/inc/header.php';
           <input class="input" name="organized_by" value="<?= e($editRecord['organized_by'] ?? '') ?>" required>
         </div>
         <div class="field"><label for="fdp_from_date">From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label>
-          <input class="input" name="from_date" id="fdp_from_date" type="date" value="<?= e($editRecord['from_date'] ?? '') ?>" required>
+          <input class="input" name="from_date" id="fdp_from_date" type="date" value="<?= e($editRecord['from_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required>
         </div>
         <div class="field"><label for="fdp_to_date">To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label>
-          <input class="input" name="to_date" id="fdp_to_date" type="date" value="<?= e($editRecord['to_date'] ?? '') ?>" required>
+          <input class="input" name="to_date" id="fdp_to_date" type="date" value="<?= e($editRecord['to_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required>
         </div>
         <div class="field"><label for="fdp_duration">Duration <span class="req">*</span> <span class="card-sub">(Calculated automatically)</span></label>
           <input class="input" name="duration" id="fdp_duration" value="<?= e($editRecord['duration'] ?? '') ?>" readonly placeholder="Auto-calculated from dates" style="background:#f8fafc; font-weight:600;" required>
           <div id="fdp_duration_error" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
         </div>
-        <div class="field" style="grid-column:span 2">
-          <label>Proof / Attachment <span class="card-sub">— PDF only, strictly 2 MB or less</span></label>
-          <input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf">
-          <div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>
-          <?php if (!empty($editRecord['proof_file'])): ?>
-            <div style="font-size:12px; margin-top:4px;">
-              Current proof: <a href="<?= e(url('proof.php?type=fdp&id=' . (int)$editRecord['id'])) ?>" target="_blank" class="text-primary font-medium">View uploaded PDF</a>
-            </div>
-          <?php endif; ?>
-        </div>
+        <?php 
+          $fdpAttConfig = $activeSection['attachment_config'] ?? [];
+          if (empty($fdpAttConfig['label']) || $fdpAttConfig['label'] === 'Proof / Attachment') {
+              $fdpAttConfig['label'] = 'Upload Certificate';
+          }
+          render_proof_field($editRecord, true, $fdpAttConfig); 
+        ?>
         <div class="field" style="grid-column:span 2"><label for="fdp_certificate_link">Certificate Link (Optional) <span class="card-sub">(https://...)</span></label>
           <input class="input" name="certificate_link" id="fdp_certificate_link" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" placeholder="https://example.com/certificate.pdf">
         </div>
 
       <?php elseif ($selectedType === 'mou'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear, 'Academic Session'); ?>
-        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" required></div>
+        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" max="<?= app_ist_today() ?>" required></div>
         <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
         <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" required></div>
         <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration <span class="req">*</span></label><input class="input" name="purpose" required></div>
@@ -2066,8 +2599,9 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'event'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
-        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
+        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" max="<?= app_ist_today() ?>" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label>
           <select class="select js-other" name="event_type" data-other="event_type_other" required><option>Seminar</option><option>Workshop</option><option>Webinar</option><option>FDP</option><option>Conference</option><option>Symposium</option><option>Guest Lecture</option><option>Others</option></select>
@@ -2095,7 +2629,7 @@ require __DIR__ . '/inc/header.php';
               <option value="<?= e($pt) ?>"><?= e($pt) ?></option>
             <?php endforeach; ?>
           </select></div>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($editRecord['academic_year'] ?? $activeYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted in the active academic year."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
 
         <div class="field js-nptel-part" data-for="Faculty" hidden><label>Faculty Participant <span class="req">*</span></label>
@@ -2169,6 +2703,7 @@ require __DIR__ . '/inc/header.php';
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
         <div class="field" style="grid-column:span 2"><label>Title of Internship <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
         <div class="field" style="grid-column:span 2"><label>Industry/Institution Name &amp; Address <span class="req">*</span></label><input class="input" name="industry" value="<?= e($editRecord['industry'] ?? '') ?>" required></div>
@@ -2178,6 +2713,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'placement'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
+        <?php render_academic_year_field(); ?>
         <div class="field">
           <label for="academic_session">Academic Session <span class="req">*</span></label>
           <select class="select" id="academic_session" name="academic_session" required>
@@ -2229,7 +2765,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'nss'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <div class="field">
           <label for="academic_session">Academic Session <span class="req">*</span></label>
           <select class="select" id="academic_session" name="academic_session" required>
@@ -2241,7 +2777,7 @@ require __DIR__ . '/inc/header.php';
             <?php endforeach; ?>
           </select>
         </div>
-        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" required></div>
+        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="activity_date" type="date" max="<?= app_ist_today() ?>" required></div>
         <div class="field">
           <label for="activity_type">Activity Type <span class="req">*</span></label>
           <select class="select" id="activity_type" name="activity_type" required>
@@ -2261,7 +2797,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'online_course'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Candidate Name <span class="req">*</span></label><input class="input" name="candidate_name" required></div>
         <div class="field"><label>Category <span class="req">*</span></label><select class="select" name="category" required><option>Faculty</option><option>Student</option></select></div>
@@ -2273,7 +2809,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'co_curricular'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_academic_session_field($effectiveYear, $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? null); ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
         <div class="field"><label>Name of the Student <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
@@ -2299,7 +2835,7 @@ require __DIR__ . '/inc/header.php';
             <input class="input js-other-event-input" name="other_event_type" placeholder="Enter event type" value="<?= e($editRecord['other_event_type'] ?? ($isCustomCo ? $currCoType : '')) ?>" <?= ($currCoType === 'Others' || $isCustomCo) ? 'required' : '' ?>>
           </div>
         </div>
-        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" value="<?= e($editRecord['event_date'] ?? '') ?>" required></div>
+        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" value="<?= e($editRecord['event_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
         <div class="field">
           <label>Team / Individual <span class="req">*</span></label>
           <select class="select js-team-toggle" name="team_individual" required>
@@ -2359,7 +2895,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'extra_curricular'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_academic_session_field($effectiveYear, $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? null); ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
         <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
@@ -2373,7 +2909,7 @@ require __DIR__ . '/inc/header.php';
             <option value="Cultural" <?= ($editRecord['activity_type'] ?? '') === 'Cultural' ? 'selected' : '' ?>>Cultural</option>
           </select>
         </div>
-        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" value="<?= e($editRecord['event_date'] ?? '') ?>" required></div>
+        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" value="<?= e($editRecord['event_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
         <div class="field">
           <label>Team / Individual <span class="req">*</span></label>
           <select class="select js-team-toggle" name="team_individual" required>
@@ -2433,14 +2969,14 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'student_achievement'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_academic_session_field($effectiveYear, $editRecord['academic_session'] ?? $editRecord['exam_session'] ?? null); ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" required></div>
         <div class="field" style="grid-column:span 2"><label>Name of the Function / Programme <span class="req">*</span></label><input class="input" name="function_name" required></div>
         <div class="field"><label>Name of the Event <span class="req">*</span></label><input class="input" name="event_name" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label><input class="input" name="event_type" placeholder="e.g. Technical / Sports / Cultural" required></div>
-        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
+        <div class="field"><label>Date of the Event <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" max="<?= app_ist_today() ?>" required></div>
         <div class="field"><label>Team / Individual <span class="req">*</span></label><select class="select" name="team_individual" required><option>Individual</option><option>Team</option></select></div>
         <div class="field"><label>Level <span class="req">*</span></label><select class="select" name="level_secured" required><option>University</option><option>State</option><option>National</option><option>International</option></select></div>
         <div class="field"><label>Position Secured <span class="req">*</span></label><input class="input" name="position_secured" placeholder="e.g. First / Winner / Participant" required></div>
@@ -2449,7 +2985,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'summer_training'): ?>
         <?php render_dept_field($user, $departments, 'Dept / Branch', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
         <div class="field"><label>Reg. No <span class="req">*</span></label><input class="input" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" required></div>
         <div class="field"><label>Name of the student <span class="req">*</span></label><input class="input" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" required></div>
@@ -2461,21 +2997,47 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'value_added'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
-        <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" required></div>
-        <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" required></div>
-        <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" required></div>
-        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option>Online</option><option>Offline</option><option>Hybrid</option></select></div>
-        <div class="field"><label>No. of Participants <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" required></div>
-        <div class="field" style="grid-column:span 2"><label>Resource Person <span class="req">*</span> <span class="card-sub">— Name &amp; Designation (with Contact Details)</span></label><input class="input" name="resource_person" required></div>
-        <div class="field" style="grid-column:span 2"><label>Web Link to Event Report <span class="req">*</span></label><input class="input" name="report_link" type="url" required></div>
+        <div class="field"><label>From Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="from_date" type="date" value="<?= e($editRecord['from_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
+        <div class="field"><label>To Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="to_date" type="date" value="<?= e($editRecord['to_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Course Title <span class="req">*</span></label><input class="input" name="course_title" value="<?= e($editRecord['course_title'] ?? '') ?>" placeholder="e.g. Full-Stack Web Development & Cloud Deployment" required></div>
+        <div class="field"><label>Mode <span class="req">*</span></label><select class="select" name="mode" required><option <?= (($editRecord['mode'] ?? '') === 'Online') ? 'selected' : '' ?>>Online</option><option <?= (($editRecord['mode'] ?? 'Offline') === 'Offline') ? 'selected' : '' ?>>Offline</option><option <?= (($editRecord['mode'] ?? '') === 'Hybrid') ? 'selected' : '' ?>>Hybrid</option></select></div>
+        <div class="field"><label>No. of Participants <span class="req">*</span></label><input class="input" name="participants" type="number" min="1" value="<?= e($editRecord['participants'] ?? '') ?>" placeholder="e.g. 45" required></div>
+
+        <!-- Resource Person Information Header -->
+        <div style="grid-column:span 2; margin-top:8px; margin-bottom:2px; padding-bottom:6px; border-bottom:1px solid #E2E8F0;">
+          <h4 style="margin:0; font-size:13.5px; font-weight:700; color:#131D3B; letter-spacing:0.3px;">Resource Person Information</h4>
+        </div>
+
+        <?php if (!empty($editRecord['resource_person']) && empty($editRecord['resource_person_name'])): ?>
+          <div style="grid-column:span 2; background:#F8FAFC; border:1px solid #CBD5E1; border-radius:8px; padding:10px 14px; margin-bottom:4px;">
+            <div style="font-size:12px; font-weight:600; color:#475569; margin-bottom:2px;">Historical Combined Resource Person:</div>
+            <div style="font-size:13px; color:#1E293B;"><?= e($editRecord['resource_person']) ?></div>
+            <div style="font-size:11px; color:#64748B; margin-top:3px;">(Fill in the structured fields below to upgrade this historical record.)</div>
+          </div>
+        <?php endif; ?>
+
+        <!-- Row 1: Resource Person Name | Designation -->
+        <div class="field"><label>Resource Person Name <span class="req">*</span></label><input class="input" name="resource_person_name" value="<?= e($editRecord['resource_person_name'] ?? '') ?>" placeholder="e.g. Dr. Example Kumar" required></div>
+        <div class="field"><label>Designation <span class="req">*</span></label><input class="input" name="designation" value="<?= e($editRecord['designation'] ?? '') ?>" placeholder="e.g. Senior Research Scientist" required></div>
+
+        <!-- Row 2: Company / Institution Name | Contact Number -->
+        <div class="field"><label>Company / Institution Name <span class="req">*</span></label><input class="input" name="company_name" value="<?= e($editRecord['company_name'] ?? '') ?>" placeholder="e.g. Example Research Centre" required></div>
+        <div class="field"><label>Contact Number <span class="card-sub">(Optional)</span></label><input class="input" name="contact_number" type="tel" value="<?= e($editRecord['contact_number'] ?? '') ?>" placeholder="e.g. +91 98765 43210"></div>
+
+        <!-- Row 3: Email Address | Resource Person Address -->
+        <div class="field"><label>Email Address <span class="card-sub">(Optional)</span></label><input class="input" name="email" type="email" value="<?= e($editRecord['email'] ?? '') ?>" placeholder="e.g. expert@example.com"></div>
+        <div class="field"><label>Resource Person Address <span class="card-sub">(Optional)</span></label><textarea class="input" name="resource_person_address" rows="2" placeholder="e.g. Personal / professional contact address"><?= e($editRecord['resource_person_address'] ?? '') ?></textarea></div>
+
+        <!-- Row 4: Company / Institution Address -->
+        <div class="field" style="grid-column:span 2"><label>Company / Institution Address <span class="card-sub">(Optional)</span></label><textarea class="input" name="company_address" rows="2" placeholder="e.g. Official campus / corporate address"><?= e($editRecord['company_address'] ?? '') ?></textarea></div>
 
       <?php elseif ($selectedType === 'training'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <div class="field"><label>Academic Year</label><input class="input" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>."></div>
+        <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear); ?>
-        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required></div>
+        <div class="field"><label>Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" max="<?= app_ist_today() ?>" required></div>
         <div class="field" style="grid-column:span 2"><label>Event Title <span class="req">*</span></label><input class="input" name="event_title" required></div>
         <div class="field"><label>Event Type <span class="req">*</span></label><select class="select" name="event_type" required><option>Career Guidance</option><option>Counselling</option><option>ICT</option><option>Life Skills</option><option>Soft Skills</option></select></div>
         <?php render_event_mode_fields(); ?>
@@ -2487,20 +3049,14 @@ require __DIR__ . '/inc/header.php';
 
       <?php require __DIR__ . '/inc/inst_upload_forms.php'; ?>
 
-        <!-- Proof / attachment — carried onto the report (Journal and FDP place it within their sections).
-             Institutional forms keep it optional, matching their handler. -->
+        <!-- Proof / attachment — Every metric form includes an anchored Proof / Attachment section -->
         <?php 
-          $hasCustomProof = false;
-          if (($activeSection['metric_type'] ?? '') === 'generic') {
-              foreach (($activeSection['form_config'] ?? []) as $cfgF) {
-                  if (($cfgF['type'] ?? '') === 'file') {
-                      $hasCustomProof = true;
-                      break;
-                  }
+          if (!in_array($selectedType, ['journal', 'fdp', 'conference'], true)) {
+              $attReq = !empty($activeSection['attachment_config']['required']);
+              if (!isset($activeSection['attachment_config']['required'])) {
+                  $attReq = !str_starts_with($selectedType, 'inst_');
               }
-          }
-          if (!in_array($selectedType, ['journal', 'fdp'], true) && !$hasCustomProof) {
-              render_proof_field($editRecord, !str_starts_with($selectedType, 'inst_'));
+              render_proof_field($editRecord, $attReq, $activeSection['attachment_config'] ?? null);
           }
         ?>
       </div>
@@ -2846,32 +3402,80 @@ require __DIR__ . '/inc/header.php';
         });
       })();
 
+      // Synchronize Main Author and Department for Journal and Conference forms
+      (function () {
+        function setupAuthorDeptSync(authorSelectId, deptInputId) {
+          var authorSel = document.getElementById(authorSelectId);
+          var deptInput = document.getElementById(deptInputId);
+          if (!authorSel || !deptInput) return;
+
+          function syncDept() {
+            var opt = authorSel.options[authorSel.selectedIndex];
+            deptInput.value = opt ? (opt.getAttribute('data-dept') || '') : '';
+          }
+
+          authorSel.addEventListener('change', syncDept);
+          if (!deptInput.value || authorSel.value) {
+            syncDept();
+          }
+          window.addEventListener('load', syncDept);
+        }
+
+        setupAuthorDeptSync('pubMainAuthor', 'pubMainDept');
+        setupAuthorDeptSync('confMainAuthor', 'confMainDept');
+      })();
+
       var proofInput = document.getElementById('proofInput');
       if (proofInput) {
-        var MAX_PROOF_BYTES = 2 * 1024 * 1024; // 2 MB
+        var container = proofInput.closest('.atts-proof-container');
+        var maxBytes = container && container.dataset.maxBytes ? parseInt(container.dataset.maxBytes, 10) : (2 * 1024 * 1024);
+        var maxMb = container && container.dataset.maxMb ? parseFloat(container.dataset.maxMb) : 2;
+        var allowedStr = container && container.dataset.allowed ? container.dataset.allowed : 'pdf';
+        var allowedList = allowedStr.split(',').map(function(s) { return s.trim().toLowerCase(); });
+
         var proofErr = document.getElementById('proofSizeError');
+        var proofInfo = document.getElementById('proofSelectedInfo');
+        var proofName = document.getElementById('proofSelectedName');
+        var proofSize = document.getElementById('proofSelectedSize');
+        var removeBtn = document.getElementById('proofRemoveBtn');
+
+        if (removeBtn) {
+          removeBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            proofInput.value = '';
+            if (proofInfo) proofInfo.style.display = 'none';
+            if (proofErr) proofErr.style.display = 'none';
+          });
+        }
 
         proofInput.addEventListener('change', function () {
           var file = this.files && this.files[0];
-          if (!file) return;
+          if (!file) {
+            if (proofInfo) proofInfo.style.display = 'none';
+            return;
+          }
 
-          if (file.size > MAX_PROOF_BYTES) {
+          // Check file size
+          if (file.size > maxBytes) {
             var sizeMb = (file.size / (1024 * 1024)).toFixed(2);
-            alert('File size exceeds the 2 MB limit (' + sizeMb + ' MB). Only attachments of 2 MB or less can be selected.');
-            this.value = ''; // Immediately clear selection
+            alert('File size exceeds the ' + maxMb + ' MB limit (' + sizeMb + ' MB). Only attachments of ' + maxMb + ' MB or less can be selected.');
+            this.value = '';
+            if (proofInfo) proofInfo.style.display = 'none';
             if (proofErr) {
-              proofErr.textContent = 'Selected file (' + sizeMb + ' MB) exceeds 2 MB limit. Selection cleared. Please choose a file ≤ 2 MB.';
+              proofErr.textContent = 'Selected file (' + sizeMb + ' MB) exceeds ' + maxMb + ' MB limit. Selection cleared. Please choose a file ≤ ' + maxMb + ' MB.';
               proofErr.style.display = 'block';
             }
             return false;
           }
 
-          var name = file.name.toLowerCase();
-          if (!name.endsWith('.pdf')) {
-            alert('Only PDF files (.pdf) are allowed as proof attachments.');
+          // Check file extension
+          var ext = file.name.split('.').pop().toLowerCase();
+          if (allowedList.indexOf(ext) === -1) {
+            alert('Only ' + allowedList.join(', ').toUpperCase() + ' files are allowed as proof attachments.');
             this.value = '';
+            if (proofInfo) proofInfo.style.display = 'none';
             if (proofErr) {
-              proofErr.textContent = 'Only PDF files are supported. Selection cleared.';
+              proofErr.textContent = 'Only ' + allowedList.join(', ').toUpperCase() + ' files are supported. Selection cleared.';
               proofErr.style.display = 'block';
             }
             return false;
@@ -2880,8 +3484,100 @@ require __DIR__ . '/inc/header.php';
           if (proofErr) {
             proofErr.style.display = 'none';
           }
+
+          // Format size
+          var formattedSize = (file.size < 1024 * 1024)
+            ? (file.size / 1024).toFixed(1) + ' KB'
+            : (file.size / (1024 * 1024)).toFixed(2) + ' MB';
+
+          if (proofName) proofName.textContent = file.name;
+          if (proofSize) proofSize.textContent = formattedSize;
+          if (proofInfo) proofInfo.style.display = 'inline-flex';
         });
       }
+
+      // Reactive conditional field evaluation for dynamic form studio submissions
+      (function () {
+        function evaluateConditionalFields() {
+          var condEls = document.querySelectorAll('[data-cond-field]');
+          if (!condEls.length) return;
+
+          condEls.forEach(function (el) {
+            var triggerKey = el.getAttribute('data-cond-field');
+            var op = el.getAttribute('data-cond-op') || 'equals';
+            var triggerVal = el.getAttribute('data-cond-val');
+
+            var form = el.closest('form');
+            if (!form) return;
+
+            var triggerInputs = form.querySelectorAll('[name="' + triggerKey + '"], [name="' + triggerKey + '[]"]');
+            var curVal = '';
+            if (triggerInputs.length === 1 && triggerInputs[0].type === 'checkbox') {
+              curVal = triggerInputs[0].checked ? (triggerInputs[0].value || '1') : '';
+            } else if (triggerInputs.length > 0 && triggerInputs[0].type === 'radio') {
+              var checkedRadio = form.querySelector('[name="' + triggerKey + '"]:checked');
+              curVal = checkedRadio ? checkedRadio.value : '';
+            } else if (triggerInputs.length > 0) {
+              curVal = triggerInputs[0].value;
+            }
+
+            var isVisible = false;
+            var strCur = String(curVal).trim().toLowerCase();
+            var strTrig = String(triggerVal).trim().toLowerCase();
+
+            switch (op) {
+              case 'equals':
+                isVisible = (strCur === strTrig);
+                break;
+              case 'not_equals':
+                isVisible = (strCur !== strTrig);
+                break;
+              case 'contains':
+                isVisible = (strCur.indexOf(strTrig) !== -1);
+                break;
+              case 'is_empty':
+                isVisible = (strCur === '');
+                break;
+              case 'is_not_empty':
+                isVisible = (strCur !== '');
+                break;
+              case 'greater_than':
+                isVisible = (parseFloat(curVal) > parseFloat(triggerVal));
+                break;
+              case 'less_than':
+                isVisible = (parseFloat(curVal) < parseFloat(triggerVal));
+                break;
+              default:
+                isVisible = true;
+            }
+
+            if (isVisible) {
+              el.style.display = '';
+              el.querySelectorAll('input, select, textarea').forEach(function (inp) {
+                inp.removeAttribute('disabled');
+                if (el.dataset.wasRequired === '1') inp.setAttribute('required', 'required');
+              });
+            } else {
+              el.style.display = 'none';
+              el.querySelectorAll('input, select, textarea').forEach(function (inp) {
+                if (inp.hasAttribute('required')) {
+                  el.dataset.wasRequired = '1';
+                  inp.removeAttribute('required');
+                }
+                inp.setAttribute('disabled', 'disabled');
+              });
+            }
+          });
+        }
+
+        document.addEventListener('change', evaluateConditionalFields);
+        document.addEventListener('input', evaluateConditionalFields);
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', evaluateConditionalFields);
+        } else {
+          evaluateConditionalFields();
+        }
+      })();
 
       // FDP / Unified Activity Form dynamic title, labels & duration calculation
       (function () {
@@ -3473,7 +4169,7 @@ require __DIR__ . '/inc/header.php';
           <td style="padding-left:24px"><div style="font-weight:500;max-width:350px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><?= e($r['_title']) ?></div></td>
           <td><span class="badge badge-neutral"><?= e($r['_type_label']) ?></span><?php if (is_event_type($r['_type_key'] ?? '')): ?> <?= event_mode_badge($r['mode'] ?? null) ?><?php endif; ?></td>
           <td>
-            <?= render_proof_cell($r['proof_file'] ?? null, $r['_type_key'] ?? null, (int)($r['id'] ?? 0)) ?>
+            <?= render_proof_cell($r['proof_file'] ?? null, $r['_type_key'] ?? null, (int)($r['id'] ?? 0), $r['certificate_link'] ?? $r['document_link'] ?? null) ?>
           </td>
           <td>
             <span class="badge badge-<?= $statusBadge[$r['status']] ?? 'neutral' ?>"><?= e($r['status']) ?></span>

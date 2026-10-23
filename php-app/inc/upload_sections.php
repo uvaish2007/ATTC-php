@@ -190,6 +190,14 @@ function upload_approved_sections_built_in(): array
             'types'        => ['fdp', 'training', 'inst_faculty_participations'],
             'subcategories'=> [], // Event Type dropdown: FDP, Workshop, Seminar, STTP, Training, Conference
             'description'  => 'Faculty participation in Faculty Development Programmes, STTPs, workshops, and conferences.',
+            'attachment_config' => [
+                'enabled'       => true,
+                'label'         => 'Upload Certificate',
+                'required'      => true,
+                'allowed_types' => ['pdf'],
+                'max_file_mb'   => 2,
+                'help_text'     => 'PDF document strictly 2 MB or less.',
+            ],
         ],
         'society_memberships' => [
             'id'           => 'society_memberships',
@@ -239,12 +247,15 @@ function upload_approved_sections_built_in(): array
             'title'        => 'Student Participation in Inter-Institute Events and Awards / Medals',
             'group'        => 'INSTITUTIONAL AND STUDENT ACTIVITIES',
             'default_type' => 'inst_inter_inst_within',
-            'types'        => ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards', 'co_curricular', 'extra_curricular', 'student_achievements', 'student_participations'],
-            'subcategories'=> [
-                'inst_inter_inst_within'  => 'Participation Within State',
-                'inst_inter_inst_outside' => 'Participation Outside State',
-                'inst_inter_inst_awards'  => 'Awards / Medals in Events',
-                'co_curricular'           => 'Co-Curricular / Team Achievements',
+            'types'        => ['inst_inter_inst_within'],
+            'subcategories'=> [],
+            'attachment_config' => [
+                'enabled'       => true,
+                'label'         => 'Certificate',
+                'required'      => true,
+                'allowed_types' => ['pdf'],
+                'max_file_mb'   => 2,
+                'help_text'     => 'PDF document strictly 2 MB or less.',
             ],
             'description'  => 'Student participation and awards in inter-institute symposiums, hackathons, and competitions.',
         ],
@@ -367,7 +378,10 @@ function upload_approved_sections_built_in(): array
 function upload_approved_sections(?string $role = null, bool $forceRefresh = false): array
 {
     static $cached = [];
-    $cacheKey = ($role ?? 'all') . ($forceRefresh ? '_rf_' . microtime(true) : '');
+    if ($forceRefresh) {
+        $cached = [];
+    }
+    $cacheKey = $role ?? 'all';
     if (!$forceRefresh && isset($cached[$cacheKey])) {
         return $cached[$cacheKey];
     }
@@ -390,6 +404,12 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
                         continue;
                     }
                     if ($role === 'Coordinator' && empty($m['coordinator_visible'])) {
+                        continue;
+                    }
+                    if ($role === 'HoD' && isset($m['hod_visible']) && empty($m['hod_visible'])) {
+                        continue;
+                    }
+                    if ($role === 'Principal' && isset($m['principal_visible']) && empty($m['principal_visible'])) {
                         continue;
                     }
                     if ($role !== 'all_with_inactive' && empty($m['status'])) {
@@ -415,9 +435,13 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
                         'help_text'    => $m['help_text'] ?: '',
                         'metric_type'  => $m['metric_type'] ?: 'specialized',
                         'form_config'  => $m['form_config_parsed'] ?: [],
+                        'attachment_config' => $m['attachment_config_parsed'] ?? null,
+                        'form_version' => (int)($m['form_version'] ?? 1),
                         'status'       => (int)$m['status'],
-                        'faculty_visible' => (int)$m['faculty_visible'],
-                        'coordinator_visible' => (int)$m['coordinator_visible'],
+                        'faculty_visible' => (int)($m['faculty_visible'] ?? 1),
+                        'coordinator_visible' => (int)($m['coordinator_visible'] ?? 1),
+                        'hod_visible' => (int)($m['hod_visible'] ?? 1),
+                        'principal_visible' => (int)($m['principal_visible'] ?? 1),
                     ];
                 }
 
@@ -488,12 +512,12 @@ function resolve_upload_section(?string $sectionId = null, ?string $typeId = nul
             'inst_student_certifications' => ['student_certifications', 'inst_student_certifications'],
             'inst_spoken_tutorials'       => ['spoken_tutorials', 'inst_spoken_tutorials'],
             'inst_inter_inst_within'      => ['inter_institute', 'inst_inter_inst_within'],
-            'inst_inter_inst_outside'     => ['inter_institute', 'inst_inter_inst_outside'],
-            'inst_inter_inst_awards'      => ['inter_institute', 'inst_inter_inst_awards'],
-            'co_curricular'               => ['inter_institute', 'co_curricular'],
-            'extra_curricular'            => ['inter_institute', 'co_curricular'],
-            'student_achievement'         => ['inter_institute', 'co_curricular'],
-            'student_participation'       => ['inter_institute', 'co_curricular'],
+            'inst_inter_inst_outside'     => ['inter_institute', 'inst_inter_inst_within'],
+            'inst_inter_inst_awards'      => ['inter_institute', 'inst_inter_inst_within'],
+            'co_curricular'               => ['inter_institute', 'inst_inter_inst_within'],
+            'extra_curricular'            => ['inter_institute', 'inst_inter_inst_within'],
+            'student_achievement'         => ['inter_institute', 'inst_inter_inst_within'],
+            'student_participation'       => ['inter_institute', 'inst_inter_inst_within'],
             'value_added'                 => ['value_added', 'value_added'],
             'inst_value_added_courses'    => ['value_added', 'value_added'],
             'inst_sports_state'           => ['sports', 'inst_sports_state'],

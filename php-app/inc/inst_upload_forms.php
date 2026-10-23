@@ -11,10 +11,12 @@ if (!str_starts_with($selectedType ?? '', 'inst_')) return;
 $iYear = $effectiveYear ?? $activeYear ?? '';
 $iName = $user['name'] ?? '';
 
-// Helper: read-only academic year field
+// Helper: editable academic year field
 if (!function_exists('inst_yr')) {
 function inst_yr(string $yr): void {
-    echo '<div class="field"><label>Academic Year</label><input class="input" value="' . htmlspecialchars($yr, ENT_QUOTES, 'UTF-8') . '" readonly style="background:var(--bg-subtle,#f3f4f6);cursor:not-allowed;"></div>';
+    global $editRecord, $effectiveYear;
+    $selected = $editRecord['academic_year'] ?? $yr ?: ($effectiveYear ?? null);
+    render_academic_year_field($selected);
 }
 }
 // Helper: select dropdown
@@ -40,6 +42,10 @@ if (!function_exists('inst_input')) {
 function inst_input(string $name, string $placeholder = '', string $type = 'text', bool $req = false, string $extra = ''): string {
     $r  = $req ? ' required' : '';
     $ph = $placeholder ? ' placeholder="' . htmlspecialchars($placeholder, ENT_QUOTES, 'UTF-8') . '"' : '';
+    if ($type === 'date' && !str_contains($extra, 'max=') && !in_array($name, ['valid_upto', 'expiry_date', 'planned_end_date', 'project_end_date'], true)) {
+        $today = function_exists('app_ist_today') ? app_ist_today() : date('Y-m-d');
+        $extra .= ' max="' . $today . '"';
+    }
     return '<input class="input" name="' . $name . '" type="' . $type . '"' . $ph . $r . ' ' . $extra . '>';
 }
 }
@@ -54,10 +60,7 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
     $existingRowsJson = !empty($editRecord['rows']) ? json_encode($editRecord['rows']) : '[]';
   ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field">
-    <label>Academic Year <span class="card-sub">— Locked</span></label>
-    <input class="input" id="upercentAcademicYear" name="academic_year" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
-  </div>
+  <?php render_academic_year_field($editRecord['academic_year'] ?? $effectiveYear, 'academic_year', 'Academic Year', true, 'upercentAcademicYear'); ?>
   <div class="field">
     <label for="upercentExamSession">Exam Session <span class="req">*</span></label>
     <select class="select" id="upercentExamSession" name="exam_session" required onchange="upercentOnSessionOrDeptChange()">
@@ -784,15 +787,813 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   <div class="field"><label>Certificate Number</label><input class="input" name="certificate_id"></div>
 
 <?php elseif ($selectedType === 'inst_society_memberships'): ?>
-  <div class="field"><label>Faculty Name <span class="req">*</span></label><input class="input" name="faculty_name" value="<?= e($iName) ?>" required></div>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Professional Society <span class="req">*</span></label><input class="input" name="society_name" placeholder="e.g. IEEE, ISTE, CSI" required></div>
-  <div class="field"><label>Membership Number <span class="req">*</span></label><input class="input" name="membership_number" required></div>
-  <div class="field"><label>Membership Type</label><select class="select" name="membership_type"><option>Life Member</option><option>Annual Member</option><option>Student Member</option><option>Fellow</option></select></div>
-  <div class="field"><label>Start Date</label><input class="input" name="start_date" type="date"></div>
-  <div class="field"><label>Expiry Date</label><input class="input" name="end_date" type="date"></div>
-  <div class="field"><label>Status</label><select class="select" name="mem_status"><option>Active</option><option>Expired</option><option>Renewed</option></select></div>
+  <?php
+    $socCategory = $editRecord['membership_category'] ?? ($_GET['category'] ?? 'Faculty');
+    if (!in_array($socCategory, ['Faculty', 'Student'], true)) {
+        $socCategory = 'Faculty';
+    }
+    $socMode = $_GET['mode'] ?? 'individual';
+    $isSocBulk = ($socMode === 'bulk') && empty($editRecord);
+    $memTypesFaculty = ['Life Member', 'Annual Member', 'Fellow', 'Senior Member', 'Associate Member', 'Member'];
+    $memTypesStudent = ['Student Member', 'Annual Member', 'Life Member', 'Member'];
+  ?>
+
+  <!-- Top Form Control 1: Membership Category Dropdown -->
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 6px;">
+    <label style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+      <span style="font-size:13px; font-weight:700; color:#131D3B;">Membership Category <span class="req" style="color:#DC2626;">*</span></span>
+      <span class="card-sub" style="font-size:11.5px; color:#64748B;">Select member classification to update entry controls and validation rules</span>
+    </label>
+    <select class="select" id="socCategorySelect" name="membership_category" style="font-size:13.5px; font-weight:600; color:#131D3B; border-color:#FF4F01; background-color:#FFF7ED; padding:9px 14px;" required>
+      <option value="Faculty" <?= $socCategory === 'Faculty' ? 'selected' : '' ?>>Faculty</option>
+      <option value="Student" <?= $socCategory === 'Student' ? 'selected' : '' ?>>Student</option>
+    </select>
+  </div>
+
+  <!-- Top Form Control 2: Individual Entry / Bulk Upload Selector -->
+  <?php if (empty($editRecord)): ?>
+  <div class="field" style="grid-column: 1 / -1; margin-bottom: 14px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:8px 14px;">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:#64748B;">Upload Mode:</span>
+        <div style="display:inline-flex; background:#E2E8F0; padding:3px; border-radius:8px; gap:4px;">
+          <button type="button" id="socBtnModeInd" class="btn-mode-toggle <?= !$isSocBulk ? 'active' : '' ?>" onclick="setSocietyInputMode('individual')">
+            <?= icon('user', 14) ?> Individual Entry
+          </button>
+          <button type="button" id="socBtnModeBulk" class="btn-mode-toggle <?= $isSocBulk ? 'active' : '' ?>" onclick="setSocietyInputMode('bulk')">
+            <?= icon('upload', 14) ?> Bulk Upload
+          </button>
+        </div>
+      </div>
+      <span id="socModeHelpText" style="font-size:12px; color:#64748B;">
+        <?= $isSocBulk ? 'Batch import multiple records via validated Excel spreadsheet (.xlsx)' : 'Submit an individual membership record with certificate upload' ?>
+      </span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <!-- Individual Fields Container (Displayed when mode is Individual Entry) -->
+  <div id="socIndividualFieldsGroup" style="display: contents;">
+    <!-- Dynamic Faculty Fields Container -->
+    <div id="socFacultyFieldsRow" style="display: <?= $socCategory === 'Faculty' ? 'contents' : 'none' ?>;">
+      <div class="field" id="socFieldFacultyName">
+        <label>Faculty Name <span class="req">*</span></label>
+        <input class="input" id="socInputFacultyName" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? $iName) ?>" placeholder="Faculty member full name" <?= $socCategory === 'Faculty' ? 'required' : '' ?>>
+      </div>
+    </div>
+
+    <!-- Dynamic Student Fields Container -->
+    <div id="socStudentFieldsRow" style="display: <?= $socCategory === 'Student' ? 'contents' : 'none' ?>;">
+      <div class="field" id="socFieldRegNo">
+        <label style="display:flex; align-items:center; justify-content:space-between;">
+          <span>Student Register Number <span class="req">*</span></span>
+          <span id="socLookupBadge" style="font-size:11px; font-weight:600; display:none;"></span>
+        </label>
+        <input class="input" id="socInputRegNo" name="reg_no" value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001" autocomplete="off" <?= $socCategory === 'Student' ? 'required' : '' ?>>
+      </div>
+      <div class="field" id="socFieldStudentName">
+        <label>Student Name <span class="req">*</span></label>
+        <input class="input" id="socInputStudentName" name="student_name" value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="Student full name" <?= $socCategory === 'Student' ? 'required' : '' ?>>
+      </div>
+      <div class="field" id="socFieldClassYear">
+        <label>Class / Year of Study</label>
+        <select class="select" id="socInputClassYear" name="class_year">
+          <option value="">-- Select Year --</option>
+          <option value="I Year" <?= ($editRecord['class_year'] ?? '') === 'I Year' ? 'selected' : '' ?>>I Year</option>
+          <option value="II Year" <?= ($editRecord['class_year'] ?? '') === 'II Year' ? 'selected' : '' ?>>II Year</option>
+          <option value="III Year" <?= ($editRecord['class_year'] ?? '') === 'III Year' ? 'selected' : '' ?>>III Year</option>
+          <option value="IV Year" <?= ($editRecord['class_year'] ?? '') === 'IV Year' ? 'selected' : '' ?>>IV Year</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Common Fields across Faculty and Student -->
+    <?php render_dept_field($user, $departments, 'Department', true); ?>
+    <?php inst_yr($iYear); ?>
+
+    <div class="field">
+      <label>Professional Society <span class="req">*</span></label>
+      <input class="input" id="socInputSocietyName" name="society_name" placeholder="e.g. IEEE, CSI, ISTE, ACM, ASME" value="<?= e($editRecord['society_name'] ?? '') ?>" required>
+    </div>
+
+    <div class="field">
+      <label>Membership Number <span class="req">*</span></label>
+      <input class="input" id="socInputMembershipNumber" name="membership_number" placeholder="e.g. 98765432" value="<?= e($editRecord['membership_number'] ?? '') ?>" required>
+    </div>
+
+    <div class="field">
+      <label>Membership Type</label>
+      <select class="select" id="socMembershipTypeSelect" name="membership_type">
+        <?php
+          $currentMType = $editRecord['membership_type'] ?? '';
+          $typeList = ($socCategory === 'Student') ? $memTypesStudent : $memTypesFaculty;
+          foreach ($typeList as $mt):
+        ?>
+          <option value="<?= e($mt) ?>" <?= $currentMType === $mt ? 'selected' : '' ?>><?= e($mt) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Start Date</label>
+      <input class="input" name="start_date" type="date" value="<?= e($editRecord['start_date'] ?? '') ?>">
+    </div>
+
+    <div class="field">
+      <label>Expiry Date</label>
+      <input class="input" name="expiry_date" type="date" value="<?= e($editRecord['expiry_date'] ?? ($editRecord['end_date'] ?? '')) ?>">
+    </div>
+
+    <div class="field">
+      <label>Status</label>
+      <select class="select" name="membership_status">
+        <option value="Active" <?= ($editRecord['membership_status'] ?? ($editRecord['mem_status'] ?? '')) === 'Active' ? 'selected' : '' ?>>Active</option>
+        <option value="Permanent" <?= ($editRecord['membership_status'] ?? ($editRecord['mem_status'] ?? '')) === 'Permanent' ? 'selected' : '' ?>>Permanent</option>
+        <option value="Expired" <?= ($editRecord['membership_status'] ?? ($editRecord['mem_status'] ?? '')) === 'Expired' ? 'selected' : '' ?>>Expired</option>
+        <option value="Renewed" <?= ($editRecord['membership_status'] ?? ($editRecord['mem_status'] ?? '')) === 'Renewed' ? 'selected' : '' ?>>Renewed</option>
+      </select>
+    </div>
+  </div>
+  <!-- End Individual Fields Container -->
+
+  <!-- Bulk Upload Container (Integrated within this SAME form card, shown when mode is Bulk Upload) -->
+  <div id="socBulkUploadPanel" style="grid-column: 1 / -1; display: <?= $isSocBulk ? 'block' : 'none' ?>; margin-top: 4px;">
+    <!-- Step 1 & 2 Cards Grid -->
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:16px;">
+      <!-- Step 1: Download Template -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px; display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+            <span style="background:#131D3B; color:#FFFFFF; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">1</span>
+            <span style="font-size:13px; font-weight:700; color:#131D3B;">Download Category Template</span>
+          </div>
+          <p id="socTemplateDescription" style="font-size:12px; color:#64748B; margin-bottom:12px; line-height:1.45;">
+            <?= $socCategory === 'Student' 
+              ? 'Download the official Student Membership Excel spreadsheet. Includes columns for Register Number, Student Name, Department, Academic Year, Class/Year, Society, Membership No, Type, Dates, Status, and Certificate Link.'
+              : 'Download the official Faculty Membership Excel spreadsheet. Includes columns for Faculty Identifier/Name, Department, Academic Year, Society, Membership No, Type, Dates, Status, and Certificate Link.' ?>
+          </p>
+        </div>
+        <div>
+          <a id="socBtnDownloadTemplate" href="<?= e(url('bulk-import.php?action=template&module=' . ($socCategory === 'Student' ? 'society_student' : 'society_faculty'))) ?>" class="btn btn-outline" style="border-color:#FF4F01; color:#FF4F01; font-weight:700; font-size:12.5px; width:100%; justify-content:center;">
+            <?= icon('download', 14) ?> <span id="socBtnDownloadText">Download <?= $socCategory ?> Membership Template (.xlsx)</span>
+          </a>
+        </div>
+      </div>
+
+      <!-- Step 2: Upload Spreadsheet -->
+      <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:16px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+          <span style="background:#FF4F01; color:#FFFFFF; width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; font-weight:700;">2</span>
+          <span style="font-size:13px; font-weight:700; color:#131D3B;">Upload &amp; Validate Spreadsheet</span>
+        </div>
+        <p style="font-size:12px; color:#64748B; margin-bottom:10px;">Select your filled Excel (.xlsx) file to run row-by-row validation against ATTS rules.</p>
+
+        <!-- Dropzone -->
+        <div id="socBulkDropzone" onclick="document.getElementById('socBulkExcelInput').click()" style="border:2px dashed #CBD5E1; border-radius:8px; background:#FFFFFF; padding:16px; text-align:center; cursor:pointer; transition:all 0.2s;">
+          <input type="file" id="socBulkExcelInput" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleSocBulkFileSelected(this)">
+          <div style="color:#FF4F01; margin-bottom:4px;"><?= icon('upload', 24) ?></div>
+          <div id="socBulkDropzoneText" style="font-size:12.5px; font-weight:600; color:#1E293B;">Click or Drag &amp; Drop Excel file here</div>
+          <div style="font-size:11px; color:#94A3B8; margin-top:2px;">Supports .xlsx, .xls, .csv strictly up to 10 MB</div>
+        </div>
+
+        <div id="socBulkSelectedFileInfo" style="display:none; margin-top:10px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:6px; padding:8px 12px; align-items:center; justify-content:space-between;">
+          <div style="display:flex; align-items:center; gap:6px; overflow:hidden;">
+            <span style="color:#2563EB;"><?= icon('file-text', 14) ?></span>
+            <span id="socBulkFileName" style="font-size:12px; font-weight:600; color:#1E40AF; white-space:nowrap; text-overflow:ellipsis; overflow:hidden;"></span>
+            <span id="socBulkFileSize" style="font-size:11px; color:#64748B;"></span>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" onclick="clearSocBulkFile(event)" style="padding:2px 6px; font-size:11px; color:#DC2626;">Remove</button>
+        </div>
+
+        <button type="button" id="socBtnValidatePreview" class="btn btn-primary" onclick="submitSocBulkPreview()" style="width:100%; margin-top:12px; justify-content:center; font-weight:700;" disabled>
+          <?= icon('check', 14) ?> Validate &amp; Preview
+        </button>
+      </div>
+    </div>
+
+    <!-- Bulk Processing Spinner -->
+    <div id="socBulkSpinner" style="display:none; text-align:center; padding:28px 16px; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; margin-bottom:16px;">
+      <div style="display:inline-block; width:36px; height:36px; border:3px solid #E2E8F0; border-top-color:#FF4F01; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+      <div style="font-size:14px; font-weight:700; color:#131D3B; margin-top:12px;">Validating Spreadsheet Records...</div>
+      <div style="font-size:12px; color:#64748B; margin-top:4px;">Checking headers, required fields, date formats, and duplicates against database</div>
+    </div>
+
+    <!-- Bulk Alert Message -->
+    <div id="socBulkAlert" style="display:none; padding:12px 16px; border-radius:8px; margin-bottom:16px; font-size:12.5px;"></div>
+
+    <!-- Bulk Preview & Results Section -->
+    <div id="socBulkPreviewSection" style="display:none; background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:18px; margin-bottom:16px;">
+      <!-- Metrics Bar -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:10px; margin-bottom:16px;">
+        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:10px; text-align:center;">
+          <div id="socMetricTotal" style="font-size:20px; font-weight:800; color:#131D3B;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#64748B;">Total Rows</div>
+        </div>
+        <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px; text-align:center;">
+          <div id="socMetricValid" style="font-size:20px; font-weight:800; color:#15803D;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#166534;">Valid Rows</div>
+        </div>
+        <div style="background:#FFF7ED; border:1px solid #FED7AA; border-radius:8px; padding:10px; text-align:center;">
+          <div id="socMetricDuplicate" style="font-size:20px; font-weight:800; color:#C2410C;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#9A3412;">Duplicates</div>
+        </div>
+        <div style="background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:10px; text-align:center;">
+          <div id="socMetricInvalid" style="font-size:20px; font-weight:800; color:#DC2626;">0</div>
+          <div style="font-size:11px; font-weight:600; text-transform:uppercase; color:#991B1B;">Invalid / Errors</div>
+        </div>
+      </div>
+
+      <!-- Errors Box if any -->
+      <div id="socBulkErrorsBox" style="display:none; background:#FEF2F2; border:1px solid #FECACA; border-radius:8px; padding:12px; margin-bottom:16px;">
+        <div style="font-size:12.5px; font-weight:700; color:#991B1B; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+          <?= icon('alert-triangle', 14) ?> Row-Level Issues Detected (<span id="socBulkErrorCount">0</span>)
+        </div>
+        <div style="max-height:160px; overflow-y:auto; border:1px solid #FCA5A5; border-radius:6px; background:#FFFFFF;">
+          <table style="width:100%; border-collapse:collapse; font-size:11.5px; text-align:left;">
+            <thead><tr style="background:#FEE2E2; color:#991B1B;"><th style="padding:4px 8px;">Row</th><th style="padding:4px 8px;">Field</th><th style="padding:4px 8px;">Problem</th><th style="padding:4px 8px;">Value</th></tr></thead>
+            <tbody id="socBulkErrorsTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Preview Table Controls: Search & Tabs -->
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-bottom:10px;">
+        <div style="display:inline-flex; background:#F1F5F9; padding:2px; border-radius:6px; gap:2px; font-size:11.5px;">
+          <button type="button" class="btn-mode-toggle active" id="socTabAll" onclick="filterSocPreviewTable('all')" style="padding:4px 10px; font-size:11.5px;">All (<span id="socTabCntAll">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="socTabValid" onclick="filterSocPreviewTable('valid')" style="padding:4px 10px; font-size:11.5px; color:#15803D;">Valid (<span id="socTabCntValid">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="socTabDup" onclick="filterSocPreviewTable('duplicate')" style="padding:4px 10px; font-size:11.5px; color:#C2410C;">Duplicates (<span id="socTabCntDup">0</span>)</button>
+          <button type="button" class="btn-mode-toggle" id="socTabErr" onclick="filterSocPreviewTable('invalid')" style="padding:4px 10px; font-size:11.5px; color:#DC2626;">Invalid (<span id="socTabCntErr">0</span>)</button>
+        </div>
+        <input type="text" id="socPreviewSearchInput" oninput="searchSocPreviewTable(this.value)" placeholder="Search preview rows..." style="padding:5px 10px; font-size:12px; border:1px solid #CBD5E1; border-radius:6px; width:180px;">
+      </div>
+
+      <!-- Preview Table -->
+      <div style="overflow-x:auto; border:1px solid #E2E8F0; border-radius:8px; max-height:280px; margin-bottom:16px;">
+        <table style="width:100%; border-collapse:collapse; font-size:12px; text-align:left;" id="socPreviewTable">
+          <thead id="socPreviewTableHead"></thead>
+          <tbody id="socPreviewTableBody"></tbody>
+        </table>
+      </div>
+
+      <!-- Final Action Bar -->
+      <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+        <button type="button" class="btn btn-outline" onclick="resetSocBulkUpload()" style="font-size:12.5px;">
+          <?= icon('arrow-left', 13) ?> Choose Different File
+        </button>
+        <button type="button" id="socBtnConfirmImport" class="btn btn-primary" onclick="confirmSocBulkImport()" style="background:#16A34A; border-color:#16A34A; font-weight:700; font-size:13px; display:inline-flex; align-items:center; gap:6px;">
+          <?= icon('check', 15) ?> Confirm &amp; Import <span id="socConfirmCount">0</span> Valid Records
+        </button>
+      </div>
+    </div>
+  </div>
+  <!-- End Bulk Upload Container -->
+
+  <script>
+  (function() {
+    var defaultFacultyName = <?= json_encode($iName) ?>;
+    var currentCategory = <?= json_encode($socCategory) ?>;
+    var currentMode = <?= json_encode($isSocBulk ? 'bulk' : 'individual') ?>;
+    var lastSelectedCategory = currentCategory;
+    var bulkPreviewData = null;
+    var activePreviewFilter = 'all';
+    var previewSearchQuery = '';
+
+    window.setSocietyInputMode = function(mode) {
+      currentMode = mode;
+      var indGroup = document.getElementById('socIndividualFieldsGroup');
+      var bulkPanel = document.getElementById('socBulkUploadPanel');
+      var btnInd = document.getElementById('socBtnModeInd');
+      var btnBulk = document.getElementById('socBtnModeBulk');
+      var helpText = document.getElementById('socModeHelpText');
+      var proofCont = document.querySelector('.atts-proof-container');
+      var uploadActions = document.querySelector('.upload-actions');
+
+      if (mode === 'bulk') {
+        if (indGroup) indGroup.style.display = 'none';
+        if (proofCont) proofCont.style.display = 'none';
+        if (uploadActions) uploadActions.style.display = 'none';
+        if (bulkPanel) bulkPanel.style.display = 'block';
+        if (btnInd) btnInd.classList.remove('active');
+        if (btnBulk) btnBulk.classList.add('active');
+        if (helpText) helpText.textContent = 'Batch import multiple records via validated Excel spreadsheet (.xlsx)';
+      } else {
+        if (bulkPanel) bulkPanel.style.display = 'none';
+        if (indGroup) indGroup.style.display = 'contents';
+        if (proofCont) proofCont.style.display = '';
+        if (uploadActions) uploadActions.style.display = '';
+        if (btnBulk) btnBulk.classList.remove('active');
+        if (btnInd) btnInd.classList.add('active');
+        if (helpText) helpText.textContent = 'Submit an individual membership record with certificate upload';
+      }
+    };
+
+    var catSelect = document.getElementById('socCategorySelect');
+    if (catSelect) {
+      catSelect.addEventListener('change', function(e) {
+        var newCat = this.value;
+        if (newCat === lastSelectedCategory) return;
+
+        // Check if there is dirty incompatible data in category-specific fields
+        var isDirty = false;
+        var facInput = document.getElementById('socInputFacultyName');
+        var regInput = document.getElementById('socInputRegNo');
+        var stuNameInput = document.getElementById('socInputStudentName');
+
+        if (lastSelectedCategory === 'Faculty' && facInput) {
+          var fVal = facInput.value.trim();
+          if (fVal !== '' && fVal !== defaultFacultyName) {
+            isDirty = true;
+          }
+        } else if (lastSelectedCategory === 'Student') {
+          if ((regInput && regInput.value.trim() !== '') || (stuNameInput && stuNameInput.value.trim() !== '')) {
+            isDirty = true;
+          }
+        }
+
+        if (isDirty) {
+          var confirmed = confirm('Switching membership category will clear the entered ' + lastSelectedCategory + ' details. Are you sure you want to proceed?');
+          if (!confirmed) {
+            this.value = lastSelectedCategory;
+            return;
+          }
+        }
+
+        applyCategoryChange(newCat);
+      });
+    }
+
+    function applyCategoryChange(cat) {
+      currentCategory = cat;
+      lastSelectedCategory = cat;
+
+      var facRow = document.getElementById('socFacultyFieldsRow');
+      var stuRow = document.getElementById('socStudentFieldsRow');
+      var facInput = document.getElementById('socInputFacultyName');
+      var regInput = document.getElementById('socInputRegNo');
+      var stuNameInput = document.getElementById('socInputStudentName');
+      var classYearSelect = document.getElementById('socInputClassYear');
+      var lookupBadge = document.getElementById('socLookupBadge');
+      var mTypeSelect = document.getElementById('socMembershipTypeSelect');
+      var tplDesc = document.getElementById('socTemplateDescription');
+      var tplBtn = document.getElementById('socBtnDownloadTemplate');
+      var tplText = document.getElementById('socBtnDownloadText');
+
+      if (cat === 'Student') {
+        if (facRow) facRow.style.display = 'none';
+        if (stuRow) stuRow.style.display = 'contents';
+        if (facInput) {
+          facInput.removeAttribute('required');
+          facInput.value = '';
+        }
+        if (regInput) regInput.setAttribute('required', 'required');
+        if (stuNameInput) stuNameInput.setAttribute('required', 'required');
+
+        if (tplDesc) {
+          tplDesc.textContent = 'Download the official Student Membership Excel spreadsheet. Includes columns for Register Number, Student Name, Department, Academic Year, Class/Year, Society, Membership No, Type, Dates, Status, and Certificate Link.';
+        }
+        if (tplBtn) {
+          tplBtn.href = <?= json_encode(url('bulk-import.php?action=template&module=society_student')) ?>;
+        }
+        if (tplText) {
+          tplText.textContent = 'Download Student Membership Template (.xlsx)';
+        }
+
+        // Populate student membership types
+        if (mTypeSelect) {
+          var curVal = mTypeSelect.value;
+          mTypeSelect.innerHTML = '<option value="Student Member">Student Member</option>'
+            + '<option value="Annual Member">Annual Member</option>'
+            + '<option value="Life Member">Life Member</option>'
+            + '<option value="Member">Member</option>';
+          if (['Student Member', 'Annual Member', 'Life Member', 'Member'].includes(curVal)) {
+            mTypeSelect.value = curVal;
+          } else {
+            mTypeSelect.value = 'Student Member';
+          }
+        }
+      } else {
+        if (stuRow) stuRow.style.display = 'none';
+        if (facRow) facRow.style.display = 'contents';
+        if (regInput) {
+          regInput.removeAttribute('required');
+          regInput.value = '';
+        }
+        if (stuNameInput) {
+          stuNameInput.removeAttribute('required');
+          stuNameInput.value = '';
+        }
+        if (classYearSelect) classYearSelect.value = '';
+        if (lookupBadge) lookupBadge.style.display = 'none';
+
+        if (facInput) {
+          facInput.setAttribute('required', 'required');
+          if (!facInput.value.trim()) {
+            facInput.value = defaultFacultyName;
+          }
+        }
+
+        if (tplDesc) {
+          tplDesc.textContent = 'Download the official Faculty Membership Excel spreadsheet. Includes columns for Faculty Identifier/Name, Department, Academic Year, Society, Membership No, Type, Dates, Status, and Certificate Link.';
+        }
+        if (tplBtn) {
+          tplBtn.href = <?= json_encode(url('bulk-import.php?action=template&module=society_faculty')) ?>;
+        }
+        if (tplText) {
+          tplText.textContent = 'Download Faculty Membership Template (.xlsx)';
+        }
+
+        // Populate faculty membership types
+        if (mTypeSelect) {
+          var curVal = mTypeSelect.value;
+          mTypeSelect.innerHTML = '<option value="Life Member">Life Member</option>'
+            + '<option value="Annual Member">Annual Member</option>'
+            + '<option value="Fellow">Fellow</option>'
+            + '<option value="Senior Member">Senior Member</option>'
+            + '<option value="Associate Member">Associate Member</option>'
+            + '<option value="Member">Member</option>';
+          if (['Life Member', 'Annual Member', 'Fellow', 'Senior Member', 'Associate Member', 'Member'].includes(curVal)) {
+            mTypeSelect.value = curVal;
+          } else {
+            mTypeSelect.value = 'Life Member';
+          }
+        }
+      }
+
+      // Reset any active bulk preview if category changed
+      if (bulkPreviewData) {
+        resetSocBulkUpload();
+      }
+    }
+
+    // Student Lookup with Debouncing
+    var regInputEl = document.getElementById('socInputRegNo');
+    var lookupTimer = null;
+    if (regInputEl) {
+      function triggerStudentLookup() {
+        var reg = regInputEl.value.trim();
+        var badge = document.getElementById('socLookupBadge');
+        if (reg.length < 3) {
+          if (badge) badge.style.display = 'none';
+          return;
+        }
+        if (badge) {
+          badge.textContent = 'Looking up...';
+          badge.style.display = 'inline-block';
+          badge.style.color = '#64748B';
+          badge.style.background = '#F1F5F9';
+          badge.style.padding = '2px 8px';
+          badge.style.borderRadius = '4px';
+        }
+        fetch('upload.php?action=student_lookup&reg_no=' + encodeURIComponent(reg))
+          .then(function(res) { return res.json(); })
+          .then(function(json) {
+            if (json.success && json.found && json.data) {
+              var stuName = document.getElementById('socInputStudentName');
+              if (stuName && json.data.student_name) {
+                stuName.value = json.data.student_name;
+              }
+              var classYr = document.getElementById('socInputClassYear');
+              if (classYr && json.data.class_year) {
+                classYr.value = json.data.class_year;
+              }
+              var deptSelect = document.querySelector('select[name="department"]');
+              if (deptSelect && json.data.department) {
+                for (var i = 0; i < deptSelect.options.length; i++) {
+                  if (deptSelect.options[i].value.toLowerCase() === json.data.department.toLowerCase()) {
+                    deptSelect.selectedIndex = i;
+                    break;
+                  }
+                }
+              }
+              if (badge) {
+                badge.textContent = 'Verified Student: ' + (json.data.student_name || reg);
+                badge.style.color = '#15803D';
+                badge.style.background = '#DCFCE7';
+              }
+            } else {
+              if (badge) {
+                badge.textContent = 'New Student';
+                badge.style.color = '#64748B';
+                badge.style.background = '#F1F5F9';
+              }
+            }
+          })
+          .catch(function() {
+            if (badge) badge.style.display = 'none';
+          });
+      }
+
+      regInputEl.addEventListener('input', function() {
+        clearTimeout(lookupTimer);
+        lookupTimer = setTimeout(triggerStudentLookup, 400);
+      });
+      regInputEl.addEventListener('blur', triggerStudentLookup);
+    }
+
+    // Bulk File Handling
+    var chosenBulkFile = null;
+    window.handleSocBulkFileSelected = function(input) {
+      if (!input.files || input.files.length === 0) return;
+      chosenBulkFile = input.files[0];
+      document.getElementById('socBulkFileName').textContent = chosenBulkFile.name;
+      document.getElementById('socBulkFileSize').textContent = '(' + (chosenBulkFile.size / 1024).toFixed(1) + ' KB)';
+      document.getElementById('socBulkDropzone').style.display = 'none';
+      document.getElementById('socBulkSelectedFileInfo').style.display = 'flex';
+      document.getElementById('socBtnValidatePreview').disabled = false;
+      hideSocBulkAlert();
+    };
+
+    window.clearSocBulkFile = function(e) {
+      if (e) e.stopPropagation();
+      chosenBulkFile = null;
+      var fileInput = document.getElementById('socBulkExcelInput');
+      if (fileInput) fileInput.value = '';
+      document.getElementById('socBulkDropzone').style.display = 'block';
+      document.getElementById('socBulkSelectedFileInfo').style.display = 'none';
+      document.getElementById('socBtnValidatePreview').disabled = true;
+    };
+
+    function showSocBulkAlert(msg, type) {
+      var box = document.getElementById('socBulkAlert');
+      if (!box) return;
+      box.style.display = 'block';
+      box.textContent = msg;
+      if (type === 'error') {
+        box.style.background = '#FEF2F2';
+        box.style.border = '1px solid #FECACA';
+        box.style.color = '#991B1B';
+      } else if (type === 'success') {
+        box.style.background = '#F0FDF4';
+        box.style.border = '1px solid #BBF7D0';
+        box.style.color = '#15803D';
+      } else {
+        box.style.background = '#EFF6FF';
+        box.style.border = '1px solid #BFDBFE';
+        box.style.color = '#1D4ED8';
+      }
+    }
+
+    function hideSocBulkAlert() {
+      var box = document.getElementById('socBulkAlert');
+      if (box) box.style.display = 'none';
+    }
+
+    window.submitSocBulkPreview = function() {
+      if (!chosenBulkFile) return;
+      var csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+      var mod = (currentCategory === 'Student') ? 'society_student' : 'society_faculty';
+
+      var formData = new FormData();
+      formData.append('action', 'upload_preview');
+      formData.append('module', mod);
+      formData.append('csrf_token', csrf);
+      formData.append('is_ajax', '1');
+      formData.append('excel_file', chosenBulkFile);
+
+      document.getElementById('socBulkSpinner').style.display = 'block';
+      document.getElementById('socBulkPreviewSection').style.display = 'none';
+      hideSocBulkAlert();
+
+      fetch('bulk-import.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        document.getElementById('socBulkSpinner').style.display = 'none';
+        if (!json.success) {
+          showSocBulkAlert(json.error || 'Failed to validate spreadsheet.', 'error');
+          return;
+        }
+        renderSocBulkPreview(json.data);
+      })
+      .catch(function(err) {
+        document.getElementById('socBulkSpinner').style.display = 'none';
+        showSocBulkAlert('Network / Server communication error: ' + err.message, 'error');
+      });
+    };
+
+    function renderSocBulkPreview(data) {
+      bulkPreviewData = data;
+      document.getElementById('socMetricTotal').textContent = data.total_detected;
+      document.getElementById('socMetricValid').textContent = data.valid_count;
+      document.getElementById('socMetricDuplicate').textContent = data.duplicate_count;
+      document.getElementById('socMetricInvalid').textContent = data.invalid_count;
+
+      document.getElementById('socTabCntAll').textContent = data.total_detected;
+      document.getElementById('socTabCntValid').textContent = data.valid_count;
+      document.getElementById('socTabCntDup').textContent = data.duplicate_count;
+      document.getElementById('socTabCntErr').textContent = data.invalid_count;
+
+      document.getElementById('socConfirmCount').textContent = data.valid_count;
+      document.getElementById('socBtnConfirmImport').disabled = (data.valid_count === 0);
+
+      // Render Errors Box
+      var errBox = document.getElementById('socBulkErrorsBox');
+      var errTbody = document.getElementById('socBulkErrorsTableBody');
+      if (data.errors && data.errors.length > 0) {
+        document.getElementById('socBulkErrorCount').textContent = data.errors.length;
+        errTbody.innerHTML = '';
+        data.errors.forEach(function(err) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td style="padding:4px 8px; font-weight:700;">Row ' + esc(err.row) + '</td>'
+            + '<td style="padding:4px 8px; font-weight:600;">' + esc(err.field) + '</td>'
+            + '<td style="padding:4px 8px; color:#DC2626;">' + esc(err.problem) + '</td>'
+            + '<td style="padding:4px 8px; color:#64748B; font-family:monospace;">' + esc(err.value || '—') + '</td>';
+          errTbody.appendChild(tr);
+        });
+        errBox.style.display = 'block';
+      } else {
+        errBox.style.display = 'none';
+      }
+
+      // Render Table Headers
+      var thead = document.getElementById('socPreviewTableHead');
+      var isStudent = (data.module === 'society_student');
+      if (isStudent) {
+        thead.innerHTML = '<tr style="background:#F8FAFC; color:#475569; font-weight:700; border-bottom:1px solid #E2E8F0;">'
+          + '<th style="padding:8px 10px;">#</th>'
+          + '<th style="padding:8px 10px;">Register No</th>'
+          + '<th style="padding:8px 10px;">Student Name</th>'
+          + '<th style="padding:8px 10px;">Dept</th>'
+          + '<th style="padding:8px 10px;">AY</th>'
+          + '<th style="padding:8px 10px;">Class/Year</th>'
+          + '<th style="padding:8px 10px;">Society</th>'
+          + '<th style="padding:8px 10px;">Membership No</th>'
+          + '<th style="padding:8px 10px;">Type</th>'
+          + '<th style="padding:8px 10px;">Validity</th>'
+          + '<th style="padding:8px 10px;">Status</th>'
+          + '<th style="padding:8px 10px;">Certificate Link</th>'
+          + '<th style="padding:8px 10px;">Result</th>'
+          + '</tr>';
+      } else {
+        thead.innerHTML = '<tr style="background:#F8FAFC; color:#475569; font-weight:700; border-bottom:1px solid #E2E8F0;">'
+          + '<th style="padding:8px 10px;">#</th>'
+          + '<th style="padding:8px 10px;">Faculty Name</th>'
+          + '<th style="padding:8px 10px;">Dept</th>'
+          + '<th style="padding:8px 10px;">AY</th>'
+          + '<th style="padding:8px 10px;">Society</th>'
+          + '<th style="padding:8px 10px;">Membership No</th>'
+          + '<th style="padding:8px 10px;">Type</th>'
+          + '<th style="padding:8px 10px;">Validity</th>'
+          + '<th style="padding:8px 10px;">Status</th>'
+          + '<th style="padding:8px 10px;">Certificate Link</th>'
+          + '<th style="padding:8px 10px;">Result</th>'
+          + '</tr>';
+      }
+
+      activePreviewFilter = 'all';
+      previewSearchQuery = '';
+      renderSocPreviewRows();
+
+      document.getElementById('socBulkPreviewSection').style.display = 'block';
+    }
+
+    function renderSocPreviewRows() {
+      if (!bulkPreviewData) return;
+      var tbody = document.getElementById('socPreviewTableBody');
+      tbody.innerHTML = '';
+
+      var isStudent = (bulkPreviewData.module === 'society_student');
+      var rows = bulkPreviewData.rows || [];
+      var q = previewSearchQuery.toLowerCase();
+
+      rows.forEach(function(r) {
+        if (activePreviewFilter === 'valid' && r.status !== 'valid') return;
+        if (activePreviewFilter === 'duplicate' && r.status !== 'duplicate') return;
+        if (activePreviewFilter === 'invalid' && r.status !== 'invalid') return;
+
+        if (q !== '') {
+          var haystack = ((r.reg_no || '') + ' ' + (r.student_name || '') + ' ' + (r.faculty_name || '') + ' ' + (r.society_name || '') + ' ' + (r.membership_number || '')).toLowerCase();
+          if (haystack.indexOf(q) === -1) return;
+        }
+
+        var tr = document.createElement('tr');
+        tr.style.borderBottom = '1px solid #F1F5F9';
+
+        var statusBadge = '';
+        if (r.status === 'valid') {
+          statusBadge = '<span style="background:#DCFCE7; color:#15803D; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;">VALID</span>';
+        } else if (r.status === 'duplicate') {
+          statusBadge = '<span style="background:#FFEDD5; color:#9A3412; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;" title="' + esc(r.duplicate_reason || 'Duplicate record') + '">DUPLICATE</span>';
+        } else {
+          statusBadge = '<span style="background:#FEE2E2; color:#991B1B; padding:2px 6px; border-radius:4px; font-weight:700; font-size:10.5px;" title="' + esc(r.error_message || 'Validation error') + '">INVALID</span>';
+        }
+
+        var certCell = '—';
+        if (r.certificate_link) {
+          certCell = '<a href="' + esc(r.certificate_link) + '" target="_blank" style="color:#FF4F01; font-weight:600; text-decoration:underline;">Link</a>';
+        }
+
+        var dateVal = (r.start_date || '') + (r.expiry_date ? (' to ' + r.expiry_date) : '');
+        if (!dateVal) dateVal = '—';
+
+        if (isStudent) {
+          tr.innerHTML = '<td style="padding:6px 10px; font-weight:600;">' + esc(r.row_num) + '</td>'
+            + '<td style="padding:6px 10px; font-weight:700; color:#131D3B;">' + esc(r.reg_no) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.student_name) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.department) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.academic_year) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.class_year || '—') + '</td>'
+            + '<td style="padding:6px 10px; font-weight:600;">' + esc(r.society_name) + '</td>'
+            + '<td style="padding:6px 10px; font-family:monospace;">' + esc(r.membership_number) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.membership_type || '—') + '</td>'
+            + '<td style="padding:6px 10px; font-size:11px; color:#64748B;">' + esc(dateVal) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.membership_status || 'Active') + '</td>'
+            + '<td style="padding:6px 10px;">' + certCell + '</td>'
+            + '<td style="padding:6px 10px;">' + statusBadge + '</td>';
+        } else {
+          tr.innerHTML = '<td style="padding:6px 10px; font-weight:600;">' + esc(r.row_num) + '</td>'
+            + '<td style="padding:6px 10px; font-weight:700; color:#131D3B;">' + esc(r.faculty_name) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.department) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.academic_year) + '</td>'
+            + '<td style="padding:6px 10px; font-weight:600;">' + esc(r.society_name) + '</td>'
+            + '<td style="padding:6px 10px; font-family:monospace;">' + esc(r.membership_number) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.membership_type || '—') + '</td>'
+            + '<td style="padding:6px 10px; font-size:11px; color:#64748B;">' + esc(dateVal) + '</td>'
+            + '<td style="padding:6px 10px;">' + esc(r.membership_status || 'Active') + '</td>'
+            + '<td style="padding:6px 10px;">' + certCell + '</td>'
+            + '<td style="padding:6px 10px;">' + statusBadge + '</td>';
+        }
+        tbody.appendChild(tr);
+      });
+    }
+
+    window.filterSocPreviewTable = function(filter) {
+      activePreviewFilter = filter;
+      ['socTabAll', 'socTabValid', 'socTabDup', 'socTabErr'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      });
+      if (filter === 'all') document.getElementById('socTabAll')?.classList.add('active');
+      if (filter === 'valid') document.getElementById('socTabValid')?.classList.add('active');
+      if (filter === 'duplicate') document.getElementById('socTabDup')?.classList.add('active');
+      if (filter === 'invalid') document.getElementById('socTabErr')?.classList.add('active');
+      renderSocPreviewRows();
+    };
+
+    window.searchSocPreviewTable = function(q) {
+      previewSearchQuery = q;
+      renderSocPreviewRows();
+    };
+
+    window.resetSocBulkUpload = function() {
+      bulkPreviewData = null;
+      clearSocBulkFile();
+      document.getElementById('socBulkPreviewSection').style.display = 'none';
+      hideSocBulkAlert();
+    };
+
+    window.confirmSocBulkImport = function() {
+      if (!bulkPreviewData || !bulkPreviewData.batch_id) return;
+      var csrf = document.querySelector('input[name="csrf_token"]')?.value || '';
+      var mod = bulkPreviewData.module;
+
+      var formData = new FormData();
+      formData.append('action', 'confirm_import');
+      formData.append('batch_id', bulkPreviewData.batch_id);
+      formData.append('module', mod);
+      formData.append('csrf_token', csrf);
+      formData.append('is_ajax', '1');
+
+      var btn = document.getElementById('socBtnConfirmImport');
+      btn.disabled = true;
+      btn.textContent = 'Importing records...';
+
+      fetch('bulk-import.php', {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      })
+      .then(function(res) { return res.json(); })
+      .then(function(json) {
+        if (!json.success) {
+          btn.disabled = false;
+          btn.textContent = 'Confirm & Import Valid Records';
+          showSocBulkAlert(json.error || 'Import failed.', 'error');
+          return;
+        }
+        showSocBulkAlert('Import Successful! ' + json.summary.imported_records + ' records successfully imported into ATTS.', 'success');
+        document.getElementById('socBulkPreviewSection').style.display = 'none';
+        clearSocBulkFile();
+        setTimeout(function() {
+          window.location.reload();
+        }, 1300);
+      })
+      .catch(function(err) {
+        btn.disabled = false;
+        btn.textContent = 'Confirm & Import Valid Records';
+        showSocBulkAlert('Import communication failed: ' + err.message, 'error');
+      });
+    };
+
+    function esc(s) {
+      if (s === null || s === undefined) return '';
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+  })();
+  </script>
 
 <?php elseif ($selectedType === 'inst_newsletters'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -828,43 +1629,91 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   <div class="field" style="grid-column:span 2"><label>Description</label><textarea class="input" name="description" rows="2"></textarea></div>
   <div class="field" style="grid-column:span 2"><label>Outcome</label><input class="input" name="outcome"></div>
 
-<?php elseif ($selectedType === 'inst_inter_inst_within'): ?>
+<?php elseif (in_array($selectedType, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true)): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
   <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>Location</label><input class="input" name="location"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
-  <div class="field"><label>Participation Type</label><select class="select" name="participation_type"><option>Participant</option><option>Presenter</option><option>Winner</option><option>Runner-up</option></select></div>
-  <div class="field"><label>Position / Award</label><input class="input" name="position_award" placeholder="e.g. First Place"></div>
-
-<?php elseif ($selectedType === 'inst_inter_inst_outside'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>State <span class="req">*</span></label><input class="input" name="state" required placeholder="e.g. Maharashtra"></div>
-  <div class="field"><label>City</label><input class="input" name="location"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
-  <div class="field"><label>Participation Type</label><select class="select" name="participation_type"><option>Participant</option><option>Presenter</option><option>Winner</option><option>Runner-up</option></select></div>
-  <div class="field"><label>Position / Award</label><input class="input" name="position_award" placeholder="e.g. 2nd Place"></div>
-
-<?php elseif ($selectedType === 'inst_inter_inst_awards'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution</label><input class="input" name="host_institution"></div>
-  <div class="field"><label>State</label><input class="input" name="state"></div>
-  <div class="field"><label>Location</label><input class="input" name="location"></div>
-  <div class="field"><label>Award / Medal <span class="req">*</span></label><input class="input" name="award" required placeholder="e.g. Gold Medal, Trophy"></div>
-  <div class="field"><label>Position</label><input class="input" name="position" placeholder="e.g. 1st, Runner-up"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
+  <?php if (function_exists('render_exam_session_field')) { render_exam_session_field($effectiveYear ?? $activeYear); } ?>
+  <?php
+    $currentLevel = $editRecord['event_level'] ?? 'State — Within State';
+    if ($selectedType === 'inst_inter_inst_outside' && empty($editRecord['event_level'])) {
+        $currentLevel = 'State — Outside State';
+    }
+    $currentPType = $editRecord['participation_type'] ?? 'Participant';
+    if (empty($currentPType) && !empty($editRecord['award_medal'])) {
+        $currentPType = 'Winner / First Place';
+    }
+    $currentAchType = $editRecord['achievement_type'] ?? (in_array($currentPType, ['Winner / First Place', 'Second Runner', 'Third Runner'], true) ? 'Medal' : 'Participation');
+  ?>
+  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="e.g. Aravind Kumar"></div>
+  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001"></div>
+  <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required value="<?= e($editRecord['event_name'] ?? '') ?>" placeholder="e.g. National Level Technical Symposium / Hackathon"></div>
+  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required value="<?= e($editRecord['host_institution'] ?? '') ?>" placeholder="e.g. PSG College of Technology"></div>
+  <div class="field">
+    <label>Event Level <span class="req">*</span></label>
+    <select class="select" name="event_level" id="inter_inst_event_level" required>
+      <option value="District" <?= ($currentLevel === 'District') ? 'selected' : '' ?>>District</option>
+      <option value="State — Within State" <?= in_array($currentLevel, ['State — Within State', 'State', 'Within State'], true) ? 'selected' : '' ?>>State — Within State</option>
+      <option value="State — Outside State" <?= in_array($currentLevel, ['State — Outside State', 'Outside State'], true) ? 'selected' : '' ?>>State — Outside State</option>
+      <option value="National" <?= ($currentLevel === 'National') ? 'selected' : '' ?>>National</option>
+      <option value="International" <?= ($currentLevel === 'International') ? 'selected' : '' ?>>International</option>
+    </select>
+  </div>
+  <div class="field"><label>Location / City <span class="req">*</span></label><input class="input" name="location" required value="<?= e($editRecord['location'] ?? ($editRecord['city'] ?? '')) ?>" placeholder="e.g. Madurai, Chennai, Bengaluru"></div>
+  <div class="field"><label>District / State Name <span class="card-sub">(Contextual)</span></label><input class="input" name="state_name" value="<?= e($editRecord['state_name'] ?? ($editRecord['district_name'] ?? ($editRecord['state'] ?? ''))) ?>" placeholder="e.g. Madurai / Tamil Nadu / Karnataka"></div>
+  <div class="field"><label>Event Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required value="<?= e($editRecord['event_date'] ?? '') ?>" max="<?= app_ist_today() ?>"></div>
+  <div class="field">
+    <label>Participation Type <span class="req">*</span></label>
+    <select class="select" name="participation_type" id="inter_inst_participation_type" required>
+      <option value="Participant" <?= ($currentPType === 'Participant') ? 'selected' : '' ?>>Participant</option>
+      <option value="Winner / First Place" <?= in_array($currentPType, ['Winner / First Place', 'Winner', 'First Place', '1st Place'], true) ? 'selected' : '' ?>>Winner / First Place</option>
+      <option value="Second Runner" <?= in_array($currentPType, ['Second Runner', '2nd Runner', 'Runner-up', 'Second Place'], true) ? 'selected' : '' ?>>Second Runner</option>
+      <option value="Third Runner" <?= in_array($currentPType, ['Third Runner', '3rd Runner', 'Third Place'], true) ? 'selected' : '' ?>>Third Runner</option>
+      <option value="Presenter" <?= ($currentPType === 'Presenter') ? 'selected' : '' ?>>Presenter</option>
+    </select>
+  </div>
+  <div class="field"><label>Position / Medal <span class="card-sub">(if won)</span></label><input class="input" name="position_award" id="inter_inst_position_award" value="<?= e($editRecord['position_award'] ?? ($editRecord['award_medal'] ?? ($editRecord['award'] ?? ''))) ?>" placeholder="e.g. First Place / 2nd Runner / Gold Medal"></div>
+  <div class="field">
+    <label>Event Participation / Achievement Type</label>
+    <select class="select" name="achievement_type" id="inter_inst_achievement_type">
+      <option value="Participation" <?= ($currentAchType === 'Participation') ? 'selected' : '' ?>>Participation</option>
+      <option value="Medal" <?= in_array($currentAchType, ['Medal', 'Award / Prize Winner', 'Award'], true) ? 'selected' : '' ?>>Medal</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Participation Format</label>
+    <select class="select" name="team_individual">
+      <option value="Individual" <?= (($editRecord['team_individual'] ?? '') !== 'Team') ? 'selected' : '' ?>>Individual</option>
+      <option value="Team" <?= (($editRecord['team_individual'] ?? '') === 'Team') ? 'selected' : '' ?>>Team</option>
+    </select>
+  </div>
+  <div class="field" style="grid-column:span 2">
+    <label for="inter_inst_cert_link">Certificate Link (Optional) <span class="card-sub">(https://...)</span></label>
+    <input class="input" name="certificate_link" id="inter_inst_cert_link" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" placeholder="https://example.com/certificate.pdf">
+  </div>
+  <script>
+    (function(){
+      var pSel = document.getElementById('inter_inst_participation_type');
+      var aSel = document.getElementById('inter_inst_achievement_type');
+      var posInp = document.getElementById('inter_inst_position_award');
+      if (pSel && aSel) {
+        pSel.addEventListener('change', function(){
+          var v = pSel.value;
+          if (v === 'Winner / First Place') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'First Place';
+          } else if (v === 'Second Runner') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'Second Runner';
+          } else if (v === 'Third Runner') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'Third Runner';
+          } else {
+            aSel.value = 'Participation';
+          }
+        });
+      }
+    })();
+  </script>
 
 <?php elseif ($selectedType === 'inst_value_added_courses'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -1036,3 +1885,15 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   <div class="field"><label>Platform</label><input class="input" name="platform" value="IIT Bombay Spoken Tutorial"></div>
 
 <?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var istToday = <?= json_encode(app_ist_today()) ?>;
+  var allowFuture = ['valid_upto', 'expiry_date', 'planned_end_date', 'project_end_date'];
+  document.querySelectorAll('input[type="date"]').forEach(function (inp) {
+    if (!allowFuture.includes(inp.name) && !inp.hasAttribute('max')) {
+      inp.setAttribute('max', istToday);
+    }
+  });
+});
+</script>

@@ -103,21 +103,52 @@ if ($type !== '' && $recordId > 0) {
     }
 }
 
+// 4. Fallback: Search in generic_metric_records (Dynamic Form Studio submissions)
+if (!$record && $recordId > 0) {
+    try {
+        $stmt = db()->prepare("SELECT r.*, d.name as department FROM `generic_metric_records` r LEFT JOIN `departments` d ON r.department_id = d.id WHERE r.id = ? LIMIT 1");
+        $stmt->execute([$recordId]);
+        $found = $stmt->fetch();
+        if ($found) {
+            $record = $found;
+            $recordTypeKey = $found['metric_key'];
+            $recordTypeLabel = 'Dynamic Metric Form Record';
+        }
+    } catch (\PDOException $e) {}
+}
+
+if (!$record && !empty($cleanFileName)) {
+    try {
+        $stmt = db()->prepare("SELECT r.*, d.name as department FROM `generic_metric_records` r LEFT JOIN `departments` d ON r.department_id = d.id WHERE r.proof_file = ? OR r.proof_file LIKE ? LIMIT 1");
+        $stmt->execute([$cleanFileName, '%"' . $cleanFileName . '"%']);
+        $found = $stmt->fetch();
+        if ($found) {
+            $record = $found;
+            $recordTypeKey = $found['metric_key'];
+            $recordTypeLabel = 'Dynamic Metric Form Record';
+        }
+    } catch (\PDOException $e) {}
+}
+
 $userRole   = $user['role'] ?? '';
 $userDept   = trim((string) ($user['department'] ?? ''));
+$userDeptId = (int) ($user['department_id'] ?? 0);
 
 if ($record) {
     $recDept    = trim((string) ($record['department'] ?? ''));
-    $recCreator = (int) ($record['created_by'] ?? 0);
+    $recDeptId  = (int) ($record['department_id'] ?? 0);
+    $recCreator = (int) ($record['created_by'] ?? ($record['user_id'] ?? 0));
+
+    $deptMatches = ($userDept !== '' && department_names_match($recDept, $userDept))
+        || ($userDeptId > 0 && $recDeptId > 0 && $userDeptId === $recDeptId);
 
     $authorized = false;
     if (in_array($userRole, ['Admin', 'Dean', 'Principal', 'Director'], true)) {
         $authorized = true;
     } elseif (in_array($userRole, ['HoD', 'Coordinator'], true)) {
-        $authorized = ($userDept !== '' && department_names_match($recDept, $userDept));
+        $authorized = $deptMatches;
     } elseif ($userRole === 'Faculty') {
-        $authorized = ($recCreator > 0 && (int)$user['id'] === $recCreator)
-            || ($userDept !== '' && department_names_match($recDept, $userDept));
+        $authorized = ($recCreator > 0 && (int)$user['id'] === $recCreator) || $deptMatches;
     }
 
     if (!$authorized) {

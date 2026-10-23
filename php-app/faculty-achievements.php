@@ -185,6 +185,12 @@ $studCatBreakdown = [
         'table' => 'online_courses',
         'color' => '#7E22CE',
     ],
+    'Inter-Institute' => [
+        'label' => 'Inter-Institute Events & Awards',
+        'count' => (int) ($studSummary['categoryCounts']['Inter-Institute Events'] ?? ($studSummary['categoryCounts']['Inter-Institute'] ?? 0)),
+        'table' => 'inst_inter_inst_within',
+        'color' => '#FF4F01',
+    ],
     'Co-Curricular' => [
         'label' => 'Co-Curricular Activities (Symposiums, Hackathons, etc.)',
         'count' => (int) ($studSummary['categoryCounts']['Co-Curricular'] ?? 0),

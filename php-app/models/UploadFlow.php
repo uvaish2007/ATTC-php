@@ -171,6 +171,9 @@ function upload_flow_choose_year(array $user, $year): array
     if (!in_array($year, upload_flow_years(), true)) {
         return [false, 'Please select a valid academic year from the list.'];
     }
+    if (is_future_academic_year($year)) {
+        return [false, "Academic year {$year} has not started yet. Data for future academic years cannot be submitted."];
+    }
     if (academic_year_is_locked($year)) {
         return [false, "Academic year {$year} cycle is currently locked by the Administrator. New record submissions for {$year} are frozen."];
     }
