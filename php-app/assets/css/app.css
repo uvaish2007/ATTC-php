@@ -2063,25 +2063,17 @@ dialog.modal[open]::backdrop { animation:fade-in var(--dur-slow) var(--ease-out)
   overflow-x: auto;
   overflow-y: hidden;
   position: relative;
-  scrollbar-width: thin;
-  scrollbar-color: #CBD5E1 transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   background: #FFFFFF;
   width: 100%;
   box-sizing: border-box;
 }
 .atts-metric-nav-container::-webkit-scrollbar {
-  height: 6px;
-}
-.atts-metric-nav-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-.atts-metric-nav-container::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 999px;
-}
-.atts-metric-nav-container::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Metric track inside container */

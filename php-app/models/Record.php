@@ -39,8 +39,7 @@ function record_types(): array
         'inst_college_rank'        => ['table' => 'inst_college_rank',        'label' => 'Rank in Anna University (College)',         'title_col' => 'student_name', 'approval_required' => true],
         // 3. University Rank (Students)
         'inst_student_rank'        => ['table' => 'inst_student_rank',        'label' => 'University Rank (Students)',                'title_col' => 'student_name', 'approval_required' => true],
-        // 4. II & III Year Students Above 7.5 CGPA
-        'inst_student_cgpa'        => ['table' => 'inst_student_cgpa',        'label' => 'Students Above 7.5 CGPA (II & III Year)',   'title_col' => 'student_name', 'approval_required' => true],
+        'inst_student_cgpa'        => ['table' => 'inst_student_cgpa',        'label' => 'Students Secured Above 8.5 CGPA',   'title_col' => 'class_year',  'approval_required' => true],
         // 5. Placement — Top MNCs
         'inst_placement_mnc'       => ['table' => 'inst_placement_mnc',       'label' => 'Placement in Top MNCs',                    'title_col' => 'student_name', 'approval_required' => true],
         // 6. Quality Publications (Scopus / SCI / Springer / UGC CARE / H-Index)
@@ -2887,6 +2886,27 @@ function record_display_attributes(string $type, array $record): array
         $knownLabels['total_students'] = 'Registered (Total Students)';
         $knownLabels['total_passed'] = 'Passed Students';
         $knownLabels['overall_pass_percentage'] = 'Overall Pass %';
+    }
+
+    if ($type === 'patent') {
+        $ignoreCols[] = 'attachments';
+        $knownLabels['category'] = 'Patent / Copyright';
+        $knownLabels['title'] = 'Title of Work';
+        $knownLabels['patent_number'] = 'Patent / Copyright / ROC Number';
+        $knownLabels['publication_date'] = 'Date of Registration / Issue';
+        $knownLabels['document_link'] = 'Document Link';
+        $knownLabels['co_authors'] = 'Author Method / Co-Authors';
+    }
+
+    if ($type === 'inst_sports_state' || $type === 'inst_sports_national') {
+        $knownLabels['level_secured']          = 'Competition Level';
+        $knownLabels['participation_position'] = 'Result / Position';
+        $knownLabels['award']                  = 'Medal';
+        if (empty($record['participation_id'])) {
+            $ignoreCols[] = 'participation_id';
+        } else {
+            $knownLabels['participation_id']   = 'Linked Participation ID';
+        }
     }
 
     $attributes = [];

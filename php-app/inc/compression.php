@@ -16,11 +16,11 @@ if (!defined('COMPRESSION_PNG_LEVEL')) {
 }
 
 if (!function_exists('save_upload_proof')) {
-function save_upload_proof(?array $file, bool $required = false): array
+function save_upload_proof(?array $file, bool $required = false, string $label = 'Proof / Attachment'): array
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
-            return [null, 'Proof / Attachment is required. Please upload a PDF or image file (up to 2 MB).'];
+            return [null, $label . ' is required. Please upload a PDF or image file (up to 2 MB).'];
         }
         return [null, null];
     }

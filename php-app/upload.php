@@ -25,6 +25,13 @@ $activeYear  = active_academic_year();
 if (function_exists('inst_handle_ajax_upercent')) {
     inst_handle_ajax_upercent($user, $activeYear);
 }
+if (function_exists('inst_handle_ajax_student_cgpa')) {
+    inst_handle_ajax_student_cgpa($user, $activeYear);
+}
+if (function_exists('inst_handle_ajax_sports')) {
+    inst_handle_ajax_sports($user, $activeYear);
+}
+
 
 if (isset($_GET['type']) && in_array($_GET['type'], ['student_achievement', 'student_participation'], true)) {
     flash('info', 'Student achievement records are now submitted under Student Participation in Inter-Institute Events and Awards / Medals.');
@@ -35,11 +42,11 @@ if (!defined('PROOF_MAX_BYTES')) {
     define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   
 }
 
-if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false): array
+if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false, string $label = 'Proof / Attachment'): array
 {
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
-            return [null, 'Proof / Attachment is required. Please upload a PDF file (2 MB or less).'];
+            return [null, $label . ' is required. Please upload a PDF file (2 MB or less).'];
         }
         return [null, null];
     }
@@ -370,7 +377,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             'organization' => 'Name & Address of Collaborating Body',
             'valid_upto' => 'Valid upto',
             'purpose' => 'Purpose of Collaboration',
-            'document_link' => 'Document Link',
         ],
         'event' => [
             'department' => 'Department',
@@ -747,9 +753,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // fall back to requiring a proof
         }
     }
-    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $proofRequired);
-    if ($proofError !== null) {
-        $validationErrors[] = $proofError;
+
+    $patentCoAuthors = [];
+    $patentSavedAttachments = [];
+    if ($type === 'patent') {
+        require_once __DIR__ . '/inc/patent_handler.php';
+        $patentCoAuthors = patent_parse_coauthors_input($_POST['co_authors'] ?? []);
+        $_POST['co_authors'] = !empty($patentCoAuthors) ? implode(', ', $patentCoAuthors) : null;
+
+        $keepIds = array_map('intval', (array)($_POST['keep_attachments'] ?? []));
+        $patentFiles = $_FILES['patent_files'] ?? null;
+        $patentDocTypes = (array)($_POST['patent_doc_types'] ?? []);
+        [$patentAttOk, $patentAttErr, $patentSavedAttachments] = patent_process_attachments(
+            $proofEditId,
+            $patentFiles,
+            $patentDocTypes,
+            $keepIds,
+            $proofRequired
+        );
+        if (!$patentAttOk) {
+            $validationErrors[] = $patentAttErr;
+        }
+        $proofStored = !empty($patentSavedAttachments) ? ($patentSavedAttachments[0]['file_path'] ?? null) : null;
+        $proofError = null;
+    } else {
+        $proofLabel = match ($type) {
+            'inst_research_centre' => 'Recognition Letter',
+            'mou' => 'Upload MoU Copy',
+            'inst_mou_interactions' => 'Report',
+            default => 'Proof / Attachment',
+        };
+        [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $proofRequired, $proofLabel);
+        if ($proofError !== null) {
+            $validationErrors[] = $proofError;
+        }
     }
 
     if (!empty($validationErrors)) {
@@ -851,6 +888,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (publication_authors_ready($type)) {
                 publication_save_authors($type, $editId, $pubAuthors);
             }
+            if ($type === 'patent') {
+                patent_save_coauthors($editId, $patentCoAuthors, $pdo);
+            }
             $pdo->commit();
 
             if (in_array($type, ['co_curricular', 'extra_curricular', 'student_achievement'], true)) {
@@ -942,6 +982,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         // One publication row; each of its faculty authors linked to it.
         if (publication_authors_ready($type)) {
             publication_save_authors($type, $newRecordId, $pubAuthors);
+        }
+        if ($type === 'patent') {
+            patent_save_coauthors($newRecordId, $patentCoAuthors, $pdo);
+            if (!empty($patentSavedAttachments)) {
+                patent_persist_attachments($newRecordId, $patentSavedAttachments, $pdo);
+            }
         }
         $pdo->commit();
 
@@ -1218,18 +1264,29 @@ function render_publication_date_fields(): void
     <?php
 }
 
-function render_proof_field(?array $editRecord = null, bool $required = true): void
+function render_proof_field(?array $editRecord = null, bool $required = true, string $label = 'Proof / Attachment'): void
 {
     // Required on every new entry; a record being edited that already has a proof keeps it.
     $hasProof = $editRecord && (!empty($editRecord['proof_file']) || !empty($editRecord['proofs']));
     $needed   = $required && !$hasProof;
+    $isCert   = ($label === 'Certificate');
+    $subtext  = $isCert 
+        ? ' — PDF, JPG, JPEG, PNG, strictly 2 MB or less' 
+        : ' — PDF only, strictly 2 MB or less';
+    $accept   = $isCert
+        ? 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png'
+        : 'application/pdf,.pdf';
     echo '<div class="field" style="grid-column:span 2">';
-    echo '<label>Proof / Attachment' . ($needed ? ' <span class="req">*</span>' : '') . ' <span class="card-sub">— PDF only, strictly 2 MB or less'
+    echo '<label>' . e($label) . ($needed ? ' <span class="req">*</span>' : '') . ' <span class="card-sub">' . $subtext
         . ($hasProof ? ' (leave empty to keep the current file)' : '') . '</span></label>';
-    echo '<input class="input" type="file" name="proof" id="proofInput" accept="application/pdf,.pdf"' . ($needed ? ' required' : '') . '>';
+    echo '<input class="input" type="file" name="proof" id="proofInput" accept="' . $accept . '"' . ($needed ? ' required' : '') . '>';
     echo '<div id="proofSizeError" style="color:var(--danger, #ef4444); font-size:12px; margin-top:4px; display:none;"></div>';
+    if ($hasProof && !empty($editRecord['proof_file'])) {
+        echo '<div style="font-size:12px; margin-top:4px;">Current file: <a href="proof.php?file=' . urlencode($editRecord['proof_file']) . '" target="_blank" class="text-primary font-medium">' . e($editRecord['proof_file']) . '</a></div>';
+    }
     echo '</div>';
 }
+
 
 // Event Mode plus the location fields each mode needs. The fields are only
 // hidden when the mode changes, never cleared, so switching back keeps them.
@@ -1728,6 +1785,8 @@ require __DIR__ . '/inc/header.php';
                     $currentEvType = 'FDP';
                 }
                 echo $editRecord ? 'Edit ' . e($currentEvType) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($currentEvType);
+            } elseif ($selectedType === 'inst_student_cgpa') {
+                echo $editRecord ? 'Edit Students Secured Above 8.5 CGPA #' . (int)($editRecord['id'] ?? $editId) : 'Students Secured Above 8.5 CGPA';
             } else {
                 $typeLabel = $types[$selectedType]['label'] ?? ($activeSection['title'] ?? 'Record');
                 echo $editRecord ? 'Edit ' . e($typeLabel) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($typeLabel);
@@ -1843,7 +1902,7 @@ require __DIR__ . '/inc/header.php';
 
       <?php if (in_array($selectedType, ['conference','patent'])): ?>
         <div class="field"><label>Faculty Name <span class="req">*</span></label>
-          <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
+          <input class="input" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? $user['name']) ?>" required></div>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <div class="field"><label>Academic Year</label>
           <input class="input" value="<?= e($activeYear) ?>" disabled title="Records are always submitted in the active academic year.">
@@ -1940,10 +1999,13 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'patent'): ?>
         <?php
+          require_once __DIR__ . '/inc/patent_handler.php';
           $patentCategories = ['Patent Published', 'Patent Granted', 'Design', 'Copyrights'];
           $currCat = $editRecord['category'] ?? 'Patent Published';
           if ($currCat === 'Patent') $currCat = 'Patent Published';
           if ($currCat === 'Copyright') $currCat = 'Copyrights';
+          $existingCoAuthors = !empty($editRecord['id']) ? patent_get_coauthors((int)$editRecord['id']) : [];
+          $existingAttachments = !empty($editRecord['id']) ? patent_get_attachments((int)$editRecord['id']) : [];
         ?>
         <div class="field"><label>Category <span class="req">*</span></label>
           <select class="select" name="category" id="patentCategorySelect" required onchange="updatePatentLabels(this.value)">
@@ -1955,8 +2017,89 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label id="patentTitleLabel">Title of the Patent / Copyright / Design <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
         <div class="field"><label id="patentNumberLabel">Patent / Registration Number <span class="req">*</span></label><input class="input" name="patent_number" value="<?= e($editRecord['patent_number'] ?? '') ?>" required></div>
         <div class="field"><label id="patentDateLabel">Date of Publication / Grant <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" value="<?= e($editRecord['publication_date'] ?? '') ?>" required></div>
-        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required></div>
+        
+        <!-- Author Method / Co-Authors section: submitting faculty member is identified via auth -->
+        <div class="field" style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <label style="font-weight:700; font-size:13.5px; color:#1E293B; margin:0; display:flex; align-items:center; gap:6px;">
+                <?= icon('users', 16) ?> Author Method / Co-Authors
+              </label>
+              <div class="card-sub" style="font-size:12px; color:#64748B; margin-top:2px;">
+                Add one or more co-authors or co-inventors. (Submitting faculty member is logged in and recorded automatically).
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addPatentCoAuthorField('')" style="display:inline-flex; align-items:center; gap:4px; font-weight:600;">
+              <?= icon('plus', 13) ?> Add Co-Author (+)
+            </button>
+          </div>
+          <div id="patentCoAuthorsList" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- Document Link -->
+        <div class="field" style="grid-column:span 2;">
+          <label>Document Link <span class="req">*</span> <span class="card-sub">(Official patent office URL or registry web link starting with http:// or https://)</span></label>
+          <input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" placeholder="https://..." required>
+        </div>
+
+        <!-- Proof / Attachments (Multiple Document Types: Patent Copy, Certificate, Supporting Document) -->
+        <div class="field" style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <label style="font-weight:700; font-size:13.5px; color:#1E293B; margin:0; display:flex; align-items:center; gap:6px;">
+                <?= icon('paperclip', 16) ?> Proof / Attachments (Multiple Documents) <span class="req">*</span>
+              </label>
+              <div class="card-sub" style="font-size:12px; color:#64748B; margin-top:2px;">
+                Upload official copies: Patent Copy, Certificate, or Supporting Documents. Allowed formats: PDF (.pdf), JPG, JPEG, PNG (max 2 MB per file).
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addPatentAttachmentRow()" style="display:inline-flex; align-items:center; gap:4px; font-weight:600;">
+              <?= icon('plus', 13) ?> Add Document (+)
+            </button>
+          </div>
+
+          <?php if (!empty($existingAttachments)): ?>
+            <div style="margin-bottom:12px; background:#fff; border:1px solid #E2E8F0; border-radius:6px; padding:12px;">
+              <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+                Existing Attachments on File
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <?php foreach ($existingAttachments as $ea): ?>
+                  <div style="display:flex; align-items:center; justify-content:space-between; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:8px 12px; font-size:12.5px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <label style="margin:0; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" name="keep_attachments[]" value="<?= (int)$ea['id'] ?>" checked>
+                        <span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; background:#E0E7FF; color:#3730A3;">
+                          <?= e($ea['doc_type']) ?>
+                        </span>
+                        <strong style="color:#0F172A;"><?= e($ea['file_name']) ?></strong>
+                      </label>
+                    </div>
+                    <div>
+                      <a href="/proof.php?file=<?= urlencode($ea['file_path']) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px; height:26px; padding:2px 8px; display:inline-flex; align-items:center; gap:3px;">
+                        <?= icon('external-link', 11) ?> View
+                      </a>
+                    </div>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+              <div class="card-sub" style="font-size:11px; margin-top:6px; color:#64748B;">
+                Uncheck any attachment above if you wish to remove it upon saving.
+              </div>
+            </div>
+          <?php endif; ?>
+
+          <div id="patentAttachmentsList" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Dynamic attachment upload entries -->
+          </div>
+        </div>
+
         <script>
+        var initialPatentCoAuthors = <?= json_encode(!empty($existingCoAuthors) ? array_values($existingCoAuthors) : []) ?>;
+        var existingAttachmentsCount = <?= count($existingAttachments) ?>;
+
         function updatePatentLabels(cat) {
           var numLbl = document.getElementById('patentNumberLabel');
           var dateLbl = document.getElementById('patentDateLabel');
@@ -1980,9 +2123,73 @@ require __DIR__ . '/inc/header.php';
             if (titleLbl) titleLbl.innerHTML = 'Title of Work / Copyright <span class="req">*</span>';
           }
         }
+
+        function addPatentCoAuthorField(val) {
+          val = val || '';
+          var list = document.getElementById('patentCoAuthorsList');
+          if (!list) return;
+          var rowId = 'pat_ca_' + Math.random().toString(36).substring(2, 9);
+          var row = document.createElement('div');
+          row.id = rowId;
+          row.style.cssText = 'display:flex; gap:8px; align-items:center;';
+          row.innerHTML = '<input type="text" name="co_authors[]" class="input" placeholder="Enter Co-Author / Co-Inventor Full Name" value="' + val.replace(/"/g, '&quot;') + '" style="flex-grow:1;">' +
+            '<button type="button" class="btn btn-outline btn-sm" onclick="removePatentCoAuthorField(\'' + rowId + '\')" style="color:#DC2626; border-color:#FCA5A5; padding:6px 10px;" title="Remove Co-Author">&times; Remove</button>';
+          list.appendChild(row);
+        }
+
+        function removePatentCoAuthorField(rowId) {
+          var el = document.getElementById(rowId);
+          if (el) el.remove();
+        }
+
+        function addPatentAttachmentRow(defaultType) {
+          defaultType = defaultType || 'Patent Copy';
+          var list = document.getElementById('patentAttachmentsList');
+          if (!list) return;
+          var rowId = 'pat_att_' + Math.random().toString(36).substring(2, 9);
+          var row = document.createElement('div');
+          row.id = rowId;
+          row.style.cssText = 'display:flex; gap:10px; align-items:center; background:#fff; padding:8px 12px; border:1px solid #CBD5E1; border-radius:6px; flex-wrap:wrap;';
+          
+          var isFirstUpload = list.children.length === 0 && existingAttachmentsCount === 0;
+          var reqAttr = isFirstUpload ? 'required' : '';
+
+          row.innerHTML = '<div style="width:180px; flex-shrink:0;">' +
+              '<select class="select" name="patent_doc_types[]" style="width:100%;">' +
+                '<option value="Patent Copy"' + (defaultType === 'Patent Copy' ? ' selected' : '') + '>Patent Copy</option>' +
+                '<option value="Certificate"' + (defaultType === 'Certificate' ? ' selected' : '') + '>Certificate</option>' +
+                '<option value="Supporting Document"' + (defaultType === 'Supporting Document' ? ' selected' : '') + '>Supporting Document</option>' +
+              '</select>' +
+            '</div>' +
+            '<div style="flex-grow:1; min-width:220px;">' +
+              '<input type="file" name="patent_files[]" class="input" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" ' + reqAttr + ' style="width:100%;">' +
+            '</div>' +
+            '<div>' +
+              '<button type="button" class="btn btn-outline btn-sm" onclick="removePatentAttachmentRow(\'' + rowId + '\')" style="color:#DC2626; border-color:#FCA5A5; padding:6px 10px;" title="Remove Document">&times; Remove</button>' +
+            '</div>';
+          list.appendChild(row);
+        }
+
+        function removePatentAttachmentRow(rowId) {
+          var el = document.getElementById(rowId);
+          if (el) el.remove();
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
           var sel = document.getElementById('patentCategorySelect');
           if (sel) updatePatentLabels(sel.value);
+
+          // Preload co-authors if editing
+          if (initialPatentCoAuthors && initialPatentCoAuthors.length > 0) {
+            for (var i = 0; i < initialPatentCoAuthors.length; i++) {
+              addPatentCoAuthorField(initialPatentCoAuthors[i]);
+            }
+          }
+
+          // If no existing attachments on file, add one initial attachment row
+          if (existingAttachmentsCount === 0) {
+            addPatentAttachmentRow('Patent Copy');
+          }
         });
         </script>
 
@@ -2058,11 +2265,10 @@ require __DIR__ . '/inc/header.php';
       <?php elseif ($selectedType === 'mou'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <?php render_exam_session_field($effectiveYear, 'Academic Session'); ?>
-        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" required></div>
-        <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
-        <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" required></div>
-        <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration <span class="req">*</span></label><input class="input" name="purpose" required></div>
-        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
+        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" value="<?= e($editRecord['signed_date'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" value="<?= e($editRecord['organization'] ?? '') ?>" required></div>
+        <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" value="<?= e($editRecord['valid_upto'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration <span class="req">*</span></label><input class="input" name="purpose" value="<?= e($editRecord['purpose'] ?? '') ?>" required></div>
 
       <?php elseif ($selectedType === 'event'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -2499,8 +2705,17 @@ require __DIR__ . '/inc/header.php';
                   }
               }
           }
-          if (!in_array($selectedType, ['journal', 'fdp'], true) && !$hasCustomProof) {
-              render_proof_field($editRecord, !str_starts_with($selectedType, 'inst_'));
+          if (!in_array($selectedType, ['journal', 'fdp', 'patent', 'inst_pass_percentage', 'inst_student_cgpa'], true) && !$hasCustomProof) {
+              $proofLabel = match ($selectedType) {
+                  'inst_research_centre' => 'Recognition Letter',
+                  'mou' => 'Upload MoU Copy',
+                  'inst_mou_interactions' => 'Report',
+                  'inst_sports_state', 'inst_sports_national' => 'Certificate',
+                  default => 'Proof / Attachment',
+              };
+              $isProofReq = !str_starts_with($selectedType, 'inst_') || in_array($selectedType, ['inst_research_centre', 'inst_mou_interactions', 'inst_sports_state', 'inst_sports_national'], true);
+              render_proof_field($editRecord, $isProofReq, $proofLabel);
+
           }
         ?>
       </div>
@@ -3301,6 +3516,136 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 </div> <!-- /#individualUploadContainer -->
+
+<?php if ($selectedType === 'inst_student_cgpa'): ?>
+  <?php
+    $sumDept = $userDept ?: ($user['department'] ?? 'CSE');
+    $summaryData = get_student_cgpa_summary($sumDept, $effectiveYear);
+  ?>
+  <div class="card" id="cgpaSummarySection" style="margin-top:20px; border-top:3px solid #FF4F01;">
+    <div class="card-head" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+          <?= icon('award', 18) ?> Year-Wise Students Above 8.5 CGPA
+        </div>
+        <div class="card-sub">
+          Academic Year: <strong><?= e($effectiveYear) ?></strong> &bull; Department: <strong id="cgpaSummaryDeptBadge"><?= e($sumDept) ?></strong>
+        </div>
+      </div>
+      <div>
+        <span class="badge" style="font-size:12px; font-weight:700; background:#FFF7ED; color:#C2410C; border:1px solid #FFEDD5; padding:6px 12px; border-radius:8px;">
+          Grand Total: <strong id="cgpaSummaryGrandTotalTop" style="font-size:14px; margin-left:4px;"><?= (int)$summaryData['total']['above_8_5'] ?></strong> Students
+        </span>
+      </div>
+    </div>
+    <div class="card-body" style="padding:20px;">
+      <!-- Four Summary Cards Grid -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-bottom:20px;">
+        <?php foreach (['I Year', 'II Year', 'III Year', 'IV Year'] as $yLabel): 
+          $yData = $summaryData['years'][$yLabel] ?? ['above_8_5' => 0, 'records' => 0];
+        ?>
+          <div style="background:#fff; border:1px solid var(--border,#e2e8f0); border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.03); border-top:3px solid #FF4F01;">
+            <div style="font-size:13px; font-weight:700; color:var(--navy,#131D3B); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+              <span><?= e($yLabel) ?></span>
+              <span style="font-size:11px; font-weight:600; color:#64748b; background:#f1f5f9; padding:2px 6px; border-radius:4px;"><?= (int)$yData['records'] ?> <?= (int)$yData['records'] === 1 ? 'batch' : 'batches' ?></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <span style="font-size:12px; color:#64748b;">Above 8.5 CGPA:</span>
+              <span style="font-size:22px; font-weight:800; color:#FF4F01; font-variant-numeric:tabular-nums;" id="card_85_<?= md5($yLabel) ?>">
+                <?= (int)$yData['above_8_5'] ?>
+              </span>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+
+      <!-- Clean Breakdown Table -->
+      <div class="table-wrap" style="border:1px solid var(--border,#e2e8f0); border-radius:8px; overflow:hidden;">
+        <table class="data" style="margin:0; width:100%;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="padding-left:16px; font-weight:700; color:var(--navy,#131D3B);">Class / Year</th>
+              <th style="text-align:right; padding-right:16px; font-weight:700; color:#FF4F01;">Total Students Above 8.5 CGPA</th>
+            </tr>
+          </thead>
+          <tbody id="cgpaSummaryTableBody">
+            <?php foreach (['I Year', 'II Year', 'III Year', 'IV Year'] as $yLabel): 
+              $yData = $summaryData['years'][$yLabel] ?? ['above_8_5' => 0, 'records' => 0];
+            ?>
+              <tr>
+                <td style="padding-left:16px; font-weight:600; color:#1E293B;"><?= e($yLabel) ?></td>
+                <td style="text-align:right; padding-right:16px; font-weight:700; font-variant-numeric:tabular-nums; color:#FF4F01;"><?= (int)$yData['above_8_5'] ?></td>
+              </tr>
+            <?php endforeach; ?>
+            <tr style="background:#FFF7ED; font-weight:800; border-top:2px solid #FFEDD5;">
+              <td style="padding-left:16px; color:#9A3412; font-size:14px;">Grand Total</td>
+              <td style="text-align:right; padding-right:16px; font-size:16px; color:#C2410C; font-variant-numeric:tabular-nums;" id="tableGrandTotal"><?= (int)$summaryData['total']['above_8_5'] ?></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function refreshCgpaSummary(dept) {
+      if (!dept) return;
+      const url = 'upload.php?action=fetch_cgpa_summary&department=' + encodeURIComponent(dept) + '&academic_year=' + encodeURIComponent(<?= json_encode($effectiveYear) ?>);
+      fetch(url)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (!data || !data.success || !data.summary) return;
+          const s = data.summary;
+          const badge = document.getElementById('cgpaSummaryDeptBadge');
+          if (badge) badge.textContent = s.department;
+
+          const topGrandTotal = document.getElementById('cgpaSummaryGrandTotalTop');
+          if (topGrandTotal) topGrandTotal.textContent = s.total.above_8_5;
+
+          const yearKeys = ['I Year', 'II Year', 'III Year', 'IV Year'];
+          const keyHashes = {
+            'I Year': <?= json_encode(md5('I Year')) ?>,
+            'II Year': <?= json_encode(md5('II Year')) ?>,
+            'III Year': <?= json_encode(md5('III Year')) ?>,
+            'IV Year': <?= json_encode(md5('IV Year')) ?>
+          };
+
+          let tbodyHtml = '';
+          yearKeys.forEach(function(yk) {
+            const yd = s.years[yk] || { above_8_5: 0, records: 0 };
+            const h = keyHashes[yk];
+            const el85 = document.getElementById('card_85_' + h);
+            if (el85) el85.textContent = yd.above_8_5;
+
+            tbodyHtml += '<tr>' +
+              '<td style="padding-left:16px; font-weight:600; color:#1E293B;">' + yk + '</td>' +
+              '<td style="text-align:right; padding-right:16px; font-weight:700; font-variant-numeric:tabular-nums; color:#FF4F01;">' + yd.above_8_5 + '</td>' +
+            '</tr>';
+          });
+
+          tbodyHtml += '<tr style="background:#FFF7ED; font-weight:800; border-top:2px solid #FFEDD5;">' +
+            '<td style="padding-left:16px; color:#9A3412; font-size:14px;">Grand Total</td>' +
+            '<td style="text-align:right; padding-right:16px; font-size:16px; color:#C2410C; font-variant-numeric:tabular-nums;" id="tableGrandTotal">' + s.total.above_8_5 + '</td>' +
+          '</tr>';
+
+          const tbody = document.getElementById('cgpaSummaryTableBody');
+          if (tbody) tbody.innerHTML = tbodyHtml;
+        })
+        .catch(function(err) {
+          console.error('Failed to refresh CGPA summary', err);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const deptSel = document.querySelector('select[name="department"]');
+      if (deptSel) {
+        deptSel.addEventListener('change', function() {
+          refreshCgpaSummary(this.value);
+        });
+      }
+    });
+  </script>
+<?php endif; ?>
 
 <!-- My recent records -->
 <?php if (($activeSection['metric_type'] ?? '') === 'generic'): ?>

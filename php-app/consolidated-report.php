@@ -32,8 +32,11 @@ $title    = 'CONSOLIDATED ALL-DEPARTMENT REPORT';
 
 $departments = departments_all();
 
+require_once __DIR__ . '/inc/patent_handler.php';
+
 $adminScopeUser = ['id' => (int)$user['id'], 'role' => 'Admin', 'name' => 'Consolidated', 'department' => null];
-$allRecords     = report_records($adminScopeUser, null, null, null, null, null, $academicYear);
+$rawRecords     = report_records($adminScopeUser, null, null, null, null, null, $academicYear);
+$allRecords     = patent_consolidate_records($rawRecords);
 
 $targetStats = [];
 try {
@@ -160,6 +163,50 @@ if ($format === 'excel') {
         'meta'    => $overviewMeta,
     ];
 
+    // Part A.2: Sheet — Patents & Copyrights Consolidated Register
+    $patentRecords = array_values(array_filter($allRecords, fn($r) => in_array($r['_type_key'] ?? '', ['patent', 'inst_patents_published', 'inst_patents_granted', 'inst_copyrights'], true)));
+    if (!empty($patentRecords)) {
+        $patHeaders = ['S.No', 'Patent / Registration No', 'Title of Work', 'Category', 'Academic Session', 'Faculty & Co-Authors', 'Department(s)', 'Date of Issue', 'Document Link', 'Attachments', 'Status', 'Submissions'];
+        $patRows = [];
+        $pIdx = 1;
+        foreach ($patentRecords as $pr) {
+            $regDisplay = $pr['_display_reg_no'] ?? ($pr['patent_number'] ?? '—');
+            if (!empty($pr['_needs_review'])) {
+                $regDisplay .= ' [NEEDS REVIEW: Missing No.]';
+            }
+            $patRows[] = [
+                $pIdx++,
+                $regDisplay,
+                $pr['_title'],
+                $pr['category'] ?? 'Patent',
+                $pr['academic_session'] ?? $pr['exam_session'] ?? $academicYear,
+                $pr['_author_summary'] ?: ($pr['_person'] ?: '—'),
+                $pr['_department'] ?: ($pr['department'] ?? '—'),
+                !empty($pr['publication_date']) ? date('d/m/Y', strtotime($pr['publication_date'])) : '—',
+                $pr['_document_link'] ?: ($pr['document_link'] ?? '—'),
+                $pr['_attachment_summary'] ?? (!empty($pr['proof_file']) ? '1 Attachment' : 'None'),
+                $pr['status'],
+                (int)($pr['_submissions_count'] ?? 1),
+            ];
+        }
+        foreach (report_signoff_excel_rows($sigCols, count($patHeaders)) as $sRow) {
+            $patRows[] = $sRow;
+        }
+        $patMeta = [
+            REPORT_INSTITUTION,
+            $title . ' — PATENTS & COPYRIGHTS REGISTER',
+            'Academic Year: ' . $academicYear,
+            'Scope: Deduplicated by Registration Number (' . count($patentRecords) . ' unique records)',
+            'Report Date: ' . $today,
+        ];
+        $sheets[] = [
+            'title'   => 'Patents & Copyrights',
+            'headers' => $patHeaders,
+            'rows'    => $patRows,
+            'meta'    => $patMeta,
+        ];
+    }
+
     // Part B: Sheets 2..N — Department-wise Grouped Records Tabs
     $deptHeaders = ['S.No', 'Record Details / Title', 'Type', 'Faculty / Student Name', 'Department', 'Status', 'Date'];
 
@@ -171,13 +218,27 @@ if ($format === 'excel') {
         } else {
             $rNo = 1;
             foreach ($dGroup['records'] as $r) {
+                $isPat = in_array($r['_type_key'] ?? '', ['patent', 'inst_patents_published', 'inst_patents_granted', 'inst_copyrights'], true);
+                $titleText = $r['_title'];
+                if ($isPat && !empty($r['_display_reg_no'])) {
+                    $titleText = '[' . $r['_display_reg_no'] . '] ' . $titleText;
+                }
+                $personText = $isPat && !empty($r['_author_summary']) ? $r['_author_summary'] : $r['_person'];
+                $statusText = $r['status'];
+                if (!empty($r['_is_consolidated'])) {
+                    $statusText .= ' (Consolidated: ' . $r['_submissions_count'] . ' submissions)';
+                }
+                if (!empty($r['_needs_review'])) {
+                    $statusText .= ' [NEEDS REVIEW: Missing No.]';
+                }
+
                 $deptRows[] = [
                     $rNo++,
-                    $r['_title'],
+                    $titleText,
                     $r['_type_label'],
-                    $r['_person'],
+                    $personText,
                     $dGroup['full_name'],
-                    $r['status'],
+                    $statusText,
                     date('d/m/Y', strtotime($r['created_at'])),
                 ];
             }
@@ -286,6 +347,59 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
     </tbody>
   </table>
 
+  <!-- Executive Patents & Copyrights Consolidated Register (Deduplicated by Registration Number) -->
+  <?php if (!empty($patentRecords)): ?>
+    <div style="margin-top:28px; margin-bottom:10px; font-weight:bold; font-size:11pt; border-bottom:1.5px solid #000; padding-bottom:3px; display:flex; justify-content:space-between; align-items:center;">
+      <span>PATENTS &amp; COPYRIGHTS REGISTER (STANDARDIZED &amp; DEDUPLICATED BY REGISTRATION NO.)</span>
+      <span style="font-size:9.5pt; font-weight:normal; color:#4B5563;"><?= count($patentRecords) ?> Unique Intellectual Property Items</span>
+    </div>
+    <table class="grid" style="margin-bottom:24px;">
+      <thead>
+        <tr>
+          <th style="width:4%;">#</th>
+          <th style="width:17%; text-align:left;">Registration / Patent No.</th>
+          <th style="width:26%; text-align:left;">Title of Work</th>
+          <th style="width:10%;">Category</th>
+          <th style="width:18%; text-align:left;">Authors &amp; Co-Authors</th>
+          <th style="width:9%;">Dept(s)</th>
+          <th style="width:8%;">Date</th>
+          <th style="width:8%;">Document</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php $pNo = 1; foreach ($patentRecords as $pr): ?>
+          <tr>
+            <td class="c"><?= $pNo++ ?></td>
+            <td style="font-family:monospace; font-weight:700; color:#1E3A8A;">
+              <?= e($pr['_display_reg_no'] ?? ($pr['patent_number'] ?? '—')) ?>
+              <?php if (!empty($pr['_needs_review'])): ?>
+                <div style="color:#DC2626; font-size:9.5px; font-weight:normal; font-family:sans-serif;">⚠ Review: Missing No.</div>
+              <?php endif; ?>
+            </td>
+            <td>
+              <strong><?= e($pr['_title']) ?></strong>
+              <?php if (!empty($pr['_is_consolidated'])): ?>
+                <div style="font-size:10px; color:#4F46E5; margin-top:2px;">(Consolidated: <?= (int)$pr['_submissions_count'] ?> submissions)</div>
+              <?php endif; ?>
+            </td>
+            <td class="c"><?= e($pr['category'] ?? 'Patent') ?></td>
+            <td style="font-size:10.5px;"><?= e($pr['_author_summary'] ?: ($pr['_person'] ?: '—')) ?></td>
+            <td class="c" style="font-size:10.5px;"><?= e($pr['_department'] ?: ($pr['department'] ?? '—')) ?></td>
+            <td class="c" style="font-size:10.5px;"><?= !empty($pr['publication_date']) ? date('d/m/Y', strtotime($pr['publication_date'])) : '—' ?></td>
+            <td class="c" style="font-size:11px;">
+              <?php $dUrl = $pr['_document_link'] ?: ($pr['document_link'] ?? ''); ?>
+              <?php if (!empty($dUrl) && preg_match('/^https?:\/\//i', $dUrl)): ?>
+                <a href="<?= e($dUrl) ?>" target="_blank" rel="noopener noreferrer" style="color:#2563EB; text-decoration:underline; font-weight:600;">View Doc</a>
+              <?php else: ?>
+                —
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  <?php endif; ?>
+
   <!-- Department-Wise Detailed Sections -->
   <?php $secIdx = 0; foreach ($deptData as $dGroup): $secIdx++; ?>
     <div style="page-break-before:always; margin-top:24px;"></div>
@@ -320,11 +434,29 @@ report_letterhead($title, $meta, ['ACADEMIC YEAR: ' . $academicYear], false);
         </thead>
         <tbody>
           <?php $rIdx = 1; foreach ($dGroup['records'] as $r): ?>
+            <?php
+              $isPat = in_array($r['_type_key'] ?? '', ['patent', 'inst_patents_published', 'inst_patents_granted', 'inst_copyrights'], true);
+            ?>
             <tr>
               <td class="c"><?= $rIdx++ ?></td>
-              <td><?= e($r['_title']) ?></td>
+              <td>
+                <?php if ($isPat && !empty($r['_display_reg_no'])): ?>
+                  <div style="font-size:11px; font-weight:700; color:#1D4ED8; font-family:monospace; margin-bottom:2px;">
+                    Reg No: <?= e($r['_display_reg_no']) ?>
+                  </div>
+                <?php endif; ?>
+                <div><?= e($r['_title']) ?></div>
+                <?php if (!empty($r['_needs_review'])): ?>
+                  <div style="display:inline-block; margin-top:3px; padding:1px 6px; background:#FEE2E2; color:#DC2626; border-radius:3px; font-size:10px; font-weight:700;">⚠ Review Required: Missing No.</div>
+                <?php elseif (!empty($r['_is_consolidated'])): ?>
+                  <div style="display:inline-block; margin-top:3px; padding:1px 6px; background:#EEF2FF; color:#4338CA; border-radius:3px; font-size:10px; font-weight:600;">Consolidated across <?= (int)$r['_submissions_count'] ?> submissions</div>
+                <?php endif; ?>
+                <?php if (!empty($r['document_link']) && preg_match('/^https?:\/\//i', $r['document_link'])): ?>
+                  <div style="margin-top:2px; font-size:11px;"><a href="<?= e($r['document_link']) ?>" target="_blank" rel="noopener noreferrer" style="color:#2563EB; text-decoration:underline;">View Document &rarr;</a></div>
+                <?php endif; ?>
+              </td>
               <td><?= e($r['_type_label']) ?></td>
-              <td><?= e($r['_person'] ?: '—') ?></td>
+              <td><?= e(!empty($r['_author_summary']) ? $r['_author_summary'] : ($r['_person'] ?: '—')) ?></td>
               <td class="c">
                 <span style="font-weight:<?= $r['status'] === 'Approved' ? 'bold' : 'normal' ?>; color:<?= $r['status'] === 'Approved' ? '#1E7E34' : ($r['status'] === 'Rejected' ? '#B91C1C' : '#1F2937') ?>;">
                   <?= e($r['status']) ?>

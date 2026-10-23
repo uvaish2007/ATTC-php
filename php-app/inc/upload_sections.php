@@ -31,12 +31,12 @@ function upload_approved_sections_built_in(): array
         'student_cgpa' => [
             'id'           => 'student_cgpa',
             'order'        => 2,
-            'title'        => 'To Improve II & III Year Students Above 7.5 CGPA',
+            'title'        => 'Students Secured Above 8.5 CGPA',
             'group'        => 'UNIVERSITY AND STUDENT PERFORMANCE',
             'default_type' => 'inst_student_cgpa',
             'types'        => ['inst_student_cgpa'],
             'subcategories'=> [],
-            'description'  => 'Identifying and tracking second- and third-year students achieving above 7.5 CGPA.',
+            'description'  => 'Identifying and tracking students achieving above 8.5 CGPA across I, II, III, and IV Year.',
         ],
         'placement_mnc' => [
             'id'           => 'placement_mnc',
@@ -265,10 +265,7 @@ function upload_approved_sections_built_in(): array
             'group'        => 'INSTITUTIONAL AND STUDENT ACTIVITIES',
             'default_type' => 'inst_sports_state',
             'types'        => ['inst_sports_state', 'inst_sports_national'],
-            'subcategories'=> [
-                'inst_sports_state'    => 'State-Level Sports & Awards',
-                'inst_sports_national' => 'National-Level Sports & Awards',
-            ],
+            'subcategories'=> [], // Merged into unified form with Competition Level dropdown: State, National
             'description'  => 'Sports participation and athletic tournament awards at state and national levels.',
         ],
         'innovation_events' => [

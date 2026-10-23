@@ -29,7 +29,7 @@ function all_metrics(): array
         'placements'      => ['label' => 'Placements',      'table' => 'placements',              'group' => 'student',  'year' => false],
         'summer_training' => ['label' => 'Summer Training', 'table' => 'summer_training',         'group' => 'student',  'year' => true],
         'achievements'    => ['label' => 'Achievements',    'table' => 'student_achievements',    'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],
-        'participations'  => ['label' => 'Participations',  'table' => 'student_participations',  'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date']],
+        'participations'  => ['label' => 'Participations',  'table' => 'student_participations',  'group' => 'student',  'year' => true,  'dedup' => ['event_name', 'event_date'], 'where' => 'id NOT IN (SELECT participation_id FROM inst_sports_state WHERE participation_id IS NOT NULL UNION SELECT participation_id FROM inst_sports_national WHERE participation_id IS NOT NULL)'],
         'nptel_student'   => ['label' => 'NPTEL (Student)', 'table' => 'nptel',                   'group' => 'student',  'year' => $nptelYear, 'where' => nptel_participant_sql('Student')],
     ];
 }
@@ -577,6 +577,8 @@ function recent_activity(?string $department, ?string $status, ?int $createdBy =
         ['table' => 'summer_training',         'label' => 'Summer Training','title' => 'title',         'year' => true],
         ['table' => 'student_achievements',    'label' => 'Achievement',    'title' => 'event_name',    'year' => true],
         ['table' => 'student_participations',  'label' => 'Participation',  'title' => 'event_name',    'year' => true],
+        ['table' => 'inst_sports_state',       'label' => 'Sports (State)',    'title' => 'event_name',    'year' => true],
+        ['table' => 'inst_sports_national',    'label' => 'Sports (National)', 'title' => 'event_name',    'year' => true],
     ];
 
     $rows = [];

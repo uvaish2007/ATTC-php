@@ -86,6 +86,8 @@ if ($format === 'word') {
                     $ps .= ' LPA';
                 }
                 $rowVal[] = $ps;
+            } elseif ($field === 'proof_file') {
+                $rowVal[] = !empty($r['proof_file']) ? url('proof.php?file=' . urlencode($r['proof_file'])) : '—';
             } else {
                 $rowVal[] = (string) ($r[$field] ?? '');
             }
@@ -186,7 +188,15 @@ report_letterhead($mainTitle, $meta, $headingLines);
                     $val = (string) ($r[$field] ?? '');
                 }
               ?>
-              <td<?= $field === '#' ? ' class="num"' : '' ?>><?= e($val) ?></td>
+              <td<?= $field === '#' ? ' class="num"' : '' ?>>
+                <?php if ($val !== '' && in_array($field, ['document_link', 'journal_link', 'proceedings_link', 'certificate_link', 'report_link', 'appointment_order_link'], true) && preg_match('/^https?:\/\//i', $val)): ?>
+                  <a href="<?= e($val) ?>" target="_blank" rel="noopener noreferrer" style="color:#2563EB; text-decoration:underline;">View Document</a>
+                <?php elseif ($field === 'proof_file' && $val !== ''): ?>
+                  <a href="/proof.php?file=<?= urlencode($val) ?>" target="_blank" rel="noopener noreferrer" style="color:#2563EB; text-decoration:underline;"><?= in_array($type, ['inst_sports_state', 'inst_sports_national', 'inst_sports'], true) ? 'View Certificate' : 'View Attachment' ?></a>
+                <?php else: ?>
+                  <?= e($val) ?>
+                <?php endif; ?>
+              </td>
             <?php endforeach; ?>
           </tr>
           <?php $serial++; ?>

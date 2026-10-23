@@ -100,6 +100,25 @@ if ($type !== '' && $recordId > 0) {
                 continue;
             }
         }
+        if (!$record) {
+            try {
+                $pAttStmt = db()->prepare("
+                    SELECT p.*, pa.file_name as attachment_file_name, pa.doc_type as attachment_doc_type
+                    FROM patent_attachments pa
+                    JOIN patents p ON p.id = pa.patent_id
+                    WHERE pa.file_path = ? OR pa.file_name = ?
+                    LIMIT 1
+                ");
+                $pAttStmt->execute([$cleanFileName, $cleanFileName]);
+                $pAttFound = $pAttStmt->fetch();
+                if ($pAttFound) {
+                    $record          = $pAttFound;
+                    $recordTypeKey   = 'patent';
+                    $recordTypeLabel = 'Patent / Copyright';
+                }
+            } catch (\PDOException $e) {
+            }
+        }
     }
 }
 
@@ -131,7 +150,7 @@ if ($record) {
     }
 }
 
-$storedName = basename(trim((string) ($record['proof_file'] ?? $fileParam)));
+$storedName = !empty($cleanFileName) ? $cleanFileName : basename(trim((string) ($record['proof_file'] ?? $fileParam)));
 if ($storedName === '' || stripos($storedName, 'upload.php') !== false) {
     http_response_code(404);
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>No Proof Attached - ATTS IQAC</title>';
