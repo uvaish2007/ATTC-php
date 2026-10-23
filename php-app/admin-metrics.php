@@ -1954,8 +1954,15 @@ dialog.studio-modal::backdrop {
   </div>
   <div class="modal-body" style="padding:20px;max-height:70vh;overflow-y:auto;" id="previewModalBody">
     <!-- Populated by JS -->
-  </div>
-  <div class="modal-foot" style="padding:12px 20px;border-top:1px solid #E2E8F0;display:flex;justify-content:flex-end;">
+  <div class="modal-foot" style="padding:12px 20px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+    <div style="display:flex;gap:8px;">
+      <a id="previewModalStudioBtn" href="form-studio.php" class="btn btn-primary btn-sm" style="display:inline-flex;align-items:center;gap:5px;background:var(--orange-500, #FF4F01);border:none;color:#FFFFFF;text-decoration:none;">
+        <?= icon('sliders', 13) ?> Design in Form Studio
+      </a>
+      <a id="previewModalUploadBtn" href="upload.php" target="_blank" class="btn btn-outline btn-sm" style="display:inline-flex;align-items:center;gap:5px;text-decoration:none;">
+        <?= icon('external-link', 13) ?> Open in Upload Page
+      </a>
+    </div>
     <button type="button" class="btn btn-outline btn-sm" onclick="this.closest('dialog').close()">Close Preview</button>
   </div>
 </dialog>
@@ -2130,6 +2137,16 @@ function openPreviewModal(metric) {
   }
 
   body.innerHTML = html;
+
+  var studioBtn = document.getElementById('previewModalStudioBtn');
+  if (studioBtn) {
+    studioBtn.href = 'form-studio.php?id=' + encodeURIComponent(metric.id);
+  }
+  var uploadBtn = document.getElementById('previewModalUploadBtn');
+  if (uploadBtn) {
+    uploadBtn.href = 'upload.php?metric=' + encodeURIComponent(metric.metric_key);
+  }
+
   document.getElementById('previewModal').showModal();
 }
 

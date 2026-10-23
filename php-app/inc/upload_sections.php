@@ -367,7 +367,10 @@ function upload_approved_sections_built_in(): array
 function upload_approved_sections(?string $role = null, bool $forceRefresh = false): array
 {
     static $cached = [];
-    $cacheKey = ($role ?? 'all') . ($forceRefresh ? '_rf_' . microtime(true) : '');
+    if ($forceRefresh) {
+        $cached = [];
+    }
+    $cacheKey = $role ?? 'all';
     if (!$forceRefresh && isset($cached[$cacheKey])) {
         return $cached[$cacheKey];
     }
@@ -411,6 +414,8 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
 
                     $dynamicSections[$key] = [
                         'id'           => $key,
+                        'key'          => $key,
+                        'metric_id'    => (int)$m['id'],
                         'order'        => (int)$m['display_order'],
                         'title'        => $m['name'],
                         'group'        => $m['category'],
@@ -455,11 +460,33 @@ function resolve_upload_section(?string $sectionId = null, ?string $typeId = nul
 {
     $sections = upload_approved_sections($role);
 
-    // 1. Direct section ID lookup
-    if (!empty($sectionId) && isset($sections[$sectionId])) {
-        $sec = $sections[$sectionId];
-        $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
-        return ['section' => $sec, 'type' => $type];
+    // 1. Direct section ID lookup or matching by metric_id / alias / prefix
+    if (!empty($sectionId)) {
+        $cleanSectionId = str_starts_with($sectionId, 'section_') ? substr($sectionId, 8) : $sectionId;
+
+        if (isset($sections[$sectionId])) {
+            $sec = $sections[$sectionId];
+            $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
+            return ['section' => $sec, 'type' => $type];
+        }
+        if (isset($sections[$cleanSectionId])) {
+            $sec = $sections[$cleanSectionId];
+            $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
+            return ['section' => $sec, 'type' => $type];
+        }
+        foreach ($sections as $sKey => $sec) {
+            if ((string)($sec['metric_id'] ?? '') === (string)$sectionId 
+                || (string)($sec['metric_id'] ?? '') === (string)$cleanSectionId
+                || (string)$sKey === (string)$sectionId 
+                || (string)$sKey === (string)$cleanSectionId
+                || (string)($sec['id'] ?? '') === (string)$sectionId 
+                || (string)($sec['id'] ?? '') === (string)$cleanSectionId
+                || (string)($sec['key'] ?? '') === (string)$sectionId
+                || (string)($sec['key'] ?? '') === (string)$cleanSectionId) {
+                $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
+                return ['section' => $sec, 'type' => $type];
+            }
+        }
     }
 
     // 2. Direct record type reverse lookup with legacy consolidation

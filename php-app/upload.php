@@ -1013,14 +1013,8 @@ $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
 unset($_SESSION['submitted_draft_type']);
 
 $userRole = $user['role'] ?? 'Faculty';
-$reqSection = trim((string)($_GET['section'] ?? ''));
+$reqSection = trim((string)($_GET['section'] ?? ($_GET['metric'] ?? ($_GET['metric_key'] ?? ($_GET['id'] ?? '')))));
 $reqType    = trim((string)($_GET['type'] ?? ''));
-$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null, $userRole);
-$activeSection       = $resolvedSectionData['section'];
-$selectedType        = $resolvedSectionData['type'];
-if (!isset($types[$selectedType])) {
-    $selectedType = $activeSection['default_type'];
-}
 
 // Dynamically register active generic metrics into $types map
 $allActiveSections = upload_approved_sections($userRole);
@@ -1036,6 +1030,13 @@ foreach ($allActiveSections as $sSec) {
             ];
         }
     }
+}
+
+$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null, $userRole);
+$activeSection       = $resolvedSectionData['section'];
+$selectedType        = $resolvedSectionData['type'];
+if (!isset($types[$selectedType])) {
+    $selectedType = $activeSection['default_type'];
 }
 if (!isset($types[$selectedType]) && ($activeSection['metric_type'] ?? '') === 'generic') {
     $types[$selectedType] = [
@@ -1298,6 +1299,10 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
         echo '</div>';
     }
 
+    $isMulti      = !empty($attConfig['allow_multiple']) || ($attConfig['mode'] ?? '') === 'multiple';
+    $inputName    = $isMulti ? 'proof[]' : 'proof';
+    $multiAttr    = $isMulti ? ' multiple' : '';
+
     echo '<div class="atts-proof-dropzone" id="proofDropzone" style="border:2px dashed #CBD5E1; border-radius:10px; background:#F8FAFC; padding:14px 18px; transition:border-color 0.2s, background 0.2s; position:relative;">';
     echo '  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">';
     echo '    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">';
@@ -1305,7 +1310,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
     echo '        ' . icon('upload-cloud', 22);
     echo '      </div>';
     echo '      <div style="flex:1;">';
-    echo '        <input class="input" type="file" name="proof" id="proofInput" accept="' . e($acceptAttr) . '"' . ($needed ? ' required' : '') . ' style="font-size:12px; padding:6px 10px; border-radius:6px; background:#FFFFFF; width:100%;">';
+    echo '        <input class="input" type="file" name="' . $inputName . '" id="proofInput" accept="' . e($acceptAttr) . '"' . ($needed ? ' required' : '') . $multiAttr . ' style="font-size:12px; padding:6px 10px; border-radius:6px; background:#FFFFFF; width:100%;">';
     echo '        <div class="card-sub" style="font-size:11px; color:#64748B; margin-top:4px;">' . e($helpText) . '</div>';
     echo '      </div>';
     echo '    </div>';
@@ -3819,10 +3824,19 @@ require __DIR__ . '/inc/header.php';
               <?= !empty($summaryBits) ? implode(' &bull; ', $summaryBits) : '—' ?>
             </td>
             <td>
-              <?php if (!empty($gr['proof_file'])): ?>
-                <a href="<?= e(url('download.php?proof=' . urlencode($gr['proof_file']))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px;">
-                  <?= icon('file-text', 12) ?> View Proof
-                </a>
+              <?php if (!empty($gr['proof_file'])): 
+                $proofList = json_decode((string)$gr['proof_file'], true);
+                if (is_array($proofList) && !empty($proofList)):
+                  foreach ($proofList as $idx => $pf): ?>
+                    <a href="<?= e(url('download.php?proof=' . urlencode((string)$pf))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px; margin-right:4px;">
+                      <?= icon('file-text', 12) ?> Proof <?= $idx + 1 ?>
+                    </a>
+                  <?php endforeach;
+                else: ?>
+                  <a href="<?= e(url('download.php?proof=' . urlencode((string)$gr['proof_file']))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px;">
+                    <?= icon('file-text', 12) ?> View Proof
+                  </a>
+                <?php endif; ?>
               <?php else: ?>
                 <span style="font-size:12px; color:var(--c-muted, #94a3b8);">None</span>
               <?php endif; ?>

@@ -43,22 +43,32 @@ $recordTypeLabel = 'Record';
 $types = record_types();
 
 if ($type !== '' && $recordId > 0) {
-    if (!isset($types[$type])) {
-        http_response_code(404);
-        exit('Invalid record category specified.');
-    }
-    $table = $types[$type]['table'];
-    try {
-        $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE `id` = ?");
-        $stmt->execute([$recordId]);
-        $record = $stmt->fetch();
-        if ($record) {
-            $recordTypeKey   = $type;
-            $recordTypeLabel = $types[$type]['label'] ?? 'Record';
+    if (isset($types[$type])) {
+        $table = $types[$type]['table'];
+        try {
+            $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE `id` = ?");
+            $stmt->execute([$recordId]);
+            $record = $stmt->fetch();
+            if ($record) {
+                $recordTypeKey   = $type;
+                $recordTypeLabel = $types[$type]['label'] ?? 'Record';
+            }
+        } catch (\PDOException $e) {
+            http_response_code(500);
+            exit('Database error while locating record.');
         }
-    } catch (\PDOException $e) {
-        http_response_code(500);
-        exit('Database error while locating record.');
+    } else {
+        // Fallback for dynamic/generic forms
+        try {
+            $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE `id` = ? LIMIT 1");
+            $stmt->execute([$recordId]);
+            $found = $stmt->fetch();
+            if ($found) {
+                $record = $found;
+                $recordTypeKey = $found['metric_key'];
+                $recordTypeLabel = 'Dynamic Metric Form Record';
+            }
+        } catch (\PDOException $e) {}
     }
 } elseif ($recordId > 0) {
     foreach ($types as $tKey => $tInfo) {
@@ -106,7 +116,7 @@ if ($type !== '' && $recordId > 0) {
 // 4. Fallback: Search in generic_metric_records (Dynamic Form Studio submissions)
 if (!$record && $recordId > 0) {
     try {
-        $stmt = db()->prepare("SELECT r.*, d.name as department FROM `generic_metric_records` r LEFT JOIN `departments` d ON r.department_id = d.id WHERE r.id = ? LIMIT 1");
+        $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE `id` = ? LIMIT 1");
         $stmt->execute([$recordId]);
         $found = $stmt->fetch();
         if ($found) {
@@ -119,7 +129,7 @@ if (!$record && $recordId > 0) {
 
 if (!$record && !empty($cleanFileName)) {
     try {
-        $stmt = db()->prepare("SELECT r.*, d.name as department FROM `generic_metric_records` r LEFT JOIN `departments` d ON r.department_id = d.id WHERE r.proof_file = ? OR r.proof_file LIKE ? LIMIT 1");
+        $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE `proof_file` = ? OR `proof_file` LIKE ? LIMIT 1");
         $stmt->execute([$cleanFileName, '%"' . $cleanFileName . '"%']);
         $found = $stmt->fetch();
         if ($found) {

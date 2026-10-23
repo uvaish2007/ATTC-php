@@ -139,6 +139,11 @@
     document.getElementById('canvasRoleHodBadge').style.display = m.hod_visible ? 'inline-flex' : 'none';
     document.getElementById('canvasRolePrincipalBadge').style.display = m.principal_visible ? 'inline-flex' : 'none';
 
+    var liveLink = document.getElementById('previewLiveUploadLink');
+    if (liveLink && m.metric_key) {
+      liveLink.href = 'upload.php?metric=' + encodeURIComponent(m.metric_key);
+    }
+
     // Keep formSelector dropdown and custom menu label in sync
     var sel = document.getElementById('formSelector');
     if (sel && m.id) {
@@ -149,26 +154,10 @@
       menuLabel.textContent = '#' + m.id + ' · ' + (m.name || 'Custom Form');
     }
 
-    // Keep active state on custom menu items in sync
-    var menuItems = document.querySelectorAll('.studio-menu-item');
-    menuItems.forEach(function (item) {
-      if (parseInt(item.dataset.id, 10) === parseInt(m.id, 10)) {
-        item.classList.add('active');
-        if (!item.querySelector('.studio-menu-item-check')) {
-          var right = item.querySelector('.studio-menu-item-right');
-          if (right) {
-            var checkSpan = document.createElement('span');
-            checkSpan.className = 'studio-menu-item-check';
-            checkSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-            right.appendChild(checkSpan);
-          }
-        }
-      } else {
-        item.classList.remove('active');
-        var oldCheck = item.querySelector('.studio-menu-item-check');
-        if (oldCheck) oldCheck.remove();
-      }
-    });
+    // Render / refresh custom menu list and formSelector options dynamically
+    if (typeof renderFormMenuList === 'function') {
+      renderFormMenuList();
+    }
 
     // Keep URL in sync without full reload
     if (window.history && window.history.replaceState && m.id) {
@@ -297,6 +286,8 @@
     var payload = new FormData();
     payload.append('action', 'save_form_draft');
     payload.append('id', studioState.metricId);
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
     payload.append('fields_json', JSON.stringify(studioState.fields));
     payload.append('attachment_json', JSON.stringify(studioState.attachment));
     payload.append('settings_json', JSON.stringify({
@@ -346,6 +337,8 @@
     var payload = new FormData();
     payload.append('action', 'publish_form');
     payload.append('id', studioState.metricId);
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
     payload.append('fields_json', JSON.stringify(studioState.fields));
     payload.append('attachment_json', JSON.stringify(studioState.attachment));
     payload.append('settings_json', JSON.stringify({
@@ -373,6 +366,17 @@
         studioState.isDirty = false;
         studioState.metric.form_version = data.version || (studioState.metric.form_version + 1);
         studioState.history = data.history || studioState.history;
+
+        // Synchronize allMetrics entry for live dropdown badge & title updates
+        if (Array.isArray(studioState.allMetrics)) {
+          for (var i = 0; i < studioState.allMetrics.length; i++) {
+            if (parseInt(studioState.allMetrics[i].id, 10) === parseInt(studioState.metricId, 10)) {
+              studioState.allMetrics[i].form_version = studioState.metric.form_version;
+              studioState.allMetrics[i].name = studioState.metric.name;
+              break;
+            }
+          }
+        }
 
         updateTopbarUI();
         updateSaveIndicator('saved', 'Published v' + studioState.metric.form_version);
@@ -1478,6 +1482,15 @@
     var form = document.getElementById('previewFormSimulation');
     if (!form) return;
 
+    if (form.checkValidity && !form.checkValidity()) {
+      if (typeof form.reportValidity === 'function') {
+        form.reportValidity();
+      } else {
+        alert('Please fill out all required fields marked with * before submitting simulation.');
+      }
+      return;
+    }
+
     var formData = new FormData(form);
     var payload = {};
     formData.forEach(function (val, key) {
@@ -1992,6 +2005,8 @@
 
     var payload = new FormData();
     payload.append('action', 'save_reusable_field');
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
     payload.append('field_json', JSON.stringify(f));
 
     fetch('form-studio.php?ajax=1', {
@@ -2255,6 +2270,8 @@
     payload.append('action', 'restore_form_version');
     payload.append('id', studioState.metricId);
     payload.append('history_id', historyId);
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
 
     fetch('form-studio.php?ajax=1', {
       method: 'POST',
@@ -2466,8 +2483,11 @@
   }
 
   function getCsrfToken() {
-    var meta = document.querySelector('input[name="csrf_token"]');
-    return meta ? meta.value : '';
+    var tokenInput = document.getElementById('globalCsrfToken') ||
+                     document.getElementById('globalCsrfTokenAlt') ||
+                     document.querySelector('input[name="csrf"]') ||
+                     document.querySelector('input[name="csrf_token"]');
+    return tokenInput ? tokenInput.value : '';
   }
 
   // Window BeforeUnload Guard
@@ -2529,6 +2549,7 @@
 
     var fd = new FormData();
     fd.append('action', 'save_option_set');
+    fd.append('csrf', getCsrfToken());
     fd.append('csrf_token', getCsrfToken());
     fd.append('set_key', key);
     fd.append('name', name);
@@ -2539,7 +2560,10 @@
     fetch('form-studio.php', {
       method: 'POST',
       body: fd,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': getCsrfToken()
+      }
     })
     .then(function (res) { return res.json(); })
     .then(function (data) {
@@ -2571,12 +2595,17 @@
 
     var formData = new FormData(formEl);
     formData.append('ajax', '1');
+    if (!formData.has('csrf')) formData.append('csrf', getCsrfToken());
+    if (!formData.has('csrf_token')) formData.append('csrf_token', getCsrfToken());
 
     updateSaveIndicator('saving', 'Creating form...');
     fetch('form-studio.php', {
       method: 'POST',
       body: formData,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': getCsrfToken()
+      }
     })
     .then(function (res) { return res.json(); })
     .then(function (data) {
@@ -2584,8 +2613,32 @@
         updateSaveIndicator('saved', 'Form created');
         var modal = document.getElementById('newFormModal');
         if (modal) modal.close();
+
+        if (Array.isArray(studioState.allMetrics)) {
+          var exists = false;
+          for (var i = 0; i < studioState.allMetrics.length; i++) {
+            if (parseInt(studioState.allMetrics[i].id, 10) === parseInt(data.metric.id, 10)) {
+              exists = true;
+              break;
+            }
+          }
+          if (!exists) {
+            studioState.allMetrics.push({
+              id: parseInt(data.metric.id, 10),
+              metric_key: data.metric.metric_key,
+              name: data.metric.name,
+              category: data.metric.category || 'GENERAL',
+              form_version: parseInt(data.metric.form_version || 1, 10)
+            });
+          }
+        }
+
         // Load the new form into studio
         loadFormStudioConfig(data.metric.id);
+        if (typeof renderFormMenuList === 'function') {
+          renderFormMenuList();
+        }
+
         if (window.history && window.history.replaceState) {
           window.history.replaceState({}, '', 'form-studio.php?id=' + encodeURIComponent(data.metric.id));
         }
@@ -2729,7 +2782,81 @@
     closeFormMenu();
     var modal = document.getElementById('newFormModal');
     if (modal && typeof modal.showModal === 'function') {
+      var titleInput = document.getElementById('newFormTitleInput');
+      var keyInput = document.getElementById('newFormKeyInput');
+      if (titleInput) titleInput.value = '';
+      if (keyInput) {
+        keyInput.value = '';
+        delete keyInput.dataset.manual;
+      }
       modal.showModal();
+    }
+  }
+
+  function renderFormMenuList() {
+    var menuList = document.getElementById('formMenuList');
+    var formSel = document.getElementById('formSelector');
+    if (!menuList && !formSel) return;
+
+    var metrics = Array.isArray(studioState.allMetrics) ? studioState.allMetrics : [];
+    var currentId = studioState.metricId ? parseInt(studioState.metricId, 10) : null;
+
+    if (menuList) {
+      var byCat = {};
+      metrics.forEach(function (m) {
+        var cat = (m.category || 'GENERAL').toUpperCase();
+        if (!byCat[cat]) byCat[cat] = [];
+        byCat[cat].push(m);
+      });
+
+      var html = '';
+      Object.keys(byCat).sort().forEach(function (cat) {
+        var catItems = byCat[cat];
+        html += '<div class="studio-menu-group-header">' + escapeHtml(cat) + '</div>';
+        catItems.forEach(function (m) {
+          var mId = parseInt(m.id, 10);
+          var isActive = (currentId === mId);
+          var mName = m.name || 'Untitled Form';
+          var mKey = m.metric_key || '';
+          var mVer = parseInt(m.form_version || 1, 10);
+
+          html += '<div class="studio-menu-item ' + (isActive ? 'active' : '') + '" ' +
+                  'data-id="' + mId + '" ' +
+                  'data-name="' + escapeHtml(mName.toLowerCase()) + '" ' +
+                  'data-key="' + escapeHtml(mKey.toLowerCase()) + '" ' +
+                  'onclick="selectFormFromMenu(' + mId + ')" role="menuitem">' +
+                  '<div class="studio-menu-item-left">' +
+                    '<span class="studio-menu-item-id">#' + mId + '</span>' +
+                    '<div class="studio-menu-item-info">' +
+                      '<div class="studio-menu-item-title">' + escapeHtml(mName) + '</div>' +
+                      '<div class="studio-menu-item-sub"><span class="studio-menu-item-key">' + escapeHtml(mKey) + '</span></div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="studio-menu-item-right">' +
+                    '<span class="studio-menu-item-ver">v' + mVer + '</span>' +
+                    (isActive ? '<span class="studio-menu-item-check"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : '') +
+                  '</div>' +
+                '</div>';
+        });
+      });
+      menuList.innerHTML = html;
+
+      var searchInput = document.getElementById('formMenuSearchInput');
+      if (searchInput && searchInput.value) {
+        filterFormMenu(searchInput.value);
+      }
+    }
+
+    if (formSel) {
+      var selHtml = '<optgroup label="Select Form to Customize">';
+      metrics.forEach(function (m) {
+        var mId = parseInt(m.id, 10);
+        var isSelected = (currentId === mId);
+        selHtml += '<option value="' + mId + '" ' + (isSelected ? 'selected' : '') + '>#' + mId + ' · ' + escapeHtml(m.name || 'Custom Form') + ' (v' + (m.form_version || 1) + ')</option>';
+      });
+      selHtml += '</optgroup><option value="NEW">+ Create New Dynamic Form...</option>';
+      formSel.innerHTML = selHtml;
+      if (currentId) formSel.value = currentId;
     }
   }
 
@@ -2771,6 +2898,7 @@
   window.filterFormMenu = filterFormMenu;
   window.selectFormFromMenu = selectFormFromMenu;
   window.openNewFormModalFromMenu = openNewFormModalFromMenu;
+  window.renderFormMenuList = renderFormMenuList;
 
   window.onFormSelectorChange = function (val) {
     if (val === 'NEW') {

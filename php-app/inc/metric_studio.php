@@ -879,6 +879,10 @@ function metric_studio_create(array $data): array
     $newId = (int)$pdo->lastInsertId();
     $created = metric_studio_find($newId);
 
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
+
     return [true, "Metric '{$name}' created successfully.", $created];
 }
 
@@ -945,6 +949,10 @@ function metric_studio_update(string|int $idOrKey, array $data): array
         (int)$metric['id']
     ]);
 
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
+
     return [true, "Metric '{$name}' configuration updated successfully."];
 }
 
@@ -964,6 +972,10 @@ function metric_studio_toggle_status(string|int $idOrKey): array
     $newStatus = $metric['status'] === 1 ? 0 : 1;
     $stmt = $pdo->prepare("UPDATE `metrics` SET `status` = ? WHERE `id` = ?");
     $stmt->execute([$newStatus, (int)$metric['id']]);
+
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
 
     $action = $newStatus === 1 ? 'activated' : 'deactivated';
     return [true, "Metric '{$metric['name']}' has been {$action}.", $newStatus];
@@ -1000,8 +1012,17 @@ function metric_studio_delete(string|int $idOrKey): array
             $baseFolder = rtrim(UPLOAD_DIR, '/\\');
             foreach ($proofs as $p) {
                 if (!empty($p)) {
-                    $fullP = $baseFolder . '/' . $p;
-                    if (is_file($fullP)) @unlink($fullP);
+                    $pDecoded = json_decode((string)$p, true);
+                    $filesToClean = is_array($pDecoded) ? $pDecoded : [$p];
+                    foreach ($filesToClean as $subP) {
+                        if (!empty($subP) && is_string($subP)) {
+                            $fName = basename($subP);
+                            $p1 = $baseFolder . '/' . $fName;
+                            $p2 = $baseFolder . '/proofs/' . $fName;
+                            if (is_file($p1)) @unlink($p1);
+                            if (is_file($p2)) @unlink($p2);
+                        }
+                    }
                 }
             }
 
@@ -1638,6 +1659,10 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
         `metric_id`, `version`, `config_json`, `attachment_config_json`, `published_by`, `published_at`
     ) VALUES (?, ?, ?, ?, ?, NOW())");
     $histStmt->execute([(int)$metric['id'], $newVer, $publishedJson, $attJson, $adminId ?: null]);
+
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
 
     return [true, "Form configuration published successfully (v{$newVer}) with " . count($cleanedFields) . " fields."];
 }
@@ -2324,10 +2349,12 @@ function generic_metric_record_delete(int $recordId, int $userId, bool $isAdmin 
             $filesToDelete = [$pf];
         }
         foreach ($filesToDelete as $fName) {
-            $fullPath = $baseFolder . '/' . basename($fName);
-            if (is_file($fullPath)) {
-                @unlink($fullPath);
-            }
+            $baseName = basename((string)$fName);
+            if ($baseName === '') continue;
+            $p1 = $baseFolder . '/' . $baseName;
+            $p2 = $baseFolder . '/proofs/' . $baseName;
+            if (is_file($p1)) @unlink($p1);
+            if (is_file($p2)) @unlink($p2);
         }
     }
 

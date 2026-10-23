@@ -55,8 +55,8 @@ if (!$isOversight) {
 
     if (!$record) {
         try {
-            $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE proof_file = ? LIMIT 1");
-            $stmt->execute([$file]);
+            $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE proof_file = ? OR proof_file LIKE ? LIMIT 1");
+            $stmt->execute([$file, '%"' . $file . '"%']);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
             if ($row) {
                 $record = $row;
