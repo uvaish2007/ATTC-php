@@ -139,11 +139,36 @@
     document.getElementById('canvasRoleHodBadge').style.display = m.hod_visible ? 'inline-flex' : 'none';
     document.getElementById('canvasRolePrincipalBadge').style.display = m.principal_visible ? 'inline-flex' : 'none';
 
-    // Keep formSelector dropdown in sync
+    // Keep formSelector dropdown and custom menu label in sync
     var sel = document.getElementById('formSelector');
     if (sel && m.id) {
       sel.value = m.id;
     }
+    var menuLabel = document.getElementById('formMenuCurrentLabel');
+    if (menuLabel && m.id) {
+      menuLabel.textContent = '#' + m.id + ' · ' + (m.name || 'Custom Form');
+    }
+
+    // Keep active state on custom menu items in sync
+    var menuItems = document.querySelectorAll('.studio-menu-item');
+    menuItems.forEach(function (item) {
+      if (parseInt(item.dataset.id, 10) === parseInt(m.id, 10)) {
+        item.classList.add('active');
+        if (!item.querySelector('.studio-menu-item-check')) {
+          var right = item.querySelector('.studio-menu-item-right');
+          if (right) {
+            var checkSpan = document.createElement('span');
+            checkSpan.className = 'studio-menu-item-check';
+            checkSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+            right.appendChild(checkSpan);
+          }
+        }
+      } else {
+        item.classList.remove('active');
+        var oldCheck = item.querySelector('.studio-menu-item-check');
+        if (oldCheck) oldCheck.remove();
+      }
+    });
 
     // Keep URL in sync without full reload
     if (window.history && window.history.replaceState && m.id) {
@@ -2631,6 +2656,121 @@
   window.openNewOptionSetModal = openNewOptionSetModal;
   window.submitNewOptionSet = submitNewOptionSet;
   window.handleCreateNewForm = handleCreateNewForm;
+
+  // ---------------------------------------------------------------------------
+  // Custom Form Switcher Dropdown Menu Handlers
+  // ---------------------------------------------------------------------------
+  function toggleFormMenu(evt) {
+    if (evt) evt.stopPropagation();
+    var dropdown = document.getElementById('formMenuDropdown');
+    var trigger = document.getElementById('formMenuTrigger');
+    if (!dropdown) return;
+    
+    var isOpen = dropdown.style.display !== 'none';
+    if (isOpen) {
+      closeFormMenu();
+    } else {
+      dropdown.style.display = 'flex';
+      if (trigger) trigger.setAttribute('aria-expanded', 'true');
+      var searchInput = document.getElementById('formMenuSearchInput');
+      if (searchInput) {
+        searchInput.value = '';
+        filterFormMenu('');
+        setTimeout(function () { searchInput.focus(); }, 50);
+      }
+    }
+  }
+
+  function closeFormMenu() {
+    var dropdown = document.getElementById('formMenuDropdown');
+    var trigger = document.getElementById('formMenuTrigger');
+    if (dropdown) dropdown.style.display = 'none';
+    if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  }
+
+  function filterFormMenu(query) {
+    var q = (query || '').toLowerCase().trim();
+    var items = document.querySelectorAll('.studio-menu-item');
+    var headers = document.querySelectorAll('.studio-menu-group-header');
+
+    items.forEach(function (el) {
+      var name = (el.dataset.name || '').toLowerCase();
+      var key = (el.dataset.key || '').toLowerCase();
+      var id = (el.dataset.id || '');
+      var match = !q || name.indexOf(q) !== -1 || key.indexOf(q) !== -1 || ('#' + id).indexOf(q) !== -1;
+      el.style.display = match ? 'flex' : 'none';
+    });
+
+    // Hide empty category headers
+    headers.forEach(function (hdr) {
+      var next = hdr.nextElementSibling;
+      var hasVisible = false;
+      while (next && next.classList.contains('studio-menu-item')) {
+        if (next.style.display !== 'none') {
+          hasVisible = true;
+          break;
+        }
+        next = next.nextElementSibling;
+      }
+      hdr.style.display = hasVisible ? 'block' : 'none';
+    });
+  }
+
+  function selectFormFromMenu(id) {
+    closeFormMenu();
+    var formSel = document.getElementById('formSelector');
+    if (formSel) {
+      formSel.value = id;
+    }
+    window.onFormSelectorChange(id);
+  }
+
+  function openNewFormModalFromMenu() {
+    closeFormMenu();
+    var modal = document.getElementById('newFormModal');
+    if (modal && typeof modal.showModal === 'function') {
+      modal.showModal();
+    }
+  }
+
+  // Close menu on click outside or Escape
+  document.addEventListener('click', function (e) {
+    var wrap = document.getElementById('formMenuWrap');
+    if (wrap && !wrap.contains(e.target)) {
+      closeFormMenu();
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      closeFormMenu();
+    }
+  });
+
+  // Zero out parent container padding so Form Studio sits flush with topbar without overlap
+  document.addEventListener('DOMContentLoaded', function () {
+    var studioApp = document.getElementById('formStudioApp');
+    if (studioApp) {
+      var parentContent = studioApp.closest('.content');
+      if (parentContent) {
+        parentContent.style.padding = '0';
+        parentContent.style.margin = '0';
+        parentContent.style.maxWidth = '100%';
+      }
+      var parentContainer = studioApp.closest('.container');
+      if (parentContainer) {
+        parentContainer.style.maxWidth = '100%';
+        parentContainer.style.padding = '0';
+        parentContainer.style.margin = '0';
+      }
+    }
+  });
+
+  window.toggleFormMenu = toggleFormMenu;
+  window.closeFormMenu = closeFormMenu;
+  window.filterFormMenu = filterFormMenu;
+  window.selectFormFromMenu = selectFormFromMenu;
+  window.openNewFormModalFromMenu = openNewFormModalFromMenu;
 
   window.onFormSelectorChange = function (val) {
     if (val === 'NEW') {
