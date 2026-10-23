@@ -11,10 +11,12 @@ if (!str_starts_with($selectedType ?? '', 'inst_')) return;
 $iYear = $effectiveYear ?? $activeYear ?? '';
 $iName = $user['name'] ?? '';
 
-// Helper: read-only academic year field
+// Helper: editable academic year field
 if (!function_exists('inst_yr')) {
 function inst_yr(string $yr): void {
-    echo '<div class="field"><label>Academic Year</label><input class="input" value="' . htmlspecialchars($yr, ENT_QUOTES, 'UTF-8') . '" readonly style="background:var(--bg-subtle,#f3f4f6);cursor:not-allowed;"></div>';
+    global $editRecord, $effectiveYear;
+    $selected = $editRecord['academic_year'] ?? $yr ?: ($effectiveYear ?? null);
+    render_academic_year_field($selected);
 }
 }
 // Helper: select dropdown
@@ -40,6 +42,10 @@ if (!function_exists('inst_input')) {
 function inst_input(string $name, string $placeholder = '', string $type = 'text', bool $req = false, string $extra = ''): string {
     $r  = $req ? ' required' : '';
     $ph = $placeholder ? ' placeholder="' . htmlspecialchars($placeholder, ENT_QUOTES, 'UTF-8') . '"' : '';
+    if ($type === 'date' && !str_contains($extra, 'max=') && !in_array($name, ['valid_upto', 'expiry_date', 'planned_end_date', 'project_end_date'], true)) {
+        $today = function_exists('app_ist_today') ? app_ist_today() : date('Y-m-d');
+        $extra .= ' max="' . $today . '"';
+    }
     return '<input class="input" name="' . $name . '" type="' . $type . '"' . $ph . $r . ' ' . $extra . '>';
 }
 }
@@ -54,10 +60,7 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
     $existingRowsJson = !empty($editRecord['rows']) ? json_encode($editRecord['rows']) : '[]';
   ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <div class="field">
-    <label>Academic Year <span class="card-sub">— Locked</span></label>
-    <input class="input" id="upercentAcademicYear" name="academic_year" value="<?= e($effectiveYear) ?>" readonly style="background:var(--bg-subtle, #f3f4f6); cursor:not-allowed;" title="Records are submitted for academic year <?= e($effectiveYear) ?>.">
-  </div>
+  <?php render_academic_year_field($editRecord['academic_year'] ?? $effectiveYear, 'academic_year', 'Academic Year', true, 'upercentAcademicYear'); ?>
   <div class="field">
     <label for="upercentExamSession">Exam Session <span class="req">*</span></label>
     <select class="select" id="upercentExamSession" name="exam_session" required onchange="upercentOnSessionOrDeptChange()">
@@ -828,43 +831,91 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   <div class="field" style="grid-column:span 2"><label>Description</label><textarea class="input" name="description" rows="2"></textarea></div>
   <div class="field" style="grid-column:span 2"><label>Outcome</label><input class="input" name="outcome"></div>
 
-<?php elseif ($selectedType === 'inst_inter_inst_within'): ?>
+<?php elseif (in_array($selectedType, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true)): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
   <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>Location</label><input class="input" name="location"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
-  <div class="field"><label>Participation Type</label><select class="select" name="participation_type"><option>Participant</option><option>Presenter</option><option>Winner</option><option>Runner-up</option></select></div>
-  <div class="field"><label>Position / Award</label><input class="input" name="position_award" placeholder="e.g. First Place"></div>
-
-<?php elseif ($selectedType === 'inst_inter_inst_outside'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required></div>
-  <div class="field"><label>State <span class="req">*</span></label><input class="input" name="state" required placeholder="e.g. Maharashtra"></div>
-  <div class="field"><label>City</label><input class="input" name="location"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
-  <div class="field"><label>Participation Type</label><select class="select" name="participation_type"><option>Participant</option><option>Presenter</option><option>Winner</option><option>Runner-up</option></select></div>
-  <div class="field"><label>Position / Award</label><input class="input" name="position_award" placeholder="e.g. 2nd Place"></div>
-
-<?php elseif ($selectedType === 'inst_inter_inst_awards'): ?>
-  <?php render_dept_field($user, $departments, 'Department', true); ?>
-  <?php inst_yr($iYear); ?>
-  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required></div>
-  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required></div>
-  <div class="field"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required></div>
-  <div class="field"><label>Host Institution</label><input class="input" name="host_institution"></div>
-  <div class="field"><label>State</label><input class="input" name="state"></div>
-  <div class="field"><label>Location</label><input class="input" name="location"></div>
-  <div class="field"><label>Award / Medal <span class="req">*</span></label><input class="input" name="award" required placeholder="e.g. Gold Medal, Trophy"></div>
-  <div class="field"><label>Position</label><input class="input" name="position" placeholder="e.g. 1st, Runner-up"></div>
-  <div class="field"><label>Date</label><input class="input" name="event_date" type="date"></div>
+  <?php if (function_exists('render_exam_session_field')) { render_exam_session_field($effectiveYear ?? $activeYear); } ?>
+  <?php
+    $currentLevel = $editRecord['event_level'] ?? 'State — Within State';
+    if ($selectedType === 'inst_inter_inst_outside' && empty($editRecord['event_level'])) {
+        $currentLevel = 'State — Outside State';
+    }
+    $currentPType = $editRecord['participation_type'] ?? 'Participant';
+    if (empty($currentPType) && !empty($editRecord['award_medal'])) {
+        $currentPType = 'Winner / First Place';
+    }
+    $currentAchType = $editRecord['achievement_type'] ?? (in_array($currentPType, ['Winner / First Place', 'Second Runner', 'Third Runner'], true) ? 'Medal' : 'Participation');
+  ?>
+  <div class="field"><label>Student Name <span class="req">*</span></label><input class="input" name="student_name" required value="<?= e($editRecord['student_name'] ?? '') ?>" placeholder="e.g. Aravind Kumar"></div>
+  <div class="field"><label>Register Number <span class="req">*</span></label><input class="input" name="reg_no" required value="<?= e($editRecord['reg_no'] ?? '') ?>" placeholder="e.g. 711322104001"></div>
+  <div class="field" style="grid-column:span 2"><label>Event Name <span class="req">*</span></label><input class="input" name="event_name" required value="<?= e($editRecord['event_name'] ?? '') ?>" placeholder="e.g. National Level Technical Symposium / Hackathon"></div>
+  <div class="field"><label>Host Institution <span class="req">*</span></label><input class="input" name="host_institution" required value="<?= e($editRecord['host_institution'] ?? '') ?>" placeholder="e.g. PSG College of Technology"></div>
+  <div class="field">
+    <label>Event Level <span class="req">*</span></label>
+    <select class="select" name="event_level" id="inter_inst_event_level" required>
+      <option value="District" <?= ($currentLevel === 'District') ? 'selected' : '' ?>>District</option>
+      <option value="State — Within State" <?= in_array($currentLevel, ['State — Within State', 'State', 'Within State'], true) ? 'selected' : '' ?>>State — Within State</option>
+      <option value="State — Outside State" <?= in_array($currentLevel, ['State — Outside State', 'Outside State'], true) ? 'selected' : '' ?>>State — Outside State</option>
+      <option value="National" <?= ($currentLevel === 'National') ? 'selected' : '' ?>>National</option>
+      <option value="International" <?= ($currentLevel === 'International') ? 'selected' : '' ?>>International</option>
+    </select>
+  </div>
+  <div class="field"><label>Location / City <span class="req">*</span></label><input class="input" name="location" required value="<?= e($editRecord['location'] ?? ($editRecord['city'] ?? '')) ?>" placeholder="e.g. Madurai, Chennai, Bengaluru"></div>
+  <div class="field"><label>District / State Name <span class="card-sub">(Contextual)</span></label><input class="input" name="state_name" value="<?= e($editRecord['state_name'] ?? ($editRecord['district_name'] ?? ($editRecord['state'] ?? ''))) ?>" placeholder="e.g. Madurai / Tamil Nadu / Karnataka"></div>
+  <div class="field"><label>Event Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="event_date" type="date" required value="<?= e($editRecord['event_date'] ?? '') ?>" max="<?= app_ist_today() ?>"></div>
+  <div class="field">
+    <label>Participation Type <span class="req">*</span></label>
+    <select class="select" name="participation_type" id="inter_inst_participation_type" required>
+      <option value="Participant" <?= ($currentPType === 'Participant') ? 'selected' : '' ?>>Participant</option>
+      <option value="Winner / First Place" <?= in_array($currentPType, ['Winner / First Place', 'Winner', 'First Place', '1st Place'], true) ? 'selected' : '' ?>>Winner / First Place</option>
+      <option value="Second Runner" <?= in_array($currentPType, ['Second Runner', '2nd Runner', 'Runner-up', 'Second Place'], true) ? 'selected' : '' ?>>Second Runner</option>
+      <option value="Third Runner" <?= in_array($currentPType, ['Third Runner', '3rd Runner', 'Third Place'], true) ? 'selected' : '' ?>>Third Runner</option>
+      <option value="Presenter" <?= ($currentPType === 'Presenter') ? 'selected' : '' ?>>Presenter</option>
+    </select>
+  </div>
+  <div class="field"><label>Position / Medal <span class="card-sub">(if won)</span></label><input class="input" name="position_award" id="inter_inst_position_award" value="<?= e($editRecord['position_award'] ?? ($editRecord['award_medal'] ?? ($editRecord['award'] ?? ''))) ?>" placeholder="e.g. First Place / 2nd Runner / Gold Medal"></div>
+  <div class="field">
+    <label>Event Participation / Achievement Type</label>
+    <select class="select" name="achievement_type" id="inter_inst_achievement_type">
+      <option value="Participation" <?= ($currentAchType === 'Participation') ? 'selected' : '' ?>>Participation</option>
+      <option value="Medal" <?= in_array($currentAchType, ['Medal', 'Award / Prize Winner', 'Award'], true) ? 'selected' : '' ?>>Medal</option>
+    </select>
+  </div>
+  <div class="field">
+    <label>Participation Format</label>
+    <select class="select" name="team_individual">
+      <option value="Individual" <?= (($editRecord['team_individual'] ?? '') !== 'Team') ? 'selected' : '' ?>>Individual</option>
+      <option value="Team" <?= (($editRecord['team_individual'] ?? '') === 'Team') ? 'selected' : '' ?>>Team</option>
+    </select>
+  </div>
+  <div class="field" style="grid-column:span 2">
+    <label for="inter_inst_cert_link">Certificate Link (Optional) <span class="card-sub">(https://...)</span></label>
+    <input class="input" name="certificate_link" id="inter_inst_cert_link" type="url" value="<?= e($editRecord['certificate_link'] ?? '') ?>" placeholder="https://example.com/certificate.pdf">
+  </div>
+  <script>
+    (function(){
+      var pSel = document.getElementById('inter_inst_participation_type');
+      var aSel = document.getElementById('inter_inst_achievement_type');
+      var posInp = document.getElementById('inter_inst_position_award');
+      if (pSel && aSel) {
+        pSel.addEventListener('change', function(){
+          var v = pSel.value;
+          if (v === 'Winner / First Place') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'First Place';
+          } else if (v === 'Second Runner') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'Second Runner';
+          } else if (v === 'Third Runner') {
+            aSel.value = 'Medal';
+            if (posInp && !posInp.value) posInp.value = 'Third Runner';
+          } else {
+            aSel.value = 'Participation';
+          }
+        });
+      }
+    })();
+  </script>
 
 <?php elseif ($selectedType === 'inst_value_added_courses'): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -1036,3 +1087,15 @@ function inst_input(string $name, string $placeholder = '', string $type = 'text
   <div class="field"><label>Platform</label><input class="input" name="platform" value="IIT Bombay Spoken Tutorial"></div>
 
 <?php endif; ?>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var istToday = <?= json_encode(app_ist_today()) ?>;
+  var allowFuture = ['valid_upto', 'expiry_date', 'planned_end_date', 'project_end_date'];
+  document.querySelectorAll('input[type="date"]').forEach(function (inp) {
+    if (!allowFuture.includes(inp.name) && !inp.hasAttribute('max')) {
+      inp.setAttribute('max', istToday);
+    }
+  });
+});
+</script>

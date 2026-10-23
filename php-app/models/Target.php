@@ -599,8 +599,9 @@ function target_suggested_type(string $metric): ?string
         'summer_training'       => ['SUMMER TRAINING', 'WINTER TRAINING'],
         'value_added'           => ['VALUE ADDED', 'VALUE-ADDED'],
         'online_course'         => ['ONLINE CERTIF', 'ONLINE COURSE'],
-        'student_achievement'   => ['AWARDS/PRIZES', 'AWARDS / MEDALS'],
-        'student_participation' => ['PARTICIPATION IN INTER-INSTITUTE', 'OUTSIDE STATE', 'SPORTS – STATE LEVEL', 'NATIONAL LEVEL'],
+        'inst_inter_inst_within'=> ['INTER-INSTITUTE', 'WITHIN STATE', 'OUTSIDE STATE', 'AWARDS/PRIZES', 'AWARDS / MEDALS'],
+        'student_achievement'   => ['STUDENT ACHIEVEMENT'],
+        'student_participation' => ['STUDENT PARTICIPATION', 'SPORTS – STATE LEVEL', 'NATIONAL LEVEL'],
         'nptel'                 => ['NPTEL'],
         'internship'            => ['INTERNSHIP'],
         'placement'             => ['PLACEMENT'],
@@ -685,6 +686,19 @@ function target_record_count(array $target, ?string $from = null, ?string $to = 
         $args[] = $to . ' 23:59:59';
     }
 
+    if ($type === 'inst_inter_inst_within') {
+        $m = strtoupper((string) ($target['metric'] ?? ''));
+        if (str_contains($m, 'WITHIN STATE')) {
+            $sql .= " AND (event_level = 'State — Within State' OR event_level = 'Within State' OR event_level = 'State')";
+        } elseif (str_contains($m, 'OUTSIDE STATE')) {
+            $sql .= " AND (event_level = 'State — Outside State' OR event_level = 'Outside State')";
+        } elseif (str_contains($m, 'DISTRICT')) {
+            $sql .= " AND event_level = 'District'";
+        } elseif (str_contains($m, 'AWARDS') || str_contains($m, 'PRIZES') || str_contains($m, 'MEDALS')) {
+            $sql .= " AND (participation_type IN ('Winner / First Place', 'Winner', 'Second Runner', 'Third Runner', 'Runner-up') OR achievement_type IN ('Medal', 'Award / Prize Winner', 'Award') OR (position_award IS NOT NULL AND position_award != ''))";
+        }
+    }
+
     try {
         $stmt = db()->prepare($sql);
         $stmt->execute($args);
@@ -734,6 +748,19 @@ function target_approved_records(array $target): array
     if ($hasYear && !empty($target['academic_year'])) {
         $sql .= ' AND r.academic_year = ?';
         $args[] = $target['academic_year'];
+    }
+
+    if ($type === 'inst_inter_inst_within') {
+        $m = strtoupper((string) ($target['metric'] ?? ''));
+        if (str_contains($m, 'WITHIN STATE')) {
+            $sql .= " AND (r.event_level = 'State — Within State' OR r.event_level = 'Within State' OR r.event_level = 'State')";
+        } elseif (str_contains($m, 'OUTSIDE STATE')) {
+            $sql .= " AND (r.event_level = 'State — Outside State' OR r.event_level = 'Outside State')";
+        } elseif (str_contains($m, 'DISTRICT')) {
+            $sql .= " AND r.event_level = 'District'";
+        } elseif (str_contains($m, 'AWARDS') || str_contains($m, 'PRIZES') || str_contains($m, 'MEDALS')) {
+            $sql .= " AND (r.participation_type IN ('Winner / First Place', 'Winner', 'Second Runner', 'Third Runner', 'Runner-up') OR r.achievement_type IN ('Medal', 'Award / Prize Winner', 'Award') OR (r.position_award IS NOT NULL AND r.position_award != ''))";
+        }
     }
 
     $sql .= ' ORDER BY r.updated_at DESC, r.created_at DESC';
@@ -786,15 +813,19 @@ function target_apply_count(int $id, array $user): array
 }
 
 const ACADEMIC_YEAR_FIRST_START = 2000;
+const ACADEMIC_YEAR_MAX_END     = 2050; // Ending in 2050, final academic year is 2049-50
 
-function current_academic_year_start(): int
+function current_academic_year_start(?DateTimeInterface $now = null): int
 {
-    return (int) date('n') >= 6 ? (int) date('Y') : (int) date('Y') - 1;
+    $ref = function_exists('app_ist_now') ? app_ist_now($now) : new DateTimeImmutable('now', new DateTimeZone('Asia/Kolkata'));
+    $m = (int) $ref->format('n');
+    $y = (int) $ref->format('Y');
+    return $m >= 6 ? $y : $y - 1;
 }
 
-function current_academic_year(): string
+function current_academic_year(?DateTimeInterface $now = null): string
 {
-    $y = current_academic_year_start();
+    $y = current_academic_year_start($now);
     return sprintf('%d-%02d', $y, ($y + 1) % 100);
 }
 
@@ -814,8 +845,7 @@ function is_valid_academic_year(?string $year): bool
         return false;
     }
 
-    $currentStart = current_academic_year_start();
-    if ($startYear > $currentStart) {
+    if ($startYear >= ACADEMIC_YEAR_MAX_END) {
         return false;
     }
 
@@ -826,17 +856,108 @@ function is_valid_academic_year(?string $year): bool
     return true;
 }
 
-function academic_years(bool $includeUpcoming = false): array
+function is_future_academic_year(?string $year, ?DateTimeInterface $now = null): bool
 {
-    $firstStart   = ACADEMIC_YEAR_FIRST_START;
-    $currentStart = current_academic_year_start();
-    $lastStart    = $currentStart;
+    if ($year === null || $year === '') {
+        return false;
+    }
+    $year = trim($year);
+    if (!preg_match('/^(\d{4})-(\d{2})$/', $year, $matches)) {
+        return false;
+    }
+    $startYear = (int) $matches[1];
+    $currentStart = current_academic_year_start($now);
+    return $startYear > $currentStart;
+}
+
+function academic_year_is_permissible_for_upload(?string $year, ?DateTimeInterface $now = null): bool
+{
+    if (!is_valid_academic_year($year)) {
+        return false;
+    }
+    if (is_future_academic_year($year, $now)) {
+        return false;
+    }
+    if (academic_year_is_locked($year)) {
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Returns all supported academic years from 2000-01 through 2049-50 (ending in 2050).
+ * By default in chronological order ('asc': 2000-01 to 2049-50).
+ *
+ * @param string|bool $orderOrInclude 'asc' (default) or 'desc'. If boolean passed, still returns full supported range.
+ */
+function academic_years($orderOrInclude = 'asc'): array
+{
+    $firstStart = ACADEMIC_YEAR_FIRST_START;
+    $lastStart  = ACADEMIC_YEAR_MAX_END - 1; // 2049 -> 2049-50
+
+    $order = is_string($orderOrInclude) ? strtolower($orderOrInclude) : 'asc';
 
     $years = [];
-    for ($y = $lastStart; $y >= $firstStart; $y--) {
-        $years[] = sprintf('%d-%02d', $y, ($y + 1) % 100);
+    if ($order === 'desc') {
+        for ($y = $lastStart; $y >= $firstStart; $y--) {
+            $years[] = sprintf('%d-%02d', $y, ($y + 1) % 100);
+        }
+    } else {
+        for ($y = $firstStart; $y <= $lastStart; $y++) {
+            $years[] = sprintf('%d-%02d', $y, ($y + 1) % 100);
+        }
     }
     return $years;
+}
+
+/**
+ * Reusable helper generating dropdown option definitions through 2050 in chronological order.
+ *
+ * @param string|null $selectedYear The currently selected academic year.
+ * @param bool $forSubmission If true, future and locked academic years are marked disabled for uploads.
+ * @param string $order 'asc' for chronological, 'desc' for reverse chronological.
+ */
+function academic_year_options(?string $selectedYear = null, bool $forSubmission = true, string $order = 'asc'): array
+{
+    $activeYear = active_academic_year();
+    $years = academic_years($order);
+    $options = [];
+
+    foreach ($years as $y) {
+        $isFuture = is_future_academic_year($y);
+        $isLocked = academic_year_is_locked($y);
+        $isActive = ($y === $activeYear);
+        $isSelected = ($selectedYear !== null && $selectedYear !== '') ? ($y === $selectedYear) : $isActive;
+
+        $label = $y;
+        if ($isActive) {
+            $label .= ' (Active)';
+        }
+        if ($isLocked) {
+            $label .= ' — Locked';
+        } elseif ($isFuture) {
+            $label .= ' — Future Year';
+        }
+
+        $disabled = false;
+        if ($forSubmission) {
+            if ($isFuture || $isLocked) {
+                $disabled = true;
+            }
+        }
+
+        $options[] = [
+            'value'     => $y,
+            'label'     => $label,
+            'selected'  => $isSelected,
+            'disabled'  => $disabled,
+            'is_future' => $isFuture,
+            'is_locked' => $isLocked,
+            'is_active' => $isActive,
+        ];
+    }
+
+    return $options;
 }
 
 const ACTIVE_ACADEMIC_YEAR_SETTING = 'active_academic_year';
@@ -851,7 +972,10 @@ function activate_academic_year(string $year, int $adminUserId): array
 {
     $year = trim($year);
     if (!is_valid_academic_year($year)) {
-        return [false, 'Please select a valid academic year (2000-01 through ' . current_academic_year() . ').'];
+        return [false, 'Please select a valid academic year (2000-01 through 2049-50).'];
+    }
+    if (is_future_academic_year($year)) {
+        return [false, "Academic year {$year} has not started yet and cannot be set as active."];
     }
 
     setting_set(ACTIVE_ACADEMIC_YEAR_SETTING, $year, $adminUserId);

@@ -88,13 +88,127 @@ class BulkImport
                 'no of days', 'number of days', 'days', 'total days'
             ],
             'certificate_link' => [
-                'certificate document link', 'link to the certificate document', 'link to certificate document',
-                'certificate link', 'certificate_link', 'proof link', 'document link', 'weblink', 'url',
+                'drive link for certificate',
+                'google drive link for certificate',
+                'drive link',
+                'certificate drive link',
+                'certificate document link',
+                'link to the certificate document',
+                'link to certificate document',
+                'certificate link',
+                'certificate_link',
+                'proof link',
+                'document link',
+                'weblink',
+                'url',
                 'certificate document link or upload in zip'
             ],
             'proof_file_name' => [
                 'proof file name', 'proof file', 'proof document', 'proof', 'attachment file', 'certificate file', 'pdf file', 'filename'
             ],
+        ];
+    }
+
+    /**
+     * Validate a Google Drive certificate link.
+     *
+     * Validates URL syntax, ensures safe HTTPS protocol, verifies Google Drive/Docs domain,
+     * extracts the file or document ID, and marks verification status as 'Access Not Verified'.
+     */
+    public static function validateDriveLink(?string $url): array
+    {
+        $raw = trim((string)$url);
+        if ($raw === '') {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Compulsory Drive Link for Certificate is missing',
+                'status_label' => 'Missing Link',
+            ];
+        }
+
+        // Scheme check: reject dangerous schemes
+        $lower = strtolower($raw);
+        if (preg_match('/^(javascript|data|file|ftp|about|vbscript):/i', $lower)) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Unsafe URL scheme detected. Only secure https:// Google Drive URLs are accepted',
+                'status_label' => 'Unsafe Scheme',
+            ];
+        }
+
+        if (!str_starts_with($lower, 'https://') && !str_starts_with($lower, 'http://')) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Invalid URL format: link must start with https://',
+                'status_label' => 'Malformed URL',
+            ];
+        }
+
+        // Parse URL
+        $parsed = parse_url($raw);
+        if ($parsed === false || empty($parsed['host'])) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Malformed URL: unable to parse web address',
+                'status_label' => 'Malformed URL',
+            ];
+        }
+
+        $host = strtolower($parsed['host']);
+        // Check for Google Drive / Docs domain
+        $validDomains = ['drive.google.com', 'docs.google.com'];
+        $isGoogleDrive = false;
+        foreach ($validDomains as $vd) {
+            if ($host === $vd || str_ends_with($host, '.' . $vd)) {
+                $isGoogleDrive = true;
+                break;
+            }
+        }
+
+        if (!$isGoogleDrive) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => "Invalid domain: expected Google Drive link (https://drive.google.com/...) but got '{$host}'",
+                'status_label' => 'Non-Drive Link',
+            ];
+        }
+
+        // Extract Google Drive file/folder ID
+        $fileId = null;
+        $path = $parsed['path'] ?? '';
+        $query = $parsed['query'] ?? '';
+
+        if (preg_match('#/(?:file|document|spreadsheets|presentation)/d/([a-zA-Z0-9_-]{10,})#i', $path, $m)) {
+            $fileId = $m[1];
+        } elseif (preg_match('#/folders/([a-zA-Z0-9_-]{10,})#i', $path, $m)) {
+            $fileId = $m[1];
+        } elseif ($query !== '') {
+            parse_str($query, $queryParams);
+            if (!empty($queryParams['id']) && preg_match('/^[a-zA-Z0-9_-]{10,}$/', $queryParams['id'])) {
+                $fileId = $queryParams['id'];
+            }
+        }
+
+        if ($fileId === null) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Invalid Google Drive link: unable to extract file or document ID',
+                'status_label' => 'Malformed Drive Link',
+            ];
+        }
+
+        return [
+            'valid'        => true,
+            'url'          => $raw,
+            'file_id'      => $fileId,
+            'error'        => null,
+            'status_label' => 'Access Not Verified',
         ];
     }
 
@@ -122,7 +236,7 @@ class BulkImport
             $orgColHeader,
             'Duration *',
             'No. of Days *',
-            'Proof File Name in ZIP (Optional - defaults to <RegNo>.pdf)',
+            'Drive Link for Certificate',
         ];
 
         $deptVal = $userDept ?: 'CSE';
@@ -141,7 +255,7 @@ class BulkImport
                     'Zoho Corporation, Estancia IT Park, Chennai',
                     '1 month',
                     30,
-                    '711322104001.pdf',
+                    'https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW/view?usp=sharing',
                 ],
                 [
                     '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
@@ -153,7 +267,7 @@ class BulkImport
                     'Cognizant Technology Solutions, Coimbatore',
                     '4 weeks',
                     28,
-                    '711322104002.pdf',
+                    'https://drive.google.com/file/d/1B3c4D5e6F7g8H9i0J1kLmNoPqRsTuVwX/view?usp=sharing',
                 ],
             ];
         } else {
@@ -168,7 +282,7 @@ class BulkImport
                     'L&T EduTech Center, Chennai',
                     '2 weeks',
                     14,
-                    '711322104001.pdf',
+                    'https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW/view?usp=sharing',
                 ],
                 [
                     '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
@@ -180,7 +294,7 @@ class BulkImport
                     'AWS Academy Training Partner, Chennai',
                     '15 days',
                     15,
-                    '711322104002.pdf',
+                    'https://drive.google.com/file/d/1B3c4D5e6F7g8H9i0J1kLmNoPqRsTuVwX/view?usp=sharing',
                 ],
             ];
         }
@@ -192,7 +306,7 @@ class BulkImport
                 'Student Register Number',
                 'Yes',
                 'Alphanumeric register number (e.g. 711322104001, 21CS001)',
-                'Unique university or institutional register number. Used for student record matching and auto-attaching ZIP proofs.',
+                'Unique university or institutional register number. Used for student record matching.',
             ],
             [
                 'Student Name',
@@ -243,16 +357,10 @@ class BulkImport
                 'Total number of days spent. Must be a numeric whole number greater than 0.',
             ],
             [
-                'Proof File Name in ZIP',
-                'Optional (Defaults to <RegNo>.pdf)',
-                'Filename inside ZIP (e.g. 711322104001.pdf)',
-                'Leave blank if your certificate PDF inside the ZIP is named as <RegisterNumber>.pdf (recommended). Only specify if using a custom filename.',
-            ],
-            [
-                'BULK PROOFS: Compulsory ZIP Archive',
-                'Compulsory (*)',
-                'Single .zip archive containing all student certificates',
-                'Every student record MUST have a corresponding certificate PDF (<= 2 MB) inside the uploaded ZIP archive. Name each PDF as <RegisterNumber>.pdf (e.g. 711322104001.pdf). The system matches them 1:1 automatically.',
+                'Drive Link for Certificate',
+                'Yes',
+                'Google Drive file-sharing link (https://drive.google.com/...)',
+                'Direct link to student certificate PDF or document. Ensure the intended Coordinator and authorized reviewers have permission to access the certificate. Do not require certificates to be publicly accessible to everyone.',
             ],
             [
                 'GENERAL RULE: Multiple Students',
@@ -500,11 +608,11 @@ class BulkImport
         }
 
         // Check required fields presence in headers
-        $requiredFields = ['reg_no', 'student_name', 'title', 'industry', 'duration', 'days'];
+        $requiredFields = ['reg_no', 'student_name', 'title', 'industry', 'duration', 'days', 'certificate_link'];
         $missingHeaders = [];
         foreach ($requiredFields as $rf) {
             if (!isset($fieldIndexMap[$rf])) {
-                $missingHeaders[] = ucwords(str_replace('_', ' ', $rf));
+                $missingHeaders[] = ($rf === 'certificate_link') ? 'Drive Link for Certificate' : ucwords(str_replace('_', ' ', $rf));
             }
         }
         if (!empty($missingHeaders)) {
@@ -513,7 +621,7 @@ class BulkImport
 
         $batchId = 'BULK_' . strtoupper(substr($module, 0, 3)) . '_' . dechex(time()) . '_' . substr(md5(uniqid()), 0, 6);
 
-        // Process optional ZIP archive of student PDF proofs
+        // Process optional ZIP archive of student PDF proofs (legacy support)
         $proofsIndex = [
             'temp_dir'    => null,
             'by_reg_no'   => [],
@@ -521,13 +629,8 @@ class BulkImport
             'total_pdfs'  => 0,
             'errors'      => [],
         ];
-        if (empty($zipPath) || !is_file($zipPath)) {
-            throw new InvalidArgumentException("Student proofs archive (.zip) is compulsory. Please select and upload a .zip file containing PDF certificates for all students.");
-        }
-        $proofsIndex = self::extractAndIndexProofsZip($zipPath, $batchId);
-        if (($proofsIndex['total_pdfs'] ?? 0) === 0) {
-            $errDetail = !empty($proofsIndex['errors']) ? ' (' . implode(' ', $proofsIndex['errors']) . ')' : '';
-            throw new InvalidArgumentException("The uploaded proofs ZIP archive contains no valid PDF certificates" . $errDetail . ". Each student certificate must be a .pdf file (<= 2 MB) named after the student's register number (e.g. 711322104001.pdf).");
+        if (!empty($zipPath) && is_file($zipPath)) {
+            $proofsIndex = self::extractAndIndexProofsZip($zipPath, $batchId);
         }
         $proofsMatchedCount = 0;
 
@@ -688,7 +791,7 @@ class BulkImport
                 $rowErrors[] = ['field' => 'No. of Days', 'problem' => 'Must be a positive whole number greater than 0', 'value' => $daysRaw];
             }
 
-            // 10. Validate Proof Attachment (Dual support: Matched from ZIP archive OR Cloud Link)
+            // 10. Validate Google Drive Certificate Link (Primary) with fallback to ZIP if provided
             $cleanReg = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $regNo));
             $matchedPdf = null;
             if (!empty($proofsIndex['by_reg_no'][$cleanReg])) {
@@ -705,18 +808,28 @@ class BulkImport
             $certLink = trim((string)($rowValues['certificate_link'] ?? ''));
             $proofSource = 'none';
             $proofDisplay = '';
+            $proofStatus = '';
+            $fileId = null;
 
-            if ($matchedPdf !== null && is_file($matchedPdf)) {
-                $proofSource = 'zip';
+            $driveValidation = self::validateDriveLink($certLink);
+            if ($driveValidation['valid']) {
+                $proofSource  = 'drive_link';
+                $proofDisplay = 'Open Certificate';
+                $proofStatus  = $driveValidation['status_label']; // 'Access Not Verified'
+                $fileId       = $driveValidation['file_id'];
+            } elseif ($matchedPdf !== null && is_file($matchedPdf)) {
+                $proofSource  = 'zip';
                 $proofDisplay = basename($matchedPdf);
+                $proofStatus  = 'Local PDF File';
                 $proofsMatchedCount++;
             } else {
-                // Proof certificate in ZIP archive is COMPULSORY for every student
                 $rowErrors[] = [
-                    'field'   => 'Proof Certificate (ZIP)',
-                    'problem' => "Compulsory certificate missing in ZIP archive. Expected PDF: {$cleanReg}.pdf (matching register number {$regNo}).",
-                    'value'   => 'Missing in ZIP'
+                    'field'   => 'Drive Link for Certificate',
+                    'problem' => $driveValidation['error'] ?: 'Compulsory Drive Link for Certificate is missing',
+                    'value'   => $certLink !== '' ? $certLink : 'Empty'
                 ];
+                $proofDisplay = 'Invalid / Missing Link';
+                $proofStatus  = 'Invalid';
             }
 
             // Duplicate Detection
@@ -774,7 +887,9 @@ class BulkImport
                 'duration'         => $duration,
                 'days'             => (int)$daysInt,
                 'certificate_link' => $certLink,
+                'file_id'          => $fileId,
                 'proof_source'     => $proofSource,
+                'proof_status'     => $proofStatus,
                 'proof_temp_file'  => $matchedPdf,
                 'proof_display'    => $proofDisplay,
                 'errors'           => $rowErrors,
@@ -990,10 +1105,10 @@ class BulkImport
             $action = 'Please correct the value in the spreadsheet according to the Instructions sheet.';
             if (str_contains(strtolower($prob), 'duplicate')) {
                 $action = 'Remove this row from the spreadsheet or verify if student already completed this activity.';
+            } elseif (str_contains(strtolower($prob), 'drive') || str_contains(strtolower($field), 'drive') || str_contains(strtolower($field), 'certificate') || str_contains(strtolower($prob), 'url') || str_contains(strtolower($prob), 'http')) {
+                $action = 'Provide a valid Google Drive sharing URL (https://drive.google.com/file/d/...) and ensure reviewers have permission to view it.';
             } elseif (str_contains(strtolower($prob), 'missing')) {
                 $action = 'Provide a non-empty value for this mandatory field.';
-            } elseif (str_contains(strtolower($prob), 'url') || str_contains(strtolower($prob), 'http')) {
-                $action = 'Enter a valid URL starting with http:// or https://.';
             } elseif (str_contains(strtolower($prob), 'mismatch')) {
                 $action = 'Ensure student department matches your authorized department.';
             }

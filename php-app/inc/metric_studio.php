@@ -1022,24 +1022,44 @@ function metric_studio_move(string|int $idOrKey, string $direction): array
 }
 
 /**
- * Persists an exact list of ordered metric keys or IDs.
+ * Persists an exact list of ordered metric keys or IDs inside a safe transaction.
  *
  * @param array<int, string|int> $orderedKeys
- * @return array{0: bool, 1: string}
+ * @return array{0: bool, 1: string, 2?: array<int, int>}
  */
 function metric_studio_reorder(array $orderedKeys): array
 {
+    if (empty($orderedKeys)) {
+        return [false, 'No metric identifiers provided for reordering.'];
+    }
+
     ensure_metric_studio_schema();
     $pdo = db();
 
-    $stmt = $pdo->prepare("UPDATE `metrics` SET `display_order` = ? WHERE `metric_key` = ? OR `id` = ?");
-    $order = 1;
-    foreach ($orderedKeys as $keyOrId) {
-        $stmt->execute([$order, (string)$keyOrId, (int)$keyOrId]);
-        $order++;
-    }
+    $pdo->beginTransaction();
+    try {
+        $stmt = $pdo->prepare("UPDATE `metrics` SET `display_order` = ? WHERE `id` = ? OR `metric_key` = ?");
+        $order = 1;
+        $orderMap = [];
+        foreach ($orderedKeys as $keyOrId) {
+            $stmt->execute([$order, (int)$keyOrId, (string)$keyOrId]);
+            $orderMap[$keyOrId] = $order;
+            $order++;
+        }
+        $pdo->commit();
 
-    return [true, 'Metric display order re-sequenced successfully.'];
+        // Invalidate upload_approved_sections static cache if loaded
+        if (function_exists('upload_approved_sections')) {
+            upload_approved_sections(null, true);
+        }
+
+        return [true, 'Metric display order re-sequenced successfully.', $orderMap];
+    } catch (\Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        return [false, 'Failed to update metric ordering: ' . $e->getMessage()];
+    }
 }
 
 /**

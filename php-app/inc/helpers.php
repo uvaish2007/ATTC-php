@@ -517,11 +517,24 @@ function proof_file_exists(?string $filename): bool
     return proof_file_path($filename) !== null;
 }
 
-function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $recordId = null): string
+function render_proof_cell(?string $proofFile, ?string $typeKey = null, ?int $recordId = null, ?string $externalLink = null): string
 {
     require_once __DIR__ . '/icons.php';
 
     $proofFile = trim((string)$proofFile);
+    $externalLink = trim((string)$externalLink);
+
+    // If proofFile is itself a URL
+    if (str_starts_with($proofFile, 'http://') || str_starts_with($proofFile, 'https://')) {
+        $externalLink = $proofFile;
+        $proofFile = '';
+    }
+
+    if ($externalLink !== '') {
+        return '<a class="btn btn-ghost btn-sm" href="' . e($externalLink) . '" target="_blank" rel="noopener noreferrer" title="Open Certificate" style="color:#FF4F01; font-weight:600; display:inline-flex; align-items:center; gap:5px;">'
+            . icon('external-link', 14) . ' Open Certificate</a>';
+    }
+
     if ($proofFile === '' || stripos($proofFile, 'upload.php') !== false) {
         return '<span class="card-sub">No proof attached</span>';
     }
@@ -656,4 +669,130 @@ if (!function_exists('department_full_name')) {
 
         return $dept;
     }
+}
+
+/**
+ * Returns the application timezone object (Asia/Kolkata - Indian Standard Time).
+ */
+function app_ist_timezone(): DateTimeZone
+{
+    static $tz = null;
+    if ($tz === null) {
+        $tz = new DateTimeZone('Asia/Kolkata');
+    }
+    return $tz;
+}
+
+/**
+ * Returns current timestamp in Indian Standard Time (IST).
+ * Supports controlled test clock via $override or $GLOBALS['_TEST_CLOCK_IST'].
+ */
+function app_ist_now(?DateTimeInterface $override = null): DateTimeImmutable
+{
+    $tz = app_ist_timezone();
+    if ($override instanceof DateTimeImmutable) {
+        return $override->setTimezone($tz);
+    }
+    if ($override instanceof DateTime) {
+        return DateTimeImmutable::createFromMutable($override)->setTimezone($tz);
+    }
+    if (!empty($GLOBALS['_TEST_CLOCK_IST'])) {
+        return new DateTimeImmutable($GLOBALS['_TEST_CLOCK_IST'], $tz);
+    }
+    return new DateTimeImmutable('now', $tz);
+}
+
+/**
+ * Current date string (Y-m-d) in Indian Standard Time.
+ */
+function app_ist_today(?DateTimeInterface $override = null): string
+{
+    return app_ist_now($override)->format('Y-m-d');
+}
+
+/**
+ * Validates submission date against current IST date.
+ * Completed events cannot exceed today's IST date.
+ * Planned future dates (e.g. valid_upto, expiry_date) are permitted.
+ *
+ * @return string|null Error message if invalid, or null if valid.
+ */
+function validate_submission_date(string $fKey, string $val, string $fLabel, ?DateTimeInterface $now = null): ?string
+{
+    $val = trim($val);
+    if ($val === '') {
+        return null;
+    }
+
+    $ts = strtotime($val);
+    if ($ts === false) {
+        return "{$fLabel} must be a valid date.";
+    }
+
+    // Permissible future-planning / validity fields
+    $allowedFutureFields = ['valid_upto', 'expiry_date', 'planned_end_date', 'project_end_date'];
+    if (in_array($fKey, $allowedFutureFields, true)) {
+        return null;
+    }
+
+    $todayIst = app_ist_today($now);
+    $dateOnly = date('Y-m-d', $ts);
+    if ($dateOnly > $todayIst) {
+        return "{$fLabel} ({$dateOnly}) cannot be in the future. Today's date is {$todayIst} (IST).";
+    }
+
+    return null;
+}
+
+/**
+ * Validates submission month and year against current IST month/year.
+ *
+ * @return string|null Error message if invalid, or null if valid.
+ */
+function validate_submission_month_year(int $month, int $year, string $fLabel, ?DateTimeInterface $now = null): ?string
+{
+    $ref = app_ist_now($now);
+    $currYear = (int) $ref->format('Y');
+    $currMonth = (int) $ref->format('n');
+
+    if ($year > $currYear || ($year === $currYear && $month > $currMonth)) {
+        $currMonthName = $ref->format('F');
+        return "{$fLabel} cannot be in the future (current period is {$currMonthName} {$currYear} IST).";
+    }
+
+    return null;
+}
+
+/**
+ * Renders an accessible, editable Academic Year dropdown field.
+ * Supports years through 2050 in chronological order, with future years disabled for uploads.
+ */
+function render_academic_year_field(?string $selectedYear = null, string $name = 'academic_year', string $label = 'Academic Year', bool $required = true, string $id = '', bool $wrapInField = true): void
+{
+    global $effectiveYear, $activeYear, $uploadFlow, $editRecord;
+    $val = $selectedYear 
+        ?: ($editRecord['academic_year'] ?? null)
+        ?: ($uploadFlow['year'] ?? null) 
+        ?: ($effectiveYear ?? null) 
+        ?: ($activeYear ?? (function_exists('active_academic_year') ? active_academic_year() : null));
+
+    $fieldId = $id ?: ('form_ay_' . preg_replace('/[^a-zA-Z0-9_]/', '_', $name));
+    $options = function_exists('academic_year_options')
+        ? academic_year_options($val, true, 'asc')
+        : [];
+
+    if ($wrapInField): ?>
+      <div class="field">
+    <?php endif; ?>
+      <label for="<?= e($fieldId) ?>"><?= e($label) ?> <?php if ($required): ?><span class="req">*</span><?php endif; ?></label>
+      <select class="select" id="<?= e($fieldId) ?>" name="<?= e($name) ?>" <?= $required ? 'required' : '' ?>>
+        <?php foreach ($options as $opt): ?>
+          <option value="<?= e($opt['value']) ?>" <?= $opt['selected'] ? 'selected' : '' ?> <?= $opt['disabled'] ? 'disabled' : '' ?>>
+            <?= e($opt['label']) ?>
+          </option>
+        <?php endforeach; ?>
+      </select>
+    <?php if ($wrapInField): ?>
+      </div>
+    <?php endif;
 }

@@ -108,41 +108,15 @@ if ($action === 'upload_preview' && $_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/upload.php?type=' . urlencode($module));
     }
 
-    // Compulsory Proofs Archive (.zip)
+    // Optional Proofs Archive (.zip) - preserved for backward compatibility
     $zipFile = $_FILES['proof_zip'] ?? null;
-    if (!$zipFile || ($zipFile['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
-        $msg = 'Student proofs archive (.zip) is compulsory. Please select and upload a .zip file containing PDF certificates for all students.';
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => $msg]);
-            exit;
+    $zipPath = null;
+    if ($zipFile && ($zipFile['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
+        $zipExt = strtolower(pathinfo($zipFile['name'] ?? '', PATHINFO_EXTENSION));
+        if ($zipExt === 'zip') {
+            $zipPath = $zipFile['tmp_name'];
         }
-        flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
     }
-
-    $zipExt = strtolower(pathinfo($zipFile['name'] ?? '', PATHINFO_EXTENSION));
-    if ($zipExt !== 'zip') {
-        $msg = 'Student proofs archive must be a valid .zip file.';
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => $msg]);
-            exit;
-        }
-        flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
-    }
-    if ($zipFile['size'] > 50 * 1024 * 1024) { // 50 MB max for zip archive
-        $msg = 'The proofs ZIP archive exceeds the 50 MB limit.';
-        if ($isAjax) {
-            header('Content-Type: application/json');
-            echo json_encode(['success' => false, 'error' => $msg]);
-            exit;
-        }
-        flash('error', $msg);
-        redirect('/upload.php?type=' . urlencode($module));
-    }
-    $zipPath = $zipFile['tmp_name'];
 
     try {
         $previewData = BulkImport::validateUpload($module, $file['tmp_name'], $user, $activeYear, $zipPath);
