@@ -87,6 +87,17 @@ function student_achievement_categories(): array
             'where_extra' => "category = 'Student'",
             'date_col'    => 'created_at',
         ],
+        'inter_institute' => [
+            'key'         => 'inter_institute',
+            'label'       => 'Inter-Institute Events',
+            'col_name'    => 'inter_institute',
+            'group'       => 'Inter-Institute',
+            'table'       => 'inst_inter_inst_within',
+            'title_col'   => 'event_name',
+            'student_col' => 'student_name',
+            'reg_col'     => 'reg_no',
+            'date_col'    => 'event_date',
+        ],
     ];
 }
 

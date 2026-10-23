@@ -3,16 +3,13 @@
  * Interactive Targets Presentation View
  * ATTS IQAC Portal — Mohamed Sathak Engineering College
  *
- * Implements the full 38-slide Institutional Academic Targets Presentation:
+ * Implements the full 35-slide Institutional Academic Targets Presentation:
  * Slide 1: Overall Institutional Target Summary (Ref 2 Layout)
- * Slide 2: Admin Summary
- * Slide 3: Dean Summary
- * Slide 4: Principal Summary
- * Slide 5: Overall Target Fixed vs Target Achieved
- * Slide 6: Department-Wise Target Performance
- * Slide 7: All Departments Contribution (Ref 1 Layout)
- * Slides 8–37: The 30 individually configured Institutional Academic Target sections
- * Slide 38: Final Institutional Target Performance Summary Scorecard
+ * Slide 2: Overall Target Fixed vs Target Achieved
+ * Slide 3: Department-Wise Target Performance
+ * Slide 4: All Departments Contribution (Ref 1 Layout)
+ * Slides 5–34: The 30 individually configured Institutional Academic Target sections
+ * Slide 35: Final Institutional Target Performance Summary Scorecard
  */
 
 declare(strict_types=1);
@@ -65,18 +62,15 @@ if ($isDepartmentMode) {
     $totalUploadedRecords = $deptDataset['total_uploaded_records'];
     $totalSlides          = 35;
 } else {
-    // Institutional Presentation for authorized roles (38 Slides)
+    // Institutional Presentation for authorized roles (35 Slides)
     $dataset = targets_presentation_dataset($user);
     $academicYear     = $dataset['academic_year'];
     $summary          = $dataset['summary'];
-    $adminSummary     = $dataset['admin_summary'];
-    $deanSummary      = $dataset['dean_summary'];
-    $principalSummary = $dataset['principal_summary'];
     $topDepartments   = $dataset['top_departments'];
     $allDepartments   = $dataset['all_departments'];
     $sections30       = $dataset['sections_30'];
     $allTargets       = $dataset['targets'];
-    $totalSlides      = 38;
+    $totalSlides      = 35;
 }
 
 $isEmbedded = ((string) input('embed') === '1');
@@ -926,293 +920,9 @@ if (!empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'target
     </section>
 
     <!-- =================================================================== -->
-    <!-- SLIDE 2: Admin Summary                                             -->
+    <!-- SLIDE 2: Overall Target Fixed vs Target Achieved                   -->
     <!-- =================================================================== -->
     <section class="present-slide" data-slide-index="2">
-      <div class="slide-header">
-        <div class="slide-title-wrap">
-          <h2><?= icon('shield', 20) ?> Admin Executive Summary</h2>
-          <p>Institution-wide governance overview, compliance benchmarks, and strategic interventions</p>
-        </div>
-        <div class="slide-badge-wrap">
-          <span class="badge-pill info"><?= icon('user', 13) ?> Admin Scope</span>
-          <span class="badge-pill success"><?= icon('check', 13) ?> Audit Ready</span>
-        </div>
-      </div>
-
-      <div class="kpi-cards-grid">
-        <div class="kpi-card accent-navy">
-          <div class="kpi-top"><span class="kpi-label">Total Targets</span><div class="kpi-icon navy"><?= icon('target', 16) ?></div></div>
-          <div class="kpi-val"><?= (int) $adminSummary['total_targets'] ?></div>
-          <div class="kpi-sub">Institutional benchmarks</div>
-        </div>
-        <div class="kpi-card accent-green">
-          <div class="kpi-top"><span class="kpi-label">Targets Achieved</span><div class="kpi-icon green"><?= icon('check', 16) ?></div></div>
-          <div class="kpi-val" style="color:var(--success);"><?= (int) $adminSummary['achieved_targets'] ?></div>
-          <div class="kpi-sub">Completed benchmarks</div>
-        </div>
-        <div class="kpi-card accent-orange">
-          <div class="kpi-top"><span class="kpi-label">In Progress</span><div class="kpi-icon orange"><?= icon('clock', 16) ?></div></div>
-          <div class="kpi-val" style="color:var(--orange);"><?= (int) $adminSummary['in_progress_targets'] ?></div>
-          <div class="kpi-sub">Active cycles advancing</div>
-        </div>
-        <div class="kpi-card accent-red">
-          <div class="kpi-top"><span class="kpi-label">Not Completed</span><div class="kpi-icon red"><?= icon('alert-triangle', 16) ?></div></div>
-          <div class="kpi-val" style="color:var(--danger);"><?= (int) $adminSummary['not_completed_targets'] ?></div>
-          <div class="kpi-sub">Past target deadline</div>
-        </div>
-      </div>
-
-      <div class="split-grid-2">
-        <div class="panel-card">
-          <div class="panel-head">
-            <span class="panel-title"><?= icon('alert-triangle', 16) ?> Categories Requiring Administrative Attention</span>
-            <span class="badge-pill warning">Priority Action</span>
-          </div>
-          <?php if (empty($adminSummary['attention_categories'])): ?>
-            <div class="empty-box">All active categories are progressing satisfactorily with attainment above 50%.</div>
-          <?php else: ?>
-            <div style="display:flex; flex-direction:column; gap:12px;">
-              <?php foreach ($adminSummary['attention_categories'] as $att): ?>
-                <div style="background:var(--navy-50); padding:12px 14px; border-radius:var(--r-md); border:1px solid var(--hairline);">
-                  <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <strong style="color:var(--navy); font-size:13px;"><?= e($att['title']) ?></strong>
-                    <span class="badge-pill danger"><?= $att['attainment_pct'] ?>% Attained</span>
-                  </div>
-                  <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--ink-muted); margin-top:6px;">
-                    <span>Goal: <?= number_format($att['target_fixed']) ?> &middot; Achieved: <?= number_format($att['achieved_value']) ?></span>
-                    <?php if ($att['not_completed'] > 0): ?>
-                      <span style="color:var(--danger); font-weight:600;"><?= $att['not_completed'] ?> deadline(s) elapsed</span>
-                    <?php endif; ?>
-                  </div>
-                </div>
-              <?php endforeach; ?>
-            </div>
-          <?php endif; ?>
-        </div>
-
-        <div class="panel-card">
-          <div class="panel-head">
-            <span class="panel-title"><?= icon('building', 16) ?> Department Overview &amp; Attainment Lead</span>
-            <span class="badge-pill brand">Participation</span>
-          </div>
-          <?php if (!empty($adminSummary['top_department'])): ?>
-            <div style="background:var(--orange-50); border:1px solid var(--orange-100); border-radius:var(--r-md); padding:16px; margin-bottom:14px;">
-              <div style="font-size:12px; font-weight:700; color:var(--orange); text-transform:uppercase;">Top Performing Department</div>
-              <div style="font-size:22px; font-weight:800; color:var(--navy); margin-top:2px;"><?= e($adminSummary['top_department']['department']) ?></div>
-              <div style="font-size:12.5px; color:var(--ink-muted); margin-top:4px;">
-                Attainment: <strong><?= $adminSummary['top_department']['attainment_pct'] ?>%</strong> &middot;
-                Verified Submissions: <strong><?= number_format($adminSummary['top_department']['achieved_value']) ?></strong>
-              </div>
-            </div>
-          <?php endif; ?>
-
-          <div style="font-size:13px; color:var(--ink-muted); line-height:1.6;">
-            <p><strong>Cycle Governance:</strong> <?= $adminSummary['active_cycle_open'] ? 'Cycle is currently OPEN for Coordinator and Faculty uploads.' : 'Cycle is LOCKED following Executive Meeting review.' ?></p>
-            <p style="margin-top:6px;"><strong>Verified Uploaded Records:</strong> <?= number_format($adminSummary['total_uploaded_records']) ?> records verified across academic departments.</p>
-            <p style="margin-top:6px;"><strong>Pending Review Workload:</strong> <?= number_format($adminSummary['pending_target_reviews']) ?> targets pending Dean/Admin workflow decision.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- =================================================================== -->
-    <!-- SLIDE 3: Dean Summary                                              -->
-    <!-- =================================================================== -->
-    <section class="present-slide" data-slide-index="3">
-      <div class="slide-header">
-        <div class="slide-title-wrap">
-          <h2><?= icon('award', 20) ?> Dean Academic Summary</h2>
-          <p>Academic operations, review workload, department attainment, and faculty follow-up</p>
-        </div>
-        <div class="slide-badge-wrap">
-          <span class="badge-pill brand"><?= icon('layers', 13) ?> Dean Academic Scope</span>
-        </div>
-      </div>
-
-      <div class="kpi-cards-grid">
-        <div class="kpi-card accent-orange">
-          <div class="kpi-top">
-            <span class="kpi-label">Targets Awaiting Dean Review</span>
-            <div class="kpi-icon orange"><?= icon('bell', 16) ?></div>
-          </div>
-          <div class="kpi-val" style="color:var(--orange);"><?= (int) $deanSummary['dean_pending_reviews'] ?></div>
-          <div class="kpi-sub">Workflow review actions awaiting Dean decision</div>
-        </div>
-
-        <div class="kpi-card accent-green">
-          <div class="kpi-top">
-            <span class="kpi-label">Achieved Targets</span>
-            <div class="kpi-icon green"><?= icon('check', 16) ?></div>
-          </div>
-          <div class="kpi-val" style="color:var(--success);"><?= (int) $deanSummary['achieved_targets'] ?></div>
-          <div class="kpi-sub">Benchmarks met with verified evidence</div>
-        </div>
-
-        <div class="kpi-card accent-blue">
-          <div class="kpi-top">
-            <span class="kpi-label">In Progress Targets</span>
-            <div class="kpi-icon blue"><?= icon('clock', 16) ?></div>
-          </div>
-          <div class="kpi-val" style="color:var(--info);"><?= (int) $deanSummary['in_progress_targets'] ?></div>
-          <div class="kpi-sub">Under active academic tracking</div>
-        </div>
-
-        <div class="kpi-card accent-red">
-          <div class="kpi-top">
-            <span class="kpi-label">Not Completed</span>
-            <div class="kpi-icon red"><?= icon('alert-triangle', 16) ?></div>
-          </div>
-          <div class="kpi-val" style="color:var(--danger);"><?= (int) $deanSummary['not_completed_targets'] ?></div>
-          <div class="kpi-sub">Incomplete with elapsed deadline</div>
-        </div>
-      </div>
-
-      <div class="split-grid-2">
-        <div class="panel-card">
-          <div class="panel-head">
-            <span class="panel-title"><?= icon('building', 16) ?> Academic Department Performance Leaderboard</span>
-          </div>
-          <table class="present-table" style="font-size:12.5px;">
-            <thead>
-              <tr>
-                <th>Department</th>
-                <th class="num-align">Targets</th>
-                <th class="num-align">Achieved</th>
-                <th class="num-align">Attainment</th>
-              </tr>
-            </thead>
-            <tbody>
-              <?php foreach ($deanSummary['departments_ranking'] as $d): ?>
-                <tr>
-                  <td style="font-weight:700; color:var(--navy);"><?= e($d['department']) ?></td>
-                  <td class="num-align"><?= (int) $d['targets_count'] ?></td>
-                  <td class="num-align" style="font-weight:700; color:var(--success);"><?= number_format($d['achieved_value']) ?></td>
-                  <td class="num-align" style="font-weight:700; color:var(--orange);"><?= $d['attainment_pct'] ?>%</td>
-                </tr>
-              <?php endforeach; ?>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="panel-card">
-          <div class="panel-head">
-            <span class="panel-title"><?= icon('info', 16) ?> Academic Workflow Note &amp; Follow-up Areas</span>
-          </div>
-          <div style="background:var(--info-50); border:1px solid #BFDBFE; border-radius:var(--r-md); padding:14px; margin-bottom:14px; font-size:12.5px; color:#1E40AF; line-height:1.5;">
-            <strong>Workflow Clarification:</strong> Targets awaiting Dean review represent pending administrative verification actions. They are strictly separated from achievement completion metrics.
-          </div>
-
-          <div style="font-size:13px; font-weight:700; color:var(--navy); margin-bottom:8px;">Categories Requiring Academic Follow-up:</div>
-          <?php if (empty($deanSummary['followup_categories'])): ?>
-            <div class="empty-box" style="padding:16px;">No lagging categories requiring immediate intervention.</div>
-          <?php else: ?>
-            <div style="display:flex; flex-direction:column; gap:8px;">
-              <?php foreach ($deanSummary['followup_categories'] as $fc): ?>
-                <div style="display:flex; justify-content:space-between; align-items:center; background:var(--navy-50); padding:8px 12px; border-radius:var(--r-sm); font-size:12.5px;">
-                  <span style="font-weight:600; color:var(--navy);"><?= e($fc['title']) ?></span>
-                  <span style="color:var(--danger); font-weight:700;"><?= $fc['attainment_pct'] ?>% Attained</span>
-                </div>
-              <?php endforeach; ?>
-            </div>
-          <?php endif; ?>
-        </div>
-      </div>
-    </section>
-
-    <!-- =================================================================== -->
-    <!-- SLIDE 4: Principal Summary                                         -->
-    <!-- =================================================================== -->
-    <section class="present-slide" data-slide-index="4">
-      <div class="slide-header">
-        <div class="slide-title-wrap">
-          <h2><?= icon('graduation', 20) ?> Principal Executive Scorecard</h2>
-          <p>Institutional quality assurance overview, strategic growth areas, and executive milestones</p>
-        </div>
-        <div class="slide-badge-wrap">
-          <span class="badge-pill brand"><?= icon('award', 13) ?> Executive Institutional Leadership</span>
-        </div>
-      </div>
-
-      <div class="kpi-cards-grid">
-        <div class="kpi-card accent-navy">
-          <div class="kpi-top"><span class="kpi-label">Institutional Targets</span><div class="kpi-icon navy"><?= icon('target', 16) ?></div></div>
-          <div class="kpi-val"><?= (int) $principalSummary['total_targets'] ?></div>
-          <div class="kpi-sub">Total tracked institutional indicators</div>
-        </div>
-
-        <div class="kpi-card accent-green">
-          <div class="kpi-top"><span class="kpi-label">Targets Achieved</span><div class="kpi-icon green"><?= icon('check', 16) ?></div></div>
-          <div class="kpi-val" style="color:var(--success);"><?= (int) $principalSummary['achieved_targets'] ?></div>
-          <div class="kpi-sub">Verified benchmarks accomplished</div>
-        </div>
-
-        <div class="kpi-card accent-orange">
-          <div class="kpi-top"><span class="kpi-label">In Progress</span><div class="kpi-icon orange"><?= icon('clock', 16) ?></div></div>
-          <div class="kpi-val" style="color:var(--orange);"><?= (int) $principalSummary['in_progress_targets'] ?></div>
-          <div class="kpi-sub">Actively advancing in cycle</div>
-        </div>
-
-        <div class="kpi-card accent-blue">
-          <div class="kpi-top"><span class="kpi-label">Overall Attainment</span><div class="kpi-icon blue"><?= icon('bar-chart', 16) ?></div></div>
-          <div class="kpi-val" style="color:var(--info);"><?= $principalSummary['overall_attainment_pct'] ?>%</div>
-          <div class="kpi-sub">Macro completion rate</div>
-        </div>
-      </div>
-
-      <div class="split-grid-2">
-        <div class="panel-card">
-          <div class="panel-head">
-            <span class="panel-title"><?= icon('award', 16) ?> Best-Performing Academic Departments</span>
-          </div>
-          <?php if (empty($principalSummary['top_performing_depts'])): ?>
-            <div class="empty-box">No department target data available for this academic year.</div>
-          <?php else: ?>
-            <div style="display:flex; flex-direction:column; gap:12px;">
-              <?php $rank = 1; foreach ($principalSummary['top_performing_depts'] as $pd): ?>
-                <div style="display:flex; align-items:center; justify-content:space-between; background:var(--navy-50); padding:14px 16px; border-radius:var(--r-md); border:1px solid var(--hairline);">
-                  <div style="display:flex; align-items:center; gap:12px;">
-                    <div style="width:28px; height:28px; border-radius:50%; background:<?= $rank === 1 ? 'var(--orange)' : 'var(--navy)' ?>; color:#FFFFFF; font-weight:800; font-size:13px; display:flex; align-items:center; justify-content:center;">
-                      <?= $rank++ ?>
-                    </div>
-                    <div>
-                      <div style="font-size:15px; font-weight:800; color:var(--navy);"><?= e($pd['department']) ?></div>
-                      <div style="font-size:12px; color:var(--ink-muted);"><?= (int) $pd['targets_count'] ?> Targets &middot; <?= number_format($pd['achieved_value']) ?> Submissions</div>
-                    </div>
-                  </div>
-                  <div style="text-align:right;">
-                    <div style="font-size:18px; font-weight:800; color:var(--orange);"><?= $pd['attainment_pct'] ?>%</div>
-                    <div style="font-size:11px; color:var(--ink-faint);">Attainment Rate</div>
-                  </div>
-                </div>
-              <?php endforeach; ?>
-            </div>
-          <?php endif; ?>
-        </div>
-
-        <div class="panel-card">
-          <div class="panel-head">
-            <span class="panel-title"><?= icon('shield', 16) ?> Strategic Focus &amp; Quality Mandate</span>
-          </div>
-          <div style="display:flex; flex-direction:column; gap:12px; font-size:13px; color:var(--ink); line-height:1.6;">
-            <p><strong>Governing Council Benchmarks:</strong> All academic departments are aligned with NAAC Criteria 3 (Research, Innovations &amp; Extension) and Criteria 5 (Student Support &amp; Progression).</p>
-            <div style="background:var(--navy-50); padding:12px 14px; border-radius:var(--r-md); border-left:4px solid var(--orange);">
-              <div style="font-weight:700; color:var(--navy);">Priority Focus Areas for Academic Year <?= e($academicYear) ?>:</div>
-              <ul style="margin-left:18px; margin-top:6px; color:var(--ink-muted); font-size:12.5px;">
-                <li>High-impact Scopus / SCI / UGC CARE journal publications.</li>
-                <li>Expansion of 4-week+ industry internships &amp; top MNC placements.</li>
-                <li>NPTEL, Swayam &amp; online technical certifications.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- =================================================================== -->
-    <!-- SLIDE 5: Overall Target Fixed vs Target Achieved                   -->
-    <!-- =================================================================== -->
-    <section class="present-slide" data-slide-index="5">
       <div class="slide-header">
         <div class="slide-title-wrap">
           <h2><?= icon('bar-chart', 20) ?> Target Fixed vs Target Achieved</h2>
@@ -1312,9 +1022,9 @@ if (!empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'target
     </section>
 
     <!-- =================================================================== -->
-    <!-- SLIDE 6: Department-Wise Target Performance (Reference 1 Layout)    -->
+    <!-- SLIDE 3: Department-Wise Target Performance (Reference 1 Layout)    -->
     <!-- =================================================================== -->
-    <section class="present-slide" data-slide-index="6">
+    <section class="present-slide" data-slide-index="3">
       <div class="slide-header">
         <div class="slide-title-wrap">
           <h2><?= icon('award', 20) ?> Department-Wise Target Performance</h2>
@@ -1371,9 +1081,9 @@ if (!empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'target
     </section>
 
     <!-- =================================================================== -->
-    <!-- SLIDE 7: All Departments Contribution (Reference 1 Layout)         -->
+    <!-- SLIDE 4: All Departments Contribution (Reference 1 Layout)         -->
     <!-- =================================================================== -->
-    <section class="present-slide" data-slide-index="7">
+    <section class="present-slide" data-slide-index="4">
       <div class="slide-header">
         <div class="slide-title-wrap">
           <h2><?= icon('building', 20) ?> All Departments Contribution</h2>
@@ -1454,10 +1164,10 @@ if (!empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'target
     </section>
 
     <!-- =================================================================== -->
-    <!-- SLIDES 8–37: ALL 30 INDIVIDUAL TARGET SECTIONS (1 TO 30)            -->
+    <!-- SLIDES 5–34: ALL 30 INDIVIDUAL TARGET SECTIONS (1 TO 30)            -->
     <!-- =================================================================== -->
     <?php foreach ($sections30 as $secOrder => $sec): ?>
-      <?php $secSlideIdx = 7 + (int) $secOrder; ?>
+      <?php $secSlideIdx = 4 + (int) $secOrder; ?>
       <section class="present-slide" data-slide-index="<?= $secSlideIdx ?>">
         <div class="slide-header">
           <div class="slide-title-wrap">
@@ -1593,9 +1303,9 @@ if (!empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'target
     <?php endforeach; ?>
 
     <!-- =================================================================== -->
-    <!-- SLIDE 38: Final Institutional Target Performance Summary Scorecard  -->
+    <!-- SLIDE 35: Final Institutional Target Performance Summary Scorecard  -->
     <!-- =================================================================== -->
-    <section class="present-slide" data-slide-index="38">
+    <section class="present-slide" data-slide-index="35">
       <div class="slide-header">
         <div class="slide-title-wrap">
           <h2><?= icon('file-text', 20) ?> Final Institutional Target Performance Summary</h2>
@@ -1702,7 +1412,7 @@ if (!empty($_SERVER['HTTP_REFERER']) && strpos($_SERVER['HTTP_REFERER'], 'target
       </div>
     </div>
 
-    <!-- Quick Dots Strip for 38 slides -->
+    <!-- Quick Dots Strip for 35 slides -->
     <div class="footer-progress-dots" id="footerDotsStrip">
       <?php for ($d = 1; $d <= $totalSlides; $d++): ?>
         <div class="dot-step <?= $d === 1 ? 'active' : '' ?>" data-target-slide="<?= $d ?>" title="Jump to Slide <?= $d ?>"></div>

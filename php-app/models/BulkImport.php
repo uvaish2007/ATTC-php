@@ -19,6 +19,8 @@ class BulkImport
 {
     public const MODULE_INTERNSHIP = 'internship';
     public const MODULE_SUMMER_TRAINING = 'summer_training';
+    public const MODULE_SOCIETY_FACULTY = 'society_faculty';
+    public const MODULE_SOCIETY_STUDENT = 'society_student';
 
     /**
      * Module configuration definition.
@@ -45,6 +47,28 @@ class BulkImport
                 'template_file'   => 'ATTS_Summer_Winter_Training_Bulk_Template.xlsx',
                 'error_file'      => 'Training_Validation_Errors.xlsx',
                 'item_type_label' => 'Summer/Winter Training',
+            ],
+            self::MODULE_SOCIETY_FACULTY => [
+                'key'             => self::MODULE_SOCIETY_FACULTY,
+                'label'           => 'Faculty Membership in Professional Societies',
+                'table'           => 'inst_society_memberships',
+                'title_col'       => 'society_name',
+                'sheet_name'      => 'Faculty Memberships',
+                'template_file'   => 'ATTS_Faculty_Society_Membership_Template.xlsx',
+                'error_file'      => 'Faculty_Membership_Errors.xlsx',
+                'item_type_label' => 'Faculty Membership',
+                'category'        => 'Faculty',
+            ],
+            self::MODULE_SOCIETY_STUDENT => [
+                'key'             => self::MODULE_SOCIETY_STUDENT,
+                'label'           => 'Student Membership in Professional Societies',
+                'table'           => 'inst_society_memberships',
+                'title_col'       => 'society_name',
+                'sheet_name'      => 'Student Memberships',
+                'template_file'   => 'ATTS_Student_Society_Membership_Template.xlsx',
+                'error_file'      => 'Student_Membership_Errors.xlsx',
+                'item_type_label' => 'Student Membership',
+                'category'        => 'Student',
             ],
         ];
 
@@ -88,13 +112,151 @@ class BulkImport
                 'no of days', 'number of days', 'days', 'total days'
             ],
             'certificate_link' => [
-                'certificate document link', 'link to the certificate document', 'link to certificate document',
-                'certificate link', 'certificate_link', 'proof link', 'document link', 'weblink', 'url',
+                'drive link for certificate',
+                'google drive link for certificate',
+                'drive link',
+                'certificate drive link',
+                'certificate document link',
+                'link to the certificate document',
+                'link to certificate document',
+                'certificate link',
+                'certificate_link',
+                'proof link',
+                'document link',
+                'weblink',
+                'url',
                 'certificate document link or upload in zip'
             ],
             'proof_file_name' => [
                 'proof file name', 'proof file', 'proof document', 'proof', 'attachment file', 'certificate file', 'pdf file', 'filename'
             ],
+            'faculty_name' => [
+                'faculty name', 'name of the faculty', 'faculty', 'faculty_name', 'member name', 'staff name'
+            ],
+            'society_name' => [
+                'professional society', 'society name', 'professional society name', 'society', 'name of the professional society', 'name of society', 'association'
+            ],
+            'membership_number' => [
+                'membership number', 'membership no', 'member id', 'membership id', 'membership_number', 'membership_no'
+            ],
+            'membership_type' => [
+                'membership type', 'type of membership', 'member type', 'membership_type'
+            ],
+            'start_date' => [
+                'start date', 'from date', 'commencement date', 'joining date', 'start_date', 'membership start date'
+            ],
+            'expiry_date' => [
+                'expiry date', 'to date', 'valid upto', 'valid until', 'end date', 'expiry_date', 'validity date'
+            ],
+            'membership_status' => [
+                'status', 'membership status', 'membership_status', 'member status'
+            ],
+            'class_year' => [
+                'class / year of study', 'class year of study', 'class / year', 'class year', 'year of study', 'class', 'year', 'class_year'
+            ],
+        ];
+    }
+
+    /**
+     * Validate a Google Drive certificate link.
+     *
+     * Validates URL syntax, ensures safe HTTPS protocol, verifies Google Drive/Docs domain,
+     * extracts the file or document ID, and marks verification status as 'Access Not Verified'.
+     */
+    public static function validateDriveLink(?string $url): array
+    {
+        $raw = trim((string)$url);
+        if ($raw === '') {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Compulsory Drive Link for Certificate is missing',
+                'status_label' => 'Missing Link',
+            ];
+        }
+
+        // Scheme check: reject dangerous schemes
+        $lower = strtolower($raw);
+        if (preg_match('/^(javascript|data|file|ftp|about|vbscript):/i', $lower)) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Unsafe URL scheme detected. Only secure https:// Google Drive URLs are accepted',
+                'status_label' => 'Unsafe Scheme',
+            ];
+        }
+
+        if (!str_starts_with($lower, 'https://') && !str_starts_with($lower, 'http://')) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Invalid URL format: link must start with https://',
+                'status_label' => 'Malformed URL',
+            ];
+        }
+
+        // Parse URL
+        $parsed = parse_url($raw);
+        if ($parsed === false || empty($parsed['host'])) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Malformed URL: unable to parse web address',
+                'status_label' => 'Malformed URL',
+            ];
+        }
+
+        $host = strtolower($parsed['host']);
+        // Check for Google Drive / Docs domain
+        $validDomains = ['drive.google.com', 'docs.google.com'];
+        $isGoogleDrive = false;
+        foreach ($validDomains as $vd) {
+            if ($host === $vd || str_ends_with($host, '.' . $vd)) {
+                $isGoogleDrive = true;
+                break;
+            }
+        }
+
+        if (!$isGoogleDrive) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => "Invalid domain: expected Google Drive link (https://drive.google.com/...) but got '{$host}'",
+                'status_label' => 'Non-Drive Link',
+            ];
+        }
+
+        // Extract Google Drive file/folder ID
+        $fileId = null;
+        $path = $parsed['path'] ?? '';
+        $query = $parsed['query'] ?? '';
+
+        if (preg_match('#/(?:file|document|spreadsheets|presentation)/d/([a-zA-Z0-9_-]{10,})#i', $path, $m)) {
+            $fileId = $m[1];
+        } elseif (preg_match('#/folders/([a-zA-Z0-9_-]{10,})#i', $path, $m)) {
+            $fileId = $m[1];
+        } elseif ($query !== '') {
+            parse_str($query, $queryParams);
+            if (!empty($queryParams['id']) && preg_match('/^[a-zA-Z0-9_-]{10,}$/', $queryParams['id'])) {
+                $fileId = $queryParams['id'];
+            }
+        }
+
+        if ($fileId === null) {
+            return [
+                'valid'        => false,
+                'file_id'      => null,
+                'error'        => 'Invalid Google Drive link: unable to extract file or document ID',
+                'status_label' => 'Malformed Drive Link',
+            ];
+        }
+
+        return [
+            'valid'        => true,
+            'url'          => $raw,
+            'file_id'      => $fileId,
+            'error'        => null,
+            'status_label' => 'Access Not Verified',
         ];
     }
 
@@ -108,6 +270,180 @@ class BulkImport
             throw new InvalidArgumentException("Unsupported module: {$module}");
         }
 
+        $deptVal = $userDept ?: 'CSE';
+        $sessionVal = function_exists('exam_session_current') ? exam_session_current() : 'Odd';
+
+        // -------------------------------------------------------------------
+        // Faculty Society Membership Template
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_SOCIETY_FACULTY) {
+            $headers = [
+                'Faculty Name *',
+                'Department *',
+                'Academic Year *',
+                'Professional Society *',
+                'Membership Number *',
+                'Membership Type *',
+                'Start Date',
+                'Expiry Date',
+                'Status *',
+                'Drive Link for Certificate',
+            ];
+
+            $sampleRows = [
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] Dr. K. Raman',
+                    $deptVal,
+                    $activeYear,
+                    'IEEE (Institute of Electrical and Electronics Engineers)',
+                    'IEEE-982341-M',
+                    'Life Member',
+                    '2024-01-15',
+                    '2029-01-15',
+                    'Active',
+                    'https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW/view?usp=sharing',
+                ],
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] M. Subha',
+                    $deptVal,
+                    $activeYear,
+                    'Computer Society of India (CSI)',
+                    'CSI-FAC-5520',
+                    'Annual Member',
+                    '2024-07-01',
+                    '2025-06-30',
+                    'Active',
+                    'https://drive.google.com/file/d/1B3c4D5e6F7g8H9i0J1kLmNoPqRsTuVwX/view?usp=sharing',
+                ],
+            ];
+
+            $instHeaders = ['Field Name', 'Mandatory?', 'Accepted Format / Allowed Values', 'Guidelines & Rules'];
+            $instRows = [
+                ['Faculty Name', 'Yes', 'Text (e.g. Dr. K. Raman)', 'Full official faculty member name registered in the institution.'],
+                ['Department', 'Yes', 'Department code (e.g. ' . $deptVal . ')', 'Must match authorized department. Cross-department uploads are prevented by system authorization.'],
+                ['Academic Year', 'Yes', 'YYYY-YY format (e.g. ' . $activeYear . ')', 'Academic year of the membership. Active year is ' . $activeYear . '.'],
+                ['Professional Society', 'Yes', 'Text (e.g. IEEE, CSI, ISTE, ACM)', 'Full name or standard recognized abbreviation of the professional body / society.'],
+                ['Membership Number', 'Yes', 'Alphanumeric identifier', 'Unique identification / membership registration number assigned by the professional society.'],
+                ['Membership Type', 'Yes', 'Life Member / Annual Member / Fellow / Associate', 'Type or tier of society membership.'],
+                ['Start Date', 'No', 'YYYY-MM-DD or DD-MM-YYYY', 'Commencement date of membership.'],
+                ['Expiry Date', 'No', 'YYYY-MM-DD or DD-MM-YYYY', 'Valid-until or expiration date (leave blank or future date for Life Memberships).'],
+                ['Status', 'Yes', 'Active / Expired / Renewed', 'Current membership standing. Defaults to Active.'],
+                ['Drive Link for Certificate', 'No', 'Google Drive sharing link (https://drive.google.com/...)', 'Direct link to faculty membership card or certificate.'],
+                ['GENERAL RULE: Multiple Faculty', 'Info', '1 row per faculty membership', 'Enter multiple faculty records row-by-row.'],
+                ['GENERAL RULE: Sample Rows', 'Info', 'Delete or overwrite example rows', 'Rows starting with [EXAMPLE] are automatically filtered out during validation.'],
+                ['GENERAL RULE: Duplicates', 'Info', 'Automatic duplicate prevention', 'Duplicate records matching existing faculty memberships in the database are detected and flagged.'],
+            ];
+
+            return SimpleXlsxWriter::createMultiSheetXlsx([
+                [
+                    'title'   => $cfg['sheet_name'],
+                    'headers' => $headers,
+                    'rows'    => $sampleRows,
+                    'meta'    => [],
+                ],
+                [
+                    'title'   => 'Instructions',
+                    'headers' => $instHeaders,
+                    'rows'    => $instRows,
+                    'meta'    => [
+                        'ATTS SmartBulk Import Guidelines — ' . $cfg['label'],
+                        'Review all required formats before uploading. Ensure all fields are filled accurately.',
+                    ],
+                ],
+            ]);
+        }
+
+        // -------------------------------------------------------------------
+        // Student Society Membership Template
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_SOCIETY_STUDENT) {
+            $headers = [
+                'Student Register Number *',
+                'Student Name *',
+                'Department *',
+                'Academic Year *',
+                'Class / Year of Study *',
+                'Professional Society *',
+                'Membership Number *',
+                'Membership Type *',
+                'Start Date',
+                'Expiry Date',
+                'Status *',
+                'Drive Link for Certificate',
+            ];
+
+            $sampleRows = [
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] 711322104001',
+                    'S. Arun Kumar',
+                    $deptVal,
+                    $activeYear,
+                    'III Year',
+                    'IEEE Computer Society',
+                    'IEEE-STU-77210',
+                    'Student Member',
+                    '2024-08-01',
+                    '2025-07-31',
+                    'Active',
+                    'https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW/view?usp=sharing',
+                ],
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
+                    'R. Priya Dharshini',
+                    $deptVal,
+                    $activeYear,
+                    'III Year',
+                    'Computer Society of India (CSI)',
+                    'CSI-STU-9901',
+                    'Student Member',
+                    '2024-08-01',
+                    '2025-07-31',
+                    'Active',
+                    'https://drive.google.com/file/d/1B3c4D5e6F7g8H9i0J1kLmNoPqRsTuVwX/view?usp=sharing',
+                ],
+            ];
+
+            $instHeaders = ['Field Name', 'Mandatory?', 'Accepted Format / Allowed Values', 'Guidelines & Rules'];
+            $instRows = [
+                ['Student Register Number', 'Yes', 'Alphanumeric register number (e.g. 711322104001)', 'University or institutional student registration number.'],
+                ['Student Name', 'Yes', 'Text (e.g. S. Arun Kumar)', 'Full official name of the student as enrolled.'],
+                ['Department', 'Yes', 'Department code (e.g. ' . $deptVal . ')', 'Must match authorized department.'],
+                ['Academic Year', 'Yes', 'YYYY-YY format (e.g. ' . $activeYear . ')', 'Academic year of the membership. Active year is ' . $activeYear . '.'],
+                ['Class / Year of Study', 'Yes', 'e.g. I Year, II Year, III Year, IV Year', 'Current academic year of study of the student.'],
+                ['Professional Society', 'Yes', 'Text (e.g. IEEE, CSI, ISTE, ACM, SAE)', 'Name of the student chapter or professional society.'],
+                ['Membership Number', 'Yes', 'Alphanumeric identifier', 'Unique student membership ID provided by the society.'],
+                ['Membership Type', 'Yes', 'Student Member / Annual Member / Member', 'Type or tier of membership.'],
+                ['Start Date', 'No', 'YYYY-MM-DD or DD-MM-YYYY', 'Commencement date of membership.'],
+                ['Expiry Date', 'No', 'YYYY-MM-DD or DD-MM-YYYY', 'Valid-until or expiration date.'],
+                ['Status', 'Yes', 'Active / Expired / Renewed', 'Current membership standing. Defaults to Active.'],
+                ['Drive Link for Certificate', 'No', 'Google Drive sharing link (https://drive.google.com/...)', 'Direct link to student membership certificate or card.'],
+                ['GENERAL RULE: Multiple Students', 'Info', '1 row per student membership', 'Enter multiple student records row-by-row.'],
+                ['GENERAL RULE: Sample Rows', 'Info', 'Delete or overwrite example rows', 'Rows starting with [EXAMPLE] are automatically filtered out during validation.'],
+                ['GENERAL RULE: Duplicates', 'Info', 'Automatic duplicate prevention', 'Duplicate records matching existing student memberships in the database are detected and flagged.'],
+            ];
+
+            return SimpleXlsxWriter::createMultiSheetXlsx([
+                [
+                    'title'   => $cfg['sheet_name'],
+                    'headers' => $headers,
+                    'rows'    => $sampleRows,
+                    'meta'    => [],
+                ],
+                [
+                    'title'   => 'Instructions',
+                    'headers' => $instHeaders,
+                    'rows'    => $instRows,
+                    'meta'    => [
+                        'ATTS SmartBulk Import Guidelines — ' . $cfg['label'],
+                        'Review all required formats before uploading. Ensure all fields are filled accurately.',
+                    ],
+                ],
+            ]);
+        }
+
+        // -------------------------------------------------------------------
+        // Internship / Summer Training Template
+        // -------------------------------------------------------------------
         $isIntern = ($module === self::MODULE_INTERNSHIP);
         $titleColHeader = $isIntern ? 'Title of Internship *' : 'Title of Training *';
         $orgColHeader   = $isIntern ? 'Organization / Company Name & Address *' : 'Training Provider / Institution & Address *';
@@ -122,11 +458,8 @@ class BulkImport
             $orgColHeader,
             'Duration *',
             'No. of Days *',
-            'Proof File Name in ZIP (Optional - defaults to <RegNo>.pdf)',
+            'Drive Link for Certificate',
         ];
-
-        $deptVal = $userDept ?: 'CSE';
-        $sessionVal = function_exists('exam_session_current') ? exam_session_current() : 'Odd';
 
         // Sample rows clearly designated as example rows
         if ($isIntern) {
@@ -141,7 +474,7 @@ class BulkImport
                     'Zoho Corporation, Estancia IT Park, Chennai',
                     '1 month',
                     30,
-                    '711322104001.pdf',
+                    'https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW/view?usp=sharing',
                 ],
                 [
                     '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
@@ -153,7 +486,7 @@ class BulkImport
                     'Cognizant Technology Solutions, Coimbatore',
                     '4 weeks',
                     28,
-                    '711322104002.pdf',
+                    'https://drive.google.com/file/d/1B3c4D5e6F7g8H9i0J1kLmNoPqRsTuVwX/view?usp=sharing',
                 ],
             ];
         } else {
@@ -168,7 +501,7 @@ class BulkImport
                     'L&T EduTech Center, Chennai',
                     '2 weeks',
                     14,
-                    '711322104001.pdf',
+                    'https://drive.google.com/file/d/1A2b3C4d5E6f7G8h9I0jKlMnOpQrStUvW/view?usp=sharing',
                 ],
                 [
                     '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
@@ -180,7 +513,7 @@ class BulkImport
                     'AWS Academy Training Partner, Chennai',
                     '15 days',
                     15,
-                    '711322104002.pdf',
+                    'https://drive.google.com/file/d/1B3c4D5e6F7g8H9i0J1kLmNoPqRsTuVwX/view?usp=sharing',
                 ],
             ];
         }
@@ -192,7 +525,7 @@ class BulkImport
                 'Student Register Number',
                 'Yes',
                 'Alphanumeric register number (e.g. 711322104001, 21CS001)',
-                'Unique university or institutional register number. Used for student record matching and auto-attaching ZIP proofs.',
+                'Unique university or institutional register number. Used for student record matching.',
             ],
             [
                 'Student Name',
@@ -243,16 +576,10 @@ class BulkImport
                 'Total number of days spent. Must be a numeric whole number greater than 0.',
             ],
             [
-                'Proof File Name in ZIP',
-                'Optional (Defaults to <RegNo>.pdf)',
-                'Filename inside ZIP (e.g. 711322104001.pdf)',
-                'Leave blank if your certificate PDF inside the ZIP is named as <RegisterNumber>.pdf (recommended). Only specify if using a custom filename.',
-            ],
-            [
-                'BULK PROOFS: Compulsory ZIP Archive',
-                'Compulsory (*)',
-                'Single .zip archive containing all student certificates',
-                'Every student record MUST have a corresponding certificate PDF (<= 2 MB) inside the uploaded ZIP archive. Name each PDF as <RegisterNumber>.pdf (e.g. 711322104001.pdf). The system matches them 1:1 automatically.',
+                'Drive Link for Certificate',
+                'Yes',
+                'Google Drive file-sharing link (https://drive.google.com/...)',
+                'Direct link to student certificate PDF or document. Ensure the intended Coordinator and authorized reviewers have permission to access the certificate. Do not require certificates to be publicly accessible to everyone.',
             ],
             [
                 'GENERAL RULE: Multiple Students',
@@ -470,6 +797,11 @@ class BulkImport
         }
 
         // 1. Locate header row within first 5 rows
+        $isSocietyFaculty = ($module === self::MODULE_SOCIETY_FACULTY);
+        $isSocietyStudent = ($module === self::MODULE_SOCIETY_STUDENT);
+        $isSociety = ($isSocietyFaculty || $isSocietyStudent);
+
+        // 1. Locate header row within first 5 rows
         $headerRowIdx = null;
         $fieldIndexMap = []; // field -> colIndex
         $detectedHeaders = [];
@@ -486,25 +818,53 @@ class BulkImport
                 }
             }
 
-            // A valid header row must at least match reg_no and student_name
-            if (isset($matchedFields['reg_no']) && isset($matchedFields['student_name'])) {
-                $headerRowIdx = $r;
-                $fieldIndexMap = $matchedFields;
-                $detectedHeaders = $candidateRow;
-                break;
+            if ($isSocietyFaculty) {
+                if (isset($matchedFields['faculty_name']) && isset($matchedFields['society_name'])) {
+                    $headerRowIdx = $r;
+                    $fieldIndexMap = $matchedFields;
+                    $detectedHeaders = $candidateRow;
+                    break;
+                }
+            } elseif ($isSocietyStudent) {
+                if ((isset($matchedFields['reg_no']) && isset($matchedFields['society_name'])) ||
+                    (isset($matchedFields['reg_no']) && isset($matchedFields['student_name']))) {
+                    $headerRowIdx = $r;
+                    $fieldIndexMap = $matchedFields;
+                    $detectedHeaders = $candidateRow;
+                    break;
+                }
+            } else {
+                if (isset($matchedFields['reg_no']) && isset($matchedFields['student_name'])) {
+                    $headerRowIdx = $r;
+                    $fieldIndexMap = $matchedFields;
+                    $detectedHeaders = $candidateRow;
+                    break;
+                }
             }
         }
 
         if ($headerRowIdx === null) {
-            throw new RuntimeException("Could not detect required column headers (Student Register Number, Student Name) in the spreadsheet. Please download and use the official ATTS template.");
+            $expectedHeaderHint = $isSocietyFaculty
+                ? "Faculty Name, Professional Society, Membership Number"
+                : ($isSocietyStudent
+                    ? "Student Register Number, Student Name, Professional Society"
+                    : "Student Register Number, Student Name");
+            throw new RuntimeException("Could not detect required column headers ({$expectedHeaderHint}) in the spreadsheet. Please download and use the official ATTS template.");
         }
 
         // Check required fields presence in headers
-        $requiredFields = ['reg_no', 'student_name', 'title', 'industry', 'duration', 'days'];
+        if ($isSocietyFaculty) {
+            $requiredFields = ['faculty_name', 'society_name', 'membership_number'];
+        } elseif ($isSocietyStudent) {
+            $requiredFields = ['reg_no', 'student_name', 'society_name', 'membership_number'];
+        } else {
+            $requiredFields = ['reg_no', 'student_name', 'title', 'industry', 'duration', 'days', 'certificate_link'];
+        }
+
         $missingHeaders = [];
         foreach ($requiredFields as $rf) {
             if (!isset($fieldIndexMap[$rf])) {
-                $missingHeaders[] = ucwords(str_replace('_', ' ', $rf));
+                $missingHeaders[] = ($rf === 'certificate_link') ? 'Drive Link for Certificate' : ucwords(str_replace('_', ' ', $rf));
             }
         }
         if (!empty($missingHeaders)) {
@@ -513,7 +873,7 @@ class BulkImport
 
         $batchId = 'BULK_' . strtoupper(substr($module, 0, 3)) . '_' . dechex(time()) . '_' . substr(md5(uniqid()), 0, 6);
 
-        // Process optional ZIP archive of student PDF proofs
+        // Process optional ZIP archive of student PDF proofs (legacy support)
         $proofsIndex = [
             'temp_dir'    => null,
             'by_reg_no'   => [],
@@ -521,13 +881,8 @@ class BulkImport
             'total_pdfs'  => 0,
             'errors'      => [],
         ];
-        if (empty($zipPath) || !is_file($zipPath)) {
-            throw new InvalidArgumentException("Student proofs archive (.zip) is compulsory. Please select and upload a .zip file containing PDF certificates for all students.");
-        }
-        $proofsIndex = self::extractAndIndexProofsZip($zipPath, $batchId);
-        if (($proofsIndex['total_pdfs'] ?? 0) === 0) {
-            $errDetail = !empty($proofsIndex['errors']) ? ' (' . implode(' ', $proofsIndex['errors']) . ')' : '';
-            throw new InvalidArgumentException("The uploaded proofs ZIP archive contains no valid PDF certificates" . $errDetail . ". Each student certificate must be a .pdf file (<= 2 MB) named after the student's register number (e.g. 711322104001.pdf).");
+        if (!$isSociety && !empty($zipPath) && is_file($zipPath)) {
+            $proofsIndex = self::extractAndIndexProofsZip($zipPath, $batchId);
         }
         $proofsMatchedCount = 0;
 
@@ -536,14 +891,46 @@ class BulkImport
         $table = $cfg['table'];
         $existingRecords = [];
         try {
-            $stmt = $db->query("SELECT id, reg_no, title, industry, academic_year FROM `{$table}`");
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $regKey = strtoupper(trim((string)$row['reg_no']));
-                $titleKey = strtolower(trim((string)$row['title']));
-                $ayKey = trim((string)($row['academic_year'] ?? ''));
-                if ($regKey !== '') {
-                    $dupHash = md5($regKey . '|' . $ayKey . '|' . $titleKey);
-                    $existingRecords[$dupHash] = (int)$row['id'];
+            if ($isSocietyFaculty) {
+                $stmt = $db->query("SELECT id, faculty_name, society_name, membership_number, academic_year FROM `{$table}` WHERE membership_category = 'Faculty'");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $fn = strtolower(trim((string)$row['faculty_name']));
+                    $sn = strtolower(trim((string)$row['society_name']));
+                    $mn = strtoupper(trim((string)$row['membership_number']));
+                    $ay = trim((string)($row['academic_year'] ?? ''));
+                    if ($fn !== '' && $sn !== '') {
+                        $existingRecords[md5($fn . '|' . $ay . '|' . $sn)] = (int)$row['id'];
+                    }
+                    if ($mn !== '') {
+                        $existingRecords[md5($mn . '|' . $sn)] = (int)$row['id'];
+                        $existingRecords[md5('MEMNUM|' . $mn)] = (int)$row['id'];
+                    }
+                }
+            } elseif ($isSocietyStudent) {
+                $stmt = $db->query("SELECT id, reg_no, society_name, membership_number, academic_year FROM `{$table}` WHERE membership_category = 'Student'");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $rn = strtoupper(trim((string)$row['reg_no']));
+                    $sn = strtolower(trim((string)$row['society_name']));
+                    $mn = strtoupper(trim((string)$row['membership_number']));
+                    $ay = trim((string)($row['academic_year'] ?? ''));
+                    if ($rn !== '' && $sn !== '') {
+                        $existingRecords[md5($rn . '|' . $ay . '|' . $sn)] = (int)$row['id'];
+                    }
+                    if ($mn !== '') {
+                        $existingRecords[md5($mn . '|' . $sn)] = (int)$row['id'];
+                        $existingRecords[md5('MEMNUM|' . $mn)] = (int)$row['id'];
+                    }
+                }
+            } else {
+                $stmt = $db->query("SELECT id, reg_no, title, industry, academic_year FROM `{$table}`");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $regKey = strtoupper(trim((string)$row['reg_no']));
+                    $titleKey = strtolower(trim((string)$row['title']));
+                    $ayKey = trim((string)($row['academic_year'] ?? ''));
+                    if ($regKey !== '') {
+                        $dupHash = md5($regKey . '|' . $ayKey . '|' . $titleKey);
+                        $existingRecords[$dupHash] = (int)$row['id'];
+                    }
                 }
             }
         } catch (\PDOException $e) {
@@ -555,7 +942,7 @@ class BulkImport
         $userDept = $currentUser['department'] ?? null;
         $isDeptRestricted = in_array($userRole, ['Faculty', 'Coordinator'], true) && !empty($userDept);
 
-        // Process student data rows
+        // Process data rows
         $dataRowStart = $headerRowIdx + 1;
         $parsedRows   = [];
         $errors       = [];
@@ -583,8 +970,8 @@ class BulkImport
 
             // Check if row is an example row
             $firstCell = trim((string)($rawRow[0] ?? ''));
-            $regCell   = trim((string)($rawRow[$fieldIndexMap['reg_no']] ?? ''));
-            if (stripos($firstCell, '[EXAMPLE') !== false || stripos($regCell, '[EXAMPLE') !== false || stripos($firstCell, 'DO NOT REMOVE') !== false) {
+            $col1Cell  = trim((string)($rawRow[1] ?? ''));
+            if (stripos($firstCell, '[EXAMPLE') !== false || stripos($col1Cell, '[EXAMPLE') !== false || stripos($firstCell, 'DO NOT REMOVE') !== false) {
                 continue;
             }
 
@@ -596,6 +983,388 @@ class BulkImport
 
             $rowErrors = [];
 
+            // ---------------------------------------------------------------
+            // Row Validation: Society Faculty
+            // ---------------------------------------------------------------
+            if ($isSocietyFaculty) {
+                $facultyName = trim((string)($rowValues['faculty_name'] ?? ''));
+                if ($facultyName === '') {
+                    $rowErrors[] = ['field' => 'Faculty Name', 'problem' => 'Required faculty name is missing', 'value' => ''];
+                } elseif (strlen($facultyName) < 2) {
+                    $rowErrors[] = ['field' => 'Faculty Name', 'problem' => 'Faculty name is too short', 'value' => $facultyName];
+                } elseif ($userRole === 'Faculty' && !empty($currentUser['name'])) {
+                    // Regular faculty can submit for themselves; Coordinator can submit cross-faculty within dept
+                    if (strcasecmp($facultyName, $currentUser['name']) !== 0 && !str_contains(strtolower($facultyName), strtolower($currentUser['name']))) {
+                        $rowErrors[] = [
+                            'field'   => 'Faculty Name',
+                            'problem' => "Faculty permission restricted: as Faculty, you may only upload records for yourself ({$currentUser['name']}). Coordinators can submit cross-faculty within department.",
+                            'value'   => $facultyName,
+                        ];
+                    }
+                }
+
+                $rowDept = trim((string)($rowValues['department'] ?? ''));
+                if ($rowDept === '') {
+                    $rowDept = $userDept ?: 'CSE';
+                }
+                if ($isDeptRestricted) {
+                    if (strcasecmp($rowDept, $userDept) !== 0) {
+                        $rowErrors[] = [
+                            'field'   => 'Department',
+                            'problem' => "Cross-department mismatch: authorized for {$userDept}, but row specifies '{$rowDept}'",
+                            'value'   => $rowDept,
+                        ];
+                    }
+                    $effectiveDept = $userDept;
+                } else {
+                    $effectiveDept = $rowDept;
+                }
+
+                $rowAy = trim((string)($rowValues['academic_year'] ?? ''));
+                if ($rowAy === '') {
+                    $rowAy = $activeYear;
+                } else {
+                    if (!preg_match('/^\d{4}-\d{2}$/', $rowAy)) {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => 'Invalid academic year format (must be YYYY-YY, e.g. ' . $activeYear . ')', 'value' => $rowAy];
+                    } elseif (function_exists('academic_year_is_locked') && academic_year_is_locked($rowAy) && $userRole !== 'Admin') {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => "Academic year {$rowAy} cycle is locked by Administrator", 'value' => $rowAy];
+                    }
+                }
+
+                $societyName = trim((string)($rowValues['society_name'] ?? ''));
+                if ($societyName === '') {
+                    $rowErrors[] = ['field' => 'Professional Society', 'problem' => 'Required professional society name is missing', 'value' => ''];
+                } elseif (strlen($societyName) < 2) {
+                    $rowErrors[] = ['field' => 'Professional Society', 'problem' => 'Professional society name is too short', 'value' => $societyName];
+                }
+
+                $memNumber = trim((string)($rowValues['membership_number'] ?? ''));
+                if ($memNumber === '') {
+                    $rowErrors[] = ['field' => 'Membership Number', 'problem' => 'Required membership number is missing', 'value' => ''];
+                }
+
+                $memType = trim((string)($rowValues['membership_type'] ?? ''));
+                if ($memType === '') {
+                    $memType = 'Life Member';
+                }
+
+                $startDate = trim((string)($rowValues['start_date'] ?? ''));
+                if ($startDate !== '') {
+                    $parsedStart = date('Y-m-d', strtotime(str_replace('/', '-', $startDate)));
+                    if (!$parsedStart || strtotime(str_replace('/', '-', $startDate)) === false) {
+                        $rowErrors[] = ['field' => 'Start Date', 'problem' => 'Invalid date format (use YYYY-MM-DD or DD-MM-YYYY)', 'value' => $startDate];
+                    } else {
+                        $startDate = $parsedStart;
+                    }
+                }
+
+                $expiryDate = trim((string)($rowValues['expiry_date'] ?? ''));
+                if ($expiryDate !== '') {
+                    $parsedExpiry = date('Y-m-d', strtotime(str_replace('/', '-', $expiryDate)));
+                    if (!$parsedExpiry || strtotime(str_replace('/', '-', $expiryDate)) === false) {
+                        $rowErrors[] = ['field' => 'Expiry Date', 'problem' => 'Invalid date format (use YYYY-MM-DD or DD-MM-YYYY)', 'value' => $expiryDate];
+                    } else {
+                        $expiryDate = $parsedExpiry;
+                    }
+                }
+
+                $memStatus = trim((string)($rowValues['membership_status'] ?? ''));
+                if ($memStatus === '') {
+                    $memStatus = 'Active';
+                } elseif (!in_array(ucfirst(strtolower($memStatus)), ['Active', 'Expired', 'Renewed', 'Inactive'], true)) {
+                    $memStatus = ucfirst(strtolower($memStatus));
+                }
+
+                $certLink = trim((string)($rowValues['certificate_link'] ?? ''));
+                $proofSource  = 'none';
+                $proofDisplay = 'No Link';
+                $proofStatus  = 'Optional';
+                $fileId       = null;
+
+                if ($certLink !== '') {
+                    $driveValidation = self::validateDriveLink($certLink);
+                    if ($driveValidation['valid']) {
+                        $proofSource  = 'drive_link';
+                        $proofDisplay = 'Open Certificate';
+                        $proofStatus  = $driveValidation['status_label'];
+                        $fileId       = $driveValidation['file_id'];
+                    } else {
+                        $rowErrors[] = [
+                            'field'   => 'Drive Link for Certificate',
+                            'problem' => $driveValidation['error'] ?: 'Invalid Drive link format',
+                            'value'   => $certLink,
+                        ];
+                        $proofDisplay = 'Invalid Link';
+                        $proofStatus  = 'Invalid';
+                    }
+                }
+
+                // Duplicate Detection
+                $isDuplicate = false;
+                $dupMessage = '';
+                $dupKey1 = md5(strtolower($facultyName) . '|' . $rowAy . '|' . strtolower($societyName));
+                $dupKey2 = md5(strtoupper($memNumber) . '|' . strtolower($societyName));
+                $dupKey3 = md5('MEMNUM|' . strtoupper($memNumber));
+
+                if (empty($rowErrors)) {
+                    if (isset($seenInFile[$dupKey1])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey1];
+                        $dupMessage = "Duplicate record within this spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Faculty Membership', 'problem' => $dupMessage, 'value' => "{$facultyName}, {$societyName}"];
+                    } elseif (isset($seenInFile[$dupKey2]) || isset($seenInFile[$dupKey3])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey2] ?? $seenInFile[$dupKey3];
+                        $dupMessage = "Duplicate membership number within spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Membership Number', 'problem' => $dupMessage, 'value' => $memNumber];
+                    } else {
+                        $seenInFile[$dupKey1] = $excelRowNumber;
+                        $seenInFile[$dupKey2] = $excelRowNumber;
+                        $seenInFile[$dupKey3] = $excelRowNumber;
+                    }
+
+                    if (!$isDuplicate && (isset($existingRecords[$dupKey1]) || isset($existingRecords[$dupKey2]) || isset($existingRecords[$dupKey3]))) {
+                        $isDuplicate = true;
+                        $dbId = $existingRecords[$dupKey1] ?? ($existingRecords[$dupKey2] ?? $existingRecords[$dupKey3]);
+                        $dupMessage = "Duplicate record: already exists in ATTS database (Record #{$dbId})";
+                        $rowErrors[] = ['field' => 'Faculty Membership', 'problem' => $dupMessage, 'value' => "{$facultyName}, {$societyName} (#{$memNumber})"];
+                    }
+                }
+
+                $rowStatus = 'valid';
+                if (!empty($rowErrors)) {
+                    if ($isDuplicate) {
+                        $rowStatus = 'duplicate';
+                        $duplicateCount++;
+                    } else {
+                        $rowStatus = 'invalid';
+                        $invalidCount++;
+                    }
+                    foreach ($rowErrors as $err) {
+                        $errors[] = array_merge(['row' => $excelRowNumber], $err);
+                    }
+                } else {
+                    $validCount++;
+                }
+
+                $parsedRows[] = [
+                    'excel_row'          => $excelRowNumber,
+                    'status'             => $rowStatus,
+                    'membership_category'=> 'Faculty',
+                    'faculty_name'       => $facultyName,
+                    'department'         => $effectiveDept,
+                    'academic_year'      => $rowAy,
+                    'society_name'       => $societyName,
+                    'membership_number'  => $memNumber,
+                    'membership_type'    => $memType,
+                    'start_date'         => $startDate,
+                    'expiry_date'        => $expiryDate,
+                    'membership_status'  => $memStatus,
+                    'certificate_link'   => $certLink,
+                    'file_id'            => $fileId,
+                    'proof_source'       => $proofSource,
+                    'proof_status'       => $proofStatus,
+                    'proof_display'      => $proofDisplay,
+                    'errors'             => $rowErrors,
+                ];
+                continue;
+            }
+
+            // ---------------------------------------------------------------
+            // Row Validation: Society Student
+            // ---------------------------------------------------------------
+            if ($isSocietyStudent) {
+                $regNo = trim((string)($rowValues['reg_no'] ?? ''));
+                if ($regNo === '') {
+                    $rowErrors[] = ['field' => 'Student Register Number', 'problem' => 'Required student register number is missing', 'value' => ''];
+                } elseif (strlen($regNo) < 3 || strlen($regNo) > 50) {
+                    $rowErrors[] = ['field' => 'Student Register Number', 'problem' => 'Invalid register number length (must be 3-50 characters)', 'value' => $regNo];
+                } elseif (in_array(strtoupper($regNo), ['N/A', 'NONE', 'NULL', '—', '-'], true)) {
+                    $rowErrors[] = ['field' => 'Student Register Number', 'problem' => 'Placeholder values like N/A or dashes are not allowed', 'value' => $regNo];
+                }
+
+                $studentName = trim((string)($rowValues['student_name'] ?? ''));
+                if ($studentName === '') {
+                    $rowErrors[] = ['field' => 'Student Name', 'problem' => 'Required student name is missing', 'value' => ''];
+                } elseif (strlen($studentName) < 2) {
+                    $rowErrors[] = ['field' => 'Student Name', 'problem' => 'Student name is too short', 'value' => $studentName];
+                }
+
+                $rowDept = trim((string)($rowValues['department'] ?? ''));
+                if ($rowDept === '') {
+                    $rowDept = $userDept ?: 'CSE';
+                }
+                if ($isDeptRestricted) {
+                    if (strcasecmp($rowDept, $userDept) !== 0) {
+                        $rowErrors[] = [
+                            'field'   => 'Department',
+                            'problem' => "Cross-department student mismatch: authorized for {$userDept}, but file specifies '{$rowDept}'",
+                            'value'   => $rowDept,
+                        ];
+                    }
+                    $effectiveDept = $userDept;
+                } else {
+                    $effectiveDept = $rowDept;
+                }
+
+                $rowAy = trim((string)($rowValues['academic_year'] ?? ''));
+                if ($rowAy === '') {
+                    $rowAy = $activeYear;
+                } else {
+                    if (!preg_match('/^\d{4}-\d{2}$/', $rowAy)) {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => 'Invalid academic year format (must be YYYY-YY, e.g. ' . $activeYear . ')', 'value' => $rowAy];
+                    } elseif (function_exists('academic_year_is_locked') && academic_year_is_locked($rowAy) && $userRole !== 'Admin') {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => "Academic year {$rowAy} cycle is locked by Administrator", 'value' => $rowAy];
+                    }
+                }
+
+                $classYear = trim((string)($rowValues['class_year'] ?? ''));
+                if ($classYear === '') {
+                    $classYear = 'III Year';
+                }
+
+                $societyName = trim((string)($rowValues['society_name'] ?? ''));
+                if ($societyName === '') {
+                    $rowErrors[] = ['field' => 'Professional Society', 'problem' => 'Required professional society name is missing', 'value' => ''];
+                } elseif (strlen($societyName) < 2) {
+                    $rowErrors[] = ['field' => 'Professional Society', 'problem' => 'Professional society name is too short', 'value' => $societyName];
+                }
+
+                $memNumber = trim((string)($rowValues['membership_number'] ?? ''));
+                if ($memNumber === '') {
+                    $rowErrors[] = ['field' => 'Membership Number', 'problem' => 'Required membership number is missing', 'value' => ''];
+                }
+
+                $memType = trim((string)($rowValues['membership_type'] ?? ''));
+                if ($memType === '') {
+                    $memType = 'Student Member';
+                }
+
+                $startDate = trim((string)($rowValues['start_date'] ?? ''));
+                if ($startDate !== '') {
+                    $parsedStart = date('Y-m-d', strtotime(str_replace('/', '-', $startDate)));
+                    if (!$parsedStart || strtotime(str_replace('/', '-', $startDate)) === false) {
+                        $rowErrors[] = ['field' => 'Start Date', 'problem' => 'Invalid date format (use YYYY-MM-DD or DD-MM-YYYY)', 'value' => $startDate];
+                    } else {
+                        $startDate = $parsedStart;
+                    }
+                }
+
+                $expiryDate = trim((string)($rowValues['expiry_date'] ?? ''));
+                if ($expiryDate !== '') {
+                    $parsedExpiry = date('Y-m-d', strtotime(str_replace('/', '-', $expiryDate)));
+                    if (!$parsedExpiry || strtotime(str_replace('/', '-', $expiryDate)) === false) {
+                        $rowErrors[] = ['field' => 'Expiry Date', 'problem' => 'Invalid date format (use YYYY-MM-DD or DD-MM-YYYY)', 'value' => $expiryDate];
+                    } else {
+                        $expiryDate = $parsedExpiry;
+                    }
+                }
+
+                $memStatus = trim((string)($rowValues['membership_status'] ?? ''));
+                if ($memStatus === '') {
+                    $memStatus = 'Active';
+                }
+
+                $certLink = trim((string)($rowValues['certificate_link'] ?? ''));
+                $proofSource  = 'none';
+                $proofDisplay = 'No Link';
+                $proofStatus  = 'Optional';
+                $fileId       = null;
+
+                if ($certLink !== '') {
+                    $driveValidation = self::validateDriveLink($certLink);
+                    if ($driveValidation['valid']) {
+                        $proofSource  = 'drive_link';
+                        $proofDisplay = 'Open Certificate';
+                        $proofStatus  = $driveValidation['status_label'];
+                        $fileId       = $driveValidation['file_id'];
+                    } else {
+                        $rowErrors[] = [
+                            'field'   => 'Drive Link for Certificate',
+                            'problem' => $driveValidation['error'] ?: 'Invalid Drive link format',
+                            'value'   => $certLink,
+                        ];
+                        $proofDisplay = 'Invalid Link';
+                        $proofStatus  = 'Invalid';
+                    }
+                }
+
+                // Duplicate Detection
+                $isDuplicate = false;
+                $dupMessage = '';
+                $dupKey1 = md5(strtoupper($regNo) . '|' . $rowAy . '|' . strtolower($societyName));
+                $dupKey2 = md5(strtoupper($memNumber) . '|' . strtolower($societyName));
+                $dupKey3 = md5('MEMNUM|' . strtoupper($memNumber));
+
+                if (empty($rowErrors)) {
+                    if (isset($seenInFile[$dupKey1])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey1];
+                        $dupMessage = "Duplicate student membership in spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Student Membership', 'problem' => $dupMessage, 'value' => "{$regNo}, {$societyName}"];
+                    } elseif (isset($seenInFile[$dupKey2]) || isset($seenInFile[$dupKey3])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey2] ?? $seenInFile[$dupKey3];
+                        $dupMessage = "Duplicate membership number within spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Membership Number', 'problem' => $dupMessage, 'value' => $memNumber];
+                    } else {
+                        $seenInFile[$dupKey1] = $excelRowNumber;
+                        $seenInFile[$dupKey2] = $excelRowNumber;
+                        $seenInFile[$dupKey3] = $excelRowNumber;
+                    }
+
+                    if (!$isDuplicate && (isset($existingRecords[$dupKey1]) || isset($existingRecords[$dupKey2]) || isset($existingRecords[$dupKey3]))) {
+                        $isDuplicate = true;
+                        $dbId = $existingRecords[$dupKey1] ?? ($existingRecords[$dupKey2] ?? $existingRecords[$dupKey3]);
+                        $dupMessage = "Duplicate record: already exists in ATTS database (Record #{$dbId})";
+                        $rowErrors[] = ['field' => 'Student Record', 'problem' => $dupMessage, 'value' => "Reg: {$regNo}, {$societyName} (#{$memNumber})"];
+                    }
+                }
+
+                $rowStatus = 'valid';
+                if (!empty($rowErrors)) {
+                    if ($isDuplicate) {
+                        $rowStatus = 'duplicate';
+                        $duplicateCount++;
+                    } else {
+                        $rowStatus = 'invalid';
+                        $invalidCount++;
+                    }
+                    foreach ($rowErrors as $err) {
+                        $errors[] = array_merge(['row' => $excelRowNumber], $err);
+                    }
+                } else {
+                    $validCount++;
+                }
+
+                $parsedRows[] = [
+                    'excel_row'          => $excelRowNumber,
+                    'status'             => $rowStatus,
+                    'membership_category'=> 'Student',
+                    'reg_no'             => $regNo,
+                    'student_name'       => $studentName,
+                    'department'         => $effectiveDept,
+                    'academic_year'      => $rowAy,
+                    'class_year'         => $classYear,
+                    'society_name'       => $societyName,
+                    'membership_number'  => $memNumber,
+                    'membership_type'    => $memType,
+                    'start_date'         => $startDate,
+                    'expiry_date'        => $expiryDate,
+                    'membership_status'  => $memStatus,
+                    'certificate_link'   => $certLink,
+                    'file_id'            => $fileId,
+                    'proof_source'       => $proofSource,
+                    'proof_status'       => $proofStatus,
+                    'proof_display'      => $proofDisplay,
+                    'errors'             => $rowErrors,
+                ];
+                continue;
+            }
+
+            // ---------------------------------------------------------------
+            // Default Row Validation: Internship / Summer Training
+            // ---------------------------------------------------------------
             // 1. Validate Register Number
             $regNo = trim((string)($rowValues['reg_no'] ?? ''));
             if ($regNo === '') {
@@ -688,7 +1457,7 @@ class BulkImport
                 $rowErrors[] = ['field' => 'No. of Days', 'problem' => 'Must be a positive whole number greater than 0', 'value' => $daysRaw];
             }
 
-            // 10. Validate Proof Attachment (Dual support: Matched from ZIP archive OR Cloud Link)
+            // 10. Validate Google Drive Certificate Link (Primary) with fallback to ZIP if provided
             $cleanReg = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $regNo));
             $matchedPdf = null;
             if (!empty($proofsIndex['by_reg_no'][$cleanReg])) {
@@ -705,18 +1474,28 @@ class BulkImport
             $certLink = trim((string)($rowValues['certificate_link'] ?? ''));
             $proofSource = 'none';
             $proofDisplay = '';
+            $proofStatus = '';
+            $fileId = null;
 
-            if ($matchedPdf !== null && is_file($matchedPdf)) {
-                $proofSource = 'zip';
+            $driveValidation = self::validateDriveLink($certLink);
+            if ($driveValidation['valid']) {
+                $proofSource  = 'drive_link';
+                $proofDisplay = 'Open Certificate';
+                $proofStatus  = $driveValidation['status_label']; // 'Access Not Verified'
+                $fileId       = $driveValidation['file_id'];
+            } elseif ($matchedPdf !== null && is_file($matchedPdf)) {
+                $proofSource  = 'zip';
                 $proofDisplay = basename($matchedPdf);
+                $proofStatus  = 'Local PDF File';
                 $proofsMatchedCount++;
             } else {
-                // Proof certificate in ZIP archive is COMPULSORY for every student
                 $rowErrors[] = [
-                    'field'   => 'Proof Certificate (ZIP)',
-                    'problem' => "Compulsory certificate missing in ZIP archive. Expected PDF: {$cleanReg}.pdf (matching register number {$regNo}).",
-                    'value'   => 'Missing in ZIP'
+                    'field'   => 'Drive Link for Certificate',
+                    'problem' => $driveValidation['error'] ?: 'Compulsory Drive Link for Certificate is missing',
+                    'value'   => $certLink !== '' ? $certLink : 'Empty'
                 ];
+                $proofDisplay = 'Invalid / Missing Link';
+                $proofStatus  = 'Invalid';
             }
 
             // Duplicate Detection
@@ -774,7 +1553,9 @@ class BulkImport
                 'duration'         => $duration,
                 'days'             => (int)$daysInt,
                 'certificate_link' => $certLink,
+                'file_id'          => $fileId,
                 'proof_source'     => $proofSource,
+                'proof_status'     => $proofStatus,
                 'proof_temp_file'  => $matchedPdf,
                 'proof_display'    => $proofDisplay,
                 'errors'           => $rowErrors,
@@ -814,7 +1595,7 @@ class BulkImport
 
         $validRows = array_filter($previewData['rows'] ?? [], fn($r) => ($r['status'] ?? '') === 'valid');
         if (empty($validRows)) {
-            throw new RuntimeException("No valid student records found to import.");
+            throw new RuntimeException("No valid records found to import.");
         }
 
         $batchId    = (string)$previewData['batch_id'];
@@ -830,8 +1611,136 @@ class BulkImport
 
         // Imported records enter as 'Submitted' so they enter Coordinator/HoD verification workflow
         $initialStatus = 'Submitted';
-
         $tableCols = target_record_table_columns($table);
+
+        // -------------------------------------------------------------------
+        // Commit Handler: Society Memberships (Faculty or Student)
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_SOCIETY_FACULTY || $module === self::MODULE_SOCIETY_STUDENT) {
+            $category = ($module === self::MODULE_SOCIETY_FACULTY) ? 'Faculty' : 'Student';
+            $db->beginTransaction();
+            try {
+                foreach ($validRows as $row) {
+                    $fields = [
+                        'membership_category' => $category,
+                        'department'          => $row['department'],
+                        'academic_year'       => $row['academic_year'],
+                        'society_name'        => $row['society_name'],
+                        'membership_number'   => $row['membership_number'],
+                        'membership_type'     => !empty($row['membership_type']) ? $row['membership_type'] : ($category === 'Faculty' ? 'Life Member' : 'Student Member'),
+                        'start_date'          => !empty($row['start_date']) ? $row['start_date'] : null,
+                        'expiry_date'         => !empty($row['expiry_date']) ? $row['expiry_date'] : null,
+                        'membership_status'   => !empty($row['membership_status']) ? $row['membership_status'] : 'Active',
+                        'certificate_link'    => !empty($row['certificate_link']) ? $row['certificate_link'] : null,
+                        'import_batch_id'     => $batchId,
+                        'status'              => $initialStatus,
+                        'created_by'          => $uploaderId,
+                        'created_at'          => date('Y-m-d H:i:s'),
+                    ];
+
+                    if ($category === 'Faculty') {
+                        $fields['faculty_name'] = $row['faculty_name'] ?? '';
+                    } else {
+                        $fields['reg_no'] = $row['reg_no'] ?? '';
+                        $fields['student_name'] = $row['student_name'] ?? '';
+                        $fields['class_year'] = $row['class_year'] ?? '';
+                    }
+
+                    // Only insert columns that actually exist in the table
+                    $validFields = [];
+                    foreach ($fields as $k => $v) {
+                        if (in_array($k, $tableCols, true)) {
+                            $validFields[$k] = $v;
+                        }
+                    }
+
+                    $colsSql = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($validFields)));
+                    $phSql   = implode(', ', array_fill(0, count($validFields), '?'));
+                    $sql     = "INSERT INTO `{$table}` ({$colsSql}) VALUES ({$phSql})";
+
+                    $stmt = $db->prepare($sql);
+                    $stmt->execute(array_values($validFields));
+                    $newId = (int)$db->lastInsertId();
+
+                    if ($newId > 0) {
+                        $imported++;
+                        if (function_exists('record_workflow_audit')) {
+                            $auditSummary = ($category === 'Faculty')
+                                ? "Faculty Membership: {$row['faculty_name']} ({$row['society_name']})"
+                                : "Student Membership: {$row['student_name']} ({$row['reg_no']}, {$row['society_name']})";
+                            record_workflow_audit(
+                                'inst_society_memberships',
+                                $newId,
+                                'BULK_MEMBERSHIP_IMPORTED',
+                                $currentUser,
+                                null,
+                                $initialStatus,
+                                "Imported via Excel SmartBulk (Batch #{$batchId}) - {$auditSummary}",
+                                [
+                                    'batch_id' => $batchId,
+                                    'category' => $category,
+                                    'member'   => ($category === 'Faculty') ? ($row['faculty_name'] ?? '') : ($row['student_name'] ?? ''),
+                                    'society'  => $row['society_name'],
+                                ],
+                                $row['department'],
+                                $row['academic_year']
+                            );
+                        }
+                    } else {
+                        $failed++;
+                    }
+                }
+
+                // History record
+                $histSql = "INSERT INTO bulk_import_history 
+                    (batch_id, module, file_name, department, academic_year, uploaded_by, total_rows, valid_rows, imported_records, duplicate_records, failed_rows, status, errors_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                $histStmt = $db->prepare($histSql);
+                $histStmt->execute([
+                    $batchId,
+                    $module,
+                    $previewData['file_name'] ?? 'bulk_upload.xlsx',
+                    $userDept,
+                    $academicYear,
+                    $uploaderId,
+                    $previewData['total_detected'] ?? count($validRows),
+                    $previewData['valid_count'] ?? count($validRows),
+                    $imported,
+                    $previewData['duplicate_count'] ?? 0,
+                    ($previewData['invalid_count'] ?? 0) + $failed,
+                    'Completed',
+                    json_encode($previewData['errors'] ?? []),
+                ]);
+
+                $db->commit();
+
+                if (function_exists('sync_target_achieved_for_type')) {
+                    sync_target_achieved_for_type('inst_society_memberships');
+                }
+
+                return [
+                    'success'           => true,
+                    'batch_id'          => $batchId,
+                    'module'            => $module,
+                    'module_label'      => $cfg['label'],
+                    'imported_records'  => $imported,
+                    'duplicate_records' => $previewData['duplicate_count'] ?? 0,
+                    'invalid_records'   => $previewData['invalid_count'] ?? 0,
+                    'total_detected'    => $previewData['total_detected'] ?? $imported,
+                    'proofs_matched'    => 0,
+                ];
+            } catch (\Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log("BulkImport society commit error: " . $e->getMessage());
+                throw new RuntimeException("Database error during membership import: " . $e->getMessage());
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Commit Handler: Internship / Summer Training
+        // -------------------------------------------------------------------
 
         $db->beginTransaction();
         try {
@@ -990,10 +1899,10 @@ class BulkImport
             $action = 'Please correct the value in the spreadsheet according to the Instructions sheet.';
             if (str_contains(strtolower($prob), 'duplicate')) {
                 $action = 'Remove this row from the spreadsheet or verify if student already completed this activity.';
+            } elseif (str_contains(strtolower($prob), 'drive') || str_contains(strtolower($field), 'drive') || str_contains(strtolower($field), 'certificate') || str_contains(strtolower($prob), 'url') || str_contains(strtolower($prob), 'http')) {
+                $action = 'Provide a valid Google Drive sharing URL (https://drive.google.com/file/d/...) and ensure reviewers have permission to view it.';
             } elseif (str_contains(strtolower($prob), 'missing')) {
                 $action = 'Provide a non-empty value for this mandatory field.';
-            } elseif (str_contains(strtolower($prob), 'url') || str_contains(strtolower($prob), 'http')) {
-                $action = 'Enter a valid URL starting with http:// or https://.';
             } elseif (str_contains(strtolower($prob), 'mismatch')) {
                 $action = 'Ensure student department matches your authorized department.';
             }

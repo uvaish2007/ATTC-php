@@ -543,7 +543,7 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
         <span>&middot;</span>
         <span>Academic Year: <strong style="color:#FFFFFF"><?= e($activeYear) ?></strong></span>
         <span>&middot;</span>
-        <span>Proof Mode: <strong style="color:#FF9566;">Compulsory ZIP Archive (1:1 Student Match)</strong></span>
+        <span>Proof Mode: <strong style="color:#38BDF8;">Google Drive Certificate Links</strong></span>
       </div>
     </div>
     <div style="display:flex; gap:10px;">
@@ -568,7 +568,7 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
         <div class="smartbulk-step-num">1</div>
         <h4 class="smartbulk-step-title">Download Official Template</h4>
         <p class="smartbulk-step-desc">
-          Get the official ATTS multi-sheet Excel workbook (.xlsx). It includes predefined column headers (Student Register Number, Student Name, Duration, etc.) and guidance notes.
+          Get the official ATTS multi-sheet Excel workbook (.xlsx). It includes predefined column headers including <strong>Drive Link for Certificate</strong>, student details, and guidance notes.
         </p>
         <div style="margin-top:auto;">
           <a class="btn-smartbulk-secondary" style="width:100%; justify-content:center; padding:11px;" href="<?= e(url('bulk-import.php?action=template&module=' . urlencode($moduleKey))) ?>">
@@ -577,12 +577,12 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
         </div>
       </div>
 
-      <!-- Step 2: Upload Files (Excel + Compulsory ZIP Archive) -->
+      <!-- Step 2: Upload Completed Spreadsheet -->
       <div class="smartbulk-step-box highlight">
         <div class="smartbulk-step-num brand">2</div>
-        <h4 class="smartbulk-step-title">Upload Completed Excel &amp; Proofs Archive</h4>
+        <h4 class="smartbulk-step-title">Upload Completed Spreadsheet</h4>
         <p class="smartbulk-step-desc">
-          Upload your completed Excel workbook and the companion ZIP archive containing student PDF certificates. Both files are validated and matched 1:1 before import.
+          Upload your completed Excel workbook (.xlsx) or CSV file containing student records and certificate Google Drive links. Records and certificate links are validated before import.
         </p>
         
         <form id="smartbulkUploadForm" action="<?= e(url('bulk-import.php')) ?>" method="post" enctype="multipart/form-data" onsubmit="smartbulkHandleUpload(event)">
@@ -591,12 +591,12 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
           <input type="hidden" name="module" value="<?= e($moduleKey) ?>">
           <input type="hidden" name="is_ajax" value="1">
           
-          <!-- File Input 1: Excel Workbook -->
+          <!-- File Input: Excel Workbook or CSV -->
           <input type="file" id="smartbulkFileInput" name="excel_file" accept=".xlsx,.csv" style="display:none;" onchange="smartbulkFileSelected(this)">
 
           <div style="margin-bottom:14px;">
             <label style="font-size:12.5px; font-weight:700; color:#131D3B; display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-              <span>1. Excel Student Records Spreadsheet <span style="color:#DC2626;">*</span></span>
+              <span>Excel Student Records Spreadsheet <span style="color:#DC2626;">*</span></span>
               <span style="font-size:11px; color:#64748B; font-weight:normal;">.xlsx or .csv (≤ 10 MB)</span>
             </label>
             <div class="smartbulk-dropzone" id="smartbulkDropzone" onclick="document.getElementById('smartbulkFileInput').click()">
@@ -604,10 +604,10 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
                 <?= icon('file-text', 20) ?>
               </div>
               <div style="font-weight:700; color:#131D3B; font-size:13.5px; margin-bottom:3px;">
-                Click to browse or drag &amp; drop Excel file
+                Click to browse or drag &amp; drop spreadsheet
               </div>
               <div style="font-size:11.5px; color:#64748B;">
-                Upload the completed ATTS student records workbook
+                Upload the completed ATTS student records workbook with certificate Drive links
               </div>
             </div>
 
@@ -623,44 +623,9 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
             </div>
           </div>
 
-          <!-- File Input 2: Student PDF Proofs ZIP Archive (COMPULSORY) -->
-          <input type="file" id="smartbulkZipInput" name="proof_zip" accept=".zip" style="display:none;" onchange="smartbulkZipSelected(this)">
-          
-          <div style="margin-bottom:16px;">
-            <label style="font-size:12.5px; font-weight:700; color:#131D3B; display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-              <span style="display:flex; align-items:center; gap:6px;">
-                <span>2. Student Proof Certificates Archive (.zip)</span>
-                <span class="smartbulk-badge-req">COMPULSORY</span>
-              </span>
-              <span style="font-size:11px; color:#64748B; font-weight:normal;">.zip (≤ 50 MB)</span>
-            </label>
-            <div class="smartbulk-dropzone zip-box" id="smartbulkZipDropzone" onclick="document.getElementById('smartbulkZipInput').click()">
-              <div class="smartbulk-dropzone-icon" style="background:#EFF6FF; color:#1D4ED8;">
-                <?= icon('paperclip', 20) ?>
-              </div>
-              <div style="font-weight:700; color:#131D3B; font-size:13.5px; margin-bottom:3px;">
-                Click to browse or drag &amp; drop Proofs ZIP archive
-              </div>
-              <div style="font-size:11.5px; color:#64748B; max-width:480px; margin:0 auto;">
-                Bundle all student certificate PDFs in a ZIP. Name each PDF by the student's Register Number (e.g. <code>711322104001.pdf</code>).
-              </div>
-            </div>
-
-            <div class="smartbulk-file-pill zip-pill" id="smartbulkZipPill">
-              <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
-                <span style="color:#1D4ED8;"><?= icon('check', 16) ?></span>
-                <span id="smartbulkZipName" style="font-weight:600; font-size:12.5px; color:#1D4ED8; text-overflow:ellipsis; overflow:hidden; white-space:nowrap;"></span>
-                <span id="smartbulkZipSize" style="font-size:11.5px; color:#64748B;"></span>
-              </div>
-              <button type="button" style="border:none; background:transparent; color:#EF4444; font-size:12px; font-weight:600; cursor:pointer;" onclick="smartbulkClearZip()">
-                Remove
-              </button>
-            </div>
-          </div>
-
-          <!-- Notice & Validate Button -->
-          <div id="smartbulkValidateNotice" style="font-size:11.5px; color:#B45309; background:#FFFBEB; border:1px solid #FDE68A; padding:8px 12px; border-radius:6px; margin-bottom:12px;">
-            <?= icon('info', 14) ?> Both the Excel workbook (.xlsx) and the Proofs ZIP archive (.zip) are required to proceed.
+          <!-- Permissions Guidance Notice & Validate Button -->
+          <div id="smartbulkValidateNotice" style="font-size:11.5px; color:#1E40AF; background:#EFF6FF; border:1px solid #BFDBFE; padding:8px 12px; border-radius:6px; margin-bottom:12px; line-height:1.4;">
+            <?= icon('info', 14) ?> <strong>Access Note:</strong> Ensure the intended Coordinator and authorized reviewers have permission to access the certificate Drive links.
           </div>
 
           <div>
@@ -675,8 +640,8 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
     <!-- Processing Indicator -->
     <div id="smartbulkProcessing" style="display:none; text-align:center; padding:40px 20px;">
       <div style="width:48px; height:48px; border:4px solid #E2E8F0; border-top-color:#FF4F01; border-radius:50%; animation:sbSpin 0.7s linear infinite; margin:0 auto 16px;"></div>
-      <div style="font-weight:700; color:#131D3B; font-size:15px; margin-bottom:4px;">Processing Excel Workbook &amp; Proofs Archive...</div>
-      <div style="font-size:13px; color:#64748B;">Extracting student rows, validating department rules, and matching proof certificates by register number.</div>
+      <div style="font-weight:700; color:#131D3B; font-size:15px; margin-bottom:4px;">Processing Spreadsheet &amp; Validating Certificate Links...</div>
+      <div style="font-size:13px; color:#64748B;">Extracting student rows, validating department rules, and checking Google Drive certificate URLs.</div>
     </div>
 
     <!-- Step 3: Interactive Preview & Validation Results -->
@@ -747,7 +712,7 @@ $sessionPreview  = (!empty($activePreviewId) && isset($_SESSION['atts_bulk_previ
               <th>Title</th>
               <th>Organization</th>
               <th>Days</th>
-              <th>Proof Certificate (ZIP)</th>
+              <th>Certificate Link</th>
               <th>Validation / Issues</th>
             </tr>
           </thead>
@@ -943,58 +908,27 @@ var currentBulkState = {
   }, false);
 })();
 
-// Drag & drop support for ZIP dropzone
-(function initZipDropzone() {
-  var dz = document.getElementById('smartbulkZipDropzone');
-  if (!dz) return;
-
-  ['dragenter', 'dragover'].forEach(function(evt) {
-    dz.addEventListener(evt, function(e) {
-      e.preventDefault(); e.stopPropagation();
-      dz.classList.add('dragover');
-    }, false);
-  });
-
-  ['dragleave', 'drop'].forEach(function(evt) {
-    dz.addEventListener(evt, function(e) {
-      e.preventDefault(); e.stopPropagation();
-      dz.classList.remove('dragover');
-    }, false);
-  });
-
-  dz.addEventListener('drop', function(e) {
-    var dt = e.dataTransfer;
-    var files = dt.files;
-    if (files.length > 0) {
-      var zipInput = document.getElementById('smartbulkZipInput');
-      zipInput.files = files;
-      smartbulkZipSelected(zipInput);
-    }
-  }, false);
-})();
-
 function smartbulkUpdateValidationBtnState() {
   var fileIn = document.getElementById('smartbulkFileInput');
-  var zipIn  = document.getElementById('smartbulkZipInput');
   var hasExcel = fileIn && fileIn.files && fileIn.files.length > 0;
-  var hasZip   = zipIn && zipIn.files && zipIn.files.length > 0;
   var btnVal   = document.getElementById('btnSmartbulkValidate');
   var notice   = document.getElementById('smartbulkValidateNotice');
 
-  if (hasExcel && hasZip) {
+  if (hasExcel) {
     btnVal.disabled = false;
-    if (notice) notice.style.display = 'none';
+    if (notice) {
+      notice.innerHTML = '<?= icon("check-circle", 14) ?> Spreadsheet ready for validation. Click button below to validate records and certificate links.';
+      notice.style.background = '#F0FDF4';
+      notice.style.borderColor = '#BBF7D0';
+      notice.style.color = '#166534';
+    }
   } else {
     btnVal.disabled = true;
     if (notice) {
-      notice.style.display = 'block';
-      if (!hasExcel && !hasZip) {
-        notice.innerHTML = '<?= icon("info", 14) ?> Both the Excel workbook (.xlsx) and the Proofs ZIP archive (.zip) are required to proceed.';
-      } else if (!hasExcel) {
-        notice.innerHTML = '<?= icon("info", 14) ?> Please choose the Excel workbook (.xlsx) to continue.';
-      } else {
-        notice.innerHTML = '<?= icon("alert-circle", 14) ?> <strong>Compulsory:</strong> Please choose the Student Proofs archive (.zip) containing student PDF certificates.';
-      }
+      notice.innerHTML = '<?= icon("info", 14) ?> <strong>Access Note:</strong> Ensure the intended Coordinator and authorized reviewers have permission to access the certificate Drive links.';
+      notice.style.background = '#EFF6FF';
+      notice.style.borderColor = '#BFDBFE';
+      notice.style.color = '#1E40AF';
     }
   }
 }
@@ -1018,28 +952,6 @@ function smartbulkClearFile() {
   var input = document.getElementById('smartbulkFileInput');
   if (input) input.value = '';
   document.getElementById('smartbulkFilePill').style.display = 'none';
-  smartbulkUpdateValidationBtnState();
-}
-
-function smartbulkZipSelected(input) {
-  if (!input.files || input.files.length === 0) return;
-  var f = input.files[0];
-  var pill = document.getElementById('smartbulkZipPill');
-  var nameEl = document.getElementById('smartbulkZipName');
-  var sizeEl = document.getElementById('smartbulkZipSize');
-  var sz = f.size < 1048576 ? (f.size / 1024).toFixed(1) + ' KB' : (f.size / 1048576).toFixed(2) + ' MB';
-  nameEl.textContent = f.name;
-  sizeEl.textContent = '(' + sz + ')';
-  pill.style.display = 'flex';
-  smartbulkUpdateValidationBtnState();
-  smartbulkHideAlert();
-}
-
-function smartbulkClearZip() {
-  var input = document.getElementById('smartbulkZipInput');
-  if (input) input.value = '';
-  var pill = document.getElementById('smartbulkZipPill');
-  if (pill) pill.style.display = 'none';
   smartbulkUpdateValidationBtnState();
 }
 
@@ -1070,16 +982,10 @@ function smartbulkHideAlert() {
 
 function smartbulkHandleUpload(e) {
   e.preventDefault();
-  var form = document.getElementById('smartbulkUploadForm');
   var fileInput = document.getElementById('smartbulkFileInput');
-  var zipInput  = document.getElementById('smartbulkZipInput');
 
   if (!fileInput.files || fileInput.files.length === 0) {
-    smartbulkShowAlert('Please select an Excel (.xlsx) file to upload.', 'error');
-    return;
-  }
-  if (!zipInput.files || zipInput.files.length === 0) {
-    smartbulkShowAlert('Student proofs archive (.zip) is compulsory. Please select a .zip file containing PDF certificates for all students.', 'error');
+    smartbulkShowAlert('Please select an Excel (.xlsx) or CSV file to upload.', 'error');
     return;
   }
 
@@ -1094,7 +1000,6 @@ function smartbulkHandleUpload(e) {
   formData.append('csrf_token', csrfToken);
   formData.append('is_ajax', '1');
   formData.append('excel_file', fileInput.files[0]);
-  formData.append('proof_zip', zipInput.files[0]);
 
   // Show processing indicator
   document.getElementById('smartbulkUploadSection').style.display = 'none';
@@ -1208,10 +1113,17 @@ function smartbulkRenderTableRows() {
     }
 
     var proofHtml = '';
-    if (r.proof_source === 'zip') {
+    if (r.proof_source === 'drive_link' && r.certificate_link) {
+      proofHtml = '<div style="display:flex; flex-direction:column; gap:3px;">'
+        + '<a href="' + esc(r.certificate_link) + '" target="_blank" rel="noopener noreferrer" class="badge" style="background:#EFF6FF; color:#1D4ED8; font-size:11.5px; text-decoration:none; display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:5px; font-weight:600;" title="Open Google Drive Certificate (Ensure reviewers have permissions)">'
+        + '<?= icon("external-link", 12) ?> Open Certificate'
+        + '</a>'
+        + '<span style="font-size:10.5px; color:#64748B;">(Access Not Verified)</span>'
+        + '</div>';
+    } else if (r.proof_source === 'zip' && r.proof_display) {
       proofHtml = '<span class="badge" style="background:#DCFCE7; color:#166534; font-size:11px; display:inline-flex; align-items:center; gap:4px;"><?= icon("paperclip", 12) ?> ' + esc(r.proof_display) + '</span>';
     } else {
-      proofHtml = '<span class="badge" style="background:#FEE2E2; color:#991B1B; font-size:11px; display:inline-flex; align-items:center; gap:4px;"><?= icon("x", 12) ?> Missing in ZIP</span>';
+      proofHtml = '<span class="badge" style="background:#FEE2E2; color:#991B1B; font-size:11px; display:inline-flex; align-items:center; gap:4px;"><?= icon("x", 12) ?> Missing / Invalid Link</span>';
     }
 
     var tr = document.createElement('tr');
@@ -1251,7 +1163,6 @@ function smartbulkResetToUpload() {
   document.getElementById('smartbulkSuccessSection').style.display = 'none';
   document.getElementById('smartbulkUploadSection').style.display = 'grid';
   smartbulkClearFile();
-  smartbulkClearZip();
   smartbulkHideAlert();
 }
 

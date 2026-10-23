@@ -83,12 +83,12 @@ function record_types(): array
         'inst_student_certifications' => ['table' => 'inst_student_certifications', 'label' => 'Student Online Certification', 'title_col' => 'student_name', 'approval_required' => true],
         // 25. NSS Events
         'inst_nss_events'          => ['table' => 'inst_nss_events',          'label' => 'Events Conducted by NSS',                  'title_col' => 'event_name',   'approval_required' => true],
-        // 26. Inter-Institute Events — Within State
-        'inst_inter_inst_within'   => ['table' => 'inst_inter_inst_within',   'label' => 'Inter-Institute Events — Within State',    'title_col' => 'student_name', 'approval_required' => true],
-        // 27. Inter-Institute Events — Outside State
-        'inst_inter_inst_outside'  => ['table' => 'inst_inter_inst_outside',  'label' => 'Inter-Institute Events — Outside State',   'title_col' => 'student_name', 'approval_required' => true],
-        // 28. Awards/Medals in Inter-Institute Events
-        'inst_inter_inst_awards'   => ['table' => 'inst_inter_inst_awards',   'label' => 'Awards / Medals — Inter-Institute Events', 'title_col' => 'student_name', 'approval_required' => true],
+        // 26. Inter-Institute Events (Unified)
+        'inst_inter_inst_within'   => ['table' => 'inst_inter_inst_within',   'label' => 'Student Participation in Inter-Institute Events and Awards / Medals',    'title_col' => 'student_name', 'approval_required' => true],
+        // 27. Inter-Institute Events — Outside State (Legacy Map)
+        'inst_inter_inst_outside'  => ['table' => 'inst_inter_inst_within',  'label' => 'Inter-Institute Events — Outside State',   'title_col' => 'student_name', 'approval_required' => true],
+        // 28. Awards/Medals in Inter-Institute Events (Legacy Map)
+        'inst_inter_inst_awards'   => ['table' => 'inst_inter_inst_within',   'label' => 'Awards / Medals — Inter-Institute Events', 'title_col' => 'student_name', 'approval_required' => true],
         // 29. Value Added / Hands-On Training Courses
         'inst_value_added_courses' => ['table' => 'inst_value_added_courses', 'label' => 'Value Added / Hands-On Training Courses',  'title_col' => 'course_name',  'approval_required' => true],
         // 30. Sports — State Level
@@ -784,7 +784,17 @@ function publication_month_year(array $in): array
         || !preg_match('/^\d{4}$/', $year) || !in_array((int) $year, publication_years(), true)) {
         return ['', '', 'Choose the Month and Year of Publication from the lists.'];
     }
-    return [sprintf('%02d/%s', (int) $month, $year), $year, null];
+
+    $mInt = (int) $month;
+    $yInt = (int) $year;
+    if (function_exists('validate_submission_month_year')) {
+        $err = validate_submission_month_year($mInt, $yInt, 'Publication month and year');
+        if ($err !== null) {
+            return ['', '', $err];
+        }
+    }
+
+    return [sprintf('%02d/%s', $mInt, $year), $year, null];
 }
 
 // Optional DOI: [doi, doi_key, error].
@@ -1777,7 +1787,7 @@ function report_records(array $user, ?string $department, ?string $status, ?stri
             $row['_person']     = $row['faculty_name']
                 ?? $row['student_name']
                 ?? $row['candidate_name']
-                ?? '';
+                ?? ($row['resource_person_name'] ?? ($row['resource_person'] ?? ''));
             $all[] = $key === 'nptel' ? nptel_decorate_row($row) : $row;
         }
     }
@@ -2960,11 +2970,19 @@ function record_display_attributes(string $type, array $record): array
         'participants_count'  => 'Participants Count',
         'organization'        => 'Organization / Agency',
         'student_name'        => 'Student Name',
-        'company_name'        => 'Company / Institution',
-        'salary_package'      => 'Package / Stipend',
-        'course_title'        => 'Course Title',
-        'score'               => 'Score / Grade',
-        'activity_name'       => 'Activity Name',
+        'company_name'            => 'Company / Institution Name',
+        'salary_package'          => 'Package / Stipend',
+        'course_title'            => 'Course Title',
+        'score'                   => 'Score / Grade',
+        'activity_name'           => 'Activity Name',
+        'resource_person_name'    => 'Resource Person Name',
+        'designation'             => 'Designation',
+        'resource_person_address' => 'Resource Person Address',
+        'company_address'         => 'Company / Institution Address',
+        'contact_number'          => 'Contact Number',
+        'email'                   => 'Email Address',
+        'event_report_file'       => 'Event Report',
+        'resource_person'         => 'Resource Person',
     ];
 
     $ignoreCols = [

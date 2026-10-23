@@ -105,6 +105,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect('/admin-metrics.php');
     }
 
+    if ($action === 'reorder_metrics') {
+        $rawOrder = $_POST['ordered_ids'] ?? $_POST['order'] ?? null;
+        if (is_string($rawOrder)) {
+            $orderedIds = json_decode($rawOrder, true);
+        } else {
+            $orderedIds = $rawOrder;
+        }
+
+        if (!is_array($orderedIds) || empty($orderedIds)) {
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'Invalid reorder data received.']);
+                exit;
+            }
+            flash('error', 'Invalid reorder data received.');
+            redirect('/admin-metrics.php');
+        }
+
+        $sanitized = [];
+        foreach ($orderedIds as $item) {
+            if (is_numeric($item) && (int)$item > 0) {
+                $sanitized[] = (int)$item;
+            } elseif (is_string($item) && trim($item) !== '') {
+                $sanitized[] = trim($item);
+            }
+        }
+
+        if (empty($sanitized)) {
+            if ($isAjax) {
+                header('Content-Type: application/json; charset=utf-8');
+                echo json_encode(['success' => false, 'message' => 'No valid metric identifiers provided.']);
+                exit;
+            }
+            flash('error', 'No valid metric identifiers provided.');
+            redirect('/admin-metrics.php');
+        }
+
+        [$ok, $msg, $orderMap] = metric_studio_reorder($sanitized);
+
+        if ($isAjax) {
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode([
+                'success'   => $ok,
+                'message'   => $msg,
+                'order'     => $sanitized,
+                'order_map' => $orderMap ?? []
+            ]);
+            exit;
+        }
+
+        flash($ok ? 'success' : 'error', $msg);
+        redirect('/admin-metrics.php');
+    }
+
     if ($action === 'save_form_draft') {
         $id = input('id');
         $fields = json_decode((string)input('fields_json'), true) ?: [];
@@ -193,6 +247,7 @@ $sort     = trim((string)input('sort', 'order'));
 $metrics    = metric_studio_all(['q' => $q, 'status' => $status, 'category' => $category, 'role' => $role, 'sort' => $sort]);
 $summary    = metric_studio_summary();
 $categories = metric_studio_categories();
+$isFilteredOrSorted = ($q !== '' || ($status !== 'all' && $status !== '') || ($category !== 'all' && $category !== '') || $sort !== 'order');
 
 if (!function_exists('metric_format_cat')) {
     function metric_format_cat(string $cat): string {
@@ -532,13 +587,56 @@ require __DIR__ . '/inc/header.php';
   opacity: 0.78;
 }
 
-/* Order Column Pill & Controls */
+/* Order Column Pill & Drag Controls */
 .order-cell-wrap {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
+  user-select: none;
 }
+.order-cell-wrap.is-disabled {
+  opacity: 0.55;
+}
+
+.metric-drag-handle {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
+  color: #64748B;
+  cursor: grab;
+  padding: 0;
+  transition: all .15s ease;
+  outline: none;
+  flex-shrink: 0;
+}
+.metric-drag-handle:hover:not(:disabled) {
+  background: #FFF7ED;
+  border-color: #FDBA74;
+  color: #FF4F01;
+  box-shadow: 0 1px 4px rgba(255, 79, 1, 0.15);
+}
+.metric-drag-handle:focus-visible {
+  border-color: #FF4F01;
+  box-shadow: 0 0 0 3px rgba(255, 79, 1, 0.25);
+  color: #FF4F01;
+}
+.metric-drag-handle:active:not(:disabled) {
+  cursor: grabbing;
+}
+.metric-drag-handle:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  background: #F1F5F9;
+  border-color: #E2E8F0;
+  color: #94A3B8;
+}
+
 .order-number-pill {
   width: 28px;
   height: 28px;
@@ -553,31 +651,110 @@ require __DIR__ . '/inc/header.php';
   justify-content: center;
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
+  transition: background .2s ease, border-color .2s ease, color .2s ease, transform .15s ease;
 }
-.order-arrows {
-  display: inline-flex;
-  flex-direction: column;
-  gap: 2px;
+
+/* Dragging visual states */
+body.table-row-dragging {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
-.order-arrow-btn {
-  width: 18px;
-  height: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 3px;
-  color: #64748B;
-  padding: 0;
-  cursor: pointer;
-  line-height: 0;
-  transition: all .12s ease;
+.metric-row {
+  transition: background .15s ease, box-shadow .15s ease;
 }
-.order-arrow-btn:hover {
-  background: var(--orange-500, #FF4F01);
-  border-color: var(--orange-500, #FF4F01);
+.metric-row.is-dragging {
+  opacity: 0.35 !important;
+  background: #FFF7ED !important;
+}
+.metric-row.drag-over-above > td {
+  border-top: 3px solid #FF4F01 !important;
+}
+.metric-row.drag-over-below > td {
+  border-bottom: 3px solid #FF4F01 !important;
+}
+
+/* Keyboard reordering state */
+.metric-row.is-keyboard-grabbed {
+  background: #FFF7ED !important;
+  outline: 2px solid #FF4F01 !important;
+  outline-offset: -2px;
+  box-shadow: 0 4px 18px rgba(255, 79, 1, 0.22) !important;
+}
+.metric-row.is-keyboard-grabbed .metric-drag-handle {
+  background: #FF4F01 !important;
+  border-color: #FF4F01 !important;
+  color: #FFFFFF !important;
+  box-shadow: 0 2px 8px rgba(255, 79, 1, 0.4) !important;
+}
+.metric-row.is-keyboard-grabbed .order-number-pill {
+  background: #FFEDD5 !important;
+  border-color: #FDBA74 !important;
+  color: #C2410C !important;
+  transform: scale(1.08);
+}
+
+/* Toast Notification for Order Save */
+.order-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #131D3B;
   color: #FFFFFF;
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 10px 25px rgba(19, 29, 59, 0.35);
+  z-index: 99999;
+  transform: translateY(100px);
+  opacity: 0;
+  transition: transform .25s cubic-bezier(0.16, 1, 0.3, 1), opacity .25s ease;
+  pointer-events: none;
+}
+.order-toast.show {
+  transform: translateY(0);
+  opacity: 1;
+}
+.order-toast.toast-success {
+  border-left: 4px solid #10B981;
+}
+.order-toast.toast-error {
+  border-left: 4px solid #EF4444;
+}
+.order-toast.toast-saving {
+  border-left: 4px solid #FF4F01;
+}
+
+@keyframes toastSpin {
+  100% { transform: rotate(360deg); }
+}
+.spin-icon {
+  display: inline-flex;
+  animation: toastSpin 1s linear infinite;
+}
+
+.hint-filtered {
+  background: #FEF2F2 !important;
+  border: 1px solid #FECACA !important;
+  color: #991B1B !important;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.btn-clear-filters-hint {
+  color: #DC2626;
+  font-weight: 700;
+  text-decoration: underline;
+  margin-left: 4px;
+}
+.btn-clear-filters-hint:hover {
+  color: #991B1B;
 }
 
 /* Metric Title & Metadata */
@@ -1573,10 +1750,18 @@ dialog.studio-modal::backdrop {
         <h2>Institutional Target Metrics</h2>
         <span class="metrics-count-badge"><?= count($metrics) ?> listed</span>
       </div>
-      <div class="metrics-head-hint">
-        <?= icon('info', 14) ?>
-        <span>Use &uarr; / &darr; to adjust sequential order on Faculty Upload page</span>
-      </div>
+      <?php if ($isFilteredOrSorted): ?>
+        <div class="metrics-head-hint hint-filtered">
+          <?= icon('alert-triangle', 14) ?>
+          <span>Drag-and-drop reordering is locked while filters or custom sorts are active.</span>
+          <a href="<?= e(url('admin-metrics.php')) ?>" class="btn-clear-filters-hint">Reset filters</a>
+        </div>
+      <?php else: ?>
+        <div class="metrics-head-hint" id="metricsDragHint">
+          <span style="color:#FF4F01;display:inline-flex;align-items:center;"><?= icon('grip-vertical', 14) ?></span>
+          <span>Drag handle or press Space on handle to reorder metrics for Faculty &amp; Coordinator pages</span>
+        </div>
+      <?php endif; ?>
     </div>
 
     <?php if (empty($metrics)): ?>
@@ -1590,7 +1775,7 @@ dialog.studio-modal::backdrop {
         <table class="metrics-table">
           <thead>
             <tr>
-              <th style="width:75px;text-align:center;">Order</th>
+              <th style="width:84px;text-align:center;">Order</th>
               <th style="min-width:280px;">Metric Name &amp; Key</th>
               <th style="min-width:190px;">Category / Group</th>
               <th style="min-width:180px;">Form Configuration</th>
@@ -1606,33 +1791,26 @@ dialog.studio-modal::backdrop {
               $isHybrid = ($m['metric_type'] === 'hybrid');
               $isGeneric = ($m['metric_type'] === 'generic');
             ?>
-              <tr class="<?= !$isActive ? 'row-inactive' : '' ?>">
-                <!-- Order & Move Controls -->
-                <td style="text-align:center;">
-                  <div class="order-cell-wrap">
-                    <span class="order-number-pill">
+              <tr class="metric-row <?= !$isActive ? 'row-inactive' : '' ?>"
+                  data-id="<?= (int)$m['id'] ?>"
+                  data-key="<?= e($m['metric_key']) ?>"
+                  data-name="<?= e($m['name']) ?>"
+                  data-order="<?= (int)$m['display_order'] ?>">
+                <!-- Order & Drag Handle Controls -->
+                <td style="text-align:center;" class="order-cell">
+                  <div class="order-cell-wrap <?= $isFilteredOrSorted ? 'is-disabled' : '' ?>">
+                    <button type="button"
+                            class="metric-drag-handle <?= $isFilteredOrSorted ? 'disabled' : '' ?>"
+                            <?= $isFilteredOrSorted ? 'disabled aria-disabled="true"' : 'draggable="false"' ?>
+                            aria-label="<?= $isFilteredOrSorted ? 'Reordering locked while filtered' : 'Reorder metric ' . e($m['name']) ?>"
+                            aria-grabbed="false"
+                            title="<?= $isFilteredOrSorted ? 'Reordering is disabled while search filters or custom sorts are applied. Reset filters to enable.' : 'Drag to reorder metric (or press Space to pick up)' ?>"
+                            tabindex="<?= $isFilteredOrSorted ? '-1' : '0' ?>">
+                      <?= icon('grip-vertical', 14) ?>
+                    </button>
+                    <span class="order-number-pill" data-order-pill>
                       <?= sprintf('%02d', (int)$m['display_order']) ?>
                     </span>
-                    <div class="order-arrows">
-                      <form method="post" style="margin:0;">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="move">
-                        <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
-                        <input type="hidden" name="direction" value="up">
-                        <button type="submit" class="order-arrow-btn" title="Move Up" aria-label="Move Up">
-                          <?= icon('chevron-up', 10) ?>
-                        </button>
-                      </form>
-                      <form method="post" style="margin:0;">
-                        <?= csrf_field() ?>
-                        <input type="hidden" name="action" value="move">
-                        <input type="hidden" name="id" value="<?= (int)$m['id'] ?>">
-                        <input type="hidden" name="direction" value="down">
-                        <button type="submit" class="order-arrow-btn" title="Move Down" aria-label="Move Down">
-                          <?= icon('chevron-down', 10) ?>
-                        </button>
-                      </form>
-                    </div>
                   </div>
                 </td>
 
@@ -2030,6 +2208,12 @@ dialog.studio-modal::backdrop {
   </form>
 </dialog>
 
+<!-- Order Action Toast Notification -->
+<div id="orderToast" class="order-toast" role="status" aria-live="polite">
+  <span id="orderToastIcon" style="display:inline-flex;align-items:center;"></span>
+  <span id="orderToastMsg"></span>
+</div>
+
 <!-- Metric Management Javascript Engine -->
 <script>
 var currentBuilderFields = [];
@@ -2231,6 +2415,457 @@ function escapeHtml(text) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+
+// =========================================================================
+// ATTS-METRIC-DRAG-SORT: Drag-and-Drop & Keyboard Reordering Engine
+// =========================================================================
+var isFilteredOrSorted = <?= $isFilteredOrSorted ? 'true' : 'false' ?>;
+var isSavingOrder = false;
+var previousOrderIds = [];
+var orderToastTimer = null;
+
+function showOrderToast(msg, type, duration) {
+  if (typeof type === 'undefined') type = 'success';
+  if (typeof duration === 'undefined') duration = 3000;
+
+  var toast = document.getElementById('orderToast');
+  var iconSpan = document.getElementById('orderToastIcon');
+  var msgSpan = document.getElementById('orderToastMsg');
+  if (!toast || !iconSpan || !msgSpan) return;
+
+  toast.className = 'order-toast show toast-' + type;
+  msgSpan.textContent = msg;
+
+  if (type === 'saving') {
+    iconSpan.innerHTML = '<span class="spin-icon"><?= icon("refresh", 14) ?></span>';
+  } else if (type === 'error') {
+    iconSpan.innerHTML = '<?= icon("alert-triangle", 14) ?>';
+  } else {
+    iconSpan.innerHTML = '<?= icon("check", 14) ?>';
+  }
+
+  if (orderToastTimer) {
+    clearTimeout(orderToastTimer);
+    orderToastTimer = null;
+  }
+  if (duration > 0) {
+    orderToastTimer = setTimeout(function() {
+      toast.classList.remove('show');
+    }, duration);
+  }
+}
+
+function updateRowOrderNumbers() {
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+  var rows = tbody.querySelectorAll('tr.metric-row');
+  rows.forEach(function(r, idx) {
+    var pill = r.querySelector('[data-order-pill]');
+    var num = idx + 1;
+    if (pill) {
+      pill.textContent = (num < 10 ? '0' : '') + num;
+    }
+    r.dataset.order = String(num);
+  });
+}
+
+function getCurrentlyOrderedIds() {
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return [];
+  var rows = tbody.querySelectorAll('tr.metric-row');
+  var ids = [];
+  rows.forEach(function(r) {
+    if (r.dataset.id) {
+      ids.push(r.dataset.id);
+    }
+  });
+  return ids;
+}
+
+function saveNewMetricOrder(initialSnapshot) {
+  var currentIds = getCurrentlyOrderedIds();
+  if (currentIds.length === 0) return;
+
+  // If nothing changed from before drag started, do nothing
+  if (initialSnapshot && initialSnapshot.join(',') === currentIds.join(',')) {
+    return;
+  }
+
+  if (isSavingOrder) {
+    return;
+  }
+
+  isSavingOrder = true;
+  showOrderToast('Saving new metric order...', 'saving', 0);
+
+  var payload = new FormData();
+  payload.append('action', 'reorder_metrics');
+  payload.append('csrf', getCsrfToken());
+  payload.append('csrf_token', getCsrfToken());
+  payload.append('ajax', '1');
+
+  currentIds.forEach(function(id) {
+    payload.append('ordered_ids[]', id);
+  });
+
+  var postUrl = (window.location.pathname.replace(/\/+$/, '') || 'admin-metrics.php');
+
+  fetch(postUrl, {
+    method: 'POST',
+    body: payload,
+    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+  })
+  .then(function(res) {
+    if (!res.ok) {
+      throw new Error('HTTP ' + res.status);
+    }
+    return res.json();
+  })
+  .then(function(data) {
+    isSavingOrder = false;
+    if (data.success) {
+      previousOrderIds = currentIds.slice();
+      showOrderToast('Metric order saved successfully.', 'success', 3000);
+    } else {
+      throw new Error(data.message || 'Server error occurred while saving order.');
+    }
+  })
+  .catch(function(err) {
+    isSavingOrder = false;
+    console.error('Order save error:', err);
+    showOrderToast('Failed to save order: ' + (err.message || 'Unknown error') + '. Restoring previous order...', 'error', 4500);
+    restorePreviousOrder();
+  });
+}
+
+function restorePreviousOrder() {
+  if (!previousOrderIds || previousOrderIds.length === 0) return;
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  var rowMap = {};
+  tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+    if (r.dataset.id) {
+      rowMap[r.dataset.id] = r;
+    }
+  });
+
+  previousOrderIds.forEach(function(id) {
+    if (rowMap[id]) {
+      tbody.appendChild(rowMap[id]);
+    }
+  });
+  updateRowOrderNumbers();
+}
+
+function initMetricDragAndDrop() {
+  if (isFilteredOrSorted) return;
+
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  previousOrderIds = getCurrentlyOrderedIds();
+
+  var draggedRow = null;
+  var initialOrderOnDragStart = null;
+  var autoScrollTimer = null;
+
+  function stopAutoScroll() {
+    if (autoScrollTimer) {
+      cancelAnimationFrame(autoScrollTimer);
+      autoScrollTimer = null;
+    }
+  }
+
+  function handleAutoScroll(clientY) {
+    var edgeThreshold = 65;
+    var speed = 0;
+    if (clientY < edgeThreshold) {
+      speed = -Math.max(4, Math.round((edgeThreshold - clientY) / 3));
+    } else if (window.innerHeight - clientY < edgeThreshold) {
+      speed = Math.max(4, Math.round((edgeThreshold - (window.innerHeight - clientY)) / 3));
+    }
+
+    if (speed !== 0) {
+      window.scrollBy(0, speed);
+      autoScrollTimer = requestAnimationFrame(function() {
+        handleAutoScroll(clientY);
+      });
+    } else {
+      stopAutoScroll();
+    }
+  }
+
+  // Set draggable on row ONLY when mouse is pressed down on drag handle
+  tbody.addEventListener('mousedown', function(e) {
+    var handle = e.target.closest('.metric-drag-handle');
+    if (handle && !handle.disabled) {
+      var row = handle.closest('tr.metric-row');
+      if (row) {
+        row.setAttribute('draggable', 'true');
+      }
+    }
+  });
+
+  document.addEventListener('mouseup', function() {
+    tbody.querySelectorAll('tr.metric-row[draggable="true"]').forEach(function(r) {
+      r.removeAttribute('draggable');
+    });
+    stopAutoScroll();
+  });
+
+  tbody.addEventListener('dragstart', function(e) {
+    var row = e.target.closest('tr.metric-row');
+    if (!row || row.getAttribute('draggable') !== 'true') {
+      e.preventDefault();
+      return;
+    }
+
+    draggedRow = row;
+    initialOrderOnDragStart = getCurrentlyOrderedIds();
+
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', row.dataset.id || '');
+
+    document.body.classList.add('table-row-dragging');
+
+    setTimeout(function() {
+      if (draggedRow) {
+        draggedRow.classList.add('is-dragging');
+      }
+    }, 0);
+  });
+
+  tbody.addEventListener('dragover', function(e) {
+    if (!draggedRow) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    handleAutoScroll(e.clientY);
+
+    var targetRow = e.target.closest('tr.metric-row');
+    if (!targetRow || targetRow === draggedRow) {
+      clearDropIndicators();
+      return;
+    }
+
+    var rect = targetRow.getBoundingClientRect();
+    var isAbove = (e.clientY - rect.top) < (rect.height / 2);
+
+    clearDropIndicators();
+    if (isAbove) {
+      targetRow.classList.add('drag-over-above');
+    } else {
+      targetRow.classList.add('drag-over-below');
+    }
+  });
+
+  tbody.addEventListener('dragleave', function(e) {
+    var related = e.relatedTarget;
+    if (!tbody.contains(related)) {
+      clearDropIndicators();
+      stopAutoScroll();
+    }
+  });
+
+  tbody.addEventListener('drop', function(e) {
+    if (!draggedRow) return;
+    e.preventDefault();
+    stopAutoScroll();
+
+    var targetRow = e.target.closest('tr.metric-row');
+    if (targetRow && targetRow !== draggedRow) {
+      var rect = targetRow.getBoundingClientRect();
+      var isAbove = (e.clientY - rect.top) < (rect.height / 2);
+
+      if (isAbove) {
+        tbody.insertBefore(draggedRow, targetRow);
+      } else {
+        tbody.insertBefore(draggedRow, targetRow.nextSibling);
+      }
+
+      updateRowOrderNumbers();
+      saveNewMetricOrder(initialOrderOnDragStart);
+    }
+
+    clearDropIndicators();
+  });
+
+  tbody.addEventListener('dragend', function() {
+    stopAutoScroll();
+    if (draggedRow) {
+      draggedRow.classList.remove('is-dragging');
+      draggedRow.removeAttribute('draggable');
+    }
+    draggedRow = null;
+    initialOrderOnDragStart = null;
+    document.body.classList.remove('table-row-dragging');
+    clearDropIndicators();
+  });
+
+  function clearDropIndicators() {
+    tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+      r.classList.remove('drag-over-above', 'drag-over-below');
+    });
+  }
+}
+
+function initKeyboardReordering() {
+  if (isFilteredOrSorted) return;
+
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  var grabbedRow = null;
+  var initialKeyboardOrder = null;
+
+  tbody.addEventListener('keydown', function(e) {
+    var handle = e.target.closest('.metric-drag-handle');
+    if (!handle || handle.disabled) return;
+    var row = handle.closest('tr.metric-row');
+    if (!row) return;
+
+    // Space or Enter: Pick up or Drop
+    if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault();
+      if (!grabbedRow) {
+        // Pick up
+        grabbedRow = row;
+        initialKeyboardOrder = getCurrentlyOrderedIds();
+        grabbedRow.classList.add('is-keyboard-grabbed');
+        handle.setAttribute('aria-grabbed', 'true');
+        showOrderToast('Metric picked up. Use ↑ / ↓ arrows to reorder, Space/Enter to place, Esc to cancel.', 'saving', 0);
+      } else if (grabbedRow === row) {
+        // Drop
+        grabbedRow.classList.remove('is-keyboard-grabbed');
+        handle.setAttribute('aria-grabbed', 'false');
+        grabbedRow = null;
+        updateRowOrderNumbers();
+        saveNewMetricOrder(initialKeyboardOrder);
+        initialKeyboardOrder = null;
+      }
+      return;
+    }
+
+    // Escape: Cancel keyboard reorder
+    if (e.key === 'Escape' && grabbedRow) {
+      e.preventDefault();
+      grabbedRow.classList.remove('is-keyboard-grabbed');
+      handle.setAttribute('aria-grabbed', 'false');
+      grabbedRow = null;
+      if (initialKeyboardOrder) {
+        previousOrderIds = initialKeyboardOrder.slice();
+        restorePreviousOrder();
+        initialKeyboardOrder = null;
+      }
+      showOrderToast('Reordering cancelled.', 'error', 2500);
+      return;
+    }
+
+    // ArrowUp / ArrowDown while grabbed
+    if (grabbedRow) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        var prev = grabbedRow.previousElementSibling;
+        if (prev && prev.classList.contains('metric-row')) {
+          tbody.insertBefore(grabbedRow, prev);
+          updateRowOrderNumbers();
+          grabbedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          handle.focus();
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        var next = grabbedRow.nextElementSibling;
+        if (next && next.classList.contains('metric-row')) {
+          tbody.insertBefore(grabbedRow, next.nextSibling);
+          updateRowOrderNumbers();
+          grabbedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          handle.focus();
+        }
+      }
+    }
+  });
+}
+
+function initTouchReordering() {
+  if (isFilteredOrSorted) return;
+
+  var tbody = document.querySelector('.metrics-table tbody');
+  if (!tbody) return;
+
+  var touchDraggedRow = null;
+  var touchInitialOrder = null;
+  var currentOverRow = null;
+  var currentIsAbove = false;
+
+  tbody.addEventListener('touchstart', function(e) {
+    var handle = e.target.closest('.metric-drag-handle');
+    if (!handle || handle.disabled) return;
+    var row = handle.closest('tr.metric-row');
+    if (!row) return;
+
+    touchDraggedRow = row;
+    touchInitialOrder = getCurrentlyOrderedIds();
+    touchDraggedRow.classList.add('is-dragging');
+    document.body.classList.add('table-row-dragging');
+  }, { passive: true });
+
+  tbody.addEventListener('touchmove', function(e) {
+    if (!touchDraggedRow) return;
+    var touch = e.touches[0];
+    if (!touch) return;
+
+    var el = document.elementFromPoint(touch.clientX, touch.clientY);
+    var targetRow = el ? el.closest('tr.metric-row') : null;
+
+    tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+      r.classList.remove('drag-over-above', 'drag-over-below');
+    });
+
+    if (targetRow && targetRow !== touchDraggedRow) {
+      var rect = targetRow.getBoundingClientRect();
+      currentIsAbove = (touch.clientY - rect.top) < (rect.height / 2);
+      currentOverRow = targetRow;
+      if (currentIsAbove) {
+        targetRow.classList.add('drag-over-above');
+      } else {
+        targetRow.classList.add('drag-over-below');
+      }
+    } else {
+      currentOverRow = null;
+    }
+  }, { passive: true });
+
+  tbody.addEventListener('touchend', function() {
+    if (!touchDraggedRow) return;
+
+    if (currentOverRow && currentOverRow !== touchDraggedRow) {
+      if (currentIsAbove) {
+        tbody.insertBefore(touchDraggedRow, currentOverRow);
+      } else {
+        tbody.insertBefore(touchDraggedRow, currentOverRow.nextSibling);
+      }
+      updateRowOrderNumbers();
+      saveNewMetricOrder(touchInitialOrder);
+    }
+
+    touchDraggedRow.classList.remove('is-dragging');
+    document.body.classList.remove('table-row-dragging');
+    tbody.querySelectorAll('tr.metric-row').forEach(function(r) {
+      r.classList.remove('drag-over-above', 'drag-over-below');
+    });
+
+    touchDraggedRow = null;
+    touchInitialOrder = null;
+    currentOverRow = null;
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  initMetricDragAndDrop();
+  initKeyboardReordering();
+  initTouchReordering();
+});
 
 // Form Studio workspace lives at form-studio.php
 </script>

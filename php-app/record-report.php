@@ -86,6 +86,11 @@ if ($format === 'word') {
                     $ps .= ' LPA';
                 }
                 $rowVal[] = $ps;
+            } elseif ($field === 'resource_person_name') {
+                $rowVal[] = (string) ($r['resource_person_name'] ?? ($r['resource_person'] ?? ''));
+            } elseif ($field === 'proof_file') {
+                $pf = (string) ($r['proof_file'] ?? ($r['event_report_file'] ?? ''));
+                $rowVal[] = $pf !== '' ? $pf : (string) ($r['report_link'] ?? '—');
             } else {
                 $rowVal[] = (string) ($r[$field] ?? '');
             }
@@ -182,6 +187,13 @@ report_letterhead($mainTitle, $meta, $headingLines);
                     if ($val !== '' && !str_ends_with(strtoupper($val), 'LPA')) {
                         $val .= ' LPA';
                     }
+                } elseif ($field === 'resource_person_name') {
+                    $val = (string) ($r['resource_person_name'] ?? ($r['resource_person'] ?? ''));
+                } elseif ($field === 'member_name') {
+                    $val = (string) (!empty($r['faculty_name']) ? $r['faculty_name'] : ($r['student_name'] ?? ''));
+                } elseif ($field === 'proof_file') {
+                    $pf = (string) ($r['proof_file'] ?? ($r['event_report_file'] ?? ''));
+                    $val = $pf !== '' ? $pf : (string) ($r['certificate_link'] ?? ($r['report_link'] ?? '—'));
                 } else {
                     $val = (string) ($r[$field] ?? '');
                 }

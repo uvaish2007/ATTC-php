@@ -401,12 +401,12 @@ function metrics_56_catalog(): array
         ],
         'inst_inter_inst_within' => [
             'num'            => 43,
-            'title'          => 'PARTICIPATION IN INTER-INSTITUTE EVENTS WITHIN STATE',
+            'title'          => 'STUDENT PARTICIPATION IN INTER-INSTITUTE EVENTS AND AWARDS / MEDALS',
             'table'          => 'inst_inter_inst_within',
             'category'       => 'student',
             'category_label' => 'Student Achievement',
             'date_col'       => 'event_date',
-            'aliases'        => ['PARTICIPATION IN INTER-INSTITUTE EVENTS BY STUDENTS — WITHIN STATE', 'WITHIN STATE'],
+            'aliases'        => ['PARTICIPATION IN INTER-INSTITUTE EVENTS WITHIN STATE', 'PARTICIPATION IN INTER-INSTITUTE EVENTS BY STUDENTS WITHIN STATE', 'WITHIN STATE', 'INTER-INSTITUTE'],
         ],
         'inst_inter_inst_outside' => [
             'num'            => 44,
