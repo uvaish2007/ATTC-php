@@ -52,9 +52,9 @@ if (!$activeAy) {
 }
 
 // Clean up any previous test records
-$db->exec("DELETE FROM inst_student_certifications WHERE reg_no LIKE 'TESTCERT%'");
-$db->exec("DELETE FROM inst_spoken_tutorials WHERE reg_no LIKE 'TESTSPOK%'");
-$db->exec("DELETE FROM bulk_import_history WHERE batch_id LIKE 'BATCH_TEST_%'");
+$db->exec("DELETE FROM inst_student_certifications WHERE reg_no LIKE 'TESTCERT%' OR reg_no LIKE '7113221049%'");
+$db->exec("DELETE FROM inst_spoken_tutorials WHERE reg_no LIKE 'TESTSPOK%' OR reg_no LIKE '7113221049%'");
+$db->exec("DELETE FROM bulk_import_history WHERE batch_id LIKE 'BATCH_TEST_%' OR batch_id LIKE 'BATCH_STUCERT_%' OR batch_id LIKE 'BATCH_STUSPOK_%'");
 
 // ============================================================================
 // TEST A: Student Online Certification

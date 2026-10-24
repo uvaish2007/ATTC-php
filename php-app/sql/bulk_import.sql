@@ -45,6 +45,11 @@ CALL add_bulk_col_if_absent('internships', 'import_batch_id', 'ADD COLUMN import
 CALL add_bulk_col_if_absent('summer_training', 'exam_session', 'ADD COLUMN exam_session VARCHAR(50) NULL AFTER academic_year');
 CALL add_bulk_col_if_absent('summer_training', 'import_batch_id', 'ADD COLUMN import_batch_id VARCHAR(64) NULL AFTER proof_file');
 
+CALL add_bulk_col_if_absent('inst_student_certifications', 'import_batch_id', 'ADD COLUMN import_batch_id VARCHAR(64) NULL AFTER proof_file');
+CALL add_bulk_col_if_absent('inst_student_certifications', 'certificate_link', 'ADD COLUMN certificate_link TEXT NULL AFTER certificate_id');
+CALL add_bulk_col_if_absent('inst_spoken_tutorials', 'import_batch_id', 'ADD COLUMN import_batch_id VARCHAR(64) NULL AFTER proof_file');
+CALL add_bulk_col_if_absent('inst_spoken_tutorials', 'certificate_link', 'ADD COLUMN certificate_link TEXT NULL AFTER certificate_id');
+
 DROP PROCEDURE IF EXISTS add_bulk_col_if_absent;
 
 -- Update existing internships rows that had NULL academic_year to default active academic year

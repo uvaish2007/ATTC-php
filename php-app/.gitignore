@@ -9,3 +9,5 @@ uploads/*
 .DS_Store
 Thumbs.db
 *.log
+cookie_test.txt
+scratch/

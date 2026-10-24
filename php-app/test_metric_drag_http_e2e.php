@@ -6,7 +6,7 @@
 
 require_once __DIR__ . '/inc/db.php';
 
-$baseUrl = 'http://localhost:8000/php-app';
+$baseUrl = getenv('TEST_BASE_URL') ?: 'http://localhost:3000';
 $cookieFile = __DIR__ . '/cookie_test.txt';
 if (file_exists($cookieFile)) unlink($cookieFile);
 
