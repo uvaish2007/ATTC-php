@@ -398,8 +398,168 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 4. Center Canvas Rendering & Interactions
+  // 4. Center Canvas Rendering & Dynamic Drag Reordering
   // ---------------------------------------------------------------------------
+  var canvasDragState = {
+    isDragging: false,
+    source: null,        // 'canvas' | 'palette'
+    fromIndex: -1,       // index in studioState.fields
+    draggedCard: null,   // DOM element of dragged card
+    placeholder: null,   // DOM element of placeholder slot
+    paletteType: null,   // if source === 'palette'
+    span: 6
+  };
+
+  function createDragPlaceholder(span, heightPx) {
+    var ph = document.createElement('div');
+    ph.className = 'canvas-drag-placeholder';
+    ph.style.gridColumn = 'span ' + Math.min(12, Math.max(1, span || 6));
+    ph.style.minHeight = Math.max(heightPx || 70, 60) + 'px';
+    ph.innerHTML = '<div class="canvas-drag-placeholder-inner">' +
+      '<span class="placeholder-icon">↕</span>' +
+      '<span class="placeholder-label">Move here</span>' +
+      '</div>';
+    return ph;
+  }
+
+  function cleanupDragState() {
+    if (canvasDragState.placeholder && canvasDragState.placeholder.parentNode) {
+      canvasDragState.placeholder.parentNode.removeChild(canvasDragState.placeholder);
+    }
+    if (canvasDragState.draggedCard) {
+      canvasDragState.draggedCard.classList.remove('is-dragging', 'dragging');
+    }
+    canvasDragState.isDragging = false;
+    canvasDragState.source = null;
+    canvasDragState.fromIndex = -1;
+    canvasDragState.draggedCard = null;
+    canvasDragState.placeholder = null;
+    canvasDragState.paletteType = null;
+
+    var surface = document.querySelector('.canvas-form-surface');
+    if (surface) surface.classList.remove('show-grid-guides');
+
+    document.querySelectorAll('.canvas-field-card, .canvas-section-header').forEach(function (c) {
+      c.classList.remove('drag-insert-before', 'drag-insert-after', 'is-dragging', 'dragging');
+    });
+  }
+
+  function handleCardDragOver(e, targetElement) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+
+    var container = document.getElementById('canvasSectionsContainer');
+    if (!container) return;
+
+    if (!canvasDragState.isDragging || !canvasDragState.placeholder) {
+      var raw = '';
+      try {
+        raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+      } catch (err) {}
+      var pType = 'text';
+      if (raw) {
+        try {
+          var p = JSON.parse(raw);
+          if (p.source === 'palette') pType = p.type;
+        } catch (err) {}
+      }
+      canvasDragState.isDragging = true;
+      canvasDragState.source = 'palette';
+      canvasDragState.paletteType = pType;
+      var span = (['section_header', 'heading', 'divider', 'instructions'].indexOf(pType) !== -1) ? 12 : 6;
+      canvasDragState.span = span;
+      canvasDragState.placeholder = createDragPlaceholder(span, 70);
+      container.appendChild(canvasDragState.placeholder);
+    }
+
+    var placeholder = canvasDragState.placeholder;
+    if (!placeholder) return;
+
+    if (targetElement === placeholder || targetElement.closest('.canvas-drag-placeholder')) {
+      return;
+    }
+    if (targetElement === canvasDragState.draggedCard) {
+      return;
+    }
+
+    var rect = targetElement.getBoundingClientRect();
+    var midY = rect.top + rect.height / 2;
+    var midX = rect.left + rect.width / 2;
+
+    var isBefore = false;
+    if (Math.abs(e.clientY - midY) > rect.height * 0.2) {
+      isBefore = (e.clientY < midY);
+    } else {
+      isBefore = (e.clientX < midX);
+    }
+
+    if (isBefore) {
+      if (placeholder.nextSibling !== targetElement) {
+        container.insertBefore(placeholder, targetElement);
+      }
+    } else {
+      if (placeholder.previousSibling !== targetElement) {
+        container.insertBefore(placeholder, targetElement.nextSibling);
+      }
+    }
+  }
+
+  function calculateDropIndex() {
+    var container = document.getElementById('canvasSectionsContainer');
+    if (!container || !canvasDragState.placeholder) return -1;
+
+    var placeholder = canvasDragState.placeholder;
+    var draggedCard = canvasDragState.draggedCard;
+    var children = Array.from(container.children);
+    var dropIndex = 0;
+
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el === placeholder) {
+        break;
+      }
+      if (el !== draggedCard && (el.classList.contains('canvas-field-card') || el.classList.contains('canvas-section-header'))) {
+        dropIndex++;
+      }
+    }
+    return dropIndex;
+  }
+
+  function executeCanvasDrop(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (!canvasDragState.isDragging || !canvasDragState.placeholder) {
+      cleanupDragState();
+      return;
+    }
+
+    var newIndex = calculateDropIndex();
+    var fromIdx = canvasDragState.fromIndex;
+    var source = canvasDragState.source;
+    var paletteType = canvasDragState.paletteType;
+
+    cleanupDragState();
+
+    if (source === 'canvas') {
+      if (fromIdx >= 0 && fromIdx < studioState.fields.length && newIndex >= 0) {
+        if (fromIdx !== newIndex) {
+          moveField(fromIdx, newIndex);
+        } else {
+          renderCanvas();
+        }
+      } else {
+        renderCanvas();
+      }
+    } else if (source === 'palette' && paletteType) {
+      addFieldFromPalette(paletteType, newIndex >= 0 ? newIndex : undefined);
+    }
+  }
+
   function renderCanvas() {
     var container = document.getElementById('canvasSectionsContainer');
     if (!container) return;
@@ -424,10 +584,50 @@
         secDiv.className = 'canvas-section-header' + (studioState.selectedIdx === idx ? ' active-selection' : '');
         secDiv.style.gridColumn = '1 / -1';
         secDiv.style.width = '100%';
+        secDiv.draggable = true;
+        secDiv.dataset.index = idx;
         secDiv.onclick = function (e) {
           e.stopPropagation();
           selectField(idx);
         };
+        secDiv.addEventListener('dragstart', function (e) {
+          if (e.target.closest('.field-actions-toolbar') || e.target.closest('button, a')) {
+            e.preventDefault();
+            return false;
+          }
+          canvasDragState.isDragging = true;
+          canvasDragState.source = 'canvas';
+          canvasDragState.fromIndex = idx;
+          canvasDragState.draggedCard = secDiv;
+          canvasDragState.span = 12;
+
+          if (e.dataTransfer) {
+            e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'canvas', index: idx }));
+            e.dataTransfer.effectAllowed = 'move';
+          }
+
+          var surface = document.querySelector('.canvas-form-surface');
+          if (surface) surface.classList.add('show-grid-guides');
+
+          var rect = secDiv.getBoundingClientRect();
+          canvasDragState.placeholder = createDragPlaceholder(12, rect.height);
+          secDiv.parentNode.insertBefore(canvasDragState.placeholder, secDiv);
+
+          setTimeout(function () {
+            if (canvasDragState.isDragging && secDiv) {
+              secDiv.classList.add('is-dragging');
+            }
+          }, 0);
+        });
+        secDiv.addEventListener('dragend', function () {
+          cleanupDragState();
+        });
+        secDiv.addEventListener('dragover', function (e) {
+          handleCardDragOver(e, secDiv);
+        });
+        secDiv.addEventListener('drop', function (e) {
+          executeCanvasDrop(e);
+        });
         secDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;min-width:0;">' +
           '<span style="color:#FF4F01;font-size:16px;">📂</span>' +
           '<span class="section-title-text" style="word-break:break-word;">' + escapeHtml(f.label || 'New Section') + '</span>' +
@@ -607,68 +807,51 @@
     card.draggable = true;
     card.dataset.index = idx;
 
-    // Drag-and-drop reordering listeners with visible glowing insertion indicators
+    // Real-time dynamic drag-and-drop reordering with live placeholder flow
     card.addEventListener('dragstart', function (e) {
+      if (e.target.closest('.field-actions-toolbar') ||
+          e.target.closest('.field-resize-handle') ||
+          e.target.closest('.field-height-handle') ||
+          e.target.closest('button, input, select, textarea, a')) {
+        e.preventDefault();
+        return false;
+      }
+
+      canvasDragState.isDragging = true;
+      canvasDragState.source = 'canvas';
+      canvasDragState.fromIndex = idx;
+      canvasDragState.draggedCard = card;
+      canvasDragState.span = span;
+
       if (e.dataTransfer) {
         e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'canvas', index: idx }));
         e.dataTransfer.effectAllowed = 'move';
       }
-      card.classList.add('dragging');
+
       var surface = document.querySelector('.canvas-form-surface');
       if (surface) surface.classList.add('show-grid-guides');
+
+      var rect = card.getBoundingClientRect();
+      canvasDragState.placeholder = createDragPlaceholder(span, rect.height);
+      card.parentNode.insertBefore(canvasDragState.placeholder, card);
+
+      setTimeout(function () {
+        if (canvasDragState.isDragging && card) {
+          card.classList.add('is-dragging');
+        }
+      }, 0);
     });
 
     card.addEventListener('dragend', function () {
-      card.classList.remove('dragging');
-      var surface = document.querySelector('.canvas-form-surface');
-      if (surface) surface.classList.remove('show-grid-guides');
-      document.querySelectorAll('.canvas-field-card').forEach(function (c) {
-        c.classList.remove('drag-insert-before', 'drag-insert-after', 'drag-over-top', 'drag-over-bottom');
-      });
+      cleanupDragState();
     });
 
     card.addEventListener('dragover', function (e) {
-      e.preventDefault();
-      var rect = card.getBoundingClientRect();
-      var relY = e.clientY - rect.top;
-      if (relY < rect.height / 2) {
-        card.classList.add('drag-insert-before');
-        card.classList.remove('drag-insert-after');
-      } else {
-        card.classList.add('drag-insert-after');
-        card.classList.remove('drag-insert-before');
-      }
-    });
-
-    card.addEventListener('dragleave', function () {
-      card.classList.remove('drag-insert-before', 'drag-insert-after');
+      handleCardDragOver(e, card);
     });
 
     card.addEventListener('drop', function (e) {
-      e.preventDefault();
-      card.classList.remove('drag-insert-before', 'drag-insert-after');
-      var raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-      var payload = null;
-      try {
-        payload = JSON.parse(raw);
-      } catch (err) {
-        payload = isNaN(parseInt(raw, 10)) ? { source: 'palette', type: raw } : { source: 'canvas', index: parseInt(raw, 10) };
-      }
-
-      var rect = card.getBoundingClientRect();
-      var relY = e.clientY - rect.top;
-      var targetIdx = (relY < rect.height / 2) ? idx : (idx + 1);
-
-      if (payload && payload.source === 'canvas') {
-        var fromIdx = parseInt(payload.index, 10);
-        if (isNaN(fromIdx) || fromIdx === idx) return;
-        var toIdx = targetIdx;
-        if (fromIdx < toIdx) toIdx--;
-        moveField(fromIdx, toIdx);
-      } else if (payload && (payload.type || typeof payload === 'string')) {
-        var t = payload.type || payload;
-        addFieldFromPalette(t, targetIdx);
-      }
+      executeCanvasDrop(e);
     });
 
     // Selection on click
@@ -1602,26 +1785,49 @@
       e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'palette', type: type }));
       e.dataTransfer.effectAllowed = 'copy';
     }
+    var span = (['section_header', 'heading', 'divider', 'instructions'].indexOf(type) !== -1) ? 12 : 6;
+    canvasDragState.isDragging = true;
+    canvasDragState.source = 'palette';
+    canvasDragState.fromIndex = -1;
+    canvasDragState.draggedCard = null;
+    canvasDragState.paletteType = type;
+    canvasDragState.span = span;
+
+    var surface = document.querySelector('.canvas-form-surface');
+    if (surface) surface.classList.add('show-grid-guides');
   }
 
   function onCanvasDragOver(e) {
     if (e) e.preventDefault();
+    if (e && e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+    if (!canvasDragState.isDragging || !canvasDragState.placeholder) return;
+
+    var container = document.getElementById('canvasSectionsContainer');
+    if (!container) return;
+
+    var placeholder = canvasDragState.placeholder;
+    var cards = Array.from(container.querySelectorAll('.canvas-field-card:not(.is-dragging), .canvas-section-header:not(.is-dragging)'));
+    if (cards.length > 0) {
+      var first = cards[0];
+      var last = cards[cards.length - 1];
+      var firstRect = first.getBoundingClientRect();
+      var lastRect = last.getBoundingClientRect();
+
+      if (e.clientY < firstRect.top) {
+        if (container.firstElementChild !== placeholder) {
+          container.insertBefore(placeholder, container.firstElementChild);
+        }
+      } else if (e.clientY > lastRect.bottom) {
+        if (container.lastElementChild !== placeholder) {
+          container.appendChild(placeholder);
+        }
+      }
+    }
   }
 
   function onCanvasDrop(e) {
-    if (e) e.preventDefault();
-    var raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-    if (!raw) return;
-    var payload = null;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      payload = isNaN(parseInt(raw, 10)) ? { source: 'palette', type: raw } : { source: 'canvas', index: parseInt(raw, 10) };
-    }
-
-    if (payload && payload.source === 'palette' && payload.type) {
-      addFieldFromPalette(payload.type);
-    }
+    executeCanvasDrop(e);
   }
 
   function toggleFieldWidth(idx) {
@@ -2040,7 +2246,9 @@
 
   function moveField(fromIdx, toIdx) {
     if (fromIdx < 0 || fromIdx >= studioState.fields.length) return;
-    if (toIdx < 0 || toIdx >= studioState.fields.length) return;
+    if (toIdx < 0) toIdx = 0;
+    if (toIdx >= studioState.fields.length) toIdx = studioState.fields.length - 1;
+    if (fromIdx === toIdx) return;
 
     recordState();
     var moved = studioState.fields.splice(fromIdx, 1)[0];
@@ -2049,6 +2257,7 @@
     renderCanvas();
     selectField(toIdx);
     renderInteractivePreview();
+    markDirty();
   }
 
   function moveFieldUp(idx) {
@@ -3037,6 +3246,12 @@
       keyInp.value = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     }
   };
+
+  window.addEventListener('dragend', function () {
+    if (canvasDragState && canvasDragState.isDragging) {
+      cleanupDragState();
+    }
+  });
 
 })(window, document);
 

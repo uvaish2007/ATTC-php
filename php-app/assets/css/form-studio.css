@@ -954,38 +954,65 @@
   box-shadow: 0 0 0 3px rgba(255, 79, 1, 0.16) !important;
 }
 
-.canvas-field-card.dragging {
-  opacity: 0.35;
-  background: #FEF3C7;
-  border: 1px dashed #D97706;
+.canvas-field-card.dragging,
+.canvas-field-card.is-dragging,
+.canvas-section-header.is-dragging {
+  opacity: 0.001 !important;
+  position: absolute !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  overflow: hidden !important;
+  z-index: -1 !important;
 }
 
-/* Drop Indicators */
-.canvas-field-card.drag-insert-before::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--studio-orange);
-  border-radius: 2px;
-  box-shadow: 0 0 10px rgba(255, 79, 1, 0.7);
-  z-index: 20;
+/* Dynamic Live Drop Placeholder in CSS Grid */
+.canvas-drag-placeholder {
+  background: rgba(255, 79, 1, 0.04);
+  border: 2px dashed var(--studio-orange, #FF4F01);
+  border-radius: 8px;
+  min-height: 70px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 12;
+  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
   pointer-events: none;
+  animation: placeholderPulse 1.8s ease-in-out infinite;
 }
-.canvas-field-card.drag-insert-after::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: 0;
-  right: 0;
-  height: 4px;
-  background: var(--studio-orange);
-  border-radius: 2px;
-  box-shadow: 0 0 10px rgba(255, 79, 1, 0.7);
-  z-index: 20;
+@keyframes placeholderPulse {
+  0%, 100% {
+    background-color: rgba(255, 79, 1, 0.03);
+    border-color: rgba(255, 79, 1, 0.6);
+  }
+  50% {
+    background-color: rgba(255, 79, 1, 0.08);
+    border-color: var(--studio-orange, #FF4F01);
+  }
+}
+.canvas-drag-placeholder-inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #FFFFFF;
+  color: var(--studio-orange, #FF4F01);
+  border: 1px solid rgba(255, 79, 1, 0.25);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 11.5px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(255, 79, 1, 0.12);
   pointer-events: none;
+  user-select: none;
+}
+.canvas-drag-placeholder-inner .placeholder-icon {
+  font-size: 13px;
+  line-height: 1;
 }
 
 /* Interactive Horizontal Width Handle */
@@ -1175,27 +1202,38 @@
   flex-shrink: 0;
   opacity: 0;
   pointer-events: none;
-  transition: opacity .15s ease;
+  transition: opacity .15s ease, transform .15s ease;
   position: absolute;
-  right: 0;
-  top: -4px;
+  right: 6px;
+  top: -14px;
   background: #FFFFFF;
-  border: 1px solid var(--studio-border);
-  border-radius: 5px;
+  border: 1px solid #CBD5E1;
+  border-radius: 6px;
   padding: 2px 4px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
-  z-index: 15;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
+  z-index: 25;
 }
 .canvas-field-card:hover .field-actions-toolbar,
-.canvas-field-card.active-field .field-actions-toolbar {
+.canvas-field-card.active-field .field-actions-toolbar,
+.canvas-section-header:hover .field-actions-toolbar,
+.canvas-section-header.active-selection .field-actions-toolbar {
   opacity: 1;
   pointer-events: auto;
 }
 
+/* Hide all action toolbars completely during drag interactions */
+.canvas-form-surface.show-grid-guides .field-actions-toolbar,
+.canvas-field-card.is-dragging .field-actions-toolbar,
+.canvas-section-header.is-dragging .field-actions-toolbar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  display: none !important;
+}
+
 .btn-width-toggle {
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
-  padding: 2px 5px;
+  padding: 1px 4px;
   border-radius: 4px;
   border: 1px solid #CBD5E1;
   background: #F8FAFC;
@@ -1210,8 +1248,8 @@
 }
 
 .field-act-btn {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
@@ -1221,7 +1259,7 @@
   justify-content: center;
   cursor: pointer;
   padding: 0;
-  font-size: 11.5px;
+  font-size: 11px;
   transition: all .1s ease;
 }
 .field-act-btn:hover {
