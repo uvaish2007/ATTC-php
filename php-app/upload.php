@@ -442,8 +442,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $genMetricKey = str_starts_with($type, 'gen_') ? substr($type, 4) : $type;
         $genMetric = metric_studio_find($genMetricKey);
         if ($genMetric) {
-            [$ok, $msg, $recId] = generic_metric_record_submit($genMetricKey, $user, $targetYear, $_POST, $_FILES['proof'] ?? null);
+            $proofUpload = $_FILES['proof'] ?? null;
+            if (!$proofUpload || empty($proofUpload['name'])) {
+                foreach ($_FILES as $fk => $fData) {
+                    if (!empty($fData['name'])) {
+                        $proofUpload = $fData;
+                        break;
+                    }
+                }
+            }
+            [$ok, $msg, $recId] = generic_metric_record_submit($genMetricKey, $user, $targetYear, $_POST, $proofUpload);
             flash($ok ? 'success' : 'error', $msg);
+            if ($nav === 'next') {
+                $nextSec = upload_section_next($genMetricKey, $user['role']);
+                if ($nextSec) {
+                    redirect('/upload.php?section=' . $nextSec['id'] . '&type=' . $nextSec['default_type']);
+                }
+            }
             redirect('/upload.php?section=' . urlencode($genMetricKey) . '&type=' . urlencode($type));
         }
 
@@ -1680,7 +1695,7 @@ require __DIR__ . '/inc/header.php';
       <span class="atts-targets-title">
         <?= icon('target', 14) ?> Institutional Academic Targets
       </span>
-      <span class="badge badge-neutral">30 Sections</span>
+      <span class="badge badge-neutral"><?= count($approvedSections) ?> Sections</span>
       <span class="badge badge-primary"><?= e($activeSection['group']) ?></span>
     </div>
     <div class="atts-targets-header-right">
@@ -1689,9 +1704,14 @@ require __DIR__ . '/inc/header.php';
         <select class="select atts-quick-jump-select" id="quickJumpSelect" onchange="if(this.value) window.location.href=this.value" aria-label="Quick Jump to Metric">
           <?php foreach ($sectionsByGroup as $grpName => $grpSecs): ?>
             <optgroup label="<?= e($grpName) ?>">
-              <?php foreach ($grpSecs as $s): ?>
+              <?php 
+                $qjIdx = 1;
+                foreach ($grpSecs as $s): 
+                  $qjNum = (!empty($s['order']) && (int)$s['order'] > 0 && (int)$s['order'] < 100) ? (int)$s['order'] : $qjIdx;
+                  $qjIdx++;
+              ?>
                 <option value="<?= e(url('upload.php?section=' . $s['id'] . '&type=' . $s['default_type'])) ?>" <?= ($activeSection['id'] === $s['id']) ? 'selected' : '' ?>>
-                  <?= (int)$s['order'] ?>. <?= e($s['title']) ?>
+                  <?= $qjNum ?>. <?= e($s['title']) ?>
                 </option>
               <?php endforeach; ?>
             </optgroup>
@@ -1729,8 +1749,12 @@ require __DIR__ . '/inc/header.php';
 
   <div class="atts-metric-nav-container js-category-nav-container" id="categoryNavContainer" role="tablist" aria-label="Institutional Academic Targets">
     <div class="atts-metric-nav-track" id="categoryNavTrack">
-      <?php foreach ($approvedSections as $secId => $sec): 
-        $isActive = ($activeSection['id'] === $sec['id']);
+      <?php 
+        $secTabIdx = 1;
+        foreach ($approvedSections as $secId => $sec): 
+          $isActive = ($activeSection['id'] === $sec['id']);
+          $badgeNum = (!empty($sec['order']) && (int)$sec['order'] > 0 && (int)$sec['order'] < 100) ? (int)$sec['order'] : $secTabIdx;
+          $secTabIdx++;
       ?>
         <a href="<?= e(url('upload.php?section=' . $sec['id'] . '&type=' . $sec['default_type'])) ?>"
            class="atts-metric-tab js-category-tab <?= $isActive ? 'active' : '' ?>"
@@ -1738,8 +1762,8 @@ require __DIR__ . '/inc/header.php';
            role="tab"
            id="metric-tab-<?= e($sec['id']) ?>"
            aria-selected="<?= $isActive ? 'true' : 'false' ?>"
-           title="<?= e($sec['order'] . '. ' . $sec['title']) ?>">
-          <span class="atts-metric-tab-badge"><?= (int)$sec['order'] ?></span>
+           title="<?= e($badgeNum . '. ' . $sec['title']) ?>">
+          <span class="atts-metric-tab-badge"><?= $badgeNum ?></span>
           <span class="atts-metric-tab-title"><?= e($sec['title']) ?></span>
         </a>
       <?php endforeach; ?>
@@ -2174,8 +2198,12 @@ require __DIR__ . '/inc/header.php';
       }
       </style>
 
-      <?php $isGenericMetric = (($activeSection['metric_type'] ?? '') === 'generic'); ?>
-      <div class="<?= $isGenericMetric ? 'form-dynamic-grid-12' : 'form-standard-grid' ?>" style="display:grid; grid-template-columns:<?= $isGenericMetric ? 'repeat(12, 1fr)' : '1fr 1fr' ?>; gap:16px 20px; align-items:start;">
+      <?php 
+        $hasDynamicForm = !empty($activeSection['form_config']) && is_array($activeSection['form_config']);
+        $isGenericMetric = (($activeSection['metric_type'] ?? '') === 'generic');
+        $use12ColGrid = $isGenericMetric || $hasDynamicForm;
+      ?>
+      <div class="<?= $use12ColGrid ? 'form-dynamic-grid-12' : 'form-standard-grid' ?>" style="display:grid; grid-template-columns:<?= $use12ColGrid ? 'repeat(12, 1fr)' : '1fr 1fr' ?>; gap:16px 20px; align-items:start;">
       <?php if (!empty($editRecord)): ?>
         <div style="grid-column:1 / -1; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
@@ -2202,7 +2230,7 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-      <?php if ($isGenericMetric): ?>
+      <?php if ($use12ColGrid): ?>
         <?php
           require_once __DIR__ . '/inc/metric_studio.php';
           $genFields = $activeSection['form_config'] ?: [];
@@ -2213,6 +2241,23 @@ require __DIR__ . '/inc/header.php';
             <strong>Instructions:</strong> <?= e($activeSection['help_text']) ?>
           </div>
         <?php endif; ?>
+
+        <?php
+          // If this is a hybrid institutional metric, ensure Department and Academic Year are rendered if not in form_config
+          if (!$isGenericMetric && str_starts_with($selectedType, 'inst_')) {
+              $existingKeys = array_column($genFields, 'key');
+              if (!in_array('department', $existingKeys, true)) {
+                  echo '<div class="field" style="grid-column:span 6;">';
+                  render_dept_field($user, $departments, 'Department', true);
+                  echo '</div>';
+              }
+              if (!in_array('academic_year', $existingKeys, true)) {
+                  echo '<div class="field" style="grid-column:span 6;">';
+                  render_academic_year_field($editRecord['academic_year'] ?? $effectiveYear, 'academic_year', 'Academic Year', true, 'upercentAcademicYear');
+                  echo '</div>';
+              }
+          }
+        ?>
 
         <?php foreach ($genFields as $gf):
           $fType = $gf['type'] ?? 'text';
@@ -2326,14 +2371,32 @@ require __DIR__ . '/inc/header.php';
               <textarea class="input" name="<?= e($fKey) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> rows="3"><?= e((string)$editVal) ?></textarea>
 
             <?php elseif ($fType === 'select'): ?>
-              <select class="select" name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+              <?php
+                $isUpercentSession = ($fKey === 'exam_session' && str_contains($selectedType, 'pass_percentage'));
+                $isUpercentSem = ($fKey === 'semester' && str_contains($selectedType, 'pass_percentage'));
+                $selectId = $isUpercentSession ? 'upercentExamSession' : ($isUpercentSem ? 'upercentSemester' : '');
+                $onchangeAttr = $isUpercentSession ? 'onchange="if(window.upercentOnSessionChange) upercentOnSessionChange(this)"' : ($isUpercentSem ? 'onchange="if(window.upercentOnSemesterChange) upercentOnSemesterChange(this)"' : '');
+              ?>
+              <select class="select" <?= $selectId ? 'id="' . $selectId . '"' : '' ?> name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> <?= $onchangeAttr ?>>
                 <option value="" disabled <?= $editVal === '' ? 'selected' : '' ?>><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
-                <?php foreach ($resolvedOptions as $opt):
-                  $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
-                  $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
-                ?>
-                  <option value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'selected' : '' ?>><?= e($optLbl) ?></option>
-                <?php endforeach; ?>
+                <?php if ($isUpercentSession && empty($resolvedOptions)): ?>
+                  <option value="Nov/Dec" <?= ($editVal === 'Nov/Dec' || $editVal === 'Nov-Dec' || $editVal === 'NOV_DEC') ? 'selected' : '' ?>>Nov/Dec (Odd Semesters)</option>
+                  <option value="Apr/May" <?= ($editVal === 'Apr/May' || $editVal === 'Apr-May' || $editVal === 'APR_MAY') ? 'selected' : '' ?>>Apr/May (Even Semesters)</option>
+                <?php else: ?>
+                  <?php foreach ($resolvedOptions as $opt):
+                    $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                    $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                    if ($isUpercentSession) {
+                        if ($optVal === 'NOV_DEC' || $optVal === 'Nov-Dec') { $optVal = 'Nov/Dec'; $optLbl = 'Nov/Dec (Odd Semesters)'; }
+                        elseif ($optVal === 'APR_MAY' || $optVal === 'Apr-May') { $optVal = 'Apr/May'; $optLbl = 'Apr/May (Even Semesters)'; }
+                    }
+                    if ($isUpercentSem && is_numeric($optVal)) {
+                        $optVal = 'Sem ' . $optVal;
+                    }
+                  ?>
+                    <option value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'selected' : '' ?>><?= e($optLbl) ?></option>
+                  <?php endforeach; ?>
+                <?php endif; ?>
               </select>
 
             <?php elseif ($fType === 'multiselect'): ?>
@@ -2395,10 +2458,16 @@ require __DIR__ . '/inc/header.php';
               <input class="input" type="datetime-local" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'integer'): ?>
-              <input class="input" type="number" step="1" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (int)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+              <?php
+                $intId = ($fKey === 'registered_students') ? 'upercentRegisteredStudents' : (($fKey === 'passed_students') ? 'upercentPassedStudents' : '');
+              ?>
+              <input class="input" type="number" step="1" <?= $intId ? 'id="' . $intId . '"' : '' ?> name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (int)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'decimal'): ?>
-              <input class="input" type="number" step="any" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (float)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+              <?php
+                $decId = ($fKey === 'pass_percentage') ? 'upercentPassPercentage' : '';
+              ?>
+              <input class="input" type="number" step="any" <?= $decId ? 'id="' . $decId . '"' : '' ?> name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (float)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'tel'): ?>
               <input class="input" type="tel" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'e.g. +91 98765 43210') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
@@ -2410,7 +2479,10 @@ require __DIR__ . '/inc/header.php';
               <input class="input" type="email" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'user@example.com') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'readonly'): ?>
-              <input class="input" type="text" name="<?= e($fKey) ?>" value="<?= e((string)($editVal ?: ($gf['placeholder'] ?? 'Calculated Automatically'))) ?>" readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;">
+              <?php
+                $roId = ($fKey === 'pass_percentage') ? 'upercentPassPercentage' : '';
+              ?>
+              <input class="input" type="text" <?= $roId ? 'id="' . $roId . '"' : '' ?> name="<?= e($fKey) ?>" value="<?= e((string)($editVal ?: ($gf['placeholder'] ?? 'Calculated Automatically'))) ?>" readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;">
 
             <?php elseif ($fType === 'specialized'): ?>
               <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:10px 14px; border-radius:6px; font-size:12px; color:#1D4ED8; font-weight:600;">
@@ -2424,21 +2496,14 @@ require __DIR__ . '/inc/header.php';
               </div>
 
             <?php elseif ($fType === 'file'): ?>
-              <input class="input" type="file" name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+              <?php $fieldName = in_array($fKey, ['proof', 'proof_file', 'supporting_proof', 'proof_attachment'], true) ? 'proof' : $fKey; ?>
+              <input class="input" type="file" name="<?= e($fieldName) ?>" accept=".pdf,.jpg,.jpeg,.png,application/pdf" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php else: ?>
               <input class="input" type="text" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min_length']) && $gf['min_length'] !== null ? 'minlength="' . (int)$gf['min_length'] . '"' : '' ?> <?= isset($gf['max_length']) && $gf['max_length'] !== null ? 'maxlength="' . (int)$gf['max_length'] . '"' : '' ?> <?= $disabledAttr ?>>
             <?php endif; ?>
           </div>
         <?php endforeach; ?>
-      <?php endif; ?>
-
-      <?php if ($selectedType === 'patent'): ?>
-        <div class="field"><label>Faculty Name <span class="req">*</span></label>
-          <input class="input" name="faculty_name" value="<?= e($editRecord['faculty_name'] ?? $user['name']) ?>" required></div>
-        <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <?php render_academic_year_field(); ?>
-        <?php render_exam_session_field($effectiveYear); ?>
       <?php endif; ?>
 
       <?php if ($selectedType === 'journal'): ?>
@@ -3304,6 +3369,17 @@ require __DIR__ . '/inc/header.php';
                   $attReq = !str_starts_with($selectedType, 'inst_');
               }
           }
+
+          $hasCustomProof = false;
+          if (!empty($activeSection['form_config']) && is_array($activeSection['form_config'])) {
+              foreach ($activeSection['form_config'] as $cfgF) {
+                  if (($cfgF['type'] ?? '') === 'file' || in_array(($cfgF['key'] ?? ''), ['proof', 'proof_file', 'supporting_proof', 'proof_attachment'], true)) {
+                      $hasCustomProof = true;
+                      break;
+                  }
+              }
+          }
+
           if (!in_array($selectedType, ['journal', 'fdp', 'patent', 'inst_pass_percentage', 'inst_student_cgpa'], true) && !$hasCustomProof) {
               $proofLabel = match ($selectedType) {
                   'inst_research_centre' => 'Recognition Letter',

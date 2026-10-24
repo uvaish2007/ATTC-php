@@ -75,7 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'metric_key'          => $key,
             'category'            => $cat,
             'description'         => $desc,
-            'display_order'       => 99,
             'metric_type'         => 'generic',
             'faculty_visible'     => input('faculty_visible') !== null ? (input('faculty_visible') ? 1 : 0) : 1,
             'coordinator_visible' => input('coordinator_visible') !== null ? (input('coordinator_visible') ? 1 : 0) : 1,

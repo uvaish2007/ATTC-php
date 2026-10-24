@@ -1555,6 +1555,7 @@ function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?arra
     $coordVis = isset($settings['coordinator_visible']) ? (int)$settings['coordinator_visible'] : (int)$metric['coordinator_visible'];
     $hodVis   = isset($settings['hod_visible']) ? (int)$settings['hod_visible'] : (int)$metric['hod_visible'];
     $prinVis  = isset($settings['principal_visible']) ? (int)$settings['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
+    $status   = isset($settings['status']) ? (int)$settings['status'] : (int)($metric['status'] ?? 1);
     $settJson = isset($settings['settings_json']) ? (is_array($settings['settings_json']) ? json_encode($settings['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$settings['settings_json']) : ($metric['settings_json'] ?? null);
 
     $stmt = $pdo->prepare("UPDATE `metrics` SET
@@ -1568,12 +1569,14 @@ function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?arra
         `coordinator_visible` = ?,
         `hod_visible` = ?,
         `principal_visible` = ?,
+        `status` = ?,
         `settings_json` = ?
         WHERE `id` = ?");
     $stmt->execute([
         $draftJson, $attJson,
         $name, $category, $desc, $help,
         $facVis, $coordVis, $hodVis, $prinVis,
+        $status,
         $settJson,
         (int)$metric['id']
     ]);
@@ -1647,6 +1650,7 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
     $coordVis = isset($settings['coordinator_visible']) ? (int)$settings['coordinator_visible'] : (int)$metric['coordinator_visible'];
     $hodVis   = isset($settings['hod_visible']) ? (int)$settings['hod_visible'] : (int)$metric['hod_visible'];
     $prinVis  = isset($settings['principal_visible']) ? (int)$settings['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
+    $status   = isset($settings['status']) ? (int)$settings['status'] : (int)($metric['status'] ?? 1);
     $settJson = isset($settings['settings_json']) ? (is_array($settings['settings_json']) ? json_encode($settings['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$settings['settings_json']) : ($metric['settings_json'] ?? null);
 
     // Update metrics table
@@ -1664,12 +1668,14 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
         `coordinator_visible` = ?,
         `hod_visible` = ?,
         `principal_visible` = ?,
+        `status` = ?,
         `settings_json` = ?
         WHERE `id` = ?");
     $stmt->execute([
         $publishedJson, $publishedJson, $attJson, $newVer, $newType,
         $name, $category, $desc, $help,
         $facVis, $coordVis, $hodVis, $prinVis,
+        $status,
         $settJson,
         (int)$metric['id']
     ]);

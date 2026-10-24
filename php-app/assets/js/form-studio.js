@@ -298,6 +298,8 @@
       coordinator_visible: studioState.metric.coordinator_visible,
       hod_visible: studioState.metric.hod_visible,
       principal_visible: studioState.metric.principal_visible,
+      status: studioState.metric.status !== undefined ? studioState.metric.status : 1,
+      help_text: studioState.metric.help_text || '',
       proof_required: studioState.attachment.required ? 1 : 0
     }));
 
@@ -349,6 +351,8 @@
       coordinator_visible: studioState.metric.coordinator_visible,
       hod_visible: studioState.metric.hod_visible,
       principal_visible: studioState.metric.principal_visible,
+      status: studioState.metric.status !== undefined ? studioState.metric.status : 1,
+      help_text: studioState.metric.help_text || '',
       proof_required: studioState.attachment.required ? 1 : 0
     }));
 

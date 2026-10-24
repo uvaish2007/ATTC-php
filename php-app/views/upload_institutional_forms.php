@@ -169,6 +169,7 @@
       line-height: 1.1 !important;
     }
   </style>
+  <?php if (empty($hasDynamicForm)): ?>
   <?php render_dept_field($user, $departments, 'Department', true); ?>
   <?php render_academic_year_field($editRecord['academic_year'] ?? $effectiveYear, 'academic_year', 'Academic Year', true, 'upercentAcademicYear'); ?>
   <div class="field">
@@ -185,13 +186,14 @@
       <option value="" disabled selected>Select Semester</option>
     </select>
   </div>
+  <?php endif; ?>
 
   <input type="hidden" name="pass_percentage_rows" id="instPpRowsJson" value="[]">
   <input type="hidden" name="edit_id" id="upercentEditId" value="<?= (int)($editRecord['id'] ?? 0) ?>">
   <datalist id="upercentSubjectDatalist"></datalist>
 
   <!-- Year-Wise University Results Table -->
-  <div style="grid-column:span 2; margin-top:14px;">
+  <div style="grid-column: 1 / -1; margin-top:14px;">
     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
       <div>
         <strong style="font-size:14px; color:var(--navy,#131D3B); display:inline-flex; align-items:center; gap:6px;">
@@ -611,6 +613,13 @@
       if (elPassed) elPassed.textContent = sumPassed;
       if (elFailed) elFailed.textContent = sumFailed;
       if (elPct) elPct.textContent = overallPct + '%';
+
+      var dynReg = document.getElementById('upercentRegisteredStudents') || document.querySelector('input[name="registered_students"]');
+      var dynPassed = document.getElementById('upercentPassedStudents') || document.querySelector('input[name="passed_students"]');
+      var dynPct = document.getElementById('upercentPassPercentage') || document.querySelector('input[name="pass_percentage"]');
+      if (dynReg && sumReg > 0) dynReg.value = sumReg;
+      if (dynPassed && sumPassed > 0) dynPassed.value = sumPassed;
+      if (dynPct && sumReg > 0) dynPct.value = overallPct;
     }
 
     window.upercentOnNumericInput = function(idx) {
@@ -939,6 +948,22 @@
             proofErr.style.display = 'none';
           }
         });
+      }
+
+      // Dynamic Form Studio input auto-calculation
+      var dReg = document.getElementById('upercentRegisteredStudents') || document.querySelector('input[name="registered_students"]');
+      var dPassed = document.getElementById('upercentPassedStudents') || document.querySelector('input[name="passed_students"]');
+      var dPct = document.getElementById('upercentPassPercentage') || document.querySelector('input[name="pass_percentage"]');
+      if (dReg && dPassed && dPct) {
+        function calcDynPct() {
+          var rVal = parseFloat(dReg.value) || 0;
+          var pVal = parseFloat(dPassed.value) || 0;
+          if (rVal > 0) {
+            dPct.value = ((pVal / rVal) * 100).toFixed(2);
+          }
+        }
+        dReg.addEventListener('input', calcDynPct);
+        dPassed.addEventListener('input', calcDynPct);
       }
 
       // Form submission validation
