@@ -749,26 +749,53 @@
       case 'select':
         var opts = resolveFieldOptions(f);
         var optHtml = '<option selected>' + escapeHtml(f.placeholder || ('Select ' + f.label + '...')) + '</option>';
+        var hasOtherOpt = false;
         opts.forEach(function (opt) {
           var lbl = typeof opt === 'object' ? (opt.label || opt.value) : opt;
+          var val = typeof opt === 'object' ? (opt.value || lbl) : opt;
+          var vLow = String(val).toLowerCase().trim();
+          var lLow = String(lbl).toLowerCase().trim();
+          if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+            hasOtherOpt = true;
+          }
           optHtml += '<option disabled>' + escapeHtml(lbl) + '</option>';
         });
-        return '<select class="select realistic-canvas-input" disabled style="' + roStyle + 'font-size:12.5px;opacity:1;cursor:default;">' + optHtml + '</select>';
+        var selectMockup = '<select class="select realistic-canvas-input" disabled style="' + roStyle + 'font-size:12.5px;opacity:1;cursor:default;">' + optHtml + '</select>';
+        if (hasOtherOpt) {
+          selectMockup += '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;font-size:11px;color:#64748B;">' +
+            '<span style="color:#2563EB;font-weight:700;">↳</span> ' +
+            '<input class="input" style="height:28px;font-size:11px;background:#F8FAFC;border:1px dashed #CBD5E1;width:100%;color:#64748B;cursor:default;" placeholder="' + escapeHtml(f.label) + ' (Please specify) — auto text on Other" disabled>' +
+            '</div>';
+        }
+        return selectMockup;
 
       case 'radio':
       case 'checkbox':
       case 'yes_no':
         var rOpts = resolveFieldOptions(f);
         if (rOpts.length === 0) rOpts = ['Option 1', 'Option 2'];
+        var hasOtherRadio = false;
         var rHtml = '<div style="display:flex;flex-wrap:wrap;gap:12px;padding:4px 0;">';
         rOpts.forEach(function (opt, i) {
           var lbl = typeof opt === 'object' ? (opt.label || opt.value) : opt;
+          var val = typeof opt === 'object' ? (opt.value || lbl) : opt;
+          var vLow = String(val).toLowerCase().trim();
+          var lLow = String(lbl).toLowerCase().trim();
+          if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+            hasOtherRadio = true;
+          }
           rHtml += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:default;">' +
             '<input type="' + (f.type === 'checkbox' ? 'checkbox' : 'radio') + '" disabled ' + (i === 0 ? 'checked' : '') + '> ' +
             '<span>' + escapeHtml(lbl) + '</span>' +
             '</label>';
         });
         rHtml += '</div>';
+        if (hasOtherRadio && f.type === 'radio') {
+          rHtml += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;font-size:11px;color:#64748B;">' +
+            '<span style="color:#2563EB;font-weight:700;">↳</span> ' +
+            '<input class="input" style="height:28px;font-size:11px;background:#F8FAFC;border:1px dashed #CBD5E1;width:100%;color:#64748B;cursor:default;" placeholder="' + escapeHtml(f.label) + ' (Please specify) — auto text on Other" disabled>' +
+            '</div>';
+        }
         return rHtml;
 
       case 'file':
@@ -1093,7 +1120,10 @@
           '</div>';
       });
       html += '</div>' +
-        '<button type="button" class="btn btn-sm btn-outline btn-block" onclick="addCustomOption(' + idx + ')" style="font-size:11px;margin-top:6px;">+ Add Choice Option</button>';
+        '<div style="display:flex;gap:6px;margin-top:6px;">' +
+        '<button type="button" class="btn btn-sm btn-outline" onclick="addCustomOption(' + idx + ')" style="font-size:11px;flex:1;">+ Add Choice Option</button>' +
+        '<button type="button" class="btn btn-sm btn-outline" onclick="addOtherOption(' + idx + ')" style="font-size:11px;color:#2563EB;border-color:#93C5FD;background:#EFF6FF;" title="Add an Other choice that automatically reveals a text field for faculty">+ Add \'Other\'</button>' +
+        '</div>';
     }
 
     sec.innerHTML = html;
@@ -1376,6 +1406,9 @@
     }
 
     if (f.type === 'select') {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'width:100%;';
+
       var sel = document.createElement('select');
       sel.className = 'select';
       sel.name = f.key;
@@ -1383,28 +1416,85 @@
       sel.innerHTML = '<option value="">' + escapeHtml(f.placeholder || 'Select option...') + '</option>';
 
       var options = resolveFieldOptions(f);
+      var hasOther = false;
       options.forEach(function (opt) {
         var val = typeof opt === 'object' ? (opt.value || '') : opt;
         var lbl = typeof opt === 'object' ? (opt.label || val) : opt;
+        var vLow = String(val).toLowerCase().trim();
+        var lLow = String(lbl).toLowerCase().trim();
+        if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+          hasOther = true;
+        }
         sel.innerHTML += '<option value="' + escapeHtml(val) + '">' + escapeHtml(lbl) + '</option>';
       });
-      return sel;
+      wrap.appendChild(sel);
+
+      if (hasOther) {
+        var otherWrap = document.createElement('div');
+        otherWrap.style.cssText = 'display:none;margin-top:6px;';
+        otherWrap.innerHTML = '<label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:2px;">' + escapeHtml(f.label) + ' (Please specify)' + (f.required ? ' <span style="color:#DC2626;">*</span>' : '') + '</label>' +
+          '<input type="text" class="input" style="height:32px;font-size:12px;" placeholder="Please specify ' + escapeHtml(f.label) + '..." ' + (isDisabled ? 'disabled' : '') + '>';
+        wrap.appendChild(otherWrap);
+
+        sel.addEventListener('change', function () {
+          var v = (sel.value || '').toLowerCase().trim();
+          var isOther = (v === 'other' || v === 'others');
+          otherWrap.style.display = isOther ? 'block' : 'none';
+          if (isOther && !isDisabled) {
+            var inp = otherWrap.querySelector('input');
+            if (inp) inp.focus();
+          }
+        });
+      }
+
+      return wrap;
     }
 
     if (f.type === 'radio' || f.type === 'checkbox') {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'width:100%;';
+
       var group = document.createElement('div');
       group.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-top:2px;';
       var opts = resolveFieldOptions(f);
       if (opts.length === 0) opts = ['Yes', 'No'];
 
+      var hasOtherRadio = false;
       opts.forEach(function (opt) {
         var val = typeof opt === 'object' ? (opt.value || '') : opt;
         var lbl = typeof opt === 'object' ? (opt.label || val) : opt;
+        var vLow = String(val).toLowerCase().trim();
+        var lLow = String(lbl).toLowerCase().trim();
+        if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+          hasOtherRadio = true;
+        }
         group.innerHTML += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">' +
           '<input type="' + (f.type === 'radio' ? 'radio' : 'checkbox') + '" name="' + escapeHtml(f.key) + '" value="' + escapeHtml(val) + '" ' + disabledAttr + '> ' +
           '<span>' + escapeHtml(lbl) + '</span></label>';
       });
-      return group;
+      wrap.appendChild(group);
+
+      if (hasOtherRadio && f.type === 'radio') {
+        var otherWrap = document.createElement('div');
+        otherWrap.style.cssText = 'display:none;margin-top:6px;';
+        otherWrap.innerHTML = '<label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:2px;">' + escapeHtml(f.label) + ' (Please specify)' + (f.required ? ' <span style="color:#DC2626;">*</span>' : '') + '</label>' +
+          '<input type="text" class="input" style="height:32px;font-size:12px;" placeholder="Please specify ' + escapeHtml(f.label) + '..." ' + (isDisabled ? 'disabled' : '') + '>';
+        wrap.appendChild(otherWrap);
+
+        group.querySelectorAll('input[type="radio"]').forEach(function (r) {
+          r.addEventListener('change', function () {
+            var v = (this.value || '').toLowerCase().trim();
+            var isOther = (v === 'other' || v === 'others');
+            otherWrap.style.display = isOther ? 'block' : 'none';
+            if (isOther && !isDisabled) {
+              var inp = otherWrap.querySelector('input');
+              if (inp) inp.focus();
+            }
+          });
+        });
+      }
+
+      return wrap;
     }
 
     var inp = document.createElement('input');
@@ -2097,6 +2187,26 @@
     studioState.fields[idx].options.push('Option ' + count);
     renderInspector();
     renderInteractivePreview();
+    renderCanvas();
+  }
+
+  function addOtherOption(idx) {
+    if (!studioState.fields[idx]) return;
+    recordState();
+    if (!Array.isArray(studioState.fields[idx].options)) {
+      studioState.fields[idx].options = [];
+    }
+    var exists = studioState.fields[idx].options.some(function (opt) {
+      var v = String(typeof opt === 'object' ? (opt.value || opt.label || '') : opt).toLowerCase().trim();
+      return v === 'other' || v === 'others';
+    });
+    if (!exists) {
+      studioState.fields[idx].options.push('Other');
+    }
+    renderInspector();
+    renderInteractivePreview();
+    renderCanvas();
+    showToast('info', "'Other' option added — faculty will see an automatic text field when selected");
   }
 
   function updateCustomOption(idx, oIdx, val) {
@@ -2104,6 +2214,7 @@
     studioState.fields[idx].options[oIdx] = val;
     markDirty();
     renderInteractivePreview();
+    renderCanvas();
   }
 
   function removeCustomOption(idx, oIdx) {
@@ -2112,6 +2223,7 @@
     studioState.fields[idx].options.splice(oIdx, 1);
     renderInspector();
     renderInteractivePreview();
+    renderCanvas();
   }
 
   function updateFormSetting(key, val) {
@@ -2694,6 +2806,7 @@
   window.toggleConditionalLogic = toggleConditionalLogic;
   window.setOptionMode = setOptionMode;
   window.addCustomOption = addCustomOption;
+  window.addOtherOption = addOtherOption;
   window.updateCustomOption = updateCustomOption;
   window.removeCustomOption = removeCustomOption;
   window.updateFormSetting = updateFormSetting;

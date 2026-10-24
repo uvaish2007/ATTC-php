@@ -2079,10 +2079,42 @@ function metric_studio_validate_submission(string $metricKey, array $postData, ?
                 }
                 $allowedVals = array_unique(array_filter($allowedVals));
 
-                if (!empty($allowedVals) && !in_array($selVal, $allowedVals, true)) {
-                    return [false, "Invalid selection '{$selVal}' for field '{$label}'.", [], null];
+                // Check if allowed options include an "Other" or "Others" choice
+                $hasOtherOpt = false;
+                foreach ($allowedVals as $av) {
+                    $avLow = strtolower(trim((string)$av));
+                    if ($avLow === 'other' || $avLow === 'others') {
+                        $hasOtherOpt = true;
+                        break;
+                    }
                 }
-                $cleanedData[$k] = $selVal;
+
+                $isOtherSelected = false;
+                $otherText = trim((string)($postData[$k . '_other'] ?? ''));
+
+                if ($hasOtherOpt) {
+                    $selValLow = strtolower($selVal);
+                    if ($selValLow === 'other' || $selValLow === 'others') {
+                        $isOtherSelected = true;
+                    } elseif ($otherText !== '' && ($selVal === '' || $selVal === $otherText || !in_array($selVal, $allowedVals, true))) {
+                        $isOtherSelected = true;
+                    }
+                }
+
+                if ($isOtherSelected) {
+                    if (!empty($f['required']) && $otherText === '') {
+                        return [false, "Please specify the details for '{$label}' (Other).", [], null];
+                    }
+                    $cleanedData[$k] = $otherText !== '' ? $otherText : $selVal;
+                    $cleanedData[$k . '_other'] = $otherText;
+                    $cleanedData[$k . '_choice'] = 'Other';
+                } else {
+                    if (!empty($allowedVals) && !in_array($selVal, $allowedVals, true)) {
+                        return [false, "Invalid selection '{$selVal}' for field '{$label}'.", [], null];
+                    }
+                    $cleanedData[$k] = $selVal;
+                    $cleanedData[$k . '_other'] = '';
+                }
             } elseif ($type === 'multiselect') {
                 $arr = is_array($val) ? $val : array_map('trim', explode(',', (string)$val));
                 $cleanArr = [];
@@ -2244,6 +2276,21 @@ function generic_metric_record_submit(string $metricKey, array $user, string $ac
     $json = json_encode($dataValues, JSON_UNESCAPED_UNICODE);
     $dept = $user['department'] ?? 'General';
     $userId = (int)$user['id'];
+
+    $editId = (int)($postData['edit_id'] ?? 0);
+    if ($editId > 0) {
+        $checkStmt = $pdo->prepare("SELECT `id`, `proof_file` FROM `generic_metric_records` WHERE `id` = ? AND (`user_id` = ? OR ? = 'Admin')");
+        $checkStmt->execute([$editId, $userId, $user['role'] ?? 'Faculty']);
+        $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            $finalProof = $proofPath ?: $existing['proof_file'];
+            $upStmt = $pdo->prepare("UPDATE `generic_metric_records` SET 
+                `title` = ?, `data_json` = ?, `proof_file` = ?, `academic_year` = ?, `department` = ?, `status` = 'Submitted', `submitted_at` = NOW()
+                WHERE `id` = ?");
+            $upStmt->execute([$title, $json, $finalProof, $academicYear, $dept, $editId]);
+            return [true, "Record updated successfully.", $editId];
+        }
+    }
 
     $stmt = $pdo->prepare("INSERT INTO `generic_metric_records` (
         `metric_key`, `academic_year`, `department`, `user_id`, `title`,

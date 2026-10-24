@@ -469,7 +469,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     foreach ($_POST as $k => $v) {
         if (substr($k, -6) === '_other') {
             $base = substr($k, 0, -6);
-            if (($_POST[$base] ?? '') === 'Others' && trim((string) $v) !== '') {
+            $baseVal = strtolower(trim((string)($_POST[$base] ?? '')));
+            if (($baseVal === 'other' || $baseVal === 'others') && trim((string) $v) !== '') {
                 $_POST[$base] = trim((string) $v);
             }
         }
@@ -2376,9 +2377,52 @@ require __DIR__ . '/inc/header.php';
                 $isUpercentSem = ($fKey === 'semester' && str_contains($selectedType, 'pass_percentage'));
                 $selectId = $isUpercentSession ? 'upercentExamSession' : ($isUpercentSem ? 'upercentSemester' : '');
                 $onchangeAttr = $isUpercentSession ? 'onchange="if(window.upercentOnSessionChange) upercentOnSessionChange(this)"' : ($isUpercentSem ? 'onchange="if(window.upercentOnSemesterChange) upercentOnSemesterChange(this)"' : '');
+
+                // Check if this select field has an "Other" or "Others" option
+                $hasOtherOpt = false;
+                $otherOptValue = 'Other';
+                foreach ($resolvedOptions as $opt) {
+                    $ov = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                    $ol = is_array($opt) ? ($opt['label'] ?? $ov) : (string)$opt;
+                    $ovLow = strtolower(trim($ov));
+                    $olLow = strtolower(trim($ol));
+                    if ($ovLow === 'other' || $ovLow === 'others' || $olLow === 'other' || $olLow === 'others') {
+                        $hasOtherOpt = true;
+                        $otherOptValue = $ov;
+                        break;
+                    }
+                }
+
+                $otherTextVal = (string)($editDataMap[$fKey . '_other'] ?? '');
+                $isOtherSelected = false;
+                if ($hasOtherOpt) {
+                    $curValLow = strtolower(trim((string)$editVal));
+                    if ($curValLow === 'other' || $curValLow === 'others' || (string)$editVal === (string)$otherOptValue) {
+                        $isOtherSelected = true;
+                    } elseif ($otherTextVal !== '') {
+                        $isOtherSelected = true;
+                        $editVal = $otherOptValue;
+                    } elseif ($editVal !== '') {
+                        $matchesStd = false;
+                        foreach ($resolvedOptions as $opt) {
+                            $ov = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                            $ol = is_array($opt) ? ($opt['label'] ?? $ov) : (string)$opt;
+                            if (in_array(strtolower(trim($ov)), ['other', 'others'], true)) continue;
+                            if ((string)$editVal === (string)$ov || (string)$editVal === (string)$ol) {
+                                $matchesStd = true;
+                                break;
+                            }
+                        }
+                        if (!$matchesStd) {
+                            $isOtherSelected = true;
+                            $otherTextVal = (string)$editVal;
+                            $editVal = $otherOptValue;
+                        }
+                    }
+                }
               ?>
-              <select class="select" <?= $selectId ? 'id="' . $selectId . '"' : '' ?> name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> <?= $onchangeAttr ?>>
-                <option value="" disabled <?= $editVal === '' ? 'selected' : '' ?>><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
+              <select class="select <?= $hasOtherOpt ? 'js-select-has-other' : '' ?>" <?= $selectId ? 'id="' . $selectId . '"' : '' ?> name="<?= e($fKey) ?>" data-field-key="<?= e($fKey) ?>" data-is-required="<?= $req ? '1' : '0' ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> <?= $onchangeAttr ?>>
+                <option value="" disabled <?= ($editVal === '' && !$isOtherSelected) ? 'selected' : '' ?>><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
                 <?php if ($isUpercentSession && empty($resolvedOptions)): ?>
                   <option value="Nov/Dec" <?= ($editVal === 'Nov/Dec' || $editVal === 'Nov-Dec' || $editVal === 'NOV_DEC') ? 'selected' : '' ?>>Nov/Dec (Odd Semesters)</option>
                   <option value="Apr/May" <?= ($editVal === 'Apr/May' || $editVal === 'Apr-May' || $editVal === 'APR_MAY') ? 'selected' : '' ?>>Apr/May (Even Semesters)</option>
@@ -2393,11 +2437,29 @@ require __DIR__ . '/inc/header.php';
                     if ($isUpercentSem && is_numeric($optVal)) {
                         $optVal = 'Sem ' . $optVal;
                     }
+                    $isThisOptOther = in_array(strtolower(trim($optVal)), ['other', 'others'], true);
+                    $isSelected = ($isOtherSelected && $isThisOptOther) || (!$isOtherSelected && (string)$editVal === (string)$optVal);
                   ?>
-                    <option value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'selected' : '' ?>><?= e($optLbl) ?></option>
+                    <option value="<?= e($optVal) ?>" <?= $isSelected ? 'selected' : '' ?>><?= e($optLbl) ?></option>
                   <?php endforeach; ?>
                 <?php endif; ?>
               </select>
+
+              <?php if ($hasOtherOpt): ?>
+                <div class="field-other-wrap js-other-wrap-<?= e($fKey) ?>" style="margin-top:8px; <?= $isOtherSelected ? '' : 'display:none;' ?>">
+                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">
+                    <?= e($gf['label']) ?> (Please specify) <?= $req ? '<span class="req">*</span>' : '' ?>
+                  </label>
+                  <input class="input js-other-input" 
+                         type="text" 
+                         name="<?= e($fKey) ?>_other" 
+                         id="<?= e($fKey) ?>_other" 
+                         value="<?= e($otherTextVal) ?>" 
+                         placeholder="<?= e($gf['other_placeholder'] ?? 'Please specify ' . strtolower($gf['label']) . '...') ?>" 
+                         <?= ($isOtherSelected && $req) ? 'required' : '' ?> 
+                         <?= $disabledAttr ?>>
+                </div>
+              <?php endif; ?>
 
             <?php elseif ($fType === 'multiselect'): ?>
               <?php
@@ -2418,17 +2480,69 @@ require __DIR__ . '/inc/header.php';
               </div>
 
             <?php elseif ($fType === 'radio'): ?>
+              <?php
+                $hasOtherOpt = false;
+                $otherOptValue = 'Other';
+                foreach ($resolvedOptions as $opt) {
+                    $ov = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                    $ol = is_array($opt) ? ($opt['label'] ?? $ov) : (string)$opt;
+                    $ovLow = strtolower(trim($ov));
+                    $olLow = strtolower(trim($ol));
+                    if ($ovLow === 'other' || $ovLow === 'others' || $olLow === 'other' || $olLow === 'others') {
+                        $hasOtherOpt = true;
+                        $otherOptValue = $ov;
+                        break;
+                    }
+                }
+                $otherTextVal = (string)($editDataMap[$fKey . '_other'] ?? '');
+                $isOtherSelected = false;
+                if ($hasOtherOpt) {
+                    $curValLow = strtolower(trim((string)$editVal));
+                    if ($curValLow === 'other' || $curValLow === 'others' || (string)$editVal === (string)$otherOptValue) {
+                        $isOtherSelected = true;
+                    } elseif ($otherTextVal !== '') {
+                        $isOtherSelected = true;
+                        $editVal = $otherOptValue;
+                    }
+                }
+              ?>
               <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:4px;">
                 <?php foreach ($resolvedOptions as $opt):
                   $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
                   $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                  $isThisOptOther = in_array(strtolower(trim($optVal)), ['other', 'others'], true);
+                  $isChecked = ($isOtherSelected && $isThisOptOther) || (!$isOtherSelected && (string)$editVal === (string)$optVal);
                 ?>
                   <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:normal; cursor:pointer; margin:0;">
-                    <input type="radio" name="<?= e($fKey) ?>" value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'checked' : '' ?> <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+                    <input type="radio" 
+                           class="<?= $hasOtherOpt ? 'js-radio-has-other' : '' ?>"
+                           name="<?= e($fKey) ?>" 
+                           value="<?= e($optVal) ?>" 
+                           data-field-key="<?= e($fKey) ?>"
+                           data-is-required="<?= $req ? '1' : '0' ?>"
+                           <?= $isChecked ? 'checked' : '' ?> 
+                           <?= $req ? 'required' : '' ?> 
+                           <?= $disabledAttr ?>>
                     <span><?= e($optLbl) ?></span>
                   </label>
                 <?php endforeach; ?>
               </div>
+
+              <?php if ($hasOtherOpt): ?>
+                <div class="field-other-wrap js-other-wrap-<?= e($fKey) ?>" style="margin-top:8px; <?= $isOtherSelected ? '' : 'display:none;' ?>">
+                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">
+                    <?= e($gf['label']) ?> (Please specify) <?= $req ? '<span class="req">*</span>' : '' ?>
+                  </label>
+                  <input class="input js-other-input" 
+                         type="text" 
+                         name="<?= e($fKey) ?>_other" 
+                         id="<?= e($fKey) ?>_other" 
+                         value="<?= e($otherTextVal) ?>" 
+                         placeholder="<?= e($gf['other_placeholder'] ?? 'Please specify ' . strtolower($gf['label']) . '...') ?>" 
+                         <?= ($isOtherSelected && $req) ? 'required' : '' ?> 
+                         <?= $disabledAttr ?>>
+                </div>
+              <?php endif; ?>
 
             <?php elseif ($fType === 'checkbox'): ?>
               <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:normal; cursor:pointer; margin-top:6px;">
@@ -3496,11 +3610,70 @@ require __DIR__ . '/inc/header.php';
     </form>
 
     <script>
+      // Automatic 'Other' Dropdown & Radio Specification Field Synchronization
+      function initDynamicOtherOptions() {
+        // Select dropdowns with 'Other' option
+        document.querySelectorAll('select.js-select-has-other').forEach(function (sel) {
+          var fieldKey = sel.getAttribute('data-field-key');
+          var isReq = sel.getAttribute('data-is-required') === '1';
+          var wrap = sel.closest('.field') ? sel.closest('.field').querySelector('.js-other-wrap-' + fieldKey) : document.querySelector('.js-other-wrap-' + fieldKey);
+          var input = wrap ? wrap.querySelector('.js-other-input') : null;
+          if (!wrap || !input) return;
+
+          function syncSelect() {
+            var val = (sel.value || '').toLowerCase().trim();
+            var isOther = (val === 'other' || val === 'others');
+            wrap.style.display = isOther ? 'block' : 'none';
+            input.required = (isOther && isReq);
+            if (isOther && document.activeElement === sel) {
+              input.focus();
+            }
+          }
+
+          sel.addEventListener('change', syncSelect);
+          syncSelect();
+        });
+
+        // Radio option groups with 'Other' option
+        document.querySelectorAll('.field').forEach(function (fWrap) {
+          var radios = fWrap.querySelectorAll('input[type="radio"].js-radio-has-other');
+          if (!radios.length) return;
+          var first = radios[0];
+          var fieldKey = first.getAttribute('data-field-key') || first.name;
+          var isReq = first.getAttribute('data-is-required') === '1';
+          var wrap = fWrap.querySelector('.js-other-wrap-' + fieldKey);
+          var input = wrap ? wrap.querySelector('.js-other-input') : null;
+          if (!wrap || !input) return;
+
+          function syncRadio() {
+            var checked = fWrap.querySelector('input[type="radio"][name="' + first.name + '"]:checked');
+            var val = checked ? (checked.value || '').toLowerCase().trim() : '';
+            var isOther = (val === 'other' || val === 'others');
+            wrap.style.display = isOther ? 'block' : 'none';
+            input.required = (isOther && isReq);
+            if (isOther && document.activeElement && document.activeElement.type === 'radio') {
+              input.focus();
+            }
+          }
+
+          radios.forEach(function (r) {
+            r.addEventListener('change', syncRadio);
+          });
+          syncRadio();
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDynamicOtherOptions);
+      } else {
+        initDynamicOtherOptions();
+      }
+
       document.querySelectorAll('.js-other').forEach(function (sel) {
         var box = sel.parentElement.querySelector('.js-other-text');
         if (!box) return;
         function sync() {
-          var on = sel.value === 'Others';
+          var on = (sel.value || '').toLowerCase() === 'others' || (sel.value || '').toLowerCase() === 'other';
           box.style.display = on ? '' : 'none';
           box.required = on;
           if (!on) box.value = '';
