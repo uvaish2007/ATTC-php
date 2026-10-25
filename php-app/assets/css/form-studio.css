@@ -954,65 +954,38 @@
   box-shadow: 0 0 0 3px rgba(255, 79, 1, 0.16) !important;
 }
 
-.canvas-field-card.dragging,
-.canvas-field-card.is-dragging,
-.canvas-section-header.is-dragging {
-  opacity: 0.001 !important;
-  position: absolute !important;
-  pointer-events: none !important;
-  width: 0 !important;
-  height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: none !important;
-  overflow: hidden !important;
-  z-index: -1 !important;
+.canvas-field-card.dragging {
+  opacity: 0.35;
+  background: #FEF3C7;
+  border: 1px dashed #D97706;
 }
 
-/* Dynamic Live Drop Placeholder in CSS Grid */
-.canvas-drag-placeholder {
-  background: rgba(255, 79, 1, 0.04);
-  border: 2px dashed var(--studio-orange, #FF4F01);
-  border-radius: 8px;
-  min-height: 70px;
-  box-sizing: border-box;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  z-index: 12;
-  transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
+/* Drop Indicators */
+.canvas-field-card.drag-insert-before::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--studio-orange);
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(255, 79, 1, 0.7);
+  z-index: 20;
   pointer-events: none;
-  animation: placeholderPulse 1.8s ease-in-out infinite;
 }
-@keyframes placeholderPulse {
-  0%, 100% {
-    background-color: rgba(255, 79, 1, 0.03);
-    border-color: rgba(255, 79, 1, 0.6);
-  }
-  50% {
-    background-color: rgba(255, 79, 1, 0.08);
-    border-color: var(--studio-orange, #FF4F01);
-  }
-}
-.canvas-drag-placeholder-inner {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  background: #FFFFFF;
-  color: var(--studio-orange, #FF4F01);
-  border: 1px solid rgba(255, 79, 1, 0.25);
-  border-radius: 20px;
-  padding: 5px 14px;
-  font-size: 11.5px;
-  font-weight: 700;
-  box-shadow: 0 2px 8px rgba(255, 79, 1, 0.12);
+.canvas-field-card.drag-insert-after::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--studio-orange);
+  border-radius: 2px;
+  box-shadow: 0 0 10px rgba(255, 79, 1, 0.7);
+  z-index: 20;
   pointer-events: none;
-  user-select: none;
-}
-.canvas-drag-placeholder-inner .placeholder-icon {
-  font-size: 13px;
-  line-height: 1;
 }
 
 /* Interactive Horizontal Width Handle */
@@ -1202,38 +1175,27 @@
   flex-shrink: 0;
   opacity: 0;
   pointer-events: none;
-  transition: opacity .15s ease, transform .15s ease;
+  transition: opacity .15s ease;
   position: absolute;
-  right: 6px;
-  top: -14px;
+  right: 0;
+  top: -4px;
   background: #FFFFFF;
-  border: 1px solid #CBD5E1;
-  border-radius: 6px;
+  border: 1px solid var(--studio-border);
+  border-radius: 5px;
   padding: 2px 4px;
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.12);
-  z-index: 25;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  z-index: 15;
 }
 .canvas-field-card:hover .field-actions-toolbar,
-.canvas-field-card.active-field .field-actions-toolbar,
-.canvas-section-header:hover .field-actions-toolbar,
-.canvas-section-header.active-selection .field-actions-toolbar {
+.canvas-field-card.active-field .field-actions-toolbar {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* Hide all action toolbars completely during drag interactions */
-.canvas-form-surface.show-grid-guides .field-actions-toolbar,
-.canvas-field-card.is-dragging .field-actions-toolbar,
-.canvas-section-header.is-dragging .field-actions-toolbar {
-  opacity: 0 !important;
-  pointer-events: none !important;
-  display: none !important;
-}
-
 .btn-width-toggle {
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 700;
-  padding: 1px 4px;
+  padding: 2px 5px;
   border-radius: 4px;
   border: 1px solid #CBD5E1;
   background: #F8FAFC;
@@ -1248,8 +1210,8 @@
 }
 
 .field-act-btn {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 4px;
   border: 1px solid transparent;
   background: transparent;
@@ -1259,7 +1221,7 @@
   justify-content: center;
   cursor: pointer;
   padding: 0;
-  font-size: 11px;
+  font-size: 11.5px;
   transition: all .1s ease;
 }
 .field-act-btn:hover {
@@ -1271,6 +1233,163 @@
   background: #FEE2E2;
   border-color: #FCA5A5;
   color: #DC2626;
+}
+
+/* Card Move Glow & Pulse Animation */
+@keyframes cardMovedPulse {
+  0% {
+    transform: scale(0.97);
+    box-shadow: 0 0 0 4px rgba(255, 79, 1, 0.5), 0 4px 14px rgba(255, 79, 1, 0.3);
+    border-color: var(--studio-orange) !important;
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 8px rgba(255, 79, 1, 0.25), 0 6px 18px rgba(255, 79, 1, 0.2);
+    border-color: var(--studio-orange) !important;
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 3px rgba(255, 79, 1, 0.16);
+    border-color: var(--studio-orange) !important;
+  }
+}
+.canvas-field-card.card-moved-pulse,
+.canvas-section-header.card-moved-pulse {
+  animation: cardMovedPulse 0.55s ease-out forwards;
+  z-index: 30 !important;
+}
+
+/* Refix Location Mode Banner & Target Cards */
+.refix-mode-banner {
+  grid-column: 1 / -1;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: linear-gradient(135deg, #1E1B4B 0%, #4338CA 100%);
+  color: #FFFFFF;
+  padding: 10px 16px;
+  border-radius: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  box-shadow: 0 4px 14px rgba(67, 56, 202, 0.25);
+  animation: refixBannerIn .2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  z-index: 20;
+}
+@keyframes refixBannerIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.refix-mode-active .canvas-field-card {
+  transition: all .15s ease;
+}
+.refix-mode-active .canvas-field-card.refix-source-card {
+  border-color: #4338CA !important;
+  box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.25) !important;
+  background: #EEF2FF !important;
+}
+.refix-mode-active .canvas-field-card.refix-target-card {
+  cursor: pointer !important;
+  border: 2px dashed #94A3B8 !important;
+  background: #FFFFFF;
+}
+.refix-mode-active .canvas-field-card.refix-target-card:hover {
+  border-color: #4338CA !important;
+  background: #EEF2FF !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(67, 56, 202, 0.18) !important;
+}
+
+.refix-target-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #4338CA;
+  color: #FFFFFF;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  margin-left: 6px;
+  letter-spacing: 0.2px;
+}
+.refix-target-badge.badge-upper {
+  background: #2563EB;
+}
+.refix-target-badge.badge-down {
+  background: #7C3AED;
+}
+
+/* Inline Label Editing */
+.field-label-preview {
+  cursor: text;
+  border-bottom: 1px dashed transparent;
+  transition: border-color .15s ease;
+}
+.field-label-preview:hover {
+  border-bottom-color: #94A3B8;
+}
+.field-label-inline-input {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--studio-navy);
+  background: #FFFFFF;
+  border: 1.5px solid var(--studio-orange);
+  border-radius: 4px;
+  padding: 2px 6px;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(255, 79, 1, 0.18);
+  min-width: 140px;
+  max-width: 260px;
+}
+
+/* Location & Reorder Box in Inspector */
+.studio-location-reorder-box {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 4px;
+}
+.studio-btn-move {
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all .15s ease;
+}
+.studio-btn-move:hover:not(:disabled) {
+  background: #FFFFFF !important;
+  border-color: var(--studio-orange) !important;
+  color: var(--studio-orange) !important;
+  box-shadow: 0 2px 6px rgba(255, 79, 1, 0.12);
+  transform: translateY(-1px);
+}
+.studio-btn-move:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.btn-act-move-up:hover {
+  color: #2563EB !important;
+  border-color: #93C5FD !important;
+  background: #EFF6FF !important;
+}
+.btn-act-move-down:hover {
+  color: #7C3AED !important;
+  border-color: #C4B5FD !important;
+  background: #F5F3FF !important;
+}
+.btn-act-refix:hover {
+  color: #4338CA !important;
+  border-color: #A5B4FC !important;
+  background: #EEF2FF !important;
+}
+.btn-act-edit:hover {
+  color: #0D9488 !important;
+  border-color: #99F6E4 !important;
+  background: #F0FDFA !important;
 }
 
 /* Realistic Controls on Canvas matching upload.php */

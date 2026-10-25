@@ -44,11 +44,33 @@
     undoStack: [],
     redoStack: [],
     viewport: 'desktop', // 'desktop', 'tablet', 'mobile'
-    previewRole: 'Faculty' // 'Faculty', 'Coordinator', 'HoD', 'Principal'
+    previewRole: 'Faculty', // 'Faculty', 'Coordinator', 'HoD', 'Principal'
+    refixMode: {
+      active: false,
+      fromIdx: null
+    }
   };
 
   // Expose state for debugging/testing
   window.studioState = studioState;
+
+  function showStudioToast(type, msg) {
+    var existing = document.getElementById('studioToastFloating');
+    if (existing && existing.parentNode) {
+      existing.parentNode.removeChild(existing);
+    }
+    var t = document.createElement('div');
+    t.id = 'studioToastFloating';
+    t.className = 'studio-toast ' + (type || 'info');
+    t.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#0F172A;color:#FFFFFF;padding:10px 18px;border-radius:8px;font-size:12.5px;font-weight:600;box-shadow:0 10px 25px rgba(0,0,0,0.25);z-index:9999;display:flex;align-items:center;gap:10px;animation:slideDownFade .2s ease;';
+    var icon = type === 'success' ? '✓' : (type === 'error' ? '⚠' : 'ℹ');
+    t.innerHTML = '<span style="color:' + (type === 'success' ? '#4ADE80' : (type === 'error' ? '#F87171' : '#60A5FA')) + ';font-size:14px;">' + icon + '</span><span>' + escapeHtml(msg) + '</span>';
+    document.body.appendChild(t);
+    setTimeout(function () {
+      if (t && t.parentNode) t.parentNode.removeChild(t);
+    }, 2800);
+  }
+  window.showToast = showStudioToast;
 
   // ---------------------------------------------------------------------------
   // 1. Initial Loading & Config Fetching
@@ -273,6 +295,23 @@
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
       e.preventDefault();
       saveDraft();
+    } else if ((e.altKey || (e.ctrlKey && e.shiftKey)) && typeof studioState.selectedIdx === 'number' && studioState.fields[studioState.selectedIdx]) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        moveFieldUp(studioState.selectedIdx, e.shiftKey);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        moveFieldDown(studioState.selectedIdx, e.shiftKey);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        moveFieldToTop(studioState.selectedIdx);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        moveFieldToBottom(studioState.selectedIdx);
+      }
+    } else if (e.key === 'Escape' && studioState.refixMode && studioState.refixMode.active) {
+      e.preventDefault();
+      cancelRefixLocation();
     }
   });
 
@@ -398,168 +437,8 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 4. Center Canvas Rendering & Dynamic Drag Reordering
+  // 4. Center Canvas Rendering & Interactions
   // ---------------------------------------------------------------------------
-  var canvasDragState = {
-    isDragging: false,
-    source: null,        // 'canvas' | 'palette'
-    fromIndex: -1,       // index in studioState.fields
-    draggedCard: null,   // DOM element of dragged card
-    placeholder: null,   // DOM element of placeholder slot
-    paletteType: null,   // if source === 'palette'
-    span: 6
-  };
-
-  function createDragPlaceholder(span, heightPx) {
-    var ph = document.createElement('div');
-    ph.className = 'canvas-drag-placeholder';
-    ph.style.gridColumn = 'span ' + Math.min(12, Math.max(1, span || 6));
-    ph.style.minHeight = Math.max(heightPx || 70, 60) + 'px';
-    ph.innerHTML = '<div class="canvas-drag-placeholder-inner">' +
-      '<span class="placeholder-icon">↕</span>' +
-      '<span class="placeholder-label">Move here</span>' +
-      '</div>';
-    return ph;
-  }
-
-  function cleanupDragState() {
-    if (canvasDragState.placeholder && canvasDragState.placeholder.parentNode) {
-      canvasDragState.placeholder.parentNode.removeChild(canvasDragState.placeholder);
-    }
-    if (canvasDragState.draggedCard) {
-      canvasDragState.draggedCard.classList.remove('is-dragging', 'dragging');
-    }
-    canvasDragState.isDragging = false;
-    canvasDragState.source = null;
-    canvasDragState.fromIndex = -1;
-    canvasDragState.draggedCard = null;
-    canvasDragState.placeholder = null;
-    canvasDragState.paletteType = null;
-
-    var surface = document.querySelector('.canvas-form-surface');
-    if (surface) surface.classList.remove('show-grid-guides');
-
-    document.querySelectorAll('.canvas-field-card, .canvas-section-header').forEach(function (c) {
-      c.classList.remove('drag-insert-before', 'drag-insert-after', 'is-dragging', 'dragging');
-    });
-  }
-
-  function handleCardDragOver(e, targetElement) {
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = 'move';
-    }
-
-    var container = document.getElementById('canvasSectionsContainer');
-    if (!container) return;
-
-    if (!canvasDragState.isDragging || !canvasDragState.placeholder) {
-      var raw = '';
-      try {
-        raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-      } catch (err) {}
-      var pType = 'text';
-      if (raw) {
-        try {
-          var p = JSON.parse(raw);
-          if (p.source === 'palette') pType = p.type;
-        } catch (err) {}
-      }
-      canvasDragState.isDragging = true;
-      canvasDragState.source = 'palette';
-      canvasDragState.paletteType = pType;
-      var span = (['section_header', 'heading', 'divider', 'instructions'].indexOf(pType) !== -1) ? 12 : 6;
-      canvasDragState.span = span;
-      canvasDragState.placeholder = createDragPlaceholder(span, 70);
-      container.appendChild(canvasDragState.placeholder);
-    }
-
-    var placeholder = canvasDragState.placeholder;
-    if (!placeholder) return;
-
-    if (targetElement === placeholder || targetElement.closest('.canvas-drag-placeholder')) {
-      return;
-    }
-    if (targetElement === canvasDragState.draggedCard) {
-      return;
-    }
-
-    var rect = targetElement.getBoundingClientRect();
-    var midY = rect.top + rect.height / 2;
-    var midX = rect.left + rect.width / 2;
-
-    var isBefore = false;
-    if (Math.abs(e.clientY - midY) > rect.height * 0.2) {
-      isBefore = (e.clientY < midY);
-    } else {
-      isBefore = (e.clientX < midX);
-    }
-
-    if (isBefore) {
-      if (placeholder.nextSibling !== targetElement) {
-        container.insertBefore(placeholder, targetElement);
-      }
-    } else {
-      if (placeholder.previousSibling !== targetElement) {
-        container.insertBefore(placeholder, targetElement.nextSibling);
-      }
-    }
-  }
-
-  function calculateDropIndex() {
-    var container = document.getElementById('canvasSectionsContainer');
-    if (!container || !canvasDragState.placeholder) return -1;
-
-    var placeholder = canvasDragState.placeholder;
-    var draggedCard = canvasDragState.draggedCard;
-    var children = Array.from(container.children);
-    var dropIndex = 0;
-
-    for (var i = 0; i < children.length; i++) {
-      var el = children[i];
-      if (el === placeholder) {
-        break;
-      }
-      if (el !== draggedCard && (el.classList.contains('canvas-field-card') || el.classList.contains('canvas-section-header'))) {
-        dropIndex++;
-      }
-    }
-    return dropIndex;
-  }
-
-  function executeCanvasDrop(e) {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    if (!canvasDragState.isDragging || !canvasDragState.placeholder) {
-      cleanupDragState();
-      return;
-    }
-
-    var newIndex = calculateDropIndex();
-    var fromIdx = canvasDragState.fromIndex;
-    var source = canvasDragState.source;
-    var paletteType = canvasDragState.paletteType;
-
-    cleanupDragState();
-
-    if (source === 'canvas') {
-      if (fromIdx >= 0 && fromIdx < studioState.fields.length && newIndex >= 0) {
-        if (fromIdx !== newIndex) {
-          moveField(fromIdx, newIndex);
-        } else {
-          renderCanvas();
-        }
-      } else {
-        renderCanvas();
-      }
-    } else if (source === 'palette' && paletteType) {
-      addFieldFromPalette(paletteType, newIndex >= 0 ? newIndex : undefined);
-    }
-  }
-
   function renderCanvas() {
     var container = document.getElementById('canvasSectionsContainer');
     if (!container) return;
@@ -574,9 +453,24 @@
       return;
     }
 
-    // Group fields by section (if configured)
-    var currentSection = null;
-    var currentSectionList = null;
+    // Refix Location interactive mode banner
+    if (studioState.refixMode && studioState.refixMode.active && studioState.fields[studioState.refixMode.fromIdx]) {
+      container.classList.add('refix-mode-active');
+      var rBanner = document.createElement('div');
+      rBanner.className = 'refix-mode-banner';
+      var rField = studioState.fields[studioState.refixMode.fromIdx];
+      rBanner.innerHTML = '<div style="display:flex;align-items:center;gap:10px;min-width:0;">' +
+        '<span style="font-size:18px;">📍</span>' +
+        '<div style="min-width:0;">' +
+        '<div style="font-weight:800;font-size:13px;">Refixing Location for: ' + escapeHtml(rField.label || 'Field') + ' (Currently Box #' + (studioState.refixMode.fromIdx + 1) + ')</div>' +
+        '<div style="font-size:11.5px;opacity:0.9;">Click any target box below to automatically place it in that position.</div>' +
+        '</div>' +
+        '</div>' +
+        '<button type="button" class="btn btn-sm" onclick="cancelRefixLocation()" style="background:#FFFFFF;color:#4338CA;border:none;font-weight:700;padding:6px 14px;border-radius:6px;cursor:pointer;white-space:nowrap;">Done / Exit</button>';
+      container.appendChild(rBanner);
+    } else {
+      container.classList.remove('refix-mode-active');
+    }
 
     studioState.fields.forEach(function (f, idx) {
       if (f.type === 'section_header') {
@@ -584,56 +478,36 @@
         secDiv.className = 'canvas-section-header' + (studioState.selectedIdx === idx ? ' active-selection' : '');
         secDiv.style.gridColumn = '1 / -1';
         secDiv.style.width = '100%';
-        secDiv.draggable = true;
         secDiv.dataset.index = idx;
-        secDiv.onclick = function (e) {
-          e.stopPropagation();
-          selectField(idx);
-        };
-        secDiv.addEventListener('dragstart', function (e) {
-          if (e.target.closest('.field-actions-toolbar') || e.target.closest('button, a')) {
-            e.preventDefault();
-            return false;
+
+        if (studioState.refixMode && studioState.refixMode.active) {
+          if (idx === studioState.refixMode.fromIdx) {
+            secDiv.classList.add('refix-source-card');
+          } else {
+            secDiv.classList.add('refix-target-card');
+            secDiv.onclick = function (e) {
+              e.stopPropagation();
+              var from = studioState.refixMode.fromIdx;
+              studioState.refixMode.active = false;
+              studioState.refixMode.fromIdx = null;
+              moveField(from, idx);
+            };
           }
-          canvasDragState.isDragging = true;
-          canvasDragState.source = 'canvas';
-          canvasDragState.fromIndex = idx;
-          canvasDragState.draggedCard = secDiv;
-          canvasDragState.span = 12;
+        } else {
+          secDiv.onclick = function (e) {
+            e.stopPropagation();
+            selectField(idx);
+          };
+        }
 
-          if (e.dataTransfer) {
-            e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'canvas', index: idx }));
-            e.dataTransfer.effectAllowed = 'move';
-          }
-
-          var surface = document.querySelector('.canvas-form-surface');
-          if (surface) surface.classList.add('show-grid-guides');
-
-          var rect = secDiv.getBoundingClientRect();
-          canvasDragState.placeholder = createDragPlaceholder(12, rect.height);
-          secDiv.parentNode.insertBefore(canvasDragState.placeholder, secDiv);
-
-          setTimeout(function () {
-            if (canvasDragState.isDragging && secDiv) {
-              secDiv.classList.add('is-dragging');
-            }
-          }, 0);
-        });
-        secDiv.addEventListener('dragend', function () {
-          cleanupDragState();
-        });
-        secDiv.addEventListener('dragover', function (e) {
-          handleCardDragOver(e, secDiv);
-        });
-        secDiv.addEventListener('drop', function (e) {
-          executeCanvasDrop(e);
-        });
         secDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;min-width:0;">' +
           '<span style="color:#FF4F01;font-size:16px;">📂</span>' +
           '<span class="section-title-text" style="word-break:break-word;">' + escapeHtml(f.label || 'New Section') + '</span>' +
           (f.help_text ? '<span style="font-size:11.5px;color:#64748B;font-weight:normal;margin-left:6px;word-break:break-word;">' + escapeHtml(f.help_text) + '</span>' : '') +
           '</div>' +
           '<div class="field-actions-toolbar">' +
+          '<button type="button" class="field-act-btn btn-act-move-up" title="Move in Upper" onclick="event.stopPropagation();moveFieldUp(' + idx + ');">↑</button>' +
+          '<button type="button" class="field-act-btn btn-act-move-down" title="Move Down" onclick="event.stopPropagation();moveFieldDown(' + idx + ');">↓</button>' +
           '<button type="button" class="field-act-btn delete-btn" title="Delete Section" onclick="event.stopPropagation();deleteField(' + idx + ');">&times;</button>' +
           '</div>';
         container.appendChild(secDiv);
@@ -807,57 +681,104 @@
     card.draggable = true;
     card.dataset.index = idx;
 
-    // Real-time dynamic drag-and-drop reordering with live placeholder flow
-    card.addEventListener('dragstart', function (e) {
-      if (e.target.closest('.field-actions-toolbar') ||
-          e.target.closest('.field-resize-handle') ||
-          e.target.closest('.field-height-handle') ||
-          e.target.closest('button, input, select, textarea, a')) {
-        e.preventDefault();
-        return false;
+    // Refix mode handling
+    var isRefixMode = !!(studioState.refixMode && studioState.refixMode.active);
+    var isRefixSource = (isRefixMode && studioState.refixMode.fromIdx === idx);
+
+    if (isRefixMode) {
+      if (isRefixSource) {
+        card.classList.add('refix-source-card');
+      } else {
+        card.classList.add('refix-target-card');
+        card.onclick = function (e) {
+          e.stopPropagation();
+          var from = studioState.refixMode.fromIdx;
+          studioState.refixMode.active = false;
+          studioState.refixMode.fromIdx = null;
+          moveField(from, idx);
+        };
       }
+    } else {
+      card.onclick = function (e) {
+        e.stopPropagation();
+        selectField(idx);
+      };
+    }
 
-      canvasDragState.isDragging = true;
-      canvasDragState.source = 'canvas';
-      canvasDragState.fromIndex = idx;
-      canvasDragState.draggedCard = card;
-      canvasDragState.span = span;
-
+    // Drag-and-drop reordering listeners with visible glowing insertion indicators
+    card.addEventListener('dragstart', function (e) {
       if (e.dataTransfer) {
         e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'canvas', index: idx }));
         e.dataTransfer.effectAllowed = 'move';
       }
-
+      card.classList.add('dragging');
       var surface = document.querySelector('.canvas-form-surface');
       if (surface) surface.classList.add('show-grid-guides');
-
-      var rect = card.getBoundingClientRect();
-      canvasDragState.placeholder = createDragPlaceholder(span, rect.height);
-      card.parentNode.insertBefore(canvasDragState.placeholder, card);
-
-      setTimeout(function () {
-        if (canvasDragState.isDragging && card) {
-          card.classList.add('is-dragging');
-        }
-      }, 0);
     });
 
     card.addEventListener('dragend', function () {
-      cleanupDragState();
+      card.classList.remove('dragging');
+      var surface = document.querySelector('.canvas-form-surface');
+      if (surface) surface.classList.remove('show-grid-guides');
+      document.querySelectorAll('.canvas-field-card').forEach(function (c) {
+        c.classList.remove('drag-insert-before', 'drag-insert-after', 'drag-over-top', 'drag-over-bottom');
+      });
     });
 
     card.addEventListener('dragover', function (e) {
-      handleCardDragOver(e, card);
+      e.preventDefault();
+      var rect = card.getBoundingClientRect();
+      var relY = e.clientY - rect.top;
+      var relX = e.clientX - rect.left;
+      var isBefore = (relY < rect.height * 0.45) || (relY <= rect.height * 0.7 && relX < rect.width * 0.5);
+      if (isBefore) {
+        card.classList.add('drag-insert-before');
+        card.classList.remove('drag-insert-after');
+      } else {
+        card.classList.add('drag-insert-after');
+        card.classList.remove('drag-insert-before');
+      }
+    });
+
+    card.addEventListener('dragleave', function () {
+      card.classList.remove('drag-insert-before', 'drag-insert-after');
     });
 
     card.addEventListener('drop', function (e) {
-      executeCanvasDrop(e);
-    });
+      e.preventDefault();
+      card.classList.remove('drag-insert-before', 'drag-insert-after');
+      var raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+      var payload = null;
+      try {
+        payload = JSON.parse(raw);
+      } catch (err) {
+        payload = isNaN(parseInt(raw, 10)) ? { source: 'palette', type: raw } : { source: 'canvas', index: parseInt(raw, 10) };
+      }
 
-    // Selection on click
-    card.addEventListener('click', function (e) {
-      e.stopPropagation();
-      selectField(idx);
+      var rect = card.getBoundingClientRect();
+      var relY = e.clientY - rect.top;
+      var relX = e.clientX - rect.left;
+      var isBefore = (relY < rect.height * 0.45) || (relY <= rect.height * 0.7 && relX < rect.width * 0.5);
+
+      if (payload && payload.source === 'canvas') {
+        var fromIdx = parseInt(payload.index, 10);
+        if (isNaN(fromIdx) || fromIdx === idx) return;
+
+        var toIdx = idx;
+        if (fromIdx < idx) {
+          toIdx = isBefore ? (idx - 1) : idx;
+        } else {
+          toIdx = isBefore ? idx : (idx + 1);
+        }
+        toIdx = Math.max(0, Math.min(studioState.fields.length - 1, toIdx));
+        if (toIdx !== fromIdx) {
+          moveField(fromIdx, toIdx);
+        }
+      } else if (payload && (payload.type || typeof payload === 'string')) {
+        var t = payload.type || payload;
+        var insertIdx = isBefore ? idx : (idx + 1);
+        addFieldFromPalette(t, insertIdx);
+      }
     });
 
     // Card Header
@@ -867,19 +788,28 @@
     var headerLeft = document.createElement('div');
     headerLeft.className = 'field-card-header-left';
     headerLeft.innerHTML = '<span class="field-drag-grip" title="Drag to reorder position on canvas">⋮⋮</span>' +
-      '<span class="field-label-preview" title="' + escapeHtml(f.label || '') + '">' + escapeHtml(f.label || 'Untitled Field') + '</span>' +
+      '<span class="field-label-preview" title="Click to select · Double-click to rename label directly" ondblclick="enableInlineLabelEdit(event, ' + idx + ', this)">' + escapeHtml(f.label || 'Untitled Field') + '</span>' +
       (f.required ? '<span class="field-req-mark" title="Required field">*</span>' : '') +
       '<span class="field-span-pill" title="Grid column span">' + span + '/12</span>' +
       (f.readonly || f.read_only ? '<span class="field-mini-pill" title="Read-Only / Computed">🔒</span>' : '') +
       (f.conditional && f.conditional.field ? '<span class="field-mini-pill fx" title="Conditional logic">fx</span>' : '') +
       (f.protected ? '<span class="field-mini-pill protected" title="Core Institutional Field">★</span>' : '');
 
+    if (isRefixMode && !isRefixSource) {
+      var badge = document.createElement('span');
+      badge.className = 'refix-target-badge ' + (idx < studioState.refixMode.fromIdx ? 'badge-upper' : 'badge-down');
+      badge.textContent = idx < studioState.refixMode.fromIdx ? ('↑ Move here in upper (#' + (idx + 1) + ')') : ('↓ Move here down (#' + (idx + 1) + ')');
+      headerLeft.appendChild(badge);
+    }
+
     var headerRight = document.createElement('div');
     headerRight.className = 'field-actions-toolbar';
     headerRight.innerHTML =
       '<button type="button" class="field-act-btn btn-width-toggle" title="Click to cycle width (25% → 33% → 50% → 67% → 75% → 100%)" onclick="event.stopPropagation();toggleFieldWidth(' + idx + ');">' + Math.round((span/12)*100) + '%</button>' +
-      '<button type="button" class="field-act-btn" title="Move Left / Up" onclick="event.stopPropagation();moveFieldUp(' + idx + ');">↑</button>' +
-      '<button type="button" class="field-act-btn" title="Move Right / Down" onclick="event.stopPropagation();moveFieldDown(' + idx + ');">↓</button>' +
+      '<button type="button" class="field-act-btn btn-act-move-up" title="Move in Upper (Shift+Click for 1 Row Up)" onclick="event.stopPropagation();moveFieldUp(' + idx + ', event.shiftKey);">↑</button>' +
+      '<button type="button" class="field-act-btn btn-act-move-down" title="Move Down (Shift+Click for 1 Row Down)" onclick="event.stopPropagation();moveFieldDown(' + idx + ', event.shiftKey);">↓</button>' +
+      '<button type="button" class="field-act-btn btn-act-refix" title="Refix location / choose new position" onclick="event.stopPropagation();startRefixLocation(' + idx + ');">📍</button>' +
+      '<button type="button" class="field-act-btn btn-act-edit" title="Quick Edit Field Label &amp; Settings" onclick="event.stopPropagation();quickEditField(' + idx + ');">✎</button>' +
       '<button type="button" class="field-act-btn" title="Duplicate Field" onclick="event.stopPropagation();duplicateField(' + idx + ');">⧉</button>' +
       '<button type="button" class="field-act-btn delete-btn" title="Delete Field" onclick="event.stopPropagation();deleteField(' + idx + ');">🗑</button>';
 
@@ -1039,9 +969,9 @@
     }
     clearSelectionStyles();
 
-    var cards = document.querySelectorAll('.canvas-field-card');
-    if (typeof studioState.selectedIdx === 'number' && cards[studioState.selectedIdx]) {
-      cards[studioState.selectedIdx].classList.add('active-field');
+    if (typeof studioState.selectedIdx === 'number') {
+      var selCard = document.querySelector('.canvas-field-card[data-index="' + studioState.selectedIdx + '"], .canvas-section-header[data-index="' + studioState.selectedIdx + '"]');
+      if (selCard) selCard.classList.add('active-field');
     }
 
     switchRightTab('inspector');
@@ -1105,8 +1035,11 @@
     var wrap = document.createElement('div');
     wrap.style.cssText = 'display:flex;flex-direction:column;gap:14px;';
 
+    var total = studioState.fields.length;
+    var gridPos = getGridPositions();
+    var curPos = gridPos[idx] || { row: 1, colStart: 1, span: getFieldSpan(f) };
+
     // Header with Type & Key
-    var isFull = (f.width === 'full' || f.col_span === 2);
     var head = document.createElement('div');
     head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding-bottom:10px;border-bottom:1px solid #E2E8F0;';
     head.innerHTML = '<div>' +
@@ -1116,7 +1049,93 @@
       '<span class="badge badge-neutral" style="text-transform:uppercase;">' + escapeHtml(f.type) + '</span>';
     wrap.appendChild(head);
 
-    // Section: Grid Layout, Dimensions & Free Positioning
+    // 1. TOP SECTION: Field Identity & Content (Easy Editing without scrolling)
+    var secBasic = document.createElement('div');
+    secBasic.className = 'prop-section';
+    secBasic.innerHTML =
+      '<div class="prop-section-title" style="display:flex;align-items:center;justify-content:space-between;">' +
+      '<span>Field Identity &amp; Content</span>' +
+      '<span style="font-size:11px;font-weight:normal;color:#64748B;">Quick Edit</span>' +
+      '</div>' +
+      '<div class="prop-field-group"><label class="prop-label">Field Label</label>' +
+      '<input type="text" id="propFieldLabelInput" class="prop-input" value="' + escapeHtml(f.label || '') + '" oninput="updateFieldProperty(' + idx + ', \'label\', this.value)" style="font-weight:700;color:var(--studio-navy);font-size:13px;"></div>' +
+      '<div class="prop-field-group"><label class="prop-label">Field Key / Slug</label>' +
+      '<input type="text" class="prop-input" value="' + escapeHtml(f.key || '') + '" oninput="updateFieldProperty(' + idx + ', \'key\', this.value)" style="font-family:monospace;font-size:11.5px;"></div>' +
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin:8px 0;padding:6px 0;border-top:1px solid #F1F5F9;border-bottom:1px solid #F1F5F9;">' +
+      '<div>' +
+      '<span style="font-size:12px;font-weight:700;color:var(--studio-navy);">Required Field</span>' +
+      '<div style="font-size:10.5px;color:#64748B;">Respondent must fill this field</div>' +
+      '</div>' +
+      '<input type="checkbox" ' + (f.required ? 'checked' : '') + ' onchange="updateFieldProperty(' + idx + ', \'required\', this.checked)">' +
+      '</div>' +
+      '<div class="prop-field-group"><label class="prop-label">Placeholder Text</label>' +
+      '<input type="text" class="prop-input" value="' + escapeHtml(f.placeholder || '') + '" oninput="updateFieldProperty(' + idx + ', \'placeholder\', this.value)"></div>' +
+      '<div class="prop-field-group"><label class="prop-label">Help / Instructions</label>' +
+      '<input type="text" class="prop-input" value="' + escapeHtml(f.help_text || '') + '" oninput="updateFieldProperty(' + idx + ', \'help_text\', this.value)"></div>';
+    wrap.appendChild(secBasic);
+
+    // 2. PROMINENT SECTION: Box Location & Reorder (Refix Position)
+    var secLocation = document.createElement('div');
+    secLocation.className = 'studio-location-reorder-box';
+
+    var refixOptionsHtml = '';
+    studioState.fields.forEach(function (otherF, posIdx) {
+      var isCurrent = (posIdx === idx);
+      var oPos = gridPos[posIdx] || { row: 1 };
+      var oLabel = escapeHtml(otherF.label || ('Box #' + (posIdx + 1)));
+      var suffix = isCurrent ? ' (Current Position)' : (posIdx < idx ? ' [Upper · Row ' + oPos.row + ']' : ' [Down · Row ' + oPos.row + ']');
+      refixOptionsHtml += '<option value="' + posIdx + '" ' + (isCurrent ? 'selected' : '') + '>' +
+        (posIdx + 1) + '. ' + oLabel + suffix +
+        '</option>';
+    });
+
+    secLocation.innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">' +
+      '<div class="prop-section-title" style="margin:0;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:800;color:var(--studio-navy);">' +
+      '<span style="color:#FF4F01;">📍</span> Box Location &amp; Reorder' +
+      '</div>' +
+      '<span class="badge" style="background:#FFF7ED;color:#FF4F01;border:1px solid #FFEDD5;font-weight:700;font-size:11px;">' +
+      'Box #' + (idx + 1) + ' of ' + total + ' · Row ' + curPos.row +
+      '</span>' +
+      '</div>' +
+
+      '<div class="prop-field-group" style="margin-bottom:10px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">' +
+      '<label class="prop-label" style="margin:0;font-size:11px;font-weight:700;color:#334155;">Refix Location (Move to Position):</label>' +
+      '<span style="font-size:10px;color:#64748B;">Auto-moves instantly</span>' +
+      '</div>' +
+      '<select class="select studio-refix-select" onchange="refixFieldPosition(' + idx + ', this.value)" style="width:100%;font-size:12px;font-weight:600;border:1px solid #CBD5E1;background:#FFFFFF;">' +
+      refixOptionsHtml +
+      '</select>' +
+      '</div>' +
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px;">' +
+      '<button type="button" class="btn btn-sm studio-btn-move" onclick="moveFieldUp(' + idx + ')" ' + (idx === 0 ? 'disabled' : '') + ' style="display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:11.5px;background:#F8FAFC;border:1px solid #CBD5E1;">' +
+      '<span>↑</span> Move in Upper' +
+      '</button>' +
+      '<button type="button" class="btn btn-sm studio-btn-move" onclick="moveFieldDown(' + idx + ')" ' + (idx >= total - 1 ? 'disabled' : '') + ' style="display:flex;align-items:center;justify-content:center;gap:4px;font-weight:700;font-size:11.5px;background:#F8FAFC;border:1px solid #CBD5E1;">' +
+      '<span>↓</span> Move Down' +
+      '</button>' +
+      '<button type="button" class="btn btn-sm studio-btn-move" onclick="moveFieldRowUp(' + idx + ')" ' + (curPos.row <= 1 ? 'disabled' : '') + ' title="Move 1 row directly above in grid" style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;background:#FFFFFF;border:1px solid #E2E8F0;">' +
+      '<span>▲</span> 1 Row Up' +
+      '</button>' +
+      '<button type="button" class="btn btn-sm studio-btn-move" onclick="moveFieldRowDown(' + idx + ')" style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;background:#FFFFFF;border:1px solid #E2E8F0;" title="Move 1 row directly below in grid">' +
+      '<span>▼</span> 1 Row Down' +
+      '</button>' +
+      '<button type="button" class="btn btn-sm studio-btn-move" onclick="moveFieldToTop(' + idx + ')" ' + (idx === 0 ? 'disabled' : '') + ' style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;background:#FFFFFF;border:1px solid #E2E8F0;">' +
+      '<span>⤒</span> Move to Top' +
+      '</button>' +
+      '<button type="button" class="btn btn-sm studio-btn-move" onclick="moveFieldToBottom(' + idx + ')" ' + (idx >= total - 1 ? 'disabled' : '') + ' style="display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;background:#FFFFFF;border:1px solid #E2E8F0;">' +
+      '<span>⤓</span> Move to Bottom' +
+      '</button>' +
+      '</div>' +
+
+      '<button type="button" class="btn btn-sm btn-outline studio-btn-interactive-refix" onclick="startRefixLocation(' + idx + ')" style="width:100%;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;border-color:#4338CA;color:#4338CA;background:#EEF2FF;">' +
+      '<span>🎯</span> Click Any Target Box on Canvas to Refix' +
+      '</button>';
+    wrap.appendChild(secLocation);
+
+    // 3. Grid Layout, Dimensions & Free Positioning
     var secLayout = document.createElement('div');
     secLayout.className = 'prop-section';
     var curSpan = getFieldSpan(f);
@@ -1228,25 +1247,6 @@
       '</div>';
 
     wrap.appendChild(secLayout);
-
-    // Basic Settings
-    var secBasic = document.createElement('div');
-    secBasic.className = 'prop-section';
-    secBasic.innerHTML =
-      '<div class="prop-section-title">General Settings</div>' +
-      '<div class="prop-field-group"><label class="prop-label">Field Label</label>' +
-      '<input type="text" class="prop-input" value="' + escapeHtml(f.label || '') + '" oninput="updateFieldProperty(' + idx + ', \'label\', this.value)"></div>' +
-      '<div class="prop-field-group"><label class="prop-label">Field Key / Slug</label>' +
-      '<input type="text" class="prop-input" value="' + escapeHtml(f.key || '') + '" oninput="updateFieldProperty(' + idx + ', \'key\', this.value)"></div>' +
-      '<div class="prop-field-group"><label class="prop-label">Placeholder Text</label>' +
-      '<input type="text" class="prop-input" value="' + escapeHtml(f.placeholder || '') + '" oninput="updateFieldProperty(' + idx + ', \'placeholder\', this.value)"></div>' +
-      '<div class="prop-field-group"><label class="prop-label">Help / Instructions</label>' +
-      '<input type="text" class="prop-input" value="' + escapeHtml(f.help_text || '') + '" oninput="updateFieldProperty(' + idx + ', \'help_text\', this.value)"></div>' +
-      '<div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">' +
-      '<span style="font-size:12px;font-weight:700;color:var(--studio-navy);">Required Field</span>' +
-      '<input type="checkbox" ' + (f.required ? 'checked' : '') + ' onchange="updateFieldProperty(' + idx + ', \'required\', this.checked)">' +
-      '</div>';
-    wrap.appendChild(secBasic);
 
     // Choice Options (if applicable)
     if (['select', 'radio', 'checkbox', 'multiselect'].indexOf(f.type) !== -1) {
@@ -1785,49 +1785,26 @@
       e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'palette', type: type }));
       e.dataTransfer.effectAllowed = 'copy';
     }
-    var span = (['section_header', 'heading', 'divider', 'instructions'].indexOf(type) !== -1) ? 12 : 6;
-    canvasDragState.isDragging = true;
-    canvasDragState.source = 'palette';
-    canvasDragState.fromIndex = -1;
-    canvasDragState.draggedCard = null;
-    canvasDragState.paletteType = type;
-    canvasDragState.span = span;
-
-    var surface = document.querySelector('.canvas-form-surface');
-    if (surface) surface.classList.add('show-grid-guides');
   }
 
   function onCanvasDragOver(e) {
     if (e) e.preventDefault();
-    if (e && e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-
-    if (!canvasDragState.isDragging || !canvasDragState.placeholder) return;
-
-    var container = document.getElementById('canvasSectionsContainer');
-    if (!container) return;
-
-    var placeholder = canvasDragState.placeholder;
-    var cards = Array.from(container.querySelectorAll('.canvas-field-card:not(.is-dragging), .canvas-section-header:not(.is-dragging)'));
-    if (cards.length > 0) {
-      var first = cards[0];
-      var last = cards[cards.length - 1];
-      var firstRect = first.getBoundingClientRect();
-      var lastRect = last.getBoundingClientRect();
-
-      if (e.clientY < firstRect.top) {
-        if (container.firstElementChild !== placeholder) {
-          container.insertBefore(placeholder, container.firstElementChild);
-        }
-      } else if (e.clientY > lastRect.bottom) {
-        if (container.lastElementChild !== placeholder) {
-          container.appendChild(placeholder);
-        }
-      }
-    }
   }
 
   function onCanvasDrop(e) {
-    executeCanvasDrop(e);
+    if (e) e.preventDefault();
+    var raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+    if (!raw) return;
+    var payload = null;
+    try {
+      payload = JSON.parse(raw);
+    } catch (err) {
+      payload = isNaN(parseInt(raw, 10)) ? { source: 'palette', type: raw } : { source: 'canvas', index: parseInt(raw, 10) };
+    }
+
+    if (payload && payload.source === 'palette' && payload.type) {
+      addFieldFromPalette(payload.type);
+    }
   }
 
   function toggleFieldWidth(idx) {
@@ -2244,28 +2221,282 @@
     markDirty();
   }
 
+  // ---------------------------------------------------------------------------
+  // Grid Positions & Smart Movement Calculations
+  // ---------------------------------------------------------------------------
+  function getGridPositions() {
+    var row = 1;
+    var col = 1; // 1 to 12
+    var positions = [];
+
+    studioState.fields.forEach(function (f, i) {
+      if (f.type === 'section_header') {
+        if (col > 1) { row++; col = 1; }
+        positions.push({
+          index: i,
+          row: row,
+          colStart: 1,
+          span: 12,
+          isSection: true,
+          label: f.label || 'Section Header'
+        });
+        row++;
+        col = 1;
+        return;
+      }
+
+      var span = getFieldSpan(f);
+      if (col > 1 && (col + span - 1) > 12) {
+        row++;
+        col = 1;
+      }
+
+      var colStart = col;
+      if (f.offset && parseInt(f.offset, 10) > 0) {
+        colStart = Math.min(12, colStart + parseInt(f.offset, 10));
+      }
+
+      positions.push({
+        index: i,
+        row: row,
+        colStart: colStart,
+        span: span,
+        isSection: false,
+        label: f.label || ('Box #' + (i + 1))
+      });
+
+      col += span;
+      if (col > 12) {
+        row++;
+        col = 1;
+      }
+    });
+
+    return positions;
+  }
+
   function moveField(fromIdx, toIdx) {
+    fromIdx = parseInt(fromIdx, 10);
+    toIdx = parseInt(toIdx, 10);
+    if (isNaN(fromIdx) || isNaN(toIdx)) return;
     if (fromIdx < 0 || fromIdx >= studioState.fields.length) return;
-    if (toIdx < 0) toIdx = 0;
-    if (toIdx >= studioState.fields.length) toIdx = studioState.fields.length - 1;
+    if (toIdx < 0 || toIdx >= studioState.fields.length) return;
     if (fromIdx === toIdx) return;
 
     recordState();
     var moved = studioState.fields.splice(fromIdx, 1)[0];
     studioState.fields.splice(toIdx, 0, moved);
 
+    markDirty();
     renderCanvas();
     selectField(toIdx);
     renderInteractivePreview();
-    markDirty();
+
+    // Pulse animation & smooth scroll into view
+    var card = document.querySelector('.canvas-field-card[data-index="' + toIdx + '"], .canvas-section-header[data-index="' + toIdx + '"]');
+    if (card) {
+      card.classList.add('card-moved-pulse');
+      setTimeout(function () {
+        if (card) card.classList.remove('card-moved-pulse');
+      }, 700);
+      try {
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {}
+    }
+
+    var directionText = (toIdx < fromIdx) ? 'in upper' : 'down';
+    showStudioToast('info', 'Moved "' + (moved.label || 'Field') + '" ' + directionText + ' to Position #' + (toIdx + 1));
   }
 
-  function moveFieldUp(idx) {
-    if (idx > 0) moveField(idx, idx - 1);
+  function moveFieldUp(idx, isRow) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || idx <= 0) return;
+
+    if (isRow) {
+      moveFieldRowUp(idx);
+      return;
+    }
+
+    moveField(idx, idx - 1);
   }
 
-  function moveFieldDown(idx) {
-    if (idx < studioState.fields.length - 1) moveField(idx, idx + 1);
+  function moveFieldDown(idx, isRow) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || idx >= studioState.fields.length - 1) return;
+
+    if (isRow) {
+      moveFieldRowDown(idx);
+      return;
+    }
+
+    moveField(idx, idx + 1);
+  }
+
+  function moveFieldRowUp(idx) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || idx <= 0) return;
+
+    var pos = getGridPositions();
+    var cur = pos[idx];
+    if (!cur || cur.row <= 1) {
+      moveField(idx, 0);
+      return;
+    }
+
+    var targetRow = cur.row - 1;
+    var candidateIdx = -1;
+    var bestDiff = 999;
+
+    for (var i = 0; i < pos.length; i++) {
+      if (pos[i].row === targetRow) {
+        var diff = Math.abs(pos[i].colStart - cur.colStart);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          candidateIdx = i;
+        }
+      }
+    }
+
+    if (candidateIdx !== -1) {
+      moveField(idx, candidateIdx);
+    } else {
+      moveField(idx, Math.max(0, idx - 1));
+    }
+  }
+
+  function moveFieldRowDown(idx) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || idx >= studioState.fields.length - 1) return;
+
+    var pos = getGridPositions();
+    var cur = pos[idx];
+    if (!cur) {
+      moveField(idx, idx + 1);
+      return;
+    }
+
+    var targetRow = cur.row + 1;
+    var candidateIdx = -1;
+    var bestDiff = 999;
+
+    for (var i = 0; i < pos.length; i++) {
+      if (pos[i].row === targetRow) {
+        var diff = Math.abs(pos[i].colStart - cur.colStart);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          candidateIdx = i;
+        }
+      }
+    }
+
+    if (candidateIdx !== -1) {
+      moveField(idx, candidateIdx);
+    } else {
+      moveField(idx, Math.min(studioState.fields.length - 1, idx + 1));
+    }
+  }
+
+  function moveFieldToTop(idx) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || idx <= 0) return;
+    moveField(idx, 0);
+  }
+
+  function moveFieldToBottom(idx) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || idx >= studioState.fields.length - 1) return;
+    moveField(idx, studioState.fields.length - 1);
+  }
+
+  function refixFieldPosition(fromIdx, targetPosition) {
+    fromIdx = parseInt(fromIdx, 10);
+    targetPosition = parseInt(targetPosition, 10);
+    if (isNaN(fromIdx) || isNaN(targetPosition)) return;
+    moveField(fromIdx, targetPosition);
+  }
+
+  function startRefixLocation(idx) {
+    idx = parseInt(idx, 10);
+    if (isNaN(idx) || !studioState.fields[idx]) return;
+
+    studioState.refixMode = {
+      active: true,
+      fromIdx: idx
+    };
+
+    selectField(idx);
+    renderCanvas();
+    showStudioToast('info', 'Click any target box on canvas to refix "' + studioState.fields[idx].label + '"');
+  }
+
+  function cancelRefixLocation() {
+    studioState.refixMode = {
+      active: false,
+      fromIdx: null
+    };
+    renderCanvas();
+  }
+
+  function quickEditField(idx) {
+    selectField(idx);
+    var labelInput = document.getElementById('propFieldLabelInput');
+    if (labelInput) {
+      labelInput.focus();
+      labelInput.select();
+    }
+  }
+
+  function enableInlineLabelEdit(e, idx, labelSpan) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!studioState.fields[idx]) return;
+
+    var currentLabel = studioState.fields[idx].label || '';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'field-label-inline-input';
+    input.value = currentLabel;
+
+    var saved = false;
+    function saveLabel() {
+      if (saved) return;
+      saved = true;
+      var val = input.value.trim() || currentLabel;
+      if (val !== currentLabel) {
+        recordState();
+        studioState.fields[idx].label = val;
+        markDirty();
+        renderCanvas();
+        selectField(idx);
+      } else {
+        renderCanvas();
+      }
+    }
+
+    input.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        saveLabel();
+      } else if (ev.key === 'Escape') {
+        ev.preventDefault();
+        saved = true;
+        renderCanvas();
+      }
+    });
+
+    input.addEventListener('blur', function () {
+      saveLabel();
+    });
+
+    input.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+    });
+
+    labelSpan.parentNode.replaceChild(input, labelSpan);
+    input.focus();
+    input.select();
   }
 
   function duplicateField(idx) {
@@ -3007,6 +3238,16 @@
   window.moveField = moveField;
   window.moveFieldUp = moveFieldUp;
   window.moveFieldDown = moveFieldDown;
+  window.moveFieldRowUp = moveFieldRowUp;
+  window.moveFieldRowDown = moveFieldRowDown;
+  window.moveFieldToTop = moveFieldToTop;
+  window.moveFieldToBottom = moveFieldToBottom;
+  window.refixFieldPosition = refixFieldPosition;
+  window.startRefixLocation = startRefixLocation;
+  window.cancelRefixLocation = cancelRefixLocation;
+  window.quickEditField = quickEditField;
+  window.enableInlineLabelEdit = enableInlineLabelEdit;
+  window.showStudioToast = showStudioToast;
   window.duplicateField = duplicateField;
   window.deleteField = deleteField;
   window.saveFieldToReusable = saveFieldToReusable;
@@ -3246,12 +3487,6 @@
       keyInp.value = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     }
   };
-
-  window.addEventListener('dragend', function () {
-    if (canvasDragState && canvasDragState.isDragging) {
-      cleanupDragState();
-    }
-  });
 
 })(window, document);
 
