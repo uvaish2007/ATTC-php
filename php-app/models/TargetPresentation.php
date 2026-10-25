@@ -2,7 +2,7 @@
 /**
  * TargetPresentation Model
  * Handles data aggregation, classification, and role summaries for the
- * complete 35-slide Institutional Academic Targets Presentation.
+ * complete 38-slide Institutional Academic Targets Presentation.
  */
 
 declare(strict_types=1);
@@ -32,7 +32,7 @@ function section_metadata_map(): array
         ],
         'student_cgpa' => [
             'unit'     => 'Students',
-            'keywords' => ['CGPA', '7.5 CGPA', 'II & III YEAR'],
+            'keywords' => ['CGPA', '8.5 CGPA', 'ABOVE 8.5', '7.5 CGPA', 'II & III YEAR'],
         ],
         'placement_mnc' => [
             'unit'     => 'Placements',
@@ -111,7 +111,7 @@ function section_metadata_map(): array
             'keywords' => ['VALUE ADDED', 'VALUE-ADDED', 'HANDS ON TRAINING'],
         ],
         'sports' => [
-            'unit'     => 'Events / Awards',
+            'unit'     => 'Events / Medals',
             'keywords' => ['SPORTS', 'STATE LEVEL', 'NATIONAL LEVEL'],
         ],
         'innovation_events' => [

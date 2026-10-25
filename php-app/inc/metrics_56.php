@@ -203,12 +203,12 @@ function metrics_56_catalog(): array
         ],
         'inst_student_cgpa' => [
             'num'            => 21,
-            'title'          => 'TO IMPROVE II & III YEAR STUDENTS ABOVE 7.5 CGPA',
+            'title'          => 'STUDENTS SECURED ABOVE 8.5 CGPA',
             'table'          => 'inst_student_cgpa',
             'category'       => 'student',
             'category_label' => 'Student Achievement',
             'date_col'       => 'created_at',
-            'aliases'        => ['CGPA', 'STUDENTS ABOVE 7.5 CGPA', 'TO IMPROVE II, III & IV YEAR STUDENTS CGPA'],
+            'aliases'        => ['CGPA', 'STUDENTS ABOVE 8.5 CGPA', 'STUDENTS SECURED ABOVE 8.5 CGPA', 'TO IMPROVE II & III YEAR STUDENTS ABOVE 7.5 CGPA', 'STUDENTS ABOVE 7.5 CGPA', 'TO IMPROVE II, III & IV YEAR STUDENTS CGPA'],
         ],
         'inst_placement_mnc' => [
             'num'            => 22,

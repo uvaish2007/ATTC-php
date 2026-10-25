@@ -21,12 +21,21 @@ class BulkImport
     public const MODULE_SUMMER_TRAINING = 'summer_training';
     public const MODULE_SOCIETY_FACULTY = 'society_faculty';
     public const MODULE_SOCIETY_STUDENT = 'society_student';
+    public const MODULE_STUDENT_CERTIFICATION = 'student_certification';
+    public const MODULE_SPOKEN_TUTORIAL = 'spoken_tutorial';
 
     /**
      * Module configuration definition.
      */
     public static function getModuleConfig(string $module): ?array
     {
+        // Normalize alias names
+        if ($module === 'student_certifications' || $module === 'inst_student_certifications') {
+            $module = self::MODULE_STUDENT_CERTIFICATION;
+        } elseif ($module === 'spoken_tutorials' || $module === 'inst_spoken_tutorials') {
+            $module = self::MODULE_SPOKEN_TUTORIAL;
+        }
+
         $configs = [
             self::MODULE_INTERNSHIP => [
                 'key'             => self::MODULE_INTERNSHIP,
@@ -69,6 +78,26 @@ class BulkImport
                 'error_file'      => 'Student_Membership_Errors.xlsx',
                 'item_type_label' => 'Student Membership',
                 'category'        => 'Student',
+            ],
+            self::MODULE_STUDENT_CERTIFICATION => [
+                'key'             => self::MODULE_STUDENT_CERTIFICATION,
+                'label'           => 'Student Online Certification',
+                'table'           => 'inst_student_certifications',
+                'title_col'       => 'course_name',
+                'sheet_name'      => 'Online Certification Records',
+                'template_file'   => 'ATTS_Student_Online_Certification_Template.xlsx',
+                'error_file'      => 'Student_Certification_Validation_Errors.xlsx',
+                'item_type_label' => 'Student Online Certification',
+            ],
+            self::MODULE_SPOKEN_TUTORIAL => [
+                'key'             => self::MODULE_SPOKEN_TUTORIAL,
+                'label'           => 'IIT-Bombay Spoken Tutorial Courses',
+                'table'           => 'inst_spoken_tutorials',
+                'title_col'       => 'course_name',
+                'sheet_name'      => 'Spoken Tutorial Records',
+                'template_file'   => 'ATTS_IIT_Bombay_Spoken_Tutorial_Template.xlsx',
+                'error_file'      => 'Spoken_Tutorial_Validation_Errors.xlsx',
+                'item_type_label' => 'IIT-Bombay Spoken Tutorial',
             ],
         ];
 
@@ -153,6 +182,24 @@ class BulkImport
             ],
             'class_year' => [
                 'class / year of study', 'class year of study', 'class / year', 'class year', 'year of study', 'class', 'year', 'class_year'
+            ],
+            'course_name' => [
+                'course name', 'course_name', 'course', 'course title', 'name of the course', 'online course name', 'spoken tutorial course', 'course track'
+            ],
+            'platform' => [
+                'platform', 'platform / provider', 'platform provider', 'provider', 'learning platform', 'portal'
+            ],
+            'certification_name' => [
+                'certification name', 'certification_name', 'certificate name', 'certificate title', 'certification title'
+            ],
+            'tutorial_name' => [
+                'tutorial name', 'tutorial_name', 'tutorial title', 'spoken tutorial name', 'name of the tutorial', 'tutorial'
+            ],
+            'completion_date' => [
+                'completion date', 'completion_date', 'date of completion', 'course completion date', 'completed on', 'exam date', 'date'
+            ],
+            'certificate_id' => [
+                'certificate id', 'certificate_id', 'certificate no', 'certificate number', 'roll no / certificate id', 'credential id'
             ],
         ];
     }
@@ -420,6 +467,166 @@ class BulkImport
                 ['GENERAL RULE: Multiple Students', 'Info', '1 row per student membership', 'Enter multiple student records row-by-row.'],
                 ['GENERAL RULE: Sample Rows', 'Info', 'Delete or overwrite example rows', 'Rows starting with [EXAMPLE] are automatically filtered out during validation.'],
                 ['GENERAL RULE: Duplicates', 'Info', 'Automatic duplicate prevention', 'Duplicate records matching existing student memberships in the database are detected and flagged.'],
+            ];
+
+            return SimpleXlsxWriter::createMultiSheetXlsx([
+                [
+                    'title'   => $cfg['sheet_name'],
+                    'headers' => $headers,
+                    'rows'    => $sampleRows,
+                    'meta'    => [],
+                ],
+                [
+                    'title'   => 'Instructions',
+                    'headers' => $instHeaders,
+                    'rows'    => $instRows,
+                    'meta'    => [
+                        'ATTS SmartBulk Import Guidelines — ' . $cfg['label'],
+                        'Review all required formats before uploading. Ensure all fields are filled accurately.',
+                    ],
+                ],
+            ]);
+        }
+
+        // -------------------------------------------------------------------
+        // Student Online Certification Template
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_STUDENT_CERTIFICATION) {
+            $headers = [
+                'Student Register Number *',
+                'Student Name *',
+                'Department *',
+                'Academic Year *',
+                'Course Name *',
+                'Platform *',
+                'Certification Name',
+                'Completion Date *',
+                'Certificate ID',
+                'Drive Link for Certificate',
+            ];
+
+            $sampleRows = [
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] 711322104001',
+                    'K. Ananya',
+                    $deptVal,
+                    $activeYear,
+                    'Machine Learning Specialization',
+                    'Coursera',
+                    'Deep Learning Certificate',
+                    '2024-11-20',
+                    'COUR-ML-8841',
+                    'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view?usp=sharing',
+                ],
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
+                    'S. Vignesh',
+                    $deptVal,
+                    $activeYear,
+                    'Python for Data Science',
+                    'NPTEL',
+                    'Elite Certificate',
+                    '2024-10-15',
+                    'NPTEL24CS88102',
+                    'https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view?usp=sharing',
+                ],
+            ];
+
+            $instHeaders = ['Field Name', 'Mandatory?', 'Accepted Format / Allowed Values', 'Guidelines & Rules'];
+            $instRows = [
+                ['Student Register Number', 'Yes', 'Numeric / Alphanumeric ID (e.g. 711322104001)', 'Valid student register number enrolled in the institution.'],
+                ['Student Name', 'Yes', 'Text (e.g. K. Ananya)', 'Official student full name.'],
+                ['Department', 'Yes', 'Department code (e.g. ' . $deptVal . ')', 'Must match authorized department. Unauthorized cross-department uploads are prevented.'],
+                ['Academic Year', 'Yes', 'YYYY-YY format (e.g. ' . $activeYear . ')', 'Academic year in which the certification was completed.'],
+                ['Course Name', 'Yes', 'Course title (e.g. Machine Learning Specialization)', 'Full title of the online course completed by the student.'],
+                ['Platform', 'Yes', 'Platform / Provider (e.g. Coursera, NPTEL, edX, Udemy, HackerRank)', 'Name of the e-learning provider or platform.'],
+                ['Certification Name', 'No', 'Certificate title (e.g. Deep Learning Certificate)', 'Title or certificate designation if distinct from course name.'],
+                ['Completion Date', 'Yes', 'YYYY-MM-DD or DD-MM-YYYY', 'Official completion or examination date. Cannot be a future date.'],
+                ['Certificate ID', 'No', 'Alphanumeric verification ID (e.g. COUR-ML-8841)', 'Unique credential verification identifier from the certificate.'],
+                ['Drive Link for Certificate', 'No', 'Google Drive sharing link (https://drive.google.com/...)', 'Direct URL to certificate PDF or document.'],
+                ['GENERAL RULE: Multiple Students', 'Info', '1 row per student certification', 'Enter multiple student certification records row-by-row.'],
+                ['GENERAL RULE: Sample Rows', 'Info', 'Delete or overwrite example rows', 'Rows starting with [EXAMPLE] are automatically filtered out during validation.'],
+                ['GENERAL RULE: Duplicates', 'Info', 'Automatic duplicate prevention', 'Duplicate records matching existing student certifications in the database are detected and flagged.'],
+            ];
+
+            return SimpleXlsxWriter::createMultiSheetXlsx([
+                [
+                    'title'   => $cfg['sheet_name'],
+                    'headers' => $headers,
+                    'rows'    => $sampleRows,
+                    'meta'    => [],
+                ],
+                [
+                    'title'   => 'Instructions',
+                    'headers' => $instHeaders,
+                    'rows'    => $instRows,
+                    'meta'    => [
+                        'ATTS SmartBulk Import Guidelines — ' . $cfg['label'],
+                        'Review all required formats before uploading. Ensure all fields are filled accurately.',
+                    ],
+                ],
+            ]);
+        }
+
+        // -------------------------------------------------------------------
+        // IIT-Bombay Spoken Tutorial Template
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_SPOKEN_TUTORIAL) {
+            $headers = [
+                'Student Register Number *',
+                'Student Name *',
+                'Department *',
+                'Academic Year *',
+                'Course Name *',
+                'Tutorial Name *',
+                'Completion Date *',
+                'Certificate ID',
+                'Platform',
+                'Drive Link for Certificate',
+            ];
+
+            $sampleRows = [
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] 711322104001',
+                    'K. Ananya',
+                    $deptVal,
+                    $activeYear,
+                    'Python 3.4.3',
+                    'Basic Python for Beginners',
+                    '2024-10-25',
+                    'IITB-PY-4401',
+                    'IIT-Bombay Spoken Tutorial',
+                    'https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz012345/view?usp=sharing',
+                ],
+                [
+                    '[EXAMPLE - DELETE BEFORE IMPORT] 711322104002',
+                    'S. Vignesh',
+                    $deptVal,
+                    $activeYear,
+                    'Linux',
+                    'Linux Command Line Fundamentals',
+                    '2024-09-30',
+                    'IITB-LX-9912',
+                    'IIT-Bombay Spoken Tutorial',
+                    'https://drive.google.com/file/d/1BcDeFgHiJkLmNoPqRsTuVwXyZ123456/view?usp=sharing',
+                ],
+            ];
+
+            $instHeaders = ['Field Name', 'Mandatory?', 'Accepted Format / Allowed Values', 'Guidelines & Rules'];
+            $instRows = [
+                ['Student Register Number', 'Yes', 'Numeric / Alphanumeric ID (e.g. 711322104001)', 'Valid student register number enrolled in the institution.'],
+                ['Student Name', 'Yes', 'Text (e.g. K. Ananya)', 'Official student full name.'],
+                ['Department', 'Yes', 'Department code (e.g. ' . $deptVal . ')', 'Must match authorized department. Unauthorized cross-department uploads are prevented.'],
+                ['Academic Year', 'Yes', 'YYYY-YY format (e.g. ' . $activeYear . ')', 'Academic year in which the course was completed.'],
+                ['Course Name', 'Yes', 'Course name (e.g. Python 3.4.3, C and C++, Java, Linux, PHP and MySQL)', 'Spoken Tutorial course track or technology completed.'],
+                ['Tutorial Name', 'Yes', 'Tutorial name (e.g. Basic Python for Beginners)', 'Specific tutorial module or test title passed.'],
+                ['Completion Date', 'Yes', 'YYYY-MM-DD or DD-MM-YYYY', 'Official completion or certificate test date. Cannot be a future date.'],
+                ['Certificate ID', 'No', 'Alphanumeric verification ID (e.g. IITB-PY-4401)', 'Unique credential verification identifier from IIT-Bombay Spoken Tutorial certificate.'],
+                ['Platform', 'No', 'Default: IIT-Bombay Spoken Tutorial', 'Educational platform hosting the course.'],
+                ['Drive Link for Certificate', 'No', 'Google Drive sharing link (https://drive.google.com/...)', 'Direct URL to certificate PDF or document.'],
+                ['GENERAL RULE: Multiple Students', 'Info', '1 row per student completion', 'Enter multiple student completion records row-by-row.'],
+                ['GENERAL RULE: Sample Rows', 'Info', 'Delete or overwrite example rows', 'Rows starting with [EXAMPLE] are automatically filtered out during validation.'],
+                ['GENERAL RULE: Duplicates', 'Info', 'Automatic duplicate prevention', 'Duplicate records matching existing spoken tutorial records in the database are detected and flagged.'],
             ];
 
             return SimpleXlsxWriter::createMultiSheetXlsx([
@@ -800,6 +1007,8 @@ class BulkImport
         $isSocietyFaculty = ($module === self::MODULE_SOCIETY_FACULTY);
         $isSocietyStudent = ($module === self::MODULE_SOCIETY_STUDENT);
         $isSociety = ($isSocietyFaculty || $isSocietyStudent);
+        $isStudentCert = ($module === self::MODULE_STUDENT_CERTIFICATION);
+        $isSpokenTutorial = ($module === self::MODULE_SPOKEN_TUTORIAL);
 
         // 1. Locate header row within first 5 rows
         $headerRowIdx = null;
@@ -833,6 +1042,20 @@ class BulkImport
                     $detectedHeaders = $candidateRow;
                     break;
                 }
+            } elseif ($isStudentCert) {
+                if (isset($matchedFields['reg_no']) && (isset($matchedFields['course_name']) || isset($matchedFields['platform']))) {
+                    $headerRowIdx = $r;
+                    $fieldIndexMap = $matchedFields;
+                    $detectedHeaders = $candidateRow;
+                    break;
+                }
+            } elseif ($isSpokenTutorial) {
+                if (isset($matchedFields['reg_no']) && (isset($matchedFields['course_name']) || isset($matchedFields['tutorial_name']))) {
+                    $headerRowIdx = $r;
+                    $fieldIndexMap = $matchedFields;
+                    $detectedHeaders = $candidateRow;
+                    break;
+                }
             } else {
                 if (isset($matchedFields['reg_no']) && isset($matchedFields['student_name'])) {
                     $headerRowIdx = $r;
@@ -848,7 +1071,11 @@ class BulkImport
                 ? "Faculty Name, Professional Society, Membership Number"
                 : ($isSocietyStudent
                     ? "Student Register Number, Student Name, Professional Society"
-                    : "Student Register Number, Student Name");
+                    : ($isStudentCert
+                        ? "Student Register Number, Course Name, Platform, Completion Date"
+                        : ($isSpokenTutorial
+                            ? "Student Register Number, Course Name, Tutorial Name, Completion Date"
+                            : "Student Register Number, Student Name")));
             throw new RuntimeException("Could not detect required column headers ({$expectedHeaderHint}) in the spreadsheet. Please download and use the official ATTS template.");
         }
 
@@ -857,6 +1084,10 @@ class BulkImport
             $requiredFields = ['faculty_name', 'society_name', 'membership_number'];
         } elseif ($isSocietyStudent) {
             $requiredFields = ['reg_no', 'student_name', 'society_name', 'membership_number'];
+        } elseif ($isStudentCert) {
+            $requiredFields = ['reg_no', 'student_name', 'course_name', 'platform', 'completion_date'];
+        } elseif ($isSpokenTutorial) {
+            $requiredFields = ['reg_no', 'student_name', 'course_name', 'tutorial_name', 'completion_date'];
         } else {
             $requiredFields = ['reg_no', 'student_name', 'title', 'industry', 'duration', 'days', 'certificate_link'];
         }
@@ -881,7 +1112,7 @@ class BulkImport
             'total_pdfs'  => 0,
             'errors'      => [],
         ];
-        if (!$isSociety && !empty($zipPath) && is_file($zipPath)) {
+        if (!$isSociety && !$isStudentCert && !$isSpokenTutorial && !empty($zipPath) && is_file($zipPath)) {
             $proofsIndex = self::extractAndIndexProofsZip($zipPath, $batchId);
         }
         $proofsMatchedCount = 0;
@@ -919,6 +1150,35 @@ class BulkImport
                     if ($mn !== '') {
                         $existingRecords[md5($mn . '|' . $sn)] = (int)$row['id'];
                         $existingRecords[md5('MEMNUM|' . $mn)] = (int)$row['id'];
+                    }
+                }
+            } elseif ($isStudentCert) {
+                $stmt = $db->query("SELECT id, reg_no, course_name, academic_year, certificate_id FROM `{$table}`");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $rn = strtoupper(trim((string)$row['reg_no']));
+                    $cn = strtolower(trim((string)$row['course_name']));
+                    $ay = trim((string)($row['academic_year'] ?? ''));
+                    $cid = strtoupper(trim((string)($row['certificate_id'] ?? '')));
+                    if ($rn !== '' && $cn !== '') {
+                        $existingRecords[md5($rn . '|' . $ay . '|' . $cn)] = (int)$row['id'];
+                    }
+                    if ($cid !== '') {
+                        $existingRecords[md5('CERTID|' . $cid)] = (int)$row['id'];
+                    }
+                }
+            } elseif ($isSpokenTutorial) {
+                $stmt = $db->query("SELECT id, reg_no, course_name, tutorial_name, academic_year, certificate_id FROM `{$table}`");
+                while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                    $rn = strtoupper(trim((string)$row['reg_no']));
+                    $cn = strtolower(trim((string)$row['course_name']));
+                    $tn = strtolower(trim((string)$row['tutorial_name']));
+                    $ay = trim((string)($row['academic_year'] ?? ''));
+                    $cid = strtoupper(trim((string)($row['certificate_id'] ?? '')));
+                    if ($rn !== '' && $cn !== '') {
+                        $existingRecords[md5($rn . '|' . $ay . '|' . $cn . '|' . $tn)] = (int)$row['id'];
+                    }
+                    if ($cid !== '') {
+                        $existingRecords[md5('CERTID|' . $cid)] = (int)$row['id'];
                     }
                 }
             } else {
@@ -1363,6 +1623,343 @@ class BulkImport
             }
 
             // ---------------------------------------------------------------
+            // Row Validation: Student Online Certification
+            // ---------------------------------------------------------------
+            if ($isStudentCert) {
+                $regNo = strtoupper(trim((string)($rowValues['reg_no'] ?? '')));
+                if ($regNo === '') {
+                    $rowErrors[] = ['field' => 'Register Number', 'problem' => 'Required student register number is missing', 'value' => ''];
+                } elseif (!preg_match('/^[a-zA-Z0-9]{3,30}$/', $regNo)) {
+                    $rowErrors[] = ['field' => 'Register Number', 'problem' => 'Invalid register number format', 'value' => $regNo];
+                }
+
+                $studentName = trim((string)($rowValues['student_name'] ?? ''));
+                if ($studentName === '') {
+                    $rowErrors[] = ['field' => 'Student Name', 'problem' => 'Required student name is missing', 'value' => ''];
+                } elseif (strlen($studentName) < 2) {
+                    $rowErrors[] = ['field' => 'Student Name', 'problem' => 'Student name is too short', 'value' => $studentName];
+                }
+
+                $rowDept = trim((string)($rowValues['department'] ?? ''));
+                if ($rowDept === '') {
+                    $rowDept = $userDept ?: 'CSE';
+                }
+                if ($isDeptRestricted) {
+                    if (strcasecmp($rowDept, $userDept) !== 0) {
+                        $rowErrors[] = [
+                            'field'   => 'Department',
+                            'problem' => "Cross-department mismatch: authorized for {$userDept}, but row specifies '{$rowDept}'",
+                            'value'   => $rowDept,
+                        ];
+                    }
+                    $effectiveDept = $userDept;
+                } else {
+                    $effectiveDept = $rowDept;
+                }
+
+                $rowAy = trim((string)($rowValues['academic_year'] ?? ''));
+                if ($rowAy === '') {
+                    $rowAy = $activeYear;
+                } else {
+                    if (!preg_match('/^\d{4}-\d{2}$/', $rowAy)) {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => 'Invalid academic year format (must be YYYY-YY, e.g. ' . $activeYear . ')', 'value' => $rowAy];
+                    } elseif (function_exists('academic_year_is_locked') && academic_year_is_locked($rowAy) && $userRole !== 'Admin') {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => "Academic year {$rowAy} cycle is locked by Administrator", 'value' => $rowAy];
+                    }
+                }
+
+                $courseName = trim((string)($rowValues['course_name'] ?? ''));
+                if ($courseName === '') {
+                    $rowErrors[] = ['field' => 'Course Name', 'problem' => 'Required course name is missing', 'value' => ''];
+                }
+
+                $platform = trim((string)($rowValues['platform'] ?? ''));
+                if ($platform === '') {
+                    $rowErrors[] = ['field' => 'Platform', 'problem' => 'Required platform is missing (e.g. Coursera, NPTEL, edX, Udemy)', 'value' => ''];
+                }
+
+                $certName = trim((string)($rowValues['certification_name'] ?? ''));
+
+                $compDate = trim((string)($rowValues['completion_date'] ?? ''));
+                if ($compDate === '') {
+                    $rowErrors[] = ['field' => 'Completion Date', 'problem' => 'Required completion date is missing', 'value' => ''];
+                } else {
+                    $parsedComp = date('Y-m-d', strtotime(str_replace('/', '-', $compDate)));
+                    if (!$parsedComp || strtotime(str_replace('/', '-', $compDate)) === false) {
+                        $rowErrors[] = ['field' => 'Completion Date', 'problem' => 'Invalid date format (use YYYY-MM-DD or DD-MM-YYYY)', 'value' => $compDate];
+                    } else {
+                        $compDate = $parsedComp;
+                        if ($compDate > date('Y-m-d')) {
+                            $rowErrors[] = ['field' => 'Completion Date', 'problem' => 'Completion date cannot be in the future', 'value' => $compDate];
+                        }
+                    }
+                }
+
+                $certId = trim((string)($rowValues['certificate_id'] ?? ''));
+
+                $certLink = trim((string)($rowValues['certificate_link'] ?? ''));
+                $proofSource  = 'none';
+                $proofDisplay = 'No Link';
+                $proofStatus  = 'Optional';
+                $fileId       = null;
+
+                if ($certLink !== '') {
+                    $driveValidation = self::validateDriveLink($certLink);
+                    if ($driveValidation['valid']) {
+                        $proofSource  = 'drive_link';
+                        $proofDisplay = 'Open Certificate';
+                        $proofStatus  = $driveValidation['status_label'];
+                        $fileId       = $driveValidation['file_id'];
+                    } else {
+                        $rowErrors[] = [
+                            'field'   => 'Drive Link for Certificate',
+                            'problem' => $driveValidation['error'] ?: 'Invalid Drive link format',
+                            'value'   => $certLink,
+                        ];
+                        $proofDisplay = 'Invalid Link';
+                        $proofStatus  = 'Invalid';
+                    }
+                }
+
+                // Duplicate Detection
+                $isDuplicate = false;
+                $dupMessage = '';
+                $dupKey1 = md5(strtoupper($regNo) . '|' . $rowAy . '|' . strtolower($courseName));
+                $dupKey2 = ($certId !== '') ? md5('CERTID|' . strtoupper($certId)) : null;
+
+                if (empty($rowErrors)) {
+                    if (isset($seenInFile[$dupKey1])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey1];
+                        $dupMessage = "Duplicate course certification in spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Course Name', 'problem' => $dupMessage, 'value' => "{$regNo}, {$courseName}"];
+                    } elseif ($dupKey2 && isset($seenInFile[$dupKey2])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey2];
+                        $dupMessage = "Duplicate certificate ID within spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Certificate ID', 'problem' => $dupMessage, 'value' => $certId];
+                    } else {
+                        $seenInFile[$dupKey1] = $excelRowNumber;
+                        if ($dupKey2) $seenInFile[$dupKey2] = $excelRowNumber;
+                    }
+
+                    if (!$isDuplicate && (isset($existingRecords[$dupKey1]) || ($dupKey2 && isset($existingRecords[$dupKey2])))) {
+                        $isDuplicate = true;
+                        $dbId = $existingRecords[$dupKey1] ?? ($dupKey2 ? $existingRecords[$dupKey2] : 0);
+                        $dupMessage = "Duplicate record: already exists in ATTS database (Record #{$dbId})";
+                        $rowErrors[] = ['field' => 'Student Certification', 'problem' => $dupMessage, 'value' => "Reg: {$regNo}, {$courseName}"];
+                    }
+                }
+
+                $rowStatus = 'valid';
+                if (!empty($rowErrors)) {
+                    if ($isDuplicate) {
+                        $rowStatus = 'duplicate';
+                        $duplicateCount++;
+                    } else {
+                        $rowStatus = 'invalid';
+                        $invalidCount++;
+                    }
+                    foreach ($rowErrors as $err) {
+                        $errors[] = array_merge(['row' => $excelRowNumber], $err);
+                    }
+                } else {
+                    $validCount++;
+                }
+
+                $parsedRows[] = [
+                    'excel_row'          => $excelRowNumber,
+                    'status'             => $rowStatus,
+                    'reg_no'             => $regNo,
+                    'student_name'       => $studentName,
+                    'department'         => $effectiveDept,
+                    'academic_year'      => $rowAy,
+                    'course_name'        => $courseName,
+                    'platform'           => $platform,
+                    'certification_name' => $certName,
+                    'completion_date'    => $compDate,
+                    'certificate_id'     => $certId,
+                    'certificate_link'   => $certLink,
+                    'file_id'            => $fileId,
+                    'proof_source'       => $proofSource,
+                    'proof_status'       => $proofStatus,
+                    'proof_display'      => $proofDisplay,
+                    'errors'             => $rowErrors,
+                ];
+                continue;
+            }
+
+            // ---------------------------------------------------------------
+            // Row Validation: IIT-Bombay Spoken Tutorial
+            // ---------------------------------------------------------------
+            if ($isSpokenTutorial) {
+                $regNo = strtoupper(trim((string)($rowValues['reg_no'] ?? '')));
+                if ($regNo === '') {
+                    $rowErrors[] = ['field' => 'Register Number', 'problem' => 'Required student register number is missing', 'value' => ''];
+                } elseif (!preg_match('/^[a-zA-Z0-9]{3,30}$/', $regNo)) {
+                    $rowErrors[] = ['field' => 'Register Number', 'problem' => 'Invalid register number format', 'value' => $regNo];
+                }
+
+                $studentName = trim((string)($rowValues['student_name'] ?? ''));
+                if ($studentName === '') {
+                    $rowErrors[] = ['field' => 'Student Name', 'problem' => 'Required student name is missing', 'value' => ''];
+                } elseif (strlen($studentName) < 2) {
+                    $rowErrors[] = ['field' => 'Student Name', 'problem' => 'Student name is too short', 'value' => $studentName];
+                }
+
+                $rowDept = trim((string)($rowValues['department'] ?? ''));
+                if ($rowDept === '') {
+                    $rowDept = $userDept ?: 'CSE';
+                }
+                if ($isDeptRestricted) {
+                    if (strcasecmp($rowDept, $userDept) !== 0) {
+                        $rowErrors[] = [
+                            'field'   => 'Department',
+                            'problem' => "Cross-department mismatch: authorized for {$userDept}, but row specifies '{$rowDept}'",
+                            'value'   => $rowDept,
+                        ];
+                    }
+                    $effectiveDept = $userDept;
+                } else {
+                    $effectiveDept = $rowDept;
+                }
+
+                $rowAy = trim((string)($rowValues['academic_year'] ?? ''));
+                if ($rowAy === '') {
+                    $rowAy = $activeYear;
+                } else {
+                    if (!preg_match('/^\d{4}-\d{2}$/', $rowAy)) {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => 'Invalid academic year format (must be YYYY-YY, e.g. ' . $activeYear . ')', 'value' => $rowAy];
+                    } elseif (function_exists('academic_year_is_locked') && academic_year_is_locked($rowAy) && $userRole !== 'Admin') {
+                        $rowErrors[] = ['field' => 'Academic Year', 'problem' => "Academic year {$rowAy} cycle is locked by Administrator", 'value' => $rowAy];
+                    }
+                }
+
+                $courseName = trim((string)($rowValues['course_name'] ?? ''));
+                if ($courseName === '') {
+                    $rowErrors[] = ['field' => 'Course Name', 'problem' => 'Required course name is missing (e.g. Python 3.4.3, C and C++, Linux)', 'value' => ''];
+                }
+
+                $tutorialName = trim((string)($rowValues['tutorial_name'] ?? ''));
+                if ($tutorialName === '') {
+                    $rowErrors[] = ['field' => 'Tutorial Name', 'problem' => 'Required tutorial name is missing', 'value' => ''];
+                }
+
+                $compDate = trim((string)($rowValues['completion_date'] ?? ''));
+                if ($compDate === '') {
+                    $rowErrors[] = ['field' => 'Completion Date', 'problem' => 'Required completion date is missing', 'value' => ''];
+                } else {
+                    $parsedComp = date('Y-m-d', strtotime(str_replace('/', '-', $compDate)));
+                    if (!$parsedComp || strtotime(str_replace('/', '-', $compDate)) === false) {
+                        $rowErrors[] = ['field' => 'Completion Date', 'problem' => 'Invalid date format (use YYYY-MM-DD or DD-MM-YYYY)', 'value' => $compDate];
+                    } else {
+                        $compDate = $parsedComp;
+                        if ($compDate > date('Y-m-d')) {
+                            $rowErrors[] = ['field' => 'Completion Date', 'problem' => 'Completion date cannot be in the future', 'value' => $compDate];
+                        }
+                    }
+                }
+
+                $certId = trim((string)($rowValues['certificate_id'] ?? ''));
+
+                $platform = trim((string)($rowValues['platform'] ?? ''));
+                if ($platform === '') {
+                    $platform = 'IIT-Bombay Spoken Tutorial';
+                }
+
+                $certLink = trim((string)($rowValues['certificate_link'] ?? ''));
+                $proofSource  = 'none';
+                $proofDisplay = 'No Link';
+                $proofStatus  = 'Optional';
+                $fileId       = null;
+
+                if ($certLink !== '') {
+                    $driveValidation = self::validateDriveLink($certLink);
+                    if ($driveValidation['valid']) {
+                        $proofSource  = 'drive_link';
+                        $proofDisplay = 'Open Certificate';
+                        $proofStatus  = $driveValidation['status_label'];
+                        $fileId       = $driveValidation['file_id'];
+                    } else {
+                        $rowErrors[] = [
+                            'field'   => 'Drive Link for Certificate',
+                            'problem' => $driveValidation['error'] ?: 'Invalid Drive link format',
+                            'value'   => $certLink,
+                        ];
+                        $proofDisplay = 'Invalid Link';
+                        $proofStatus  = 'Invalid';
+                    }
+                }
+
+                // Duplicate Detection
+                $isDuplicate = false;
+                $dupMessage = '';
+                $dupKey1 = md5(strtoupper($regNo) . '|' . $rowAy . '|' . strtolower($courseName) . '|' . strtolower($tutorialName));
+                $dupKey2 = ($certId !== '') ? md5('CERTID|' . strtoupper($certId)) : null;
+
+                if (empty($rowErrors)) {
+                    if (isset($seenInFile[$dupKey1])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey1];
+                        $dupMessage = "Duplicate spoken tutorial in spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Spoken Tutorial', 'problem' => $dupMessage, 'value' => "{$regNo}, {$courseName} - {$tutorialName}"];
+                    } elseif ($dupKey2 && isset($seenInFile[$dupKey2])) {
+                        $isDuplicate = true;
+                        $firstRow = $seenInFile[$dupKey2];
+                        $dupMessage = "Duplicate certificate ID within spreadsheet (matches row {$firstRow})";
+                        $rowErrors[] = ['field' => 'Certificate ID', 'problem' => $dupMessage, 'value' => $certId];
+                    } else {
+                        $seenInFile[$dupKey1] = $excelRowNumber;
+                        if ($dupKey2) $seenInFile[$dupKey2] = $excelRowNumber;
+                    }
+
+                    if (!$isDuplicate && (isset($existingRecords[$dupKey1]) || ($dupKey2 && isset($existingRecords[$dupKey2])))) {
+                        $isDuplicate = true;
+                        $dbId = $existingRecords[$dupKey1] ?? ($dupKey2 ? $existingRecords[$dupKey2] : 0);
+                        $dupMessage = "Duplicate record: already exists in ATTS database (Record #{$dbId})";
+                        $rowErrors[] = ['field' => 'Spoken Tutorial Record', 'problem' => $dupMessage, 'value' => "Reg: {$regNo}, {$courseName} - {$tutorialName}"];
+                    }
+                }
+
+                $rowStatus = 'valid';
+                if (!empty($rowErrors)) {
+                    if ($isDuplicate) {
+                        $rowStatus = 'duplicate';
+                        $duplicateCount++;
+                    } else {
+                        $rowStatus = 'invalid';
+                        $invalidCount++;
+                    }
+                    foreach ($rowErrors as $err) {
+                        $errors[] = array_merge(['row' => $excelRowNumber], $err);
+                    }
+                } else {
+                    $validCount++;
+                }
+
+                $parsedRows[] = [
+                    'excel_row'          => $excelRowNumber,
+                    'status'             => $rowStatus,
+                    'reg_no'             => $regNo,
+                    'student_name'       => $studentName,
+                    'department'         => $effectiveDept,
+                    'academic_year'      => $rowAy,
+                    'course_name'        => $courseName,
+                    'tutorial_name'      => $tutorialName,
+                    'completion_date'    => $compDate,
+                    'certificate_id'     => $certId,
+                    'platform'           => $platform,
+                    'certificate_link'   => $certLink,
+                    'file_id'            => $fileId,
+                    'proof_source'       => $proofSource,
+                    'proof_status'       => $proofStatus,
+                    'proof_display'      => $proofDisplay,
+                    'errors'             => $rowErrors,
+                ];
+                continue;
+            }
+
+            // ---------------------------------------------------------------
             // Default Row Validation: Internship / Summer Training
             // ---------------------------------------------------------------
             // 1. Validate Register Number
@@ -1735,6 +2332,242 @@ class BulkImport
                 }
                 error_log("BulkImport society commit error: " . $e->getMessage());
                 throw new RuntimeException("Database error during membership import: " . $e->getMessage());
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Commit Handler: Student Online Certification
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_STUDENT_CERTIFICATION) {
+            $db->beginTransaction();
+            try {
+                foreach ($validRows as $row) {
+                    $fields = [
+                        'department'         => $row['department'],
+                        'academic_year'      => $row['academic_year'],
+                        'student_name'       => $row['student_name'],
+                        'reg_no'             => $row['reg_no'],
+                        'course_name'        => $row['course_name'],
+                        'platform'           => !empty($row['platform']) ? $row['platform'] : 'Coursera',
+                        'certification_name' => $row['certification_name'] ?? '',
+                        'completion_date'    => !empty($row['completion_date']) ? $row['completion_date'] : null,
+                        'certificate_id'     => $row['certificate_id'] ?? '',
+                        'certificate_link'   => !empty($row['certificate_link']) ? $row['certificate_link'] : null,
+                        'import_batch_id'    => $batchId,
+                        'status'             => $initialStatus,
+                        'created_by'         => $uploaderId,
+                        'created_at'         => date('Y-m-d H:i:s'),
+                    ];
+
+                    if (in_array('exam_session', $tableCols, true)) {
+                        $fields['exam_session'] = $row['exam_session'] ?? (function_exists('exam_session_current') ? exam_session_current() : 'Odd');
+                    }
+
+                    // Only insert columns that actually exist in the table
+                    $validFields = [];
+                    foreach ($fields as $k => $v) {
+                        if (in_array($k, $tableCols, true)) {
+                            $validFields[$k] = $v;
+                        }
+                    }
+
+                    $colsSql = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($validFields)));
+                    $phSql   = implode(', ', array_fill(0, count($validFields), '?'));
+                    $sql     = "INSERT INTO `{$table}` ({$colsSql}) VALUES ({$phSql})";
+
+                    $stmt = $db->prepare($sql);
+                    $stmt->execute(array_values($validFields));
+                    $newId = (int)$db->lastInsertId();
+
+                    if ($newId > 0) {
+                        $imported++;
+                        if (function_exists('record_workflow_audit')) {
+                            record_workflow_audit(
+                                'inst_student_certifications',
+                                $newId,
+                                'BULK_STUDENT_CERTIFICATION_IMPORTED',
+                                $currentUser,
+                                null,
+                                $initialStatus,
+                                "Imported via Excel SmartBulk (Batch #{$batchId}) - {$row['student_name']} ({$row['reg_no']}, {$row['course_name']})",
+                                [
+                                    'batch_id'    => $batchId,
+                                    'reg_no'      => $row['reg_no'],
+                                    'student'     => $row['student_name'],
+                                    'course_name' => $row['course_name'],
+                                    'platform'    => $row['platform'] ?? '',
+                                ],
+                                $row['department'],
+                                $row['academic_year']
+                            );
+                        }
+                    } else {
+                        $failed++;
+                    }
+                }
+
+                // History record
+                $histSql = "INSERT INTO bulk_import_history 
+                    (batch_id, module, file_name, department, academic_year, uploaded_by, total_rows, valid_rows, imported_records, duplicate_records, failed_rows, status, errors_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                $histStmt = $db->prepare($histSql);
+                $histStmt->execute([
+                    $batchId,
+                    $module,
+                    $previewData['file_name'] ?? 'bulk_upload.xlsx',
+                    $userDept,
+                    $academicYear,
+                    $uploaderId,
+                    $previewData['total_detected'] ?? count($validRows),
+                    $previewData['valid_count'] ?? count($validRows),
+                    $imported,
+                    $previewData['duplicate_count'] ?? 0,
+                    ($previewData['invalid_count'] ?? 0) + $failed,
+                    'Completed',
+                    json_encode($previewData['errors'] ?? []),
+                ]);
+
+                $db->commit();
+
+                if (function_exists('sync_target_achieved_for_type')) {
+                    sync_target_achieved_for_type('inst_student_certifications');
+                }
+
+                return [
+                    'success'           => true,
+                    'batch_id'          => $batchId,
+                    'module'            => $module,
+                    'module_label'      => $cfg['label'],
+                    'imported_records'  => $imported,
+                    'duplicate_records' => $previewData['duplicate_count'] ?? 0,
+                    'invalid_records'   => $previewData['invalid_count'] ?? 0,
+                    'total_detected'    => $previewData['total_detected'] ?? $imported,
+                    'proofs_matched'    => 0,
+                ];
+            } catch (\Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log("BulkImport student certification commit error: " . $e->getMessage());
+                throw new RuntimeException("Database error during student certification import: " . $e->getMessage());
+            }
+        }
+
+        // -------------------------------------------------------------------
+        // Commit Handler: IIT-Bombay Spoken Tutorial Courses
+        // -------------------------------------------------------------------
+        if ($module === self::MODULE_SPOKEN_TUTORIAL) {
+            $db->beginTransaction();
+            try {
+                foreach ($validRows as $row) {
+                    $fields = [
+                        'department'       => $row['department'],
+                        'academic_year'    => $row['academic_year'],
+                        'student_name'     => $row['student_name'],
+                        'reg_no'           => $row['reg_no'],
+                        'course_name'      => $row['course_name'],
+                        'tutorial_name'    => $row['tutorial_name'] ?? '',
+                        'completion_date'  => !empty($row['completion_date']) ? $row['completion_date'] : null,
+                        'certificate_id'   => $row['certificate_id'] ?? '',
+                        'platform'         => !empty($row['platform']) ? $row['platform'] : 'IIT Bombay Spoken Tutorial',
+                        'certificate_link' => !empty($row['certificate_link']) ? $row['certificate_link'] : null,
+                        'import_batch_id'  => $batchId,
+                        'status'           => $initialStatus,
+                        'created_by'       => $uploaderId,
+                        'created_at'       => date('Y-m-d H:i:s'),
+                    ];
+
+                    if (in_array('exam_session', $tableCols, true)) {
+                        $fields['exam_session'] = $row['exam_session'] ?? (function_exists('exam_session_current') ? exam_session_current() : 'Odd');
+                    }
+
+                    // Only insert columns that actually exist in the table
+                    $validFields = [];
+                    foreach ($fields as $k => $v) {
+                        if (in_array($k, $tableCols, true)) {
+                            $validFields[$k] = $v;
+                        }
+                    }
+
+                    $colsSql = implode(', ', array_map(fn($c) => "`{$c}`", array_keys($validFields)));
+                    $phSql   = implode(', ', array_fill(0, count($validFields), '?'));
+                    $sql     = "INSERT INTO `{$table}` ({$colsSql}) VALUES ({$phSql})";
+
+                    $stmt = $db->prepare($sql);
+                    $stmt->execute(array_values($validFields));
+                    $newId = (int)$db->lastInsertId();
+
+                    if ($newId > 0) {
+                        $imported++;
+                        if (function_exists('record_workflow_audit')) {
+                            record_workflow_audit(
+                                'inst_spoken_tutorials',
+                                $newId,
+                                'BULK_SPOKEN_TUTORIAL_IMPORTED',
+                                $currentUser,
+                                null,
+                                $initialStatus,
+                                "Imported via Excel SmartBulk (Batch #{$batchId}) - {$row['student_name']} ({$row['reg_no']}, {$row['course_name']} - {$row['tutorial_name']})",
+                                [
+                                    'batch_id'      => $batchId,
+                                    'reg_no'        => $row['reg_no'],
+                                    'student'       => $row['student_name'],
+                                    'course_name'   => $row['course_name'],
+                                    'tutorial_name' => $row['tutorial_name'] ?? '',
+                                ],
+                                $row['department'],
+                                $row['academic_year']
+                            );
+                        }
+                    } else {
+                        $failed++;
+                    }
+                }
+
+                // History record
+                $histSql = "INSERT INTO bulk_import_history 
+                    (batch_id, module, file_name, department, academic_year, uploaded_by, total_rows, valid_rows, imported_records, duplicate_records, failed_rows, status, errors_json, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+                $histStmt = $db->prepare($histSql);
+                $histStmt->execute([
+                    $batchId,
+                    $module,
+                    $previewData['file_name'] ?? 'bulk_upload.xlsx',
+                    $userDept,
+                    $academicYear,
+                    $uploaderId,
+                    $previewData['total_detected'] ?? count($validRows),
+                    $previewData['valid_count'] ?? count($validRows),
+                    $imported,
+                    $previewData['duplicate_count'] ?? 0,
+                    ($previewData['invalid_count'] ?? 0) + $failed,
+                    'Completed',
+                    json_encode($previewData['errors'] ?? []),
+                ]);
+
+                $db->commit();
+
+                if (function_exists('sync_target_achieved_for_type')) {
+                    sync_target_achieved_for_type('inst_spoken_tutorials');
+                }
+
+                return [
+                    'success'           => true,
+                    'batch_id'          => $batchId,
+                    'module'            => $module,
+                    'module_label'      => $cfg['label'],
+                    'imported_records'  => $imported,
+                    'duplicate_records' => $previewData['duplicate_count'] ?? 0,
+                    'invalid_records'   => $previewData['invalid_count'] ?? 0,
+                    'total_detected'    => $previewData['total_detected'] ?? $imported,
+                    'proofs_matched'    => 0,
+                ];
+            } catch (\Throwable $e) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                error_log("BulkImport spoken tutorial commit error: " . $e->getMessage());
+                throw new RuntimeException("Database error during spoken tutorial import: " . $e->getMessage());
             }
         }
 

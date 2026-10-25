@@ -139,6 +139,11 @@
     document.getElementById('canvasRoleHodBadge').style.display = m.hod_visible ? 'inline-flex' : 'none';
     document.getElementById('canvasRolePrincipalBadge').style.display = m.principal_visible ? 'inline-flex' : 'none';
 
+    var liveLink = document.getElementById('previewLiveUploadLink');
+    if (liveLink && m.metric_key) {
+      liveLink.href = 'upload.php?metric=' + encodeURIComponent(m.metric_key);
+    }
+
     // Keep formSelector dropdown and custom menu label in sync
     var sel = document.getElementById('formSelector');
     if (sel && m.id) {
@@ -149,26 +154,10 @@
       menuLabel.textContent = '#' + m.id + ' · ' + (m.name || 'Custom Form');
     }
 
-    // Keep active state on custom menu items in sync
-    var menuItems = document.querySelectorAll('.studio-menu-item');
-    menuItems.forEach(function (item) {
-      if (parseInt(item.dataset.id, 10) === parseInt(m.id, 10)) {
-        item.classList.add('active');
-        if (!item.querySelector('.studio-menu-item-check')) {
-          var right = item.querySelector('.studio-menu-item-right');
-          if (right) {
-            var checkSpan = document.createElement('span');
-            checkSpan.className = 'studio-menu-item-check';
-            checkSpan.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-            right.appendChild(checkSpan);
-          }
-        }
-      } else {
-        item.classList.remove('active');
-        var oldCheck = item.querySelector('.studio-menu-item-check');
-        if (oldCheck) oldCheck.remove();
-      }
-    });
+    // Render / refresh custom menu list and formSelector options dynamically
+    if (typeof renderFormMenuList === 'function') {
+      renderFormMenuList();
+    }
 
     // Keep URL in sync without full reload
     if (window.history && window.history.replaceState && m.id) {
@@ -297,6 +286,8 @@
     var payload = new FormData();
     payload.append('action', 'save_form_draft');
     payload.append('id', studioState.metricId);
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
     payload.append('fields_json', JSON.stringify(studioState.fields));
     payload.append('attachment_json', JSON.stringify(studioState.attachment));
     payload.append('settings_json', JSON.stringify({
@@ -307,6 +298,8 @@
       coordinator_visible: studioState.metric.coordinator_visible,
       hod_visible: studioState.metric.hod_visible,
       principal_visible: studioState.metric.principal_visible,
+      status: studioState.metric.status !== undefined ? studioState.metric.status : 1,
+      help_text: studioState.metric.help_text || '',
       proof_required: studioState.attachment.required ? 1 : 0
     }));
 
@@ -346,6 +339,8 @@
     var payload = new FormData();
     payload.append('action', 'publish_form');
     payload.append('id', studioState.metricId);
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
     payload.append('fields_json', JSON.stringify(studioState.fields));
     payload.append('attachment_json', JSON.stringify(studioState.attachment));
     payload.append('settings_json', JSON.stringify({
@@ -356,6 +351,8 @@
       coordinator_visible: studioState.metric.coordinator_visible,
       hod_visible: studioState.metric.hod_visible,
       principal_visible: studioState.metric.principal_visible,
+      status: studioState.metric.status !== undefined ? studioState.metric.status : 1,
+      help_text: studioState.metric.help_text || '',
       proof_required: studioState.attachment.required ? 1 : 0
     }));
 
@@ -374,6 +371,17 @@
         studioState.metric.form_version = data.version || (studioState.metric.form_version + 1);
         studioState.history = data.history || studioState.history;
 
+        // Synchronize allMetrics entry for live dropdown badge & title updates
+        if (Array.isArray(studioState.allMetrics)) {
+          for (var i = 0; i < studioState.allMetrics.length; i++) {
+            if (parseInt(studioState.allMetrics[i].id, 10) === parseInt(studioState.metricId, 10)) {
+              studioState.allMetrics[i].form_version = studioState.metric.form_version;
+              studioState.allMetrics[i].name = studioState.metric.name;
+              break;
+            }
+          }
+        }
+
         updateTopbarUI();
         updateSaveIndicator('saved', 'Published v' + studioState.metric.form_version);
         document.getElementById('draftBadge').style.display = 'none';
@@ -390,8 +398,168 @@
   }
 
   // ---------------------------------------------------------------------------
-  // 4. Center Canvas Rendering & Interactions
+  // 4. Center Canvas Rendering & Dynamic Drag Reordering
   // ---------------------------------------------------------------------------
+  var canvasDragState = {
+    isDragging: false,
+    source: null,        // 'canvas' | 'palette'
+    fromIndex: -1,       // index in studioState.fields
+    draggedCard: null,   // DOM element of dragged card
+    placeholder: null,   // DOM element of placeholder slot
+    paletteType: null,   // if source === 'palette'
+    span: 6
+  };
+
+  function createDragPlaceholder(span, heightPx) {
+    var ph = document.createElement('div');
+    ph.className = 'canvas-drag-placeholder';
+    ph.style.gridColumn = 'span ' + Math.min(12, Math.max(1, span || 6));
+    ph.style.minHeight = Math.max(heightPx || 70, 60) + 'px';
+    ph.innerHTML = '<div class="canvas-drag-placeholder-inner">' +
+      '<span class="placeholder-icon">↕</span>' +
+      '<span class="placeholder-label">Move here</span>' +
+      '</div>';
+    return ph;
+  }
+
+  function cleanupDragState() {
+    if (canvasDragState.placeholder && canvasDragState.placeholder.parentNode) {
+      canvasDragState.placeholder.parentNode.removeChild(canvasDragState.placeholder);
+    }
+    if (canvasDragState.draggedCard) {
+      canvasDragState.draggedCard.classList.remove('is-dragging', 'dragging');
+    }
+    canvasDragState.isDragging = false;
+    canvasDragState.source = null;
+    canvasDragState.fromIndex = -1;
+    canvasDragState.draggedCard = null;
+    canvasDragState.placeholder = null;
+    canvasDragState.paletteType = null;
+
+    var surface = document.querySelector('.canvas-form-surface');
+    if (surface) surface.classList.remove('show-grid-guides');
+
+    document.querySelectorAll('.canvas-field-card, .canvas-section-header').forEach(function (c) {
+      c.classList.remove('drag-insert-before', 'drag-insert-after', 'is-dragging', 'dragging');
+    });
+  }
+
+  function handleCardDragOver(e, targetElement) {
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'move';
+    }
+
+    var container = document.getElementById('canvasSectionsContainer');
+    if (!container) return;
+
+    if (!canvasDragState.isDragging || !canvasDragState.placeholder) {
+      var raw = '';
+      try {
+        raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
+      } catch (err) {}
+      var pType = 'text';
+      if (raw) {
+        try {
+          var p = JSON.parse(raw);
+          if (p.source === 'palette') pType = p.type;
+        } catch (err) {}
+      }
+      canvasDragState.isDragging = true;
+      canvasDragState.source = 'palette';
+      canvasDragState.paletteType = pType;
+      var span = (['section_header', 'heading', 'divider', 'instructions'].indexOf(pType) !== -1) ? 12 : 6;
+      canvasDragState.span = span;
+      canvasDragState.placeholder = createDragPlaceholder(span, 70);
+      container.appendChild(canvasDragState.placeholder);
+    }
+
+    var placeholder = canvasDragState.placeholder;
+    if (!placeholder) return;
+
+    if (targetElement === placeholder || targetElement.closest('.canvas-drag-placeholder')) {
+      return;
+    }
+    if (targetElement === canvasDragState.draggedCard) {
+      return;
+    }
+
+    var rect = targetElement.getBoundingClientRect();
+    var midY = rect.top + rect.height / 2;
+    var midX = rect.left + rect.width / 2;
+
+    var isBefore = false;
+    if (Math.abs(e.clientY - midY) > rect.height * 0.2) {
+      isBefore = (e.clientY < midY);
+    } else {
+      isBefore = (e.clientX < midX);
+    }
+
+    if (isBefore) {
+      if (placeholder.nextSibling !== targetElement) {
+        container.insertBefore(placeholder, targetElement);
+      }
+    } else {
+      if (placeholder.previousSibling !== targetElement) {
+        container.insertBefore(placeholder, targetElement.nextSibling);
+      }
+    }
+  }
+
+  function calculateDropIndex() {
+    var container = document.getElementById('canvasSectionsContainer');
+    if (!container || !canvasDragState.placeholder) return -1;
+
+    var placeholder = canvasDragState.placeholder;
+    var draggedCard = canvasDragState.draggedCard;
+    var children = Array.from(container.children);
+    var dropIndex = 0;
+
+    for (var i = 0; i < children.length; i++) {
+      var el = children[i];
+      if (el === placeholder) {
+        break;
+      }
+      if (el !== draggedCard && (el.classList.contains('canvas-field-card') || el.classList.contains('canvas-section-header'))) {
+        dropIndex++;
+      }
+    }
+    return dropIndex;
+  }
+
+  function executeCanvasDrop(e) {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (!canvasDragState.isDragging || !canvasDragState.placeholder) {
+      cleanupDragState();
+      return;
+    }
+
+    var newIndex = calculateDropIndex();
+    var fromIdx = canvasDragState.fromIndex;
+    var source = canvasDragState.source;
+    var paletteType = canvasDragState.paletteType;
+
+    cleanupDragState();
+
+    if (source === 'canvas') {
+      if (fromIdx >= 0 && fromIdx < studioState.fields.length && newIndex >= 0) {
+        if (fromIdx !== newIndex) {
+          moveField(fromIdx, newIndex);
+        } else {
+          renderCanvas();
+        }
+      } else {
+        renderCanvas();
+      }
+    } else if (source === 'palette' && paletteType) {
+      addFieldFromPalette(paletteType, newIndex >= 0 ? newIndex : undefined);
+    }
+  }
+
   function renderCanvas() {
     var container = document.getElementById('canvasSectionsContainer');
     if (!container) return;
@@ -416,10 +584,50 @@
         secDiv.className = 'canvas-section-header' + (studioState.selectedIdx === idx ? ' active-selection' : '');
         secDiv.style.gridColumn = '1 / -1';
         secDiv.style.width = '100%';
+        secDiv.draggable = true;
+        secDiv.dataset.index = idx;
         secDiv.onclick = function (e) {
           e.stopPropagation();
           selectField(idx);
         };
+        secDiv.addEventListener('dragstart', function (e) {
+          if (e.target.closest('.field-actions-toolbar') || e.target.closest('button, a')) {
+            e.preventDefault();
+            return false;
+          }
+          canvasDragState.isDragging = true;
+          canvasDragState.source = 'canvas';
+          canvasDragState.fromIndex = idx;
+          canvasDragState.draggedCard = secDiv;
+          canvasDragState.span = 12;
+
+          if (e.dataTransfer) {
+            e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'canvas', index: idx }));
+            e.dataTransfer.effectAllowed = 'move';
+          }
+
+          var surface = document.querySelector('.canvas-form-surface');
+          if (surface) surface.classList.add('show-grid-guides');
+
+          var rect = secDiv.getBoundingClientRect();
+          canvasDragState.placeholder = createDragPlaceholder(12, rect.height);
+          secDiv.parentNode.insertBefore(canvasDragState.placeholder, secDiv);
+
+          setTimeout(function () {
+            if (canvasDragState.isDragging && secDiv) {
+              secDiv.classList.add('is-dragging');
+            }
+          }, 0);
+        });
+        secDiv.addEventListener('dragend', function () {
+          cleanupDragState();
+        });
+        secDiv.addEventListener('dragover', function (e) {
+          handleCardDragOver(e, secDiv);
+        });
+        secDiv.addEventListener('drop', function (e) {
+          executeCanvasDrop(e);
+        });
         secDiv.innerHTML = '<div style="display:flex;align-items:center;gap:8px;min-width:0;">' +
           '<span style="color:#FF4F01;font-size:16px;">📂</span>' +
           '<span class="section-title-text" style="word-break:break-word;">' + escapeHtml(f.label || 'New Section') + '</span>' +
@@ -599,68 +807,51 @@
     card.draggable = true;
     card.dataset.index = idx;
 
-    // Drag-and-drop reordering listeners with visible glowing insertion indicators
+    // Real-time dynamic drag-and-drop reordering with live placeholder flow
     card.addEventListener('dragstart', function (e) {
+      if (e.target.closest('.field-actions-toolbar') ||
+          e.target.closest('.field-resize-handle') ||
+          e.target.closest('.field-height-handle') ||
+          e.target.closest('button, input, select, textarea, a')) {
+        e.preventDefault();
+        return false;
+      }
+
+      canvasDragState.isDragging = true;
+      canvasDragState.source = 'canvas';
+      canvasDragState.fromIndex = idx;
+      canvasDragState.draggedCard = card;
+      canvasDragState.span = span;
+
       if (e.dataTransfer) {
         e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'canvas', index: idx }));
         e.dataTransfer.effectAllowed = 'move';
       }
-      card.classList.add('dragging');
+
       var surface = document.querySelector('.canvas-form-surface');
       if (surface) surface.classList.add('show-grid-guides');
+
+      var rect = card.getBoundingClientRect();
+      canvasDragState.placeholder = createDragPlaceholder(span, rect.height);
+      card.parentNode.insertBefore(canvasDragState.placeholder, card);
+
+      setTimeout(function () {
+        if (canvasDragState.isDragging && card) {
+          card.classList.add('is-dragging');
+        }
+      }, 0);
     });
 
     card.addEventListener('dragend', function () {
-      card.classList.remove('dragging');
-      var surface = document.querySelector('.canvas-form-surface');
-      if (surface) surface.classList.remove('show-grid-guides');
-      document.querySelectorAll('.canvas-field-card').forEach(function (c) {
-        c.classList.remove('drag-insert-before', 'drag-insert-after', 'drag-over-top', 'drag-over-bottom');
-      });
+      cleanupDragState();
     });
 
     card.addEventListener('dragover', function (e) {
-      e.preventDefault();
-      var rect = card.getBoundingClientRect();
-      var relY = e.clientY - rect.top;
-      if (relY < rect.height / 2) {
-        card.classList.add('drag-insert-before');
-        card.classList.remove('drag-insert-after');
-      } else {
-        card.classList.add('drag-insert-after');
-        card.classList.remove('drag-insert-before');
-      }
-    });
-
-    card.addEventListener('dragleave', function () {
-      card.classList.remove('drag-insert-before', 'drag-insert-after');
+      handleCardDragOver(e, card);
     });
 
     card.addEventListener('drop', function (e) {
-      e.preventDefault();
-      card.classList.remove('drag-insert-before', 'drag-insert-after');
-      var raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-      var payload = null;
-      try {
-        payload = JSON.parse(raw);
-      } catch (err) {
-        payload = isNaN(parseInt(raw, 10)) ? { source: 'palette', type: raw } : { source: 'canvas', index: parseInt(raw, 10) };
-      }
-
-      var rect = card.getBoundingClientRect();
-      var relY = e.clientY - rect.top;
-      var targetIdx = (relY < rect.height / 2) ? idx : (idx + 1);
-
-      if (payload && payload.source === 'canvas') {
-        var fromIdx = parseInt(payload.index, 10);
-        if (isNaN(fromIdx) || fromIdx === idx) return;
-        var toIdx = targetIdx;
-        if (fromIdx < toIdx) toIdx--;
-        moveField(fromIdx, toIdx);
-      } else if (payload && (payload.type || typeof payload === 'string')) {
-        var t = payload.type || payload;
-        addFieldFromPalette(t, targetIdx);
-      }
+      executeCanvasDrop(e);
     });
 
     // Selection on click
@@ -741,26 +932,53 @@
       case 'select':
         var opts = resolveFieldOptions(f);
         var optHtml = '<option selected>' + escapeHtml(f.placeholder || ('Select ' + f.label + '...')) + '</option>';
+        var hasOtherOpt = false;
         opts.forEach(function (opt) {
           var lbl = typeof opt === 'object' ? (opt.label || opt.value) : opt;
+          var val = typeof opt === 'object' ? (opt.value || lbl) : opt;
+          var vLow = String(val).toLowerCase().trim();
+          var lLow = String(lbl).toLowerCase().trim();
+          if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+            hasOtherOpt = true;
+          }
           optHtml += '<option disabled>' + escapeHtml(lbl) + '</option>';
         });
-        return '<select class="select realistic-canvas-input" disabled style="' + roStyle + 'font-size:12.5px;opacity:1;cursor:default;">' + optHtml + '</select>';
+        var selectMockup = '<select class="select realistic-canvas-input" disabled style="' + roStyle + 'font-size:12.5px;opacity:1;cursor:default;">' + optHtml + '</select>';
+        if (hasOtherOpt) {
+          selectMockup += '<div style="margin-top:6px;display:flex;align-items:center;gap:6px;font-size:11px;color:#64748B;">' +
+            '<span style="color:#2563EB;font-weight:700;">↳</span> ' +
+            '<input class="input" style="height:28px;font-size:11px;background:#F8FAFC;border:1px dashed #CBD5E1;width:100%;color:#64748B;cursor:default;" placeholder="' + escapeHtml(f.label) + ' (Please specify) — auto text on Other" disabled>' +
+            '</div>';
+        }
+        return selectMockup;
 
       case 'radio':
       case 'checkbox':
       case 'yes_no':
         var rOpts = resolveFieldOptions(f);
         if (rOpts.length === 0) rOpts = ['Option 1', 'Option 2'];
+        var hasOtherRadio = false;
         var rHtml = '<div style="display:flex;flex-wrap:wrap;gap:12px;padding:4px 0;">';
         rOpts.forEach(function (opt, i) {
           var lbl = typeof opt === 'object' ? (opt.label || opt.value) : opt;
+          var val = typeof opt === 'object' ? (opt.value || lbl) : opt;
+          var vLow = String(val).toLowerCase().trim();
+          var lLow = String(lbl).toLowerCase().trim();
+          if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+            hasOtherRadio = true;
+          }
           rHtml += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#334155;cursor:default;">' +
             '<input type="' + (f.type === 'checkbox' ? 'checkbox' : 'radio') + '" disabled ' + (i === 0 ? 'checked' : '') + '> ' +
             '<span>' + escapeHtml(lbl) + '</span>' +
             '</label>';
         });
         rHtml += '</div>';
+        if (hasOtherRadio && f.type === 'radio') {
+          rHtml += '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;font-size:11px;color:#64748B;">' +
+            '<span style="color:#2563EB;font-weight:700;">↳</span> ' +
+            '<input class="input" style="height:28px;font-size:11px;background:#F8FAFC;border:1px dashed #CBD5E1;width:100%;color:#64748B;cursor:default;" placeholder="' + escapeHtml(f.label) + ' (Please specify) — auto text on Other" disabled>' +
+            '</div>';
+        }
         return rHtml;
 
       case 'file':
@@ -1085,7 +1303,10 @@
           '</div>';
       });
       html += '</div>' +
-        '<button type="button" class="btn btn-sm btn-outline btn-block" onclick="addCustomOption(' + idx + ')" style="font-size:11px;margin-top:6px;">+ Add Choice Option</button>';
+        '<div style="display:flex;gap:6px;margin-top:6px;">' +
+        '<button type="button" class="btn btn-sm btn-outline" onclick="addCustomOption(' + idx + ')" style="font-size:11px;flex:1;">+ Add Choice Option</button>' +
+        '<button type="button" class="btn btn-sm btn-outline" onclick="addOtherOption(' + idx + ')" style="font-size:11px;color:#2563EB;border-color:#93C5FD;background:#EFF6FF;" title="Add an Other choice that automatically reveals a text field for faculty">+ Add \'Other\'</button>' +
+        '</div>';
     }
 
     sec.innerHTML = html;
@@ -1368,6 +1589,9 @@
     }
 
     if (f.type === 'select') {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'width:100%;';
+
       var sel = document.createElement('select');
       sel.className = 'select';
       sel.name = f.key;
@@ -1375,28 +1599,85 @@
       sel.innerHTML = '<option value="">' + escapeHtml(f.placeholder || 'Select option...') + '</option>';
 
       var options = resolveFieldOptions(f);
+      var hasOther = false;
       options.forEach(function (opt) {
         var val = typeof opt === 'object' ? (opt.value || '') : opt;
         var lbl = typeof opt === 'object' ? (opt.label || val) : opt;
+        var vLow = String(val).toLowerCase().trim();
+        var lLow = String(lbl).toLowerCase().trim();
+        if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+          hasOther = true;
+        }
         sel.innerHTML += '<option value="' + escapeHtml(val) + '">' + escapeHtml(lbl) + '</option>';
       });
-      return sel;
+      wrap.appendChild(sel);
+
+      if (hasOther) {
+        var otherWrap = document.createElement('div');
+        otherWrap.style.cssText = 'display:none;margin-top:6px;';
+        otherWrap.innerHTML = '<label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:2px;">' + escapeHtml(f.label) + ' (Please specify)' + (f.required ? ' <span style="color:#DC2626;">*</span>' : '') + '</label>' +
+          '<input type="text" class="input" style="height:32px;font-size:12px;" placeholder="Please specify ' + escapeHtml(f.label) + '..." ' + (isDisabled ? 'disabled' : '') + '>';
+        wrap.appendChild(otherWrap);
+
+        sel.addEventListener('change', function () {
+          var v = (sel.value || '').toLowerCase().trim();
+          var isOther = (v === 'other' || v === 'others');
+          otherWrap.style.display = isOther ? 'block' : 'none';
+          if (isOther && !isDisabled) {
+            var inp = otherWrap.querySelector('input');
+            if (inp) inp.focus();
+          }
+        });
+      }
+
+      return wrap;
     }
 
     if (f.type === 'radio' || f.type === 'checkbox') {
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'width:100%;';
+
       var group = document.createElement('div');
       group.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;margin-top:2px;';
       var opts = resolveFieldOptions(f);
       if (opts.length === 0) opts = ['Yes', 'No'];
 
+      var hasOtherRadio = false;
       opts.forEach(function (opt) {
         var val = typeof opt === 'object' ? (opt.value || '') : opt;
         var lbl = typeof opt === 'object' ? (opt.label || val) : opt;
+        var vLow = String(val).toLowerCase().trim();
+        var lLow = String(lbl).toLowerCase().trim();
+        if (vLow === 'other' || vLow === 'others' || lLow === 'other' || lLow === 'others') {
+          hasOtherRadio = true;
+        }
         group.innerHTML += '<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">' +
           '<input type="' + (f.type === 'radio' ? 'radio' : 'checkbox') + '" name="' + escapeHtml(f.key) + '" value="' + escapeHtml(val) + '" ' + disabledAttr + '> ' +
           '<span>' + escapeHtml(lbl) + '</span></label>';
       });
-      return group;
+      wrap.appendChild(group);
+
+      if (hasOtherRadio && f.type === 'radio') {
+        var otherWrap = document.createElement('div');
+        otherWrap.style.cssText = 'display:none;margin-top:6px;';
+        otherWrap.innerHTML = '<label style="font-size:11px;font-weight:600;color:#475569;display:block;margin-bottom:2px;">' + escapeHtml(f.label) + ' (Please specify)' + (f.required ? ' <span style="color:#DC2626;">*</span>' : '') + '</label>' +
+          '<input type="text" class="input" style="height:32px;font-size:12px;" placeholder="Please specify ' + escapeHtml(f.label) + '..." ' + (isDisabled ? 'disabled' : '') + '>';
+        wrap.appendChild(otherWrap);
+
+        group.querySelectorAll('input[type="radio"]').forEach(function (r) {
+          r.addEventListener('change', function () {
+            var v = (this.value || '').toLowerCase().trim();
+            var isOther = (v === 'other' || v === 'others');
+            otherWrap.style.display = isOther ? 'block' : 'none';
+            if (isOther && !isDisabled) {
+              var inp = otherWrap.querySelector('input');
+              if (inp) inp.focus();
+            }
+          });
+        });
+      }
+
+      return wrap;
     }
 
     var inp = document.createElement('input');
@@ -1478,6 +1759,15 @@
     var form = document.getElementById('previewFormSimulation');
     if (!form) return;
 
+    if (form.checkValidity && !form.checkValidity()) {
+      if (typeof form.reportValidity === 'function') {
+        form.reportValidity();
+      } else {
+        alert('Please fill out all required fields marked with * before submitting simulation.');
+      }
+      return;
+    }
+
     var formData = new FormData(form);
     var payload = {};
     formData.forEach(function (val, key) {
@@ -1495,26 +1785,49 @@
       e.dataTransfer.setData('text/plain', JSON.stringify({ source: 'palette', type: type }));
       e.dataTransfer.effectAllowed = 'copy';
     }
+    var span = (['section_header', 'heading', 'divider', 'instructions'].indexOf(type) !== -1) ? 12 : 6;
+    canvasDragState.isDragging = true;
+    canvasDragState.source = 'palette';
+    canvasDragState.fromIndex = -1;
+    canvasDragState.draggedCard = null;
+    canvasDragState.paletteType = type;
+    canvasDragState.span = span;
+
+    var surface = document.querySelector('.canvas-form-surface');
+    if (surface) surface.classList.add('show-grid-guides');
   }
 
   function onCanvasDragOver(e) {
     if (e) e.preventDefault();
+    if (e && e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+
+    if (!canvasDragState.isDragging || !canvasDragState.placeholder) return;
+
+    var container = document.getElementById('canvasSectionsContainer');
+    if (!container) return;
+
+    var placeholder = canvasDragState.placeholder;
+    var cards = Array.from(container.querySelectorAll('.canvas-field-card:not(.is-dragging), .canvas-section-header:not(.is-dragging)'));
+    if (cards.length > 0) {
+      var first = cards[0];
+      var last = cards[cards.length - 1];
+      var firstRect = first.getBoundingClientRect();
+      var lastRect = last.getBoundingClientRect();
+
+      if (e.clientY < firstRect.top) {
+        if (container.firstElementChild !== placeholder) {
+          container.insertBefore(placeholder, container.firstElementChild);
+        }
+      } else if (e.clientY > lastRect.bottom) {
+        if (container.lastElementChild !== placeholder) {
+          container.appendChild(placeholder);
+        }
+      }
+    }
   }
 
   function onCanvasDrop(e) {
-    if (e) e.preventDefault();
-    var raw = e.dataTransfer ? e.dataTransfer.getData('text/plain') : '';
-    if (!raw) return;
-    var payload = null;
-    try {
-      payload = JSON.parse(raw);
-    } catch (err) {
-      payload = isNaN(parseInt(raw, 10)) ? { source: 'palette', type: raw } : { source: 'canvas', index: parseInt(raw, 10) };
-    }
-
-    if (payload && payload.source === 'palette' && payload.type) {
-      addFieldFromPalette(payload.type);
-    }
+    executeCanvasDrop(e);
   }
 
   function toggleFieldWidth(idx) {
@@ -1933,7 +2246,9 @@
 
   function moveField(fromIdx, toIdx) {
     if (fromIdx < 0 || fromIdx >= studioState.fields.length) return;
-    if (toIdx < 0 || toIdx >= studioState.fields.length) return;
+    if (toIdx < 0) toIdx = 0;
+    if (toIdx >= studioState.fields.length) toIdx = studioState.fields.length - 1;
+    if (fromIdx === toIdx) return;
 
     recordState();
     var moved = studioState.fields.splice(fromIdx, 1)[0];
@@ -1942,6 +2257,7 @@
     renderCanvas();
     selectField(toIdx);
     renderInteractivePreview();
+    markDirty();
   }
 
   function moveFieldUp(idx) {
@@ -1992,6 +2308,8 @@
 
     var payload = new FormData();
     payload.append('action', 'save_reusable_field');
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
     payload.append('field_json', JSON.stringify(f));
 
     fetch('form-studio.php?ajax=1', {
@@ -2078,6 +2396,26 @@
     studioState.fields[idx].options.push('Option ' + count);
     renderInspector();
     renderInteractivePreview();
+    renderCanvas();
+  }
+
+  function addOtherOption(idx) {
+    if (!studioState.fields[idx]) return;
+    recordState();
+    if (!Array.isArray(studioState.fields[idx].options)) {
+      studioState.fields[idx].options = [];
+    }
+    var exists = studioState.fields[idx].options.some(function (opt) {
+      var v = String(typeof opt === 'object' ? (opt.value || opt.label || '') : opt).toLowerCase().trim();
+      return v === 'other' || v === 'others';
+    });
+    if (!exists) {
+      studioState.fields[idx].options.push('Other');
+    }
+    renderInspector();
+    renderInteractivePreview();
+    renderCanvas();
+    showToast('info', "'Other' option added — faculty will see an automatic text field when selected");
   }
 
   function updateCustomOption(idx, oIdx, val) {
@@ -2085,6 +2423,7 @@
     studioState.fields[idx].options[oIdx] = val;
     markDirty();
     renderInteractivePreview();
+    renderCanvas();
   }
 
   function removeCustomOption(idx, oIdx) {
@@ -2093,6 +2432,7 @@
     studioState.fields[idx].options.splice(oIdx, 1);
     renderInspector();
     renderInteractivePreview();
+    renderCanvas();
   }
 
   function updateFormSetting(key, val) {
@@ -2255,6 +2595,8 @@
     payload.append('action', 'restore_form_version');
     payload.append('id', studioState.metricId);
     payload.append('history_id', historyId);
+    payload.append('csrf', getCsrfToken());
+    payload.append('csrf_token', getCsrfToken());
 
     fetch('form-studio.php?ajax=1', {
       method: 'POST',
@@ -2466,8 +2808,11 @@
   }
 
   function getCsrfToken() {
-    var meta = document.querySelector('input[name="csrf_token"]');
-    return meta ? meta.value : '';
+    var tokenInput = document.getElementById('globalCsrfToken') ||
+                     document.getElementById('globalCsrfTokenAlt') ||
+                     document.querySelector('input[name="csrf"]') ||
+                     document.querySelector('input[name="csrf_token"]');
+    return tokenInput ? tokenInput.value : '';
   }
 
   // Window BeforeUnload Guard
@@ -2529,6 +2874,7 @@
 
     var fd = new FormData();
     fd.append('action', 'save_option_set');
+    fd.append('csrf', getCsrfToken());
     fd.append('csrf_token', getCsrfToken());
     fd.append('set_key', key);
     fd.append('name', name);
@@ -2539,7 +2885,10 @@
     fetch('form-studio.php', {
       method: 'POST',
       body: fd,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': getCsrfToken()
+      }
     })
     .then(function (res) { return res.json(); })
     .then(function (data) {
@@ -2571,12 +2920,17 @@
 
     var formData = new FormData(formEl);
     formData.append('ajax', '1');
+    if (!formData.has('csrf')) formData.append('csrf', getCsrfToken());
+    if (!formData.has('csrf_token')) formData.append('csrf_token', getCsrfToken());
 
     updateSaveIndicator('saving', 'Creating form...');
     fetch('form-studio.php', {
       method: 'POST',
       body: formData,
-      headers: { 'X-Requested-With': 'XMLHttpRequest' }
+      headers: {
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-Token': getCsrfToken()
+      }
     })
     .then(function (res) { return res.json(); })
     .then(function (data) {
@@ -2584,8 +2938,32 @@
         updateSaveIndicator('saved', 'Form created');
         var modal = document.getElementById('newFormModal');
         if (modal) modal.close();
+
+        if (Array.isArray(studioState.allMetrics)) {
+          var exists = false;
+          for (var i = 0; i < studioState.allMetrics.length; i++) {
+            if (parseInt(studioState.allMetrics[i].id, 10) === parseInt(data.metric.id, 10)) {
+              exists = true;
+              break;
+            }
+          }
+          if (!exists) {
+            studioState.allMetrics.push({
+              id: parseInt(data.metric.id, 10),
+              metric_key: data.metric.metric_key,
+              name: data.metric.name,
+              category: data.metric.category || 'GENERAL',
+              form_version: parseInt(data.metric.form_version || 1, 10)
+            });
+          }
+        }
+
         // Load the new form into studio
         loadFormStudioConfig(data.metric.id);
+        if (typeof renderFormMenuList === 'function') {
+          renderFormMenuList();
+        }
+
         if (window.history && window.history.replaceState) {
           window.history.replaceState({}, '', 'form-studio.php?id=' + encodeURIComponent(data.metric.id));
         }
@@ -2637,6 +3015,7 @@
   window.toggleConditionalLogic = toggleConditionalLogic;
   window.setOptionMode = setOptionMode;
   window.addCustomOption = addCustomOption;
+  window.addOtherOption = addOtherOption;
   window.updateCustomOption = updateCustomOption;
   window.removeCustomOption = removeCustomOption;
   window.updateFormSetting = updateFormSetting;
@@ -2729,7 +3108,81 @@
     closeFormMenu();
     var modal = document.getElementById('newFormModal');
     if (modal && typeof modal.showModal === 'function') {
+      var titleInput = document.getElementById('newFormTitleInput');
+      var keyInput = document.getElementById('newFormKeyInput');
+      if (titleInput) titleInput.value = '';
+      if (keyInput) {
+        keyInput.value = '';
+        delete keyInput.dataset.manual;
+      }
       modal.showModal();
+    }
+  }
+
+  function renderFormMenuList() {
+    var menuList = document.getElementById('formMenuList');
+    var formSel = document.getElementById('formSelector');
+    if (!menuList && !formSel) return;
+
+    var metrics = Array.isArray(studioState.allMetrics) ? studioState.allMetrics : [];
+    var currentId = studioState.metricId ? parseInt(studioState.metricId, 10) : null;
+
+    if (menuList) {
+      var byCat = {};
+      metrics.forEach(function (m) {
+        var cat = (m.category || 'GENERAL').toUpperCase();
+        if (!byCat[cat]) byCat[cat] = [];
+        byCat[cat].push(m);
+      });
+
+      var html = '';
+      Object.keys(byCat).sort().forEach(function (cat) {
+        var catItems = byCat[cat];
+        html += '<div class="studio-menu-group-header">' + escapeHtml(cat) + '</div>';
+        catItems.forEach(function (m) {
+          var mId = parseInt(m.id, 10);
+          var isActive = (currentId === mId);
+          var mName = m.name || 'Untitled Form';
+          var mKey = m.metric_key || '';
+          var mVer = parseInt(m.form_version || 1, 10);
+
+          html += '<div class="studio-menu-item ' + (isActive ? 'active' : '') + '" ' +
+                  'data-id="' + mId + '" ' +
+                  'data-name="' + escapeHtml(mName.toLowerCase()) + '" ' +
+                  'data-key="' + escapeHtml(mKey.toLowerCase()) + '" ' +
+                  'onclick="selectFormFromMenu(' + mId + ')" role="menuitem">' +
+                  '<div class="studio-menu-item-left">' +
+                    '<span class="studio-menu-item-id">#' + mId + '</span>' +
+                    '<div class="studio-menu-item-info">' +
+                      '<div class="studio-menu-item-title">' + escapeHtml(mName) + '</div>' +
+                      '<div class="studio-menu-item-sub"><span class="studio-menu-item-key">' + escapeHtml(mKey) + '</span></div>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="studio-menu-item-right">' +
+                    '<span class="studio-menu-item-ver">v' + mVer + '</span>' +
+                    (isActive ? '<span class="studio-menu-item-check"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>' : '') +
+                  '</div>' +
+                '</div>';
+        });
+      });
+      menuList.innerHTML = html;
+
+      var searchInput = document.getElementById('formMenuSearchInput');
+      if (searchInput && searchInput.value) {
+        filterFormMenu(searchInput.value);
+      }
+    }
+
+    if (formSel) {
+      var selHtml = '<optgroup label="Select Form to Customize">';
+      metrics.forEach(function (m) {
+        var mId = parseInt(m.id, 10);
+        var isSelected = (currentId === mId);
+        selHtml += '<option value="' + mId + '" ' + (isSelected ? 'selected' : '') + '>#' + mId + ' · ' + escapeHtml(m.name || 'Custom Form') + ' (v' + (m.form_version || 1) + ')</option>';
+      });
+      selHtml += '</optgroup><option value="NEW">+ Create New Dynamic Form...</option>';
+      formSel.innerHTML = selHtml;
+      if (currentId) formSel.value = currentId;
     }
   }
 
@@ -2771,6 +3224,7 @@
   window.filterFormMenu = filterFormMenu;
   window.selectFormFromMenu = selectFormFromMenu;
   window.openNewFormModalFromMenu = openNewFormModalFromMenu;
+  window.renderFormMenuList = renderFormMenuList;
 
   window.onFormSelectorChange = function (val) {
     if (val === 'NEW') {
@@ -2792,6 +3246,12 @@
       keyInp.value = name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     }
   };
+
+  window.addEventListener('dragend', function () {
+    if (canvasDragState && canvasDragState.isDragging) {
+      cleanupDragState();
+    }
+  });
 
 })(window, document);
 

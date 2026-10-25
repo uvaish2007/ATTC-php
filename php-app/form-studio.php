@@ -75,7 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'metric_key'          => $key,
             'category'            => $cat,
             'description'         => $desc,
-            'display_order'       => 99,
             'metric_type'         => 'generic',
             'faculty_visible'     => input('faculty_visible') !== null ? (input('faculty_visible') ? 1 : 0) : 1,
             'coordinator_visible' => input('coordinator_visible') !== null ? (input('coordinator_visible') ? 1 : 0) : 1,
@@ -331,8 +330,10 @@ require __DIR__ . '/inc/header.php';
         </div>
       </div>
 
-      <!-- Hidden input preserved for script compatibility -->
+      <!-- Hidden input preserved for script compatibility and global CSRF token -->
       <input type="hidden" id="formNameInput" value="<?= e($initialMetric['name'] ?? 'Custom Form') ?>">
+      <input type="hidden" name="csrf" id="globalCsrfToken" value="<?= e(csrf_token()) ?>">
+      <input type="hidden" name="csrf_token" id="globalCsrfTokenAlt" value="<?= e(csrf_token()) ?>">
 
       <!-- Stable Metadata Badges -->
       <div class="studio-tb-badges">
@@ -776,10 +777,13 @@ require __DIR__ . '/inc/header.php';
           <!-- Dynamically populated interactive form -->
         </div>
 
-        <div style="margin-top:16px;">
+        <div style="margin-top:16px;display:flex;flex-direction:column;gap:8px;">
           <button type="button" class="btn btn-primary btn-block" onclick="testPreviewSubmission()" style="font-size:12.5px;font-weight:700;">
             <?= icon('check-circle', 14) ?> Test Form Submission
           </button>
+          <a id="previewLiveUploadLink" href="<?= e(url('upload.php?metric=' . urlencode($initialMetric['metric_key'] ?? ''))) ?>" target="_blank" class="btn btn-ghost btn-block" style="font-size:12px;font-weight:600;text-align:center;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--studio-border);color:var(--studio-navy);">
+            <?= icon('external-link', 13) ?> Open Live in Upload Page
+          </a>
         </div>
       </div>
     </aside>

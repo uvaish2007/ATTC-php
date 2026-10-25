@@ -16,15 +16,27 @@ if (!defined('COMPRESSION_PNG_LEVEL')) {
 }
 
 if (!function_exists('save_upload_proof')) {
-function save_upload_proof(?array $file, bool $required = false, ?string $targetType = null): array
+function save_upload_proof(?array $file, bool $required = false, ?string $targetTypeOrLabel = null): array
 {
-    $t = $targetType ?: ($GLOBALS['selectedType'] ?? null);
+    $t = null;
+    $customLabel = null;
+    if ($targetTypeOrLabel !== null) {
+        if (in_array($targetTypeOrLabel, ['journal', 'conference', 'fdp', 'inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards', 'value_added', 'inst_society_memberships', 'inst_sports', 'inst_sports_state', 'inst_sports_national'], true)) {
+            $t = $targetTypeOrLabel;
+        } else {
+            $customLabel = $targetTypeOrLabel;
+        }
+    }
+    if ($t === null) {
+        $t = $GLOBALS['selectedType'] ?? null;
+    }
     $isPaper = in_array($t, ['journal', 'conference'], true);
     $isCert  = in_array($t, ['fdp'], true);
     $isInterInst = in_array($t, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
     $isValueAdded = ($t === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
     $isSociety = ($t === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
-    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $isSports = in_array($t, ['inst_sports', 'inst_sports_state', 'inst_sports_national'], true);
+    $entityLabel = $customLabel ?: ($isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety || $isSports ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment'))));
 
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {

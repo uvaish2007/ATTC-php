@@ -51,7 +51,7 @@ assert_test("TEST 1: Exact Section Count", count($sections) === 30, "Found exact
 // -----------------------------------------------------------------------------
 $expectedTitles = [
     1  => 'University Pass Percentage',
-    2  => 'To Improve II & III Year Students Above 7.5 CGPA',
+    2  => 'Students Secured Above 8.5 CGPA',
     3  => 'Place 2024–25 Batch Students in Top MNCs',
     4  => 'Quality Publications in Scopus / SCI / Springer / UGC CARE / H-Index',
     5  => 'Books Publication — Book / Book Chapter',

@@ -31,12 +31,12 @@ function upload_approved_sections_built_in(): array
         'student_cgpa' => [
             'id'           => 'student_cgpa',
             'order'        => 2,
-            'title'        => 'To Improve II & III Year Students Above 7.5 CGPA',
+            'title'        => 'Students Secured Above 8.5 CGPA',
             'group'        => 'UNIVERSITY AND STUDENT PERFORMANCE',
             'default_type' => 'inst_student_cgpa',
             'types'        => ['inst_student_cgpa'],
             'subcategories'=> [],
-            'description'  => 'Identifying and tracking second- and third-year students achieving above 7.5 CGPA.',
+            'description'  => 'Identifying and tracking students achieving above 8.5 CGPA across I, II, III, and IV Year.',
         ],
         'placement_mnc' => [
             'id'           => 'placement_mnc',
@@ -276,10 +276,7 @@ function upload_approved_sections_built_in(): array
             'group'        => 'INSTITUTIONAL AND STUDENT ACTIVITIES',
             'default_type' => 'inst_sports_state',
             'types'        => ['inst_sports_state', 'inst_sports_national'],
-            'subcategories'=> [
-                'inst_sports_state'    => 'State-Level Sports & Awards',
-                'inst_sports_national' => 'National-Level Sports & Awards',
-            ],
+            'subcategories'=> [], // Merged into unified form with Competition Level dropdown: State, National
             'description'  => 'Sports participation and athletic tournament awards at state and national levels.',
         ],
         'innovation_events' => [
@@ -425,6 +422,8 @@ function upload_approved_sections(?string $role = null, bool $forceRefresh = fal
 
                     $dynamicSections[$key] = [
                         'id'           => $key,
+                        'key'          => $key,
+                        'metric_id'    => (int)$m['id'],
                         'order'        => (int)$m['display_order'],
                         'title'        => $m['name'],
                         'group'        => $m['category'],
@@ -469,11 +468,33 @@ function resolve_upload_section(?string $sectionId = null, ?string $typeId = nul
 {
     $sections = upload_approved_sections($role);
 
-    // 1. Direct section ID lookup
-    if (!empty($sectionId) && isset($sections[$sectionId])) {
-        $sec = $sections[$sectionId];
-        $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
-        return ['section' => $sec, 'type' => $type];
+    // 1. Direct section ID lookup or matching by metric_id / alias / prefix
+    if (!empty($sectionId)) {
+        $cleanSectionId = str_starts_with($sectionId, 'section_') ? substr($sectionId, 8) : $sectionId;
+
+        if (isset($sections[$sectionId])) {
+            $sec = $sections[$sectionId];
+            $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
+            return ['section' => $sec, 'type' => $type];
+        }
+        if (isset($sections[$cleanSectionId])) {
+            $sec = $sections[$cleanSectionId];
+            $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
+            return ['section' => $sec, 'type' => $type];
+        }
+        foreach ($sections as $sKey => $sec) {
+            if ((string)($sec['metric_id'] ?? '') === (string)$sectionId 
+                || (string)($sec['metric_id'] ?? '') === (string)$cleanSectionId
+                || (string)$sKey === (string)$sectionId 
+                || (string)$sKey === (string)$cleanSectionId
+                || (string)($sec['id'] ?? '') === (string)$sectionId 
+                || (string)($sec['id'] ?? '') === (string)$cleanSectionId
+                || (string)($sec['key'] ?? '') === (string)$sectionId
+                || (string)($sec['key'] ?? '') === (string)$cleanSectionId) {
+                $type = (!empty($typeId) && in_array($typeId, $sec['types'], true)) ? $typeId : $sec['default_type'];
+                return ['section' => $sec, 'type' => $type];
+            }
+        }
     }
 
     // 2. Direct record type reverse lookup with legacy consolidation

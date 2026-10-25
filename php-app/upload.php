@@ -25,6 +25,13 @@ $activeYear  = active_academic_year();
 if (function_exists('inst_handle_ajax_upercent')) {
     inst_handle_ajax_upercent($user, $activeYear);
 }
+if (function_exists('inst_handle_ajax_student_cgpa')) {
+    inst_handle_ajax_student_cgpa($user, $activeYear);
+}
+if (function_exists('inst_handle_ajax_sports')) {
+    inst_handle_ajax_sports($user, $activeYear);
+}
+
 
 if (isset($_GET['action']) && $_GET['action'] === 'student_lookup') {
     header('Content-Type: application/json; charset=utf-8');
@@ -104,6 +111,36 @@ if (isset($_GET['action']) && $_GET['action'] === 'student_lookup') {
                 }
             } catch (\Throwable $e) {}
         }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM inst_student_certifications WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
+
+        if (!$info) {
+            try {
+                $stmt = $pdo->prepare("SELECT student_name, department FROM inst_spoken_tutorials WHERE reg_no = ? AND student_name IS NOT NULL AND student_name != '' ORDER BY id DESC LIMIT 1");
+                $stmt->execute([$reg]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($row && !empty($row['student_name'])) {
+                    $info = [
+                        'student_name' => $row['student_name'],
+                        'department'   => $row['department'] ?? '',
+                        'class_year'   => '',
+                    ];
+                }
+            } catch (\Throwable $e) {}
+        }
     }
     echo json_encode([
         'success' => true,
@@ -122,15 +159,27 @@ if (!defined('PROOF_MAX_BYTES')) {
     define('PROOF_MAX_BYTES', 2 * 1024 * 1024);   
 }
 
-if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false, ?string $targetType = null): array
+if (!function_exists('save_upload_proof')) {function save_upload_proof(?array $file, bool $required = false, $targetTypeOrLabel = null): array
 {
-    $t = $targetType ?: ($GLOBALS['selectedType'] ?? null);
+    $t = null;
+    $customLabel = null;
+    if ($targetTypeOrLabel !== null) {
+        if (is_string($targetTypeOrLabel) && in_array($targetTypeOrLabel, ['journal', 'conference', 'fdp', 'inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards', 'value_added', 'inst_society_memberships', 'inst_sports', 'inst_sports_state', 'inst_sports_national'], true)) {
+            $t = $targetTypeOrLabel;
+        } else {
+            $customLabel = is_string($targetTypeOrLabel) ? $targetTypeOrLabel : null;
+        }
+    }
+    if ($t === null) {
+        $t = $GLOBALS['selectedType'] ?? null;
+    }
     $isPaper = in_array($t, ['journal', 'conference'], true);
     $isCert  = in_array($t, ['fdp'], true);
     $isInterInst = in_array($t, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
     $isValueAdded = ($t === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
     $isSociety = ($t === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
-    $entityLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $isSports = in_array($t, ['inst_sports', 'inst_sports_state', 'inst_sports_national'], true);
+    $entityLabel = $customLabel ?: ($isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety || $isSports ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment'))));
 
     if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
         if ($required) {
@@ -393,8 +442,23 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         $genMetricKey = str_starts_with($type, 'gen_') ? substr($type, 4) : $type;
         $genMetric = metric_studio_find($genMetricKey);
         if ($genMetric) {
-            [$ok, $msg, $recId] = generic_metric_record_submit($genMetricKey, $user, $targetYear, $_POST, $_FILES['proof'] ?? null);
+            $proofUpload = $_FILES['proof'] ?? null;
+            if (!$proofUpload || empty($proofUpload['name'])) {
+                foreach ($_FILES as $fk => $fData) {
+                    if (!empty($fData['name'])) {
+                        $proofUpload = $fData;
+                        break;
+                    }
+                }
+            }
+            [$ok, $msg, $recId] = generic_metric_record_submit($genMetricKey, $user, $targetYear, $_POST, $proofUpload);
             flash($ok ? 'success' : 'error', $msg);
+            if ($nav === 'next') {
+                $nextSec = upload_section_next($genMetricKey, $user['role']);
+                if ($nextSec) {
+                    redirect('/upload.php?section=' . $nextSec['id'] . '&type=' . $nextSec['default_type']);
+                }
+            }
             redirect('/upload.php?section=' . urlencode($genMetricKey) . '&type=' . urlencode($type));
         }
 
@@ -405,7 +469,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     foreach ($_POST as $k => $v) {
         if (substr($k, -6) === '_other') {
             $base = substr($k, 0, -6);
-            if (($_POST[$base] ?? '') === 'Others' && trim((string) $v) !== '') {
+            $baseVal = strtolower(trim((string)($_POST[$base] ?? '')));
+            if (($baseVal === 'other' || $baseVal === 'others') && trim((string) $v) !== '') {
                 $_POST[$base] = trim((string) $v);
             }
         }
@@ -464,7 +529,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             'organization' => 'Name & Address of Collaborating Body',
             'valid_upto' => 'Valid upto',
             'purpose' => 'Purpose of Collaboration',
-            'document_link' => 'Document Link',
         ],
         'event' => [
             'department' => 'Department',
@@ -913,9 +977,40 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             // fall back to requiring a proof
         }
     }
-    [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $proofRequired);
-    if ($proofError !== null) {
-        $validationErrors[] = $proofError;
+
+    $patentCoAuthors = [];
+    $patentSavedAttachments = [];
+    if ($type === 'patent') {
+        require_once __DIR__ . '/inc/patent_handler.php';
+        $patentCoAuthors = patent_parse_coauthors_input($_POST['co_authors'] ?? []);
+        $_POST['co_authors'] = !empty($patentCoAuthors) ? implode(', ', $patentCoAuthors) : null;
+
+        $keepIds = array_map('intval', (array)($_POST['keep_attachments'] ?? []));
+        $patentFiles = $_FILES['patent_files'] ?? null;
+        $patentDocTypes = (array)($_POST['patent_doc_types'] ?? []);
+        [$patentAttOk, $patentAttErr, $patentSavedAttachments] = patent_process_attachments(
+            $proofEditId,
+            $patentFiles,
+            $patentDocTypes,
+            $keepIds,
+            $proofRequired
+        );
+        if (!$patentAttOk) {
+            $validationErrors[] = $patentAttErr;
+        }
+        $proofStored = !empty($patentSavedAttachments) ? ($patentSavedAttachments[0]['file_path'] ?? null) : null;
+        $proofError = null;
+    } else {
+        $proofLabel = match ($type) {
+            'inst_research_centre' => 'Recognition Letter',
+            'mou' => 'Upload MoU Copy',
+            'inst_mou_interactions' => 'Report',
+            default => 'Proof / Attachment',
+        };
+        [$proofStored, $proofError] = save_upload_proof($_FILES['proof'] ?? null, $proofRequired, $proofLabel);
+        if ($proofError !== null) {
+            $validationErrors[] = $proofError;
+        }
     }
 
     if (!empty($validationErrors)) {
@@ -1022,6 +1117,9 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
             if (publication_authors_ready($type)) {
                 publication_save_authors($type, $editId, $pubAuthors);
             }
+            if ($type === 'patent') {
+                patent_save_coauthors($editId, $patentCoAuthors, $pdo);
+            }
             $pdo->commit();
 
             if (in_array($type, ['co_curricular', 'extra_curricular', 'student_achievement'], true)) {
@@ -1117,6 +1215,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
         if (publication_authors_ready($type)) {
             publication_save_authors($type, $newRecordId, $pubAuthors);
         }
+        if ($type === 'patent') {
+            patent_save_coauthors($newRecordId, $patentCoAuthors, $pdo);
+            if (!empty($patentSavedAttachments)) {
+                patent_persist_attachments($newRecordId, $patentSavedAttachments, $pdo);
+            }
+        }
         $pdo->commit();
 
         if (in_array($type, ['co_curricular', 'extra_curricular', 'student_achievement'], true) && !empty($cleanMembers)) {
@@ -1184,14 +1288,8 @@ $submittedDraftType = $_SESSION['submitted_draft_type'] ?? null;
 unset($_SESSION['submitted_draft_type']);
 
 $userRole = $user['role'] ?? 'Faculty';
-$reqSection = trim((string)($_GET['section'] ?? ''));
+$reqSection = trim((string)($_GET['section'] ?? ($_GET['metric'] ?? ($_GET['metric_key'] ?? ($_GET['id'] ?? '')))));
 $reqType    = trim((string)($_GET['type'] ?? ''));
-$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null, $userRole);
-$activeSection       = $resolvedSectionData['section'];
-$selectedType        = $resolvedSectionData['type'];
-if (!isset($types[$selectedType])) {
-    $selectedType = $activeSection['default_type'];
-}
 
 // Dynamically register active generic metrics into $types map
 $allActiveSections = upload_approved_sections($userRole);
@@ -1207,6 +1305,13 @@ foreach ($allActiveSections as $sSec) {
             ];
         }
     }
+}
+
+$resolvedSectionData = resolve_upload_section($reqSection ?: null, $reqType ?: null, $userRole);
+$activeSection       = $resolvedSectionData['section'];
+$selectedType        = $resolvedSectionData['type'];
+if (!isset($types[$selectedType])) {
+    $selectedType = $activeSection['default_type'];
 }
 if (!isset($types[$selectedType]) && ($activeSection['metric_type'] ?? '') === 'generic') {
     $types[$selectedType] = [
@@ -1406,8 +1511,11 @@ function render_publication_date_fields(): void
     <?php
 }
 
-function render_proof_field(?array $editRecord = null, bool $required = true, ?array $attConfig = null): void
+function render_proof_field(?array $editRecord = null, bool $required = true, $attConfigOrLabel = null): void
 {
+    $attConfig = is_array($attConfigOrLabel) ? $attConfigOrLabel : null;
+    $customLabel = is_string($attConfigOrLabel) ? $attConfigOrLabel : null;
+
     // Resolve attachment config if not passed
     if ($attConfig === null) {
         if (!empty($GLOBALS['activeSection']['attachment_config'])) {
@@ -1427,11 +1535,12 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
     $isInterInst  = in_array($selectedType, ['inst_inter_inst_within', 'inst_inter_inst_outside', 'inst_inter_inst_awards'], true) || (($GLOBALS['activeSection']['id'] ?? '') === 'inter_institute');
     $isValueAdded = ($selectedType === 'value_added') || (($GLOBALS['activeSection']['id'] ?? '') === 'value_added');
     $isSociety    = ($selectedType === 'inst_society_memberships') || (($GLOBALS['activeSection']['id'] ?? '') === 'society_memberships');
-    $defaultLabel = $isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment')));
+    $isSports     = in_array($selectedType, ['inst_sports', 'inst_sports_state', 'inst_sports_national'], true);
+    $defaultLabel = $customLabel ?: ($isPaper ? 'Paper Copy' : ($isCert ? 'Upload Certificate' : ($isInterInst || $isSociety || $isSports ? 'Certificate' : ($isValueAdded ? 'Event Report' : 'Proof / Attachment'))));
     $label        = (!empty($attConfig['label']) && $attConfig['label'] !== 'Proof / Attachment') ? $attConfig['label'] : $defaultLabel;
     $isMandatory  = isset($attConfig['required']) ? (bool)$attConfig['required'] : $required;
     $maxMb        = !empty($attConfig['max_file_mb']) ? (int)$attConfig['max_file_mb'] : 2;
-    $allowedTypes = !empty($attConfig['allowed_types']) ? $attConfig['allowed_types'] : ['pdf'];
+    $allowedTypes = !empty($attConfig['allowed_types']) ? $attConfig['allowed_types'] : ($isSports || $label === 'Certificate' ? ['pdf', 'jpg', 'jpeg', 'png'] : ['pdf']);
     $helpText     = $isPaper ? ('PDF document strictly ' . $maxMb . ' MB or less.') : (!empty($attConfig['help_text']) ? $attConfig['help_text'] : (strtoupper(implode(', ', $allowedTypes)) . ' document strictly ' . $maxMb . ' MB or less.'));
 
     $hasProof = $editRecord && (!empty($editRecord['proof_file']) || !empty($editRecord['proofs']));
@@ -1450,7 +1559,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
             $acceptParts[] = '.' . $ext;
         }
     }
-    $acceptAttr = implode(',', array_unique($acceptParts));
+    $acceptAttr = ($isSports || $label === 'Certificate') ? 'application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png' : implode(',', array_unique($acceptParts));
     $formatsBadge = strtoupper(implode(', ', $allowedTypes));
 
     echo '<div class="field atts-proof-container" style="grid-column: 1 / -1; margin-top:8px;" data-max-bytes="' . ($maxMb * 1024 * 1024) . '" data-max-mb="' . $maxMb . '" data-allowed="' . e(strtolower(implode(',', $allowedTypes))) . '">';
@@ -1464,7 +1573,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
         echo '<div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 14px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">';
         echo '  <div style="display:flex; align-items:center; gap:8px;">';
         echo '    <span style="color:#16A34A; display:inline-flex;">' . icon('file-text', 16) . '</span>';
-        echo '    <span style="font-size:12.5px; color:#15803D; font-weight:600;">' . ($isPaper ? 'Current Paper Copy:' : ($isCert ? 'Current Certificate:' : ($isInterInst || $isSociety ? 'Current Certificate:' : ($isValueAdded ? 'Current Event Report:' : 'Current Attachment:')))) . '</span>';
+        echo '    <span style="font-size:12.5px; color:#15803D; font-weight:600;">' . ($isPaper ? 'Current Paper Copy:' : ($isCert ? 'Current Certificate:' : ($isInterInst || $isSociety || $isSports ? 'Current Certificate:' : ($isValueAdded ? 'Current Event Report:' : 'Current Attachment:')))) . '</span>';
         echo '    <code style="font-size:11.5px; background:#DCFCE7; color:#166534; padding:2px 6px; border-radius:4px; font-family:monospace;">' . e($existingProofFile) . '</code>';
         echo '  </div>';
         echo '  <div style="display:flex; align-items:center; gap:8px;">';
@@ -1486,6 +1595,10 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
         echo '</div>';
     }
 
+    $isMulti      = !empty($attConfig['allow_multiple']) || ($attConfig['mode'] ?? '') === 'multiple';
+    $inputName    = $isMulti ? 'proof[]' : 'proof';
+    $multiAttr    = $isMulti ? ' multiple' : '';
+
     echo '<div class="atts-proof-dropzone" id="proofDropzone" style="border:2px dashed #CBD5E1; border-radius:10px; background:#F8FAFC; padding:14px 18px; transition:border-color 0.2s, background 0.2s; position:relative;">';
     echo '  <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">';
     echo '    <div style="display:flex; align-items:center; gap:12px; flex:1; min-width:240px;">';
@@ -1493,7 +1606,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
     echo '        ' . icon('upload-cloud', 22);
     echo '      </div>';
     echo '      <div style="flex:1;">';
-    echo '        <input class="input" type="file" name="proof" id="proofInput" accept="' . e($acceptAttr) . '"' . ($needed ? ' required' : '') . ' style="font-size:12px; padding:6px 10px; border-radius:6px; background:#FFFFFF; width:100%;">';
+    echo '        <input class="input" type="file" name="' . $inputName . '" id="proofInput" accept="' . e($acceptAttr) . '"' . ($needed ? ' required' : '') . $multiAttr . ' style="font-size:12px; padding:6px 10px; border-radius:6px; background:#FFFFFF; width:100%;">';
     echo '        <div class="card-sub" style="font-size:11px; color:#64748B; margin-top:4px;">' . e($helpText) . '</div>';
     echo '      </div>';
     echo '    </div>';
@@ -1508,6 +1621,7 @@ function render_proof_field(?array $editRecord = null, bool $required = true, ?a
     echo '</div>';
     echo '</div>';
 }
+
 
 // Event Mode plus the location fields each mode needs. The fields are only
 // hidden when the mode changes, never cleared, so switching back keeps them.
@@ -1582,7 +1696,7 @@ require __DIR__ . '/inc/header.php';
       <span class="atts-targets-title">
         <?= icon('target', 14) ?> Institutional Academic Targets
       </span>
-      <span class="badge badge-neutral">30 Sections</span>
+      <span class="badge badge-neutral"><?= count($approvedSections) ?> Sections</span>
       <span class="badge badge-primary"><?= e($activeSection['group']) ?></span>
     </div>
     <div class="atts-targets-header-right">
@@ -1591,9 +1705,14 @@ require __DIR__ . '/inc/header.php';
         <select class="select atts-quick-jump-select" id="quickJumpSelect" onchange="if(this.value) window.location.href=this.value" aria-label="Quick Jump to Metric">
           <?php foreach ($sectionsByGroup as $grpName => $grpSecs): ?>
             <optgroup label="<?= e($grpName) ?>">
-              <?php foreach ($grpSecs as $s): ?>
+              <?php 
+                $qjIdx = 1;
+                foreach ($grpSecs as $s): 
+                  $qjNum = (!empty($s['order']) && (int)$s['order'] > 0 && (int)$s['order'] < 100) ? (int)$s['order'] : $qjIdx;
+                  $qjIdx++;
+              ?>
                 <option value="<?= e(url('upload.php?section=' . $s['id'] . '&type=' . $s['default_type'])) ?>" <?= ($activeSection['id'] === $s['id']) ? 'selected' : '' ?>>
-                  <?= (int)$s['order'] ?>. <?= e($s['title']) ?>
+                  <?= $qjNum ?>. <?= e($s['title']) ?>
                 </option>
               <?php endforeach; ?>
             </optgroup>
@@ -1631,8 +1750,12 @@ require __DIR__ . '/inc/header.php';
 
   <div class="atts-metric-nav-container js-category-nav-container" id="categoryNavContainer" role="tablist" aria-label="Institutional Academic Targets">
     <div class="atts-metric-nav-track" id="categoryNavTrack">
-      <?php foreach ($approvedSections as $secId => $sec): 
-        $isActive = ($activeSection['id'] === $sec['id']);
+      <?php 
+        $secTabIdx = 1;
+        foreach ($approvedSections as $secId => $sec): 
+          $isActive = ($activeSection['id'] === $sec['id']);
+          $badgeNum = (!empty($sec['order']) && (int)$sec['order'] > 0 && (int)$sec['order'] < 100) ? (int)$sec['order'] : $secTabIdx;
+          $secTabIdx++;
       ?>
         <a href="<?= e(url('upload.php?section=' . $sec['id'] . '&type=' . $sec['default_type'])) ?>"
            class="atts-metric-tab js-category-tab <?= $isActive ? 'active' : '' ?>"
@@ -1640,8 +1763,8 @@ require __DIR__ . '/inc/header.php';
            role="tab"
            id="metric-tab-<?= e($sec['id']) ?>"
            aria-selected="<?= $isActive ? 'true' : 'false' ?>"
-           title="<?= e($sec['order'] . '. ' . $sec['title']) ?>">
-          <span class="atts-metric-tab-badge"><?= (int)$sec['order'] ?></span>
+           title="<?= e($badgeNum . '. ' . $sec['title']) ?>">
+          <span class="atts-metric-tab-badge"><?= $badgeNum ?></span>
           <span class="atts-metric-tab-title"><?= e($sec['title']) ?></span>
         </a>
       <?php endforeach; ?>
@@ -2006,6 +2129,8 @@ require __DIR__ . '/inc/header.php';
                     $currentEvType = 'FDP';
                 }
                 echo $editRecord ? 'Edit ' . e($currentEvType) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($currentEvType);
+            } elseif ($selectedType === 'inst_student_cgpa') {
+                echo $editRecord ? 'Edit Students Secured Above 8.5 CGPA #' . (int)($editRecord['id'] ?? $editId) : 'Students Secured Above 8.5 CGPA';
             } else {
                 $typeLabel = $types[$selectedType]['label'] ?? ($activeSection['title'] ?? 'Record');
                 echo $editRecord ? 'Edit ' . e($typeLabel) . ' #' . (int)($editRecord['id'] ?? $editId) : 'New ' . e($typeLabel);
@@ -2074,8 +2199,12 @@ require __DIR__ . '/inc/header.php';
       }
       </style>
 
-      <?php $isGenericMetric = (($activeSection['metric_type'] ?? '') === 'generic'); ?>
-      <div class="<?= $isGenericMetric ? 'form-dynamic-grid-12' : 'form-standard-grid' ?>" style="display:grid; grid-template-columns:<?= $isGenericMetric ? 'repeat(12, 1fr)' : '1fr 1fr' ?>; gap:16px 20px; align-items:start;">
+      <?php 
+        $hasDynamicForm = !empty($activeSection['form_config']) && is_array($activeSection['form_config']);
+        $isGenericMetric = (($activeSection['metric_type'] ?? '') === 'generic');
+        $use12ColGrid = $isGenericMetric || $hasDynamicForm;
+      ?>
+      <div class="<?= $use12ColGrid ? 'form-dynamic-grid-12' : 'form-standard-grid' ?>" style="display:grid; grid-template-columns:<?= $use12ColGrid ? 'repeat(12, 1fr)' : '1fr 1fr' ?>; gap:16px 20px; align-items:start;">
       <?php if (!empty($editRecord)): ?>
         <div style="grid-column:1 / -1; background:#EFF6FF; border:1px solid #BFDBFE; border-left:4px solid #1D4ED8; border-radius:10px; padding:16px 20px; margin-bottom:16px">
           <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px">
@@ -2102,7 +2231,7 @@ require __DIR__ . '/inc/header.php';
           </div>
         </div>
       <?php endif; ?>
-      <?php if ($isGenericMetric): ?>
+      <?php if ($use12ColGrid): ?>
         <?php
           require_once __DIR__ . '/inc/metric_studio.php';
           $genFields = $activeSection['form_config'] ?: [];
@@ -2113,6 +2242,23 @@ require __DIR__ . '/inc/header.php';
             <strong>Instructions:</strong> <?= e($activeSection['help_text']) ?>
           </div>
         <?php endif; ?>
+
+        <?php
+          // If this is a hybrid institutional metric, ensure Department and Academic Year are rendered if not in form_config
+          if (!$isGenericMetric && str_starts_with($selectedType, 'inst_')) {
+              $existingKeys = array_column($genFields, 'key');
+              if (!in_array('department', $existingKeys, true)) {
+                  echo '<div class="field" style="grid-column:span 6;">';
+                  render_dept_field($user, $departments, 'Department', true);
+                  echo '</div>';
+              }
+              if (!in_array('academic_year', $existingKeys, true)) {
+                  echo '<div class="field" style="grid-column:span 6;">';
+                  render_academic_year_field($editRecord['academic_year'] ?? $effectiveYear, 'academic_year', 'Academic Year', true, 'upercentAcademicYear');
+                  echo '</div>';
+              }
+          }
+        ?>
 
         <?php foreach ($genFields as $gf):
           $fType = $gf['type'] ?? 'text';
@@ -2226,15 +2372,94 @@ require __DIR__ . '/inc/header.php';
               <textarea class="input" name="<?= e($fKey) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> rows="3"><?= e((string)$editVal) ?></textarea>
 
             <?php elseif ($fType === 'select'): ?>
-              <select class="select" name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
-                <option value="" disabled <?= $editVal === '' ? 'selected' : '' ?>><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
-                <?php foreach ($resolvedOptions as $opt):
-                  $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
-                  $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
-                ?>
-                  <option value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'selected' : '' ?>><?= e($optLbl) ?></option>
-                <?php endforeach; ?>
+              <?php
+                $isUpercentSession = ($fKey === 'exam_session' && str_contains($selectedType, 'pass_percentage'));
+                $isUpercentSem = ($fKey === 'semester' && str_contains($selectedType, 'pass_percentage'));
+                $selectId = $isUpercentSession ? 'upercentExamSession' : ($isUpercentSem ? 'upercentSemester' : '');
+                $onchangeAttr = $isUpercentSession ? 'onchange="if(window.upercentOnSessionChange) upercentOnSessionChange(this)"' : ($isUpercentSem ? 'onchange="if(window.upercentOnSemesterChange) upercentOnSemesterChange(this)"' : '');
+
+                // Check if this select field has an "Other" or "Others" option
+                $hasOtherOpt = false;
+                $otherOptValue = 'Other';
+                foreach ($resolvedOptions as $opt) {
+                    $ov = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                    $ol = is_array($opt) ? ($opt['label'] ?? $ov) : (string)$opt;
+                    $ovLow = strtolower(trim($ov));
+                    $olLow = strtolower(trim($ol));
+                    if ($ovLow === 'other' || $ovLow === 'others' || $olLow === 'other' || $olLow === 'others') {
+                        $hasOtherOpt = true;
+                        $otherOptValue = $ov;
+                        break;
+                    }
+                }
+
+                $otherTextVal = (string)($editDataMap[$fKey . '_other'] ?? '');
+                $isOtherSelected = false;
+                if ($hasOtherOpt) {
+                    $curValLow = strtolower(trim((string)$editVal));
+                    if ($curValLow === 'other' || $curValLow === 'others' || (string)$editVal === (string)$otherOptValue) {
+                        $isOtherSelected = true;
+                    } elseif ($otherTextVal !== '') {
+                        $isOtherSelected = true;
+                        $editVal = $otherOptValue;
+                    } elseif ($editVal !== '') {
+                        $matchesStd = false;
+                        foreach ($resolvedOptions as $opt) {
+                            $ov = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                            $ol = is_array($opt) ? ($opt['label'] ?? $ov) : (string)$opt;
+                            if (in_array(strtolower(trim($ov)), ['other', 'others'], true)) continue;
+                            if ((string)$editVal === (string)$ov || (string)$editVal === (string)$ol) {
+                                $matchesStd = true;
+                                break;
+                            }
+                        }
+                        if (!$matchesStd) {
+                            $isOtherSelected = true;
+                            $otherTextVal = (string)$editVal;
+                            $editVal = $otherOptValue;
+                        }
+                    }
+                }
+              ?>
+              <select class="select <?= $hasOtherOpt ? 'js-select-has-other' : '' ?>" <?= $selectId ? 'id="' . $selectId . '"' : '' ?> name="<?= e($fKey) ?>" data-field-key="<?= e($fKey) ?>" data-is-required="<?= $req ? '1' : '0' ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?> <?= $onchangeAttr ?>>
+                <option value="" disabled <?= ($editVal === '' && !$isOtherSelected) ? 'selected' : '' ?>><?= e($gf['placeholder'] ?: 'Select an option') ?></option>
+                <?php if ($isUpercentSession && empty($resolvedOptions)): ?>
+                  <option value="Nov/Dec" <?= ($editVal === 'Nov/Dec' || $editVal === 'Nov-Dec' || $editVal === 'NOV_DEC') ? 'selected' : '' ?>>Nov/Dec (Odd Semesters)</option>
+                  <option value="Apr/May" <?= ($editVal === 'Apr/May' || $editVal === 'Apr-May' || $editVal === 'APR_MAY') ? 'selected' : '' ?>>Apr/May (Even Semesters)</option>
+                <?php else: ?>
+                  <?php foreach ($resolvedOptions as $opt):
+                    $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                    $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                    if ($isUpercentSession) {
+                        if ($optVal === 'NOV_DEC' || $optVal === 'Nov-Dec') { $optVal = 'Nov/Dec'; $optLbl = 'Nov/Dec (Odd Semesters)'; }
+                        elseif ($optVal === 'APR_MAY' || $optVal === 'Apr-May') { $optVal = 'Apr/May'; $optLbl = 'Apr/May (Even Semesters)'; }
+                    }
+                    if ($isUpercentSem && is_numeric($optVal)) {
+                        $optVal = 'Sem ' . $optVal;
+                    }
+                    $isThisOptOther = in_array(strtolower(trim($optVal)), ['other', 'others'], true);
+                    $isSelected = ($isOtherSelected && $isThisOptOther) || (!$isOtherSelected && (string)$editVal === (string)$optVal);
+                  ?>
+                    <option value="<?= e($optVal) ?>" <?= $isSelected ? 'selected' : '' ?>><?= e($optLbl) ?></option>
+                  <?php endforeach; ?>
+                <?php endif; ?>
               </select>
+
+              <?php if ($hasOtherOpt): ?>
+                <div class="field-other-wrap js-other-wrap-<?= e($fKey) ?>" style="margin-top:8px; <?= $isOtherSelected ? '' : 'display:none;' ?>">
+                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">
+                    <?= e($gf['label']) ?> (Please specify) <?= $req ? '<span class="req">*</span>' : '' ?>
+                  </label>
+                  <input class="input js-other-input" 
+                         type="text" 
+                         name="<?= e($fKey) ?>_other" 
+                         id="<?= e($fKey) ?>_other" 
+                         value="<?= e($otherTextVal) ?>" 
+                         placeholder="<?= e($gf['other_placeholder'] ?? 'Please specify ' . strtolower($gf['label']) . '...') ?>" 
+                         <?= ($isOtherSelected && $req) ? 'required' : '' ?> 
+                         <?= $disabledAttr ?>>
+                </div>
+              <?php endif; ?>
 
             <?php elseif ($fType === 'multiselect'): ?>
               <?php
@@ -2255,17 +2480,69 @@ require __DIR__ . '/inc/header.php';
               </div>
 
             <?php elseif ($fType === 'radio'): ?>
+              <?php
+                $hasOtherOpt = false;
+                $otherOptValue = 'Other';
+                foreach ($resolvedOptions as $opt) {
+                    $ov = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
+                    $ol = is_array($opt) ? ($opt['label'] ?? $ov) : (string)$opt;
+                    $ovLow = strtolower(trim($ov));
+                    $olLow = strtolower(trim($ol));
+                    if ($ovLow === 'other' || $ovLow === 'others' || $olLow === 'other' || $olLow === 'others') {
+                        $hasOtherOpt = true;
+                        $otherOptValue = $ov;
+                        break;
+                    }
+                }
+                $otherTextVal = (string)($editDataMap[$fKey . '_other'] ?? '');
+                $isOtherSelected = false;
+                if ($hasOtherOpt) {
+                    $curValLow = strtolower(trim((string)$editVal));
+                    if ($curValLow === 'other' || $curValLow === 'others' || (string)$editVal === (string)$otherOptValue) {
+                        $isOtherSelected = true;
+                    } elseif ($otherTextVal !== '') {
+                        $isOtherSelected = true;
+                        $editVal = $otherOptValue;
+                    }
+                }
+              ?>
               <div style="display:flex; flex-wrap:wrap; gap:12px; margin-top:4px;">
                 <?php foreach ($resolvedOptions as $opt):
                   $optVal = is_array($opt) ? ($opt['value'] ?? '') : (string)$opt;
                   $optLbl = is_array($opt) ? ($opt['label'] ?? $optVal) : (string)$opt;
+                  $isThisOptOther = in_array(strtolower(trim($optVal)), ['other', 'others'], true);
+                  $isChecked = ($isOtherSelected && $isThisOptOther) || (!$isOtherSelected && (string)$editVal === (string)$optVal);
                 ?>
                   <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:normal; cursor:pointer; margin:0;">
-                    <input type="radio" name="<?= e($fKey) ?>" value="<?= e($optVal) ?>" <?= (string)$editVal === (string)$optVal ? 'checked' : '' ?> <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+                    <input type="radio" 
+                           class="<?= $hasOtherOpt ? 'js-radio-has-other' : '' ?>"
+                           name="<?= e($fKey) ?>" 
+                           value="<?= e($optVal) ?>" 
+                           data-field-key="<?= e($fKey) ?>"
+                           data-is-required="<?= $req ? '1' : '0' ?>"
+                           <?= $isChecked ? 'checked' : '' ?> 
+                           <?= $req ? 'required' : '' ?> 
+                           <?= $disabledAttr ?>>
                     <span><?= e($optLbl) ?></span>
                   </label>
                 <?php endforeach; ?>
               </div>
+
+              <?php if ($hasOtherOpt): ?>
+                <div class="field-other-wrap js-other-wrap-<?= e($fKey) ?>" style="margin-top:8px; <?= $isOtherSelected ? '' : 'display:none;' ?>">
+                  <label style="font-size:11.5px; font-weight:600; color:#475569; display:block; margin-bottom:4px;">
+                    <?= e($gf['label']) ?> (Please specify) <?= $req ? '<span class="req">*</span>' : '' ?>
+                  </label>
+                  <input class="input js-other-input" 
+                         type="text" 
+                         name="<?= e($fKey) ?>_other" 
+                         id="<?= e($fKey) ?>_other" 
+                         value="<?= e($otherTextVal) ?>" 
+                         placeholder="<?= e($gf['other_placeholder'] ?? 'Please specify ' . strtolower($gf['label']) . '...') ?>" 
+                         <?= ($isOtherSelected && $req) ? 'required' : '' ?> 
+                         <?= $disabledAttr ?>>
+                </div>
+              <?php endif; ?>
 
             <?php elseif ($fType === 'checkbox'): ?>
               <label style="display:inline-flex; align-items:center; gap:8px; font-size:12.5px; font-weight:normal; cursor:pointer; margin-top:6px;">
@@ -2295,10 +2572,16 @@ require __DIR__ . '/inc/header.php';
               <input class="input" type="datetime-local" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'integer'): ?>
-              <input class="input" type="number" step="1" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (int)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+              <?php
+                $intId = ($fKey === 'registered_students') ? 'upercentRegisteredStudents' : (($fKey === 'passed_students') ? 'upercentPassedStudents' : '');
+              ?>
+              <input class="input" type="number" step="1" <?= $intId ? 'id="' . $intId . '"' : '' ?> name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (int)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (int)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'decimal'): ?>
-              <input class="input" type="number" step="any" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (float)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
+              <?php
+                $decId = ($fKey === 'pass_percentage') ? 'upercentPassPercentage' : '';
+              ?>
+              <input class="input" type="number" step="any" <?= $decId ? 'id="' . $decId . '"' : '' ?> name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min']) && $gf['min'] !== null ? 'min="' . (float)$gf['min'] . '"' : '' ?> <?= isset($gf['max']) && $gf['max'] !== null ? 'max="' . (float)$gf['max'] . '"' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'tel'): ?>
               <input class="input" type="tel" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'e.g. +91 98765 43210') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
@@ -2310,7 +2593,10 @@ require __DIR__ . '/inc/header.php';
               <input class="input" type="email" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?: 'user@example.com') ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php elseif ($fType === 'readonly'): ?>
-              <input class="input" type="text" name="<?= e($fKey) ?>" value="<?= e((string)($editVal ?: ($gf['placeholder'] ?? 'Calculated Automatically'))) ?>" readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;">
+              <?php
+                $roId = ($fKey === 'pass_percentage') ? 'upercentPassPercentage' : '';
+              ?>
+              <input class="input" type="text" <?= $roId ? 'id="' . $roId . '"' : '' ?> name="<?= e($fKey) ?>" value="<?= e((string)($editVal ?: ($gf['placeholder'] ?? 'Calculated Automatically'))) ?>" readonly style="background:#F1F5F9; font-weight:600; color:#475569; cursor:not-allowed;">
 
             <?php elseif ($fType === 'specialized'): ?>
               <div style="background:#EFF6FF; border:1px solid #BFDBFE; padding:10px 14px; border-radius:6px; font-size:12px; color:#1D4ED8; font-weight:600;">
@@ -2324,21 +2610,14 @@ require __DIR__ . '/inc/header.php';
               </div>
 
             <?php elseif ($fType === 'file'): ?>
-              <input class="input" type="file" name="<?= e($fKey) ?>" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
+              <?php $fieldName = in_array($fKey, ['proof', 'proof_file', 'supporting_proof', 'proof_attachment'], true) ? 'proof' : $fKey; ?>
+              <input class="input" type="file" name="<?= e($fieldName) ?>" accept=".pdf,.jpg,.jpeg,.png,application/pdf" <?= $req ? 'required' : '' ?> <?= $disabledAttr ?>>
 
             <?php else: ?>
               <input class="input" type="text" name="<?= e($fKey) ?>" value="<?= e((string)$editVal) ?>" placeholder="<?= e($gf['placeholder'] ?? '') ?>" <?= $req ? 'required' : '' ?> <?= isset($gf['min_length']) && $gf['min_length'] !== null ? 'minlength="' . (int)$gf['min_length'] . '"' : '' ?> <?= isset($gf['max_length']) && $gf['max_length'] !== null ? 'maxlength="' . (int)$gf['max_length'] . '"' : '' ?> <?= $disabledAttr ?>>
             <?php endif; ?>
           </div>
         <?php endforeach; ?>
-      <?php endif; ?>
-
-      <?php if ($selectedType === 'patent'): ?>
-        <div class="field"><label>Faculty Name <span class="req">*</span></label>
-          <input class="input" name="faculty_name" value="<?= e($user['name']) ?>" required></div>
-        <?php render_dept_field($user, $departments, 'Department', true); ?>
-        <?php render_academic_year_field(); ?>
-        <?php render_exam_session_field($effectiveYear); ?>
       <?php endif; ?>
 
       <?php if ($selectedType === 'journal'): ?>
@@ -2477,10 +2756,13 @@ require __DIR__ . '/inc/header.php';
 
       <?php elseif ($selectedType === 'patent'): ?>
         <?php
+          require_once __DIR__ . '/inc/patent_handler.php';
           $patentCategories = ['Patent Published', 'Patent Granted', 'Design', 'Copyrights'];
           $currCat = $editRecord['category'] ?? 'Patent Published';
           if ($currCat === 'Patent') $currCat = 'Patent Published';
           if ($currCat === 'Copyright') $currCat = 'Copyrights';
+          $existingCoAuthors = !empty($editRecord['id']) ? patent_get_coauthors((int)$editRecord['id']) : [];
+          $existingAttachments = !empty($editRecord['id']) ? patent_get_attachments((int)$editRecord['id']) : [];
         ?>
         <div class="field"><label>Category <span class="req">*</span></label>
           <select class="select" name="category" id="patentCategorySelect" required onchange="updatePatentLabels(this.value)">
@@ -2492,8 +2774,88 @@ require __DIR__ . '/inc/header.php';
         <div class="field" style="grid-column:span 2"><label id="patentTitleLabel">Title of the Patent / Copyright / Design <span class="req">*</span></label><input class="input" name="title" value="<?= e($editRecord['title'] ?? '') ?>" required></div>
         <div class="field"><label id="patentNumberLabel">Patent / Registration Number <span class="req">*</span></label><input class="input" name="patent_number" value="<?= e($editRecord['patent_number'] ?? '') ?>" required></div>
         <div class="field"><label id="patentDateLabel">Date of Publication / Grant <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="publication_date" type="date" value="<?= e($editRecord['publication_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
-        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required></div>
+        
+        <!-- Author Method / Co-Authors section: submitting faculty member is identified via auth -->
+        <div class="field" style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <label style="font-weight:700; font-size:13.5px; color:#1E293B; margin:0; display:flex; align-items:center; gap:6px;">
+                <?= icon('users', 16) ?> Author Method / Co-Authors
+              </label>
+              <div class="card-sub" style="font-size:12px; color:#64748B; margin-top:2px;">
+                Add one or more co-authors or co-inventors. (Submitting faculty member is logged in and recorded automatically).
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addPatentCoAuthorField('')" style="display:inline-flex; align-items:center; gap:4px; font-weight:600;">
+              <?= icon('plus', 13) ?> Add Co-Author (+)
+            </button>
+          </div>
+          <div id="patentCoAuthorsList" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Rendered via JS -->
+          </div>
+        </div>
+
+        <!-- Document Link -->
+        <div class="field" style="grid-column:span 2;">
+          <label>Document Link <span class="req">*</span> <span class="card-sub">(Official patent office URL or registry web link starting with http:// or https://)</span></label>
+          <input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" placeholder="https://..." required>
+        </div>
+
+        <!-- Proof / Attachments (Multiple Document Types: Patent Copy, Certificate, Supporting Document) -->
+        <div class="field" style="grid-column:span 2; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:8px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+            <div>
+              <label style="font-weight:700; font-size:13.5px; color:#1E293B; margin:0; display:flex; align-items:center; gap:6px;">
+                <?= icon('paperclip', 16) ?> Proof / Attachments (Multiple Documents) <span class="req">*</span>
+              </label>
+              <div class="card-sub" style="font-size:12px; color:#64748B; margin-top:2px;">
+                Upload official copies: Patent Copy, Certificate, or Supporting Documents. Allowed formats: PDF (.pdf), JPG, JPEG, PNG (max 2 MB per file).
+              </div>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline" onclick="addPatentAttachmentRow()" style="display:inline-flex; align-items:center; gap:4px; font-weight:600;">
+              <?= icon('plus', 13) ?> Add Document (+)
+            </button>
+          </div>
+
+          <?php if (!empty($existingAttachments)): ?>
+            <div style="margin-bottom:12px; background:#fff; border:1px solid #E2E8F0; border-radius:6px; padding:12px;">
+              <div style="font-size:12px; font-weight:700; color:#334155; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
+                Existing Attachments on File
+              </div>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <?php foreach ($existingAttachments as $ea): ?>
+                  <div style="display:flex; align-items:center; justify-content:space-between; background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:8px 12px; font-size:12.5px;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <label style="margin:0; display:inline-flex; align-items:center; gap:8px; cursor:pointer;">
+                        <input type="checkbox" name="keep_attachments[]" value="<?= (int)$ea['id'] ?>" checked>
+                        <span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:700; background:#E0E7FF; color:#3730A3;">
+                          <?= e($ea['doc_type']) ?>
+                        </span>
+                        <strong style="color:#0F172A;"><?= e($ea['file_name']) ?></strong>
+                      </label>
+                    </div>
+                    <div>
+                      <a href="/proof.php?file=<?= urlencode($ea['file_path']) ?>" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="font-size:11px; height:26px; padding:2px 8px; display:inline-flex; align-items:center; gap:3px;">
+                        <?= icon('external-link', 11) ?> View
+                      </a>
+                    </div>
+                  </div>
+                <?php endforeach; ?>
+              </div>
+              <div class="card-sub" style="font-size:11px; margin-top:6px; color:#64748B;">
+                Uncheck any attachment above if you wish to remove it upon saving.
+              </div>
+            </div>
+          <?php endif; ?>
+
+          <div id="patentAttachmentsList" style="display:flex; flex-direction:column; gap:8px;">
+            <!-- Dynamic attachment upload entries -->
+          </div>
+        </div>
         <script>
+        var initialPatentCoAuthors = <?= json_encode(!empty($existingCoAuthors) ? array_values($existingCoAuthors) : []) ?>;
+        var existingAttachmentsCount = <?= count($existingAttachments) ?>;
+
         function updatePatentLabels(cat) {
           var numLbl = document.getElementById('patentNumberLabel');
           var dateLbl = document.getElementById('patentDateLabel');
@@ -2517,9 +2879,73 @@ require __DIR__ . '/inc/header.php';
             if (titleLbl) titleLbl.innerHTML = 'Title of Work / Copyright <span class="req">*</span>';
           }
         }
+
+        function addPatentCoAuthorField(val) {
+          val = val || '';
+          var list = document.getElementById('patentCoAuthorsList');
+          if (!list) return;
+          var rowId = 'pat_ca_' + Math.random().toString(36).substring(2, 9);
+          var row = document.createElement('div');
+          row.id = rowId;
+          row.style.cssText = 'display:flex; gap:8px; align-items:center;';
+          row.innerHTML = '<input type="text" name="co_authors[]" class="input" placeholder="Enter Co-Author / Co-Inventor Full Name" value="' + val.replace(/"/g, '&quot;') + '" style="flex-grow:1;">' +
+            '<button type="button" class="btn btn-outline btn-sm" onclick="removePatentCoAuthorField(\'' + rowId + '\')" style="color:#DC2626; border-color:#FCA5A5; padding:6px 10px;" title="Remove Co-Author">&times; Remove</button>';
+          list.appendChild(row);
+        }
+
+        function removePatentCoAuthorField(rowId) {
+          var el = document.getElementById(rowId);
+          if (el) el.remove();
+        }
+
+        function addPatentAttachmentRow(defaultType) {
+          defaultType = defaultType || 'Patent Copy';
+          var list = document.getElementById('patentAttachmentsList');
+          if (!list) return;
+          var rowId = 'pat_att_' + Math.random().toString(36).substring(2, 9);
+          var row = document.createElement('div');
+          row.id = rowId;
+          row.style.cssText = 'display:flex; gap:10px; align-items:center; background:#fff; padding:8px 12px; border:1px solid #CBD5E1; border-radius:6px; flex-wrap:wrap;';
+          
+          var isFirstUpload = list.children.length === 0 && existingAttachmentsCount === 0;
+          var reqAttr = isFirstUpload ? 'required' : '';
+
+          row.innerHTML = '<div style="width:180px; flex-shrink:0;">' +
+              '<select class="select" name="patent_doc_types[]" style="width:100%;">' +
+                '<option value="Patent Copy"' + (defaultType === 'Patent Copy' ? ' selected' : '') + '>Patent Copy</option>' +
+                '<option value="Certificate"' + (defaultType === 'Certificate' ? ' selected' : '') + '>Certificate</option>' +
+                '<option value="Supporting Document"' + (defaultType === 'Supporting Document' ? ' selected' : '') + '>Supporting Document</option>' +
+              '</select>' +
+            '</div>' +
+            '<div style="flex-grow:1; min-width:220px;">' +
+              '<input type="file" name="patent_files[]" class="input" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" ' + reqAttr + ' style="width:100%;">' +
+            '</div>' +
+            '<div>' +
+              '<button type="button" class="btn btn-outline btn-sm" onclick="removePatentAttachmentRow(\'' + rowId + '\')" style="color:#DC2626; border-color:#FCA5A5; padding:6px 10px;" title="Remove Document">&times; Remove</button>' +
+            '</div>';
+          list.appendChild(row);
+        }
+
+        function removePatentAttachmentRow(rowId) {
+          var el = document.getElementById(rowId);
+          if (el) el.remove();
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
           var sel = document.getElementById('patentCategorySelect');
           if (sel) updatePatentLabels(sel.value);
+
+          // Preload co-authors if editing
+          if (initialPatentCoAuthors && initialPatentCoAuthors.length > 0) {
+            for (var i = 0; i < initialPatentCoAuthors.length; i++) {
+              addPatentCoAuthorField(initialPatentCoAuthors[i]);
+            }
+          }
+
+          // If no existing attachments on file, add one initial attachment row
+          if (existingAttachmentsCount === 0) {
+            addPatentAttachmentRow('Patent Copy');
+          }
         });
         </script>
 
@@ -2591,11 +3017,11 @@ require __DIR__ . '/inc/header.php';
         <?php render_dept_field($user, $departments, 'Department', true); ?>
         <?php render_academic_year_field(); ?>
         <?php render_exam_session_field($effectiveYear, 'Academic Session'); ?>
-        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" max="<?= app_ist_today() ?>" required></div>
-        <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" required></div>
-        <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" required></div>
-        <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration <span class="req">*</span></label><input class="input" name="purpose" required></div>
-        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" required></div>
+        <div class="field"><label>Signed Date <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="signed_date" type="date" value="<?= e($editRecord['signed_date'] ?? '') ?>" max="<?= app_ist_today() ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Name &amp; Address of the Collaborating Body <span class="req">*</span> <span class="card-sub">(Industry / Institution / Agency)</span></label><input class="input" name="organization" value="<?= e($editRecord['organization'] ?? '') ?>" required></div>
+        <div class="field"><label>Valid upto <span class="req">*</span> <span class="card-sub">(dd/mm/yyyy)</span></label><input class="input" name="valid_upto" type="date" value="<?= e($editRecord['valid_upto'] ?? '') ?>" required></div>
+        <div class="field" style="grid-column:span 2"><label>Purpose of Collaboration <span class="req">*</span></label><input class="input" name="purpose" value="<?= e($editRecord['purpose'] ?? '') ?>" required></div>
+        <div class="field"><label>Document Link <span class="req">*</span></label><input class="input" name="document_link" type="url" value="<?= e($editRecord['document_link'] ?? '') ?>" required></div>
 
       <?php elseif ($selectedType === 'event'): ?>
         <?php render_dept_field($user, $departments, 'Department', true); ?>
@@ -3056,7 +3482,41 @@ require __DIR__ . '/inc/header.php';
               if (!isset($activeSection['attachment_config']['required'])) {
                   $attReq = !str_starts_with($selectedType, 'inst_');
               }
-              render_proof_field($editRecord, $attReq, $activeSection['attachment_config'] ?? null);
+          }
+
+          $hasCustomProof = false;
+          if (!empty($activeSection['form_config']) && is_array($activeSection['form_config'])) {
+              foreach ($activeSection['form_config'] as $cfgF) {
+                  if (($cfgF['type'] ?? '') === 'file' || in_array(($cfgF['key'] ?? ''), ['proof', 'proof_file', 'supporting_proof', 'proof_attachment'], true)) {
+                      $hasCustomProof = true;
+                      break;
+                  }
+              }
+          }
+
+          if (!in_array($selectedType, ['journal', 'fdp', 'patent', 'inst_pass_percentage', 'inst_student_cgpa'], true) && !$hasCustomProof) {
+              $proofLabel = match ($selectedType) {
+                  'inst_research_centre' => 'Recognition Letter',
+                  'mou' => 'Upload MoU Copy',
+                  'inst_mou_interactions' => 'Report',
+                  'inst_sports_state', 'inst_sports_national' => 'Certificate',
+                  default => 'Proof / Attachment',
+              };
+              $cfg = $activeSection['attachment_config'] ?? null;
+              if (in_array($selectedType, ['inst_sports', 'inst_sports_state', 'inst_sports_national'], true)) {
+                  $cfg = ['label' => 'Certificate', 'allowed_types' => ['pdf', 'jpg', 'jpeg', 'png'], 'required' => true];
+                  $attReq = true;
+              } elseif ($selectedType === 'inst_research_centre') {
+                  $cfg = ['label' => 'Recognition Letter', 'allowed_types' => ['pdf'], 'required' => true];
+                  $attReq = true;
+              } elseif ($selectedType === 'inst_mou_interactions') {
+                  $cfg = ['label' => 'Report', 'allowed_types' => ['pdf'], 'required' => true];
+                  $attReq = true;
+              } elseif ($selectedType === 'mou') {
+                  $cfg = ['label' => 'Upload MoU Copy', 'allowed_types' => ['pdf'], 'required' => true];
+                  $attReq = true;
+              }
+              render_proof_field($editRecord, $attReq, $cfg ?: $proofLabel);
           }
         ?>
       </div>
@@ -3150,11 +3610,70 @@ require __DIR__ . '/inc/header.php';
     </form>
 
     <script>
+      // Automatic 'Other' Dropdown & Radio Specification Field Synchronization
+      function initDynamicOtherOptions() {
+        // Select dropdowns with 'Other' option
+        document.querySelectorAll('select.js-select-has-other').forEach(function (sel) {
+          var fieldKey = sel.getAttribute('data-field-key');
+          var isReq = sel.getAttribute('data-is-required') === '1';
+          var wrap = sel.closest('.field') ? sel.closest('.field').querySelector('.js-other-wrap-' + fieldKey) : document.querySelector('.js-other-wrap-' + fieldKey);
+          var input = wrap ? wrap.querySelector('.js-other-input') : null;
+          if (!wrap || !input) return;
+
+          function syncSelect() {
+            var val = (sel.value || '').toLowerCase().trim();
+            var isOther = (val === 'other' || val === 'others');
+            wrap.style.display = isOther ? 'block' : 'none';
+            input.required = (isOther && isReq);
+            if (isOther && document.activeElement === sel) {
+              input.focus();
+            }
+          }
+
+          sel.addEventListener('change', syncSelect);
+          syncSelect();
+        });
+
+        // Radio option groups with 'Other' option
+        document.querySelectorAll('.field').forEach(function (fWrap) {
+          var radios = fWrap.querySelectorAll('input[type="radio"].js-radio-has-other');
+          if (!radios.length) return;
+          var first = radios[0];
+          var fieldKey = first.getAttribute('data-field-key') || first.name;
+          var isReq = first.getAttribute('data-is-required') === '1';
+          var wrap = fWrap.querySelector('.js-other-wrap-' + fieldKey);
+          var input = wrap ? wrap.querySelector('.js-other-input') : null;
+          if (!wrap || !input) return;
+
+          function syncRadio() {
+            var checked = fWrap.querySelector('input[type="radio"][name="' + first.name + '"]:checked');
+            var val = checked ? (checked.value || '').toLowerCase().trim() : '';
+            var isOther = (val === 'other' || val === 'others');
+            wrap.style.display = isOther ? 'block' : 'none';
+            input.required = (isOther && isReq);
+            if (isOther && document.activeElement && document.activeElement.type === 'radio') {
+              input.focus();
+            }
+          }
+
+          radios.forEach(function (r) {
+            r.addEventListener('change', syncRadio);
+          });
+          syncRadio();
+        });
+      }
+
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initDynamicOtherOptions);
+      } else {
+        initDynamicOtherOptions();
+      }
+
       document.querySelectorAll('.js-other').forEach(function (sel) {
         var box = sel.parentElement.querySelector('.js-other-text');
         if (!box) return;
         function sync() {
-          var on = sel.value === 'Others';
+          var on = (sel.value || '').toLowerCase() === 'others' || (sel.value || '').toLowerCase() === 'other';
           box.style.display = on ? '' : 'none';
           box.required = on;
           if (!on) box.value = '';
@@ -3998,6 +4517,136 @@ require __DIR__ . '/inc/header.php';
 </div>
 </div> <!-- /#individualUploadContainer -->
 
+<?php if ($selectedType === 'inst_student_cgpa'): ?>
+  <?php
+    $sumDept = $userDept ?: ($user['department'] ?? 'CSE');
+    $summaryData = get_student_cgpa_summary($sumDept, $effectiveYear);
+  ?>
+  <div class="card" id="cgpaSummarySection" style="margin-top:20px; border-top:3px solid #FF4F01;">
+    <div class="card-head" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <div>
+        <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+          <?= icon('award', 18) ?> Year-Wise Students Above 8.5 CGPA
+        </div>
+        <div class="card-sub">
+          Academic Year: <strong><?= e($effectiveYear) ?></strong> &bull; Department: <strong id="cgpaSummaryDeptBadge"><?= e($sumDept) ?></strong>
+        </div>
+      </div>
+      <div>
+        <span class="badge" style="font-size:12px; font-weight:700; background:#FFF7ED; color:#C2410C; border:1px solid #FFEDD5; padding:6px 12px; border-radius:8px;">
+          Grand Total: <strong id="cgpaSummaryGrandTotalTop" style="font-size:14px; margin-left:4px;"><?= (int)$summaryData['total']['above_8_5'] ?></strong> Students
+        </span>
+      </div>
+    </div>
+    <div class="card-body" style="padding:20px;">
+      <!-- Four Summary Cards Grid -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-bottom:20px;">
+        <?php foreach (['I Year', 'II Year', 'III Year', 'IV Year'] as $yLabel): 
+          $yData = $summaryData['years'][$yLabel] ?? ['above_8_5' => 0, 'records' => 0];
+        ?>
+          <div style="background:#fff; border:1px solid var(--border,#e2e8f0); border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.03); border-top:3px solid #FF4F01;">
+            <div style="font-size:13px; font-weight:700; color:var(--navy,#131D3B); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+              <span><?= e($yLabel) ?></span>
+              <span style="font-size:11px; font-weight:600; color:#64748b; background:#f1f5f9; padding:2px 6px; border-radius:4px;"><?= (int)$yData['records'] ?> <?= (int)$yData['records'] === 1 ? 'batch' : 'batches' ?></span>
+            </div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline;">
+              <span style="font-size:12px; color:#64748b;">Above 8.5 CGPA:</span>
+              <span style="font-size:22px; font-weight:800; color:#FF4F01; font-variant-numeric:tabular-nums;" id="card_85_<?= md5($yLabel) ?>">
+                <?= (int)$yData['above_8_5'] ?>
+              </span>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+
+      <!-- Clean Breakdown Table -->
+      <div class="table-wrap" style="border:1px solid var(--border,#e2e8f0); border-radius:8px; overflow:hidden;">
+        <table class="data" style="margin:0; width:100%;">
+          <thead>
+            <tr style="background:#f8fafc;">
+              <th style="padding-left:16px; font-weight:700; color:var(--navy,#131D3B);">Class / Year</th>
+              <th style="text-align:right; padding-right:16px; font-weight:700; color:#FF4F01;">Total Students Above 8.5 CGPA</th>
+            </tr>
+          </thead>
+          <tbody id="cgpaSummaryTableBody">
+            <?php foreach (['I Year', 'II Year', 'III Year', 'IV Year'] as $yLabel): 
+              $yData = $summaryData['years'][$yLabel] ?? ['above_8_5' => 0, 'records' => 0];
+            ?>
+              <tr>
+                <td style="padding-left:16px; font-weight:600; color:#1E293B;"><?= e($yLabel) ?></td>
+                <td style="text-align:right; padding-right:16px; font-weight:700; font-variant-numeric:tabular-nums; color:#FF4F01;"><?= (int)$yData['above_8_5'] ?></td>
+              </tr>
+            <?php endforeach; ?>
+            <tr style="background:#FFF7ED; font-weight:800; border-top:2px solid #FFEDD5;">
+              <td style="padding-left:16px; color:#9A3412; font-size:14px;">Grand Total</td>
+              <td style="text-align:right; padding-right:16px; font-size:16px; color:#C2410C; font-variant-numeric:tabular-nums;" id="tableGrandTotal"><?= (int)$summaryData['total']['above_8_5'] ?></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function refreshCgpaSummary(dept) {
+      if (!dept) return;
+      const url = 'upload.php?action=fetch_cgpa_summary&department=' + encodeURIComponent(dept) + '&academic_year=' + encodeURIComponent(<?= json_encode($effectiveYear) ?>);
+      fetch(url)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+          if (!data || !data.success || !data.summary) return;
+          const s = data.summary;
+          const badge = document.getElementById('cgpaSummaryDeptBadge');
+          if (badge) badge.textContent = s.department;
+
+          const topGrandTotal = document.getElementById('cgpaSummaryGrandTotalTop');
+          if (topGrandTotal) topGrandTotal.textContent = s.total.above_8_5;
+
+          const yearKeys = ['I Year', 'II Year', 'III Year', 'IV Year'];
+          const keyHashes = {
+            'I Year': <?= json_encode(md5('I Year')) ?>,
+            'II Year': <?= json_encode(md5('II Year')) ?>,
+            'III Year': <?= json_encode(md5('III Year')) ?>,
+            'IV Year': <?= json_encode(md5('IV Year')) ?>
+          };
+
+          let tbodyHtml = '';
+          yearKeys.forEach(function(yk) {
+            const yd = s.years[yk] || { above_8_5: 0, records: 0 };
+            const h = keyHashes[yk];
+            const el85 = document.getElementById('card_85_' + h);
+            if (el85) el85.textContent = yd.above_8_5;
+
+            tbodyHtml += '<tr>' +
+              '<td style="padding-left:16px; font-weight:600; color:#1E293B;">' + yk + '</td>' +
+              '<td style="text-align:right; padding-right:16px; font-weight:700; font-variant-numeric:tabular-nums; color:#FF4F01;">' + yd.above_8_5 + '</td>' +
+            '</tr>';
+          });
+
+          tbodyHtml += '<tr style="background:#FFF7ED; font-weight:800; border-top:2px solid #FFEDD5;">' +
+            '<td style="padding-left:16px; color:#9A3412; font-size:14px;">Grand Total</td>' +
+            '<td style="text-align:right; padding-right:16px; font-size:16px; color:#C2410C; font-variant-numeric:tabular-nums;" id="tableGrandTotal">' + s.total.above_8_5 + '</td>' +
+          '</tr>';
+
+          const tbody = document.getElementById('cgpaSummaryTableBody');
+          if (tbody) tbody.innerHTML = tbodyHtml;
+        })
+        .catch(function(err) {
+          console.error('Failed to refresh CGPA summary', err);
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      const deptSel = document.querySelector('select[name="department"]');
+      if (deptSel) {
+        deptSel.addEventListener('change', function() {
+          refreshCgpaSummary(this.value);
+        });
+      }
+    });
+  </script>
+<?php endif; ?>
+
 <!-- My recent records -->
 <?php if (($activeSection['metric_type'] ?? '') === 'generic'): ?>
   <?php
@@ -4038,10 +4687,19 @@ require __DIR__ . '/inc/header.php';
               <?= !empty($summaryBits) ? implode(' &bull; ', $summaryBits) : '—' ?>
             </td>
             <td>
-              <?php if (!empty($gr['proof_file'])): ?>
-                <a href="<?= e(url('download.php?proof=' . urlencode($gr['proof_file']))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px;">
-                  <?= icon('file-text', 12) ?> View Proof
-                </a>
+              <?php if (!empty($gr['proof_file'])): 
+                $proofList = json_decode((string)$gr['proof_file'], true);
+                if (is_array($proofList) && !empty($proofList)):
+                  foreach ($proofList as $idx => $pf): ?>
+                    <a href="<?= e(url('download.php?proof=' . urlencode((string)$pf))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px; margin-right:4px;">
+                      <?= icon('file-text', 12) ?> Proof <?= $idx + 1 ?>
+                    </a>
+                  <?php endforeach;
+                else: ?>
+                  <a href="<?= e(url('download.php?proof=' . urlencode((string)$gr['proof_file']))) ?>" target="_blank" class="btn btn-ghost btn-sm" style="padding:2px 8px; font-size:12px; gap:4px;">
+                    <?= icon('file-text', 12) ?> View Proof
+                  </a>
+                <?php endif; ?>
               <?php else: ?>
                 <span style="font-size:12px; color:var(--c-muted, #94a3b8);">None</span>
               <?php endif; ?>

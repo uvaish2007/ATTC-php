@@ -879,6 +879,10 @@ function metric_studio_create(array $data): array
     $newId = (int)$pdo->lastInsertId();
     $created = metric_studio_find($newId);
 
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
+
     return [true, "Metric '{$name}' created successfully.", $created];
 }
 
@@ -945,6 +949,10 @@ function metric_studio_update(string|int $idOrKey, array $data): array
         (int)$metric['id']
     ]);
 
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
+
     return [true, "Metric '{$name}' configuration updated successfully."];
 }
 
@@ -964,6 +972,10 @@ function metric_studio_toggle_status(string|int $idOrKey): array
     $newStatus = $metric['status'] === 1 ? 0 : 1;
     $stmt = $pdo->prepare("UPDATE `metrics` SET `status` = ? WHERE `id` = ?");
     $stmt->execute([$newStatus, (int)$metric['id']]);
+
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
 
     $action = $newStatus === 1 ? 'activated' : 'deactivated';
     return [true, "Metric '{$metric['name']}' has been {$action}.", $newStatus];
@@ -1000,8 +1012,17 @@ function metric_studio_delete(string|int $idOrKey): array
             $baseFolder = rtrim(UPLOAD_DIR, '/\\');
             foreach ($proofs as $p) {
                 if (!empty($p)) {
-                    $fullP = $baseFolder . '/' . $p;
-                    if (is_file($fullP)) @unlink($fullP);
+                    $pDecoded = json_decode((string)$p, true);
+                    $filesToClean = is_array($pDecoded) ? $pDecoded : [$p];
+                    foreach ($filesToClean as $subP) {
+                        if (!empty($subP) && is_string($subP)) {
+                            $fName = basename($subP);
+                            $p1 = $baseFolder . '/' . $fName;
+                            $p2 = $baseFolder . '/proofs/' . $fName;
+                            if (is_file($p1)) @unlink($p1);
+                            if (is_file($p2)) @unlink($p2);
+                        }
+                    }
                 }
             }
 
@@ -1534,6 +1555,7 @@ function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?arra
     $coordVis = isset($settings['coordinator_visible']) ? (int)$settings['coordinator_visible'] : (int)$metric['coordinator_visible'];
     $hodVis   = isset($settings['hod_visible']) ? (int)$settings['hod_visible'] : (int)$metric['hod_visible'];
     $prinVis  = isset($settings['principal_visible']) ? (int)$settings['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
+    $status   = isset($settings['status']) ? (int)$settings['status'] : (int)($metric['status'] ?? 1);
     $settJson = isset($settings['settings_json']) ? (is_array($settings['settings_json']) ? json_encode($settings['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$settings['settings_json']) : ($metric['settings_json'] ?? null);
 
     $stmt = $pdo->prepare("UPDATE `metrics` SET
@@ -1547,12 +1569,14 @@ function metric_studio_save_draft_form(string|int $idOrKey, array $fields, ?arra
         `coordinator_visible` = ?,
         `hod_visible` = ?,
         `principal_visible` = ?,
+        `status` = ?,
         `settings_json` = ?
         WHERE `id` = ?");
     $stmt->execute([
         $draftJson, $attJson,
         $name, $category, $desc, $help,
         $facVis, $coordVis, $hodVis, $prinVis,
+        $status,
         $settJson,
         (int)$metric['id']
     ]);
@@ -1626,6 +1650,7 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
     $coordVis = isset($settings['coordinator_visible']) ? (int)$settings['coordinator_visible'] : (int)$metric['coordinator_visible'];
     $hodVis   = isset($settings['hod_visible']) ? (int)$settings['hod_visible'] : (int)$metric['hod_visible'];
     $prinVis  = isset($settings['principal_visible']) ? (int)$settings['principal_visible'] : (int)($metric['principal_visible'] ?? 1);
+    $status   = isset($settings['status']) ? (int)$settings['status'] : (int)($metric['status'] ?? 1);
     $settJson = isset($settings['settings_json']) ? (is_array($settings['settings_json']) ? json_encode($settings['settings_json'], JSON_UNESCAPED_UNICODE) : (string)$settings['settings_json']) : ($metric['settings_json'] ?? null);
 
     // Update metrics table
@@ -1643,12 +1668,14 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
         `coordinator_visible` = ?,
         `hod_visible` = ?,
         `principal_visible` = ?,
+        `status` = ?,
         `settings_json` = ?
         WHERE `id` = ?");
     $stmt->execute([
         $publishedJson, $publishedJson, $attJson, $newVer, $newType,
         $name, $category, $desc, $help,
         $facVis, $coordVis, $hodVis, $prinVis,
+        $status,
         $settJson,
         (int)$metric['id']
     ]);
@@ -1658,6 +1685,10 @@ function metric_studio_publish_form(string|int $idOrKey, array $fields, ?array $
         `metric_id`, `version`, `config_json`, `attachment_config_json`, `published_by`, `published_at`
     ) VALUES (?, ?, ?, ?, ?, NOW())");
     $histStmt->execute([(int)$metric['id'], $newVer, $publishedJson, $attJson, $adminId ?: null]);
+
+    if (function_exists('upload_approved_sections')) {
+        upload_approved_sections(null, true);
+    }
 
     return [true, "Form configuration published successfully (v{$newVer}) with " . count($cleanedFields) . " fields."];
 }
@@ -2048,10 +2079,42 @@ function metric_studio_validate_submission(string $metricKey, array $postData, ?
                 }
                 $allowedVals = array_unique(array_filter($allowedVals));
 
-                if (!empty($allowedVals) && !in_array($selVal, $allowedVals, true)) {
-                    return [false, "Invalid selection '{$selVal}' for field '{$label}'.", [], null];
+                // Check if allowed options include an "Other" or "Others" choice
+                $hasOtherOpt = false;
+                foreach ($allowedVals as $av) {
+                    $avLow = strtolower(trim((string)$av));
+                    if ($avLow === 'other' || $avLow === 'others') {
+                        $hasOtherOpt = true;
+                        break;
+                    }
                 }
-                $cleanedData[$k] = $selVal;
+
+                $isOtherSelected = false;
+                $otherText = trim((string)($postData[$k . '_other'] ?? ''));
+
+                if ($hasOtherOpt) {
+                    $selValLow = strtolower($selVal);
+                    if ($selValLow === 'other' || $selValLow === 'others') {
+                        $isOtherSelected = true;
+                    } elseif ($otherText !== '' && ($selVal === '' || $selVal === $otherText || !in_array($selVal, $allowedVals, true))) {
+                        $isOtherSelected = true;
+                    }
+                }
+
+                if ($isOtherSelected) {
+                    if (!empty($f['required']) && $otherText === '') {
+                        return [false, "Please specify the details for '{$label}' (Other).", [], null];
+                    }
+                    $cleanedData[$k] = $otherText !== '' ? $otherText : $selVal;
+                    $cleanedData[$k . '_other'] = $otherText;
+                    $cleanedData[$k . '_choice'] = 'Other';
+                } else {
+                    if (!empty($allowedVals) && !in_array($selVal, $allowedVals, true)) {
+                        return [false, "Invalid selection '{$selVal}' for field '{$label}'.", [], null];
+                    }
+                    $cleanedData[$k] = $selVal;
+                    $cleanedData[$k . '_other'] = '';
+                }
             } elseif ($type === 'multiselect') {
                 $arr = is_array($val) ? $val : array_map('trim', explode(',', (string)$val));
                 $cleanArr = [];
@@ -2214,6 +2277,21 @@ function generic_metric_record_submit(string $metricKey, array $user, string $ac
     $dept = $user['department'] ?? 'General';
     $userId = (int)$user['id'];
 
+    $editId = (int)($postData['edit_id'] ?? 0);
+    if ($editId > 0) {
+        $checkStmt = $pdo->prepare("SELECT `id`, `proof_file` FROM `generic_metric_records` WHERE `id` = ? AND (`user_id` = ? OR ? = 'Admin')");
+        $checkStmt->execute([$editId, $userId, $user['role'] ?? 'Faculty']);
+        $existing = $checkStmt->fetch(PDO::FETCH_ASSOC);
+        if ($existing) {
+            $finalProof = $proofPath ?: $existing['proof_file'];
+            $upStmt = $pdo->prepare("UPDATE `generic_metric_records` SET 
+                `title` = ?, `data_json` = ?, `proof_file` = ?, `academic_year` = ?, `department` = ?, `status` = 'Submitted', `submitted_at` = NOW()
+                WHERE `id` = ?");
+            $upStmt->execute([$title, $json, $finalProof, $academicYear, $dept, $editId]);
+            return [true, "Record updated successfully.", $editId];
+        }
+    }
+
     $stmt = $pdo->prepare("INSERT INTO `generic_metric_records` (
         `metric_key`, `academic_year`, `department`, `user_id`, `title`,
         `data_json`, `proof_file`, `status`, `submitted_at`
@@ -2344,10 +2422,12 @@ function generic_metric_record_delete(int $recordId, int $userId, bool $isAdmin 
             $filesToDelete = [$pf];
         }
         foreach ($filesToDelete as $fName) {
-            $fullPath = $baseFolder . '/' . basename($fName);
-            if (is_file($fullPath)) {
-                @unlink($fullPath);
-            }
+            $baseName = basename((string)$fName);
+            if ($baseName === '') continue;
+            $p1 = $baseFolder . '/' . $baseName;
+            $p2 = $baseFolder . '/proofs/' . $baseName;
+            if (is_file($p1)) @unlink($p1);
+            if (is_file($p2)) @unlink($p2);
         }
     }
 

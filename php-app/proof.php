@@ -43,22 +43,32 @@ $recordTypeLabel = 'Record';
 $types = record_types();
 
 if ($type !== '' && $recordId > 0) {
-    if (!isset($types[$type])) {
-        http_response_code(404);
-        exit('Invalid record category specified.');
-    }
-    $table = $types[$type]['table'];
-    try {
-        $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE `id` = ?");
-        $stmt->execute([$recordId]);
-        $record = $stmt->fetch();
-        if ($record) {
-            $recordTypeKey   = $type;
-            $recordTypeLabel = $types[$type]['label'] ?? 'Record';
+    if (isset($types[$type])) {
+        $table = $types[$type]['table'];
+        try {
+            $stmt = db()->prepare("SELECT * FROM `{$table}` WHERE `id` = ?");
+            $stmt->execute([$recordId]);
+            $record = $stmt->fetch();
+            if ($record) {
+                $recordTypeKey   = $type;
+                $recordTypeLabel = $types[$type]['label'] ?? 'Record';
+            }
+        } catch (\PDOException $e) {
+            http_response_code(500);
+            exit('Database error while locating record.');
         }
-    } catch (\PDOException $e) {
-        http_response_code(500);
-        exit('Database error while locating record.');
+    } else {
+        // Fallback for dynamic/generic forms
+        try {
+            $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE `id` = ? LIMIT 1");
+            $stmt->execute([$recordId]);
+            $found = $stmt->fetch();
+            if ($found) {
+                $record = $found;
+                $recordTypeKey = $found['metric_key'];
+                $recordTypeLabel = 'Dynamic Metric Form Record';
+            }
+        } catch (\PDOException $e) {}
     }
 } elseif ($recordId > 0) {
     foreach ($types as $tKey => $tInfo) {
@@ -100,13 +110,32 @@ if ($type !== '' && $recordId > 0) {
                 continue;
             }
         }
+        if (!$record) {
+            try {
+                $pAttStmt = db()->prepare("
+                    SELECT p.*, pa.file_name as attachment_file_name, pa.doc_type as attachment_doc_type
+                    FROM patent_attachments pa
+                    JOIN patents p ON p.id = pa.patent_id
+                    WHERE pa.file_path = ? OR pa.file_name = ?
+                    LIMIT 1
+                ");
+                $pAttStmt->execute([$cleanFileName, $cleanFileName]);
+                $pAttFound = $pAttStmt->fetch();
+                if ($pAttFound) {
+                    $record          = $pAttFound;
+                    $recordTypeKey   = 'patent';
+                    $recordTypeLabel = 'Patent / Copyright';
+                }
+            } catch (\PDOException $e) {
+            }
+        }
     }
 }
 
 // 4. Fallback: Search in generic_metric_records (Dynamic Form Studio submissions)
 if (!$record && $recordId > 0) {
     try {
-        $stmt = db()->prepare("SELECT r.*, d.name as department FROM `generic_metric_records` r LEFT JOIN `departments` d ON r.department_id = d.id WHERE r.id = ? LIMIT 1");
+        $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE `id` = ? LIMIT 1");
         $stmt->execute([$recordId]);
         $found = $stmt->fetch();
         if ($found) {
@@ -119,7 +148,7 @@ if (!$record && $recordId > 0) {
 
 if (!$record && !empty($cleanFileName)) {
     try {
-        $stmt = db()->prepare("SELECT r.*, d.name as department FROM `generic_metric_records` r LEFT JOIN `departments` d ON r.department_id = d.id WHERE r.proof_file = ? OR r.proof_file LIKE ? LIMIT 1");
+        $stmt = db()->prepare("SELECT * FROM `generic_metric_records` WHERE `proof_file` = ? OR `proof_file` LIKE ? LIMIT 1");
         $stmt->execute([$cleanFileName, '%"' . $cleanFileName . '"%']);
         $found = $stmt->fetch();
         if ($found) {
@@ -162,7 +191,7 @@ if ($record) {
     }
 }
 
-$storedName = basename(trim((string) ($record['proof_file'] ?? $fileParam)));
+$storedName = !empty($cleanFileName) ? $cleanFileName : basename(trim((string) ($record['proof_file'] ?? $fileParam)));
 if ($storedName === '' || stripos($storedName, 'upload.php') !== false) {
     http_response_code(404);
     echo '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>No Proof Attached - ATTS IQAC</title>';
