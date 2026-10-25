@@ -16,6 +16,12 @@ if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
+if ($user['role'] === 'Faculty' && (int) input('id', 0) && (int) input('id') !== (int) $user['id']) {
+    http_response_code(403);
+    require __DIR__ . '/denied.php';
+    exit;
+}
+
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';

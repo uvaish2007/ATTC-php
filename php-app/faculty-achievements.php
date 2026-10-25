@@ -13,9 +13,17 @@ if (input('ajax') === 'faculty_detail') {
     $year  = trim((string) input('year')) ?: null;
     $cat   = trim((string) input('category')) ?: null;
 
+    if ($user['role'] === 'Faculty') {
+        if ($facId !== (int) $user['id']) {
+            http_response_code(403);
+            echo json_encode(['error' => 'Unauthorized access to another faculty record']);
+            exit;
+        }
+    }
     if (in_array($user['role'], ['HoD', 'Coordinator'], true)) {
         $targetUser = user_find($facId);
         if (!$targetUser || !department_names_match($targetUser['department'] ?? '', $user['department'] ?? '')) {
+            http_response_code(403);
             echo json_encode(['error' => 'Unauthorized access to faculty outside your department']);
             exit;
         }
@@ -32,54 +40,35 @@ $isHod       = $role === 'HoD';
 $isDirector  = in_array($role, ['Director', 'Principal'], true);
 $isDean      = $role === 'Dean';
 $isOversight = $isAdmin || $isDirector || $isDean;
+$isFaculty   = $role === 'Faculty';
 
-$rawDept       = trim((string) input('department', ''));
-$department    = resolve_faculty_achievement_scope($user, $rawDept);
+$rawDept      = trim((string) input('department', ''));
+$reqFacultyId = (int) input('faculty_id', 0);
+
+if ($isFaculty) {
+    if ($reqFacultyId !== 0 && $reqFacultyId !== (int) $user['id']) {
+        http_response_code(403);
+        require __DIR__ . '/denied.php';
+        exit;
+    }
+    if ($rawDept !== '' && !department_names_match($rawDept, $user['department'] ?? '')) {
+        http_response_code(403);
+        require __DIR__ . '/denied.php';
+        exit;
+    }
+}
+
 $academicYear  = trim((string) input('academic_year', '')) ?: active_academic_year();
 $category      = trim((string) input('category', '')) ?: null;
-$facultyId     = (int) input('faculty_id', 0) ?: null;
 $searchQuery   = trim((string) input('q', ''));
 $studentSearch = trim((string) input('student_search', '')) ?: trim((string) input('q_student', ''));
 
 $em       = em_filter_value(input('em'));
 $emWindow = em_filter_window($em, $academicYear ?: null);
 
-$departments   = departments_all();
 $years         = academic_years();
 $allCategories = faculty_achievement_categories();
 
-$facParams = [];
-$facSql = "SELECT id, name, department FROM users WHERE role = 'Faculty'";
-if ($department) {
-    $deptVars = department_variants($department);
-    if (!empty($deptVars)) {
-        $inPh = implode(',', array_fill(0, count($deptVars), '?'));
-        $facSql .= " AND department IN ($inPh)";
-        $facParams = array_merge($facParams, $deptVars);
-    } else {
-        $facSql .= " AND department = ?";
-        $facParams[] = $department;
-    }
-}
-$facSql .= " ORDER BY name ASC";
-$facStmt = db()->prepare($facSql);
-$facStmt->execute($facParams);
-$facultyList = $facStmt->fetchAll();
-
-// ---- Fetch Data ---------------------------------------------------------
-$summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
-$deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
-
-// Sort department comparison descending by total achievements
-$sortedDeptComp = $deptComp;
-usort($sortedDeptComp, fn($a, $b) => (int)$b['total'] <=> (int)$a['total']);
-$activeDeptComp = array_values(array_filter($sortedDeptComp, fn($d) => (int)$d['total'] > 0));
-$topDept = (!empty($sortedDeptComp) && (int)$sortedDeptComp[0]['total'] > 0) ? $sortedDeptComp[0] : null;
-$totalDeptRecords = (int) array_sum(array_column($deptComp, 'total'));
-$activeDeptsCount = count($activeDeptComp);
-$totalDeptsCount = count($deptComp);
-
-$catMap = $summary['categoryCounts'] ?? [];
 $catIcons = [
     'Journal Publication'     => ['ic' => 'book-open',  'cls' => 'blue',   'color' => '#2563EB'],
     'Conference Publication'  => ['ic' => 'users',      'cls' => 'green',  'color' => '#059669'],
@@ -93,150 +82,300 @@ $catIcons = [
     'MoUs Signed'             => ['ic' => 'link',       'cls' => 'gray',   'color' => '#4F46E5'],
 ];
 
-$categoryBreakdown = [];
-foreach ($allCategories as $catKey => $meta) {
-    $cLabel = $meta['label'];
-    $cnt = (int) ($catMap[$cLabel] ?? 0);
-    $cStyle = $catIcons[$cLabel] ?? ['ic' => 'layers', 'cls' => 'gray', 'color' => '#64748B'];
-    $categoryBreakdown[] = [
-        'key'   => $catKey,
-        'label' => $cLabel,
-        'group' => $meta['group'],
-        'table' => $meta['table'],
-        'count' => $cnt,
-        'color' => $cStyle['color'],
-        'icon'  => $cStyle['ic'],
-        'cls'   => $cStyle['cls'],
+if ($isFaculty) {
+    $facultyId     = (int) $user['id'];
+    $department    = (string) ($user['department'] ?? '');
+    $departments   = [['name' => $department]];
+    $facultyList   = [['id' => $user['id'], 'name' => $user['name'], 'department' => $department]];
+
+    $facultyProfile  = faculty_profile_details($facultyId);
+    $personalDetails = faculty_achievement_details($facultyId, $academicYear, $category, $emWindow);
+    $myRecords       = $personalDetails['records'] ?? [];
+    $mySummary       = $personalDetails['summary'] ?? [];
+
+    $myTotalRecords = count($myRecords);
+    $myApproved = 0;
+    $myPending  = 0;
+    $myRejected = 0;
+
+    foreach ($myRecords as $r) {
+        $st = $r['status'] ?? 'Approved';
+        if ($st === 'Approved') {
+            $myApproved++;
+        } elseif (stripos($st, 'Pending') !== false || $st === 'Submitted') {
+            $myPending++;
+        } elseif ($st === 'Rejected') {
+            $myRejected++;
+        }
+    }
+    $myCategoriesCount = count($mySummary);
+
+    $summary = [
+        'totalFaculty'       => 1,
+        'totalAchievements'  => $myTotalRecords,
+        'approvedRecords'    => $myApproved,
+        'pendingRecords'     => $myPending,
+        'rejectedRecords'    => $myRejected,
+        'approvalRate'       => $myTotalRecords > 0 ? round(($myApproved / $myTotalRecords) * 100) : 0,
+        'categoriesCount'    => $myCategoriesCount,
+        'categoryCounts'     => $mySummary,
+        'departments'        => 1,
+        'registeredAccounts' => 1,
     ];
-}
-$sortedCatBreakdown = $categoryBreakdown;
-usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
-$activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
 
-$facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
-$topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
+    $deptComp         = [];
+    $sortedDeptComp   = [];
+    $activeDeptComp   = [];
+    $topDept          = null;
+    $totalDeptRecords = 0;
+    $activeDeptsCount = 0;
+    $totalDeptsCount  = 0;
 
-$studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
-$studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
-
-$studDeptCounts = [];
-foreach ($studGrid as $s) {
-    $d = $s['department'] ?: 'Other Department';
-    $studDeptCounts[$d] = ($studDeptCounts[$d] ?? 0) + (int) $s['total'];
-}
-arsort($studDeptCounts);
-
-$facTotalProfiles  = count($facGrid);
-// A journal or book with several faculty authors is on each author's row, but
-// the totals below count the publication once.
-$facTotalRecords   = (int) array_sum(array_column($facGrid, 'total')) - faculty_grid_shared_overlap($facGrid);
-$facTopContributor = null;
-$facTopRecords     = 0;
-$facDeptTotals     = [];
-$facDeptRows       = [];
-$facCatTotals      = [
-    'Journals'    => ['count' => faculty_grid_distinct($facGrid, 'journal'),              'color' => '#0066CC'],
-    'Conferences' => ['count' => (int) array_sum(array_column($facGrid, 'conferences')), 'color' => '#059669'],
-    'Books'       => ['count' => faculty_grid_distinct($facGrid, 'book'),                 'color' => '#FF4F01'],
-    'Events'      => ['count' => (int) array_sum(array_column($facGrid, 'events')),      'color' => '#DC2626'],
-    'Training'    => ['count' => (int) array_sum(array_column($facGrid, 'training')),    'color' => '#7E22CE'],
-    'Patents'     => ['count' => (int) array_sum(array_column($facGrid, 'patents')),     'color' => '#0D9488'],
-    'Other'       => ['count' => (int) array_sum(array_column($facGrid, 'other')),       'color' => '#64748B'],
-];
-foreach ($facGrid as $f) {
-    if ((int)$f['total'] > $facTopRecords) {
-        $facTopRecords = (int)$f['total'];
-        $facTopContributor = $f;
+    $catMap = $mySummary;
+    $categoryBreakdown = [];
+    foreach ($allCategories as $catKey => $meta) {
+        $cLabel = $meta['label'];
+        $cnt = (int) ($mySummary[$cLabel] ?? 0);
+        $cStyle = $catIcons[$cLabel] ?? ['ic' => 'layers', 'cls' => 'gray', 'color' => '#64748B'];
+        $categoryBreakdown[] = [
+            'key'   => $catKey,
+            'label' => $cLabel,
+            'group' => $meta['group'],
+            'table' => $meta['table'],
+            'count' => $cnt,
+            'color' => $cStyle['color'],
+            'icon'  => $cStyle['ic'],
+            'cls'   => $cStyle['cls'],
+        ];
     }
-    $d = $f['department'] ?: 'Other';
-    $facDeptTotals[$d] = ($facDeptTotals[$d] ?? 0) + (int)$f['total'];
-    $facDeptRows[$d][] = $f;
-}
-foreach ($facDeptRows as $d => $dRows) {
-    $facDeptTotals[$d] -= faculty_grid_shared_overlap($dRows);
-}
-arsort($facDeptTotals);
-$facRanked = $facGrid;
-usort($facRanked, fn($a, $b) => (int)$b['total'] <=> (int)$a['total']);
-$facTop5 = array_slice($facRanked, 0, 5);
+    $sortedCatBreakdown = $categoryBreakdown;
+    usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
+    $activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
 
-$studCatBreakdown = [
-    'NPTEL' => [
-        'label' => 'SWAYAM-NPTEL Online Courses',
-        'count' => (int) ($studSummary['categoryCounts']['SWAYAM-NPTEL'] ?? 0),
-        'table' => 'nptels',
-        'color' => '#0066CC',
-    ],
-    'Internships' => [
-        'label' => 'Industrial Internships',
-        'count' => (int) ($studSummary['categoryCounts']['Internships'] ?? 0),
-        'table' => 'internships',
-        'color' => '#059669',
-    ],
-    'Placements' => [
-        'label' => 'Campus & Off-Campus Placements',
-        'count' => (int) ($studSummary['categoryCounts']['Placements'] ?? 0),
-        'table' => 'placements',
-        'color' => '#FF4F01',
-    ],
-    'Online Courses' => [
-        'label' => 'Online Courses & Certifications',
-        'count' => (int) ($studSummary['categoryCounts']['Online Courses'] ?? 0),
-        'table' => 'online_courses',
-        'color' => '#7E22CE',
-    ],
-    'Inter-Institute' => [
-        'label' => 'Inter-Institute Events & Awards',
-        'count' => (int) ($studSummary['categoryCounts']['Inter-Institute Events'] ?? ($studSummary['categoryCounts']['Inter-Institute'] ?? 0)),
-        'table' => 'inst_inter_inst_within',
-        'color' => '#FF4F01',
-    ],
-    'Co-Curricular' => [
-        'label' => 'Co-Curricular Activities (Symposiums, Hackathons, etc.)',
-        'count' => (int) ($studSummary['categoryCounts']['Co-Curricular'] ?? 0),
-        'table' => 'student_achievements',
-        'color' => '#0D9488',
-    ],
-    'Extra-Curricular' => [
-        'label' => 'Extra-Curricular Activities (Sports, Cultural, etc.)',
-        'count' => (int) ($studSummary['categoryCounts']['Extra-Curricular'] ?? 0),
-        'table' => 'student_achievements',
-        'color' => '#DC2626',
-    ],
-    'Training' => [
-        'label' => 'Summer & Winter Training Programmes',
-        'count' => (int) ($studSummary['categoryCounts']['Summer / Winter Training'] ?? 0),
-        'table' => 'training_programmes',
-        'color' => '#D97706',
-    ],
-    'Other' => [
-        'label' => 'Other Student Achievements',
-        'count' => (int) ($studSummary['categoryCounts']['Other'] ?? 0),
-        'table' => 'various',
-        'color' => '#64748B',
-    ],
-];
+    $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
+    $topContributors = $facGrid;
 
-$topCatName = 'None';
-$topCatVal = 0;
-foreach ($studCatBreakdown as $k => $c) {
-    if ($c['count'] > $topCatVal) {
-        $topCatVal = $c['count'];
-        $topCatName = $k;
+    $studGrid        = [];
+    $studSummary     = [
+        'totalStudents'     => 0,
+        'totalAchievements' => 0,
+        'categoryCounts'    => [],
+    ];
+    $studDeptCounts  = [];
+
+    $facTotalProfiles  = count($facGrid);
+    $facTotalRecords   = $myTotalRecords;
+    $facTopContributor = !empty($facGrid) ? $facGrid[0] : null;
+    $facTopRecords     = $myTotalRecords;
+    $facDeptTotals     = [$department => $myTotalRecords];
+    $facDeptRows       = [$department => $facGrid];
+    $facCatTotals      = [
+        'Journals'    => ['count' => (int) ($facGrid[0]['journals'] ?? 0),    'color' => '#0066CC'],
+        'Conferences' => ['count' => (int) ($facGrid[0]['conferences'] ?? 0), 'color' => '#059669'],
+        'Books'       => ['count' => (int) ($facGrid[0]['books'] ?? 0),       'color' => '#FF4F01'],
+        'Events'      => ['count' => (int) ($facGrid[0]['events'] ?? 0),      'color' => '#DC2626'],
+        'Training'    => ['count' => (int) ($facGrid[0]['training'] ?? 0),    'color' => '#7E22CE'],
+        'Patents'     => ['count' => (int) ($facGrid[0]['patents'] ?? 0),     'color' => '#0D9488'],
+        'Other'       => ['count' => (int) ($facGrid[0]['other'] ?? 0),       'color' => '#64748B'],
+    ];
+
+    $studCatBreakdown = [];
+    $topCatName = 'None';
+    $topCatVal  = 0;
+
+    $exportQ = array_filter([
+        'id'            => $facultyId,
+        'academic_year' => $academicYear,
+        'category'      => $category,
+        'em'            => $em !== 'all' ? $em : null,
+    ]);
+    $exportLink = fn(string $fmt) => e(url('export-individual-faculty-report.php') . '?' . http_build_query($exportQ + ['format' => $fmt]));
+
+    $pageTitle  = 'My Faculty Achievements';
+    $breadcrumb = 'My Faculty Achievements';
+} else {
+    $department    = resolve_faculty_achievement_scope($user, $rawDept);
+    $facultyId     = (int) input('faculty_id', 0) ?: null;
+    $departments   = departments_all();
+
+    $facParams = [];
+    $facSql = "SELECT id, name, department FROM users WHERE role = 'Faculty'";
+    if ($department) {
+        $deptVars = department_variants($department);
+        if (!empty($deptVars)) {
+            $inPh = implode(',', array_fill(0, count($deptVars), '?'));
+            $facSql .= " AND department IN ($inPh)";
+            $facParams = array_merge($facParams, $deptVars);
+        } else {
+            $facSql .= " AND department = ?";
+            $facParams[] = $department;
+        }
     }
+    $facSql .= " ORDER BY name ASC";
+    $facStmt = db()->prepare($facSql);
+    $facStmt->execute($facParams);
+    $facultyList = $facStmt->fetchAll();
+
+    // ---- Fetch Data ---------------------------------------------------------
+    $summary         = faculty_achievements_summary($user, $department, $academicYear, $category, $facultyId, $emWindow);
+    $deptComp        = department_achievements_comparison($user, $academicYear, $category, $emWindow);
+
+    // Sort department comparison descending by total achievements
+    $sortedDeptComp = $deptComp;
+    usort($sortedDeptComp, fn($a, $b) => (int)$b['total'] <=> (int)$a['total']);
+    $activeDeptComp = array_values(array_filter($sortedDeptComp, fn($d) => (int)$d['total'] > 0));
+    $topDept = (!empty($sortedDeptComp) && (int)$sortedDeptComp[0]['total'] > 0) ? $sortedDeptComp[0] : null;
+    $totalDeptRecords = (int) array_sum(array_column($deptComp, 'total'));
+    $activeDeptsCount = count($activeDeptComp);
+    $totalDeptsCount = count($deptComp);
+
+    $catMap = $summary['categoryCounts'] ?? [];
+    $categoryBreakdown = [];
+    foreach ($allCategories as $catKey => $meta) {
+        $cLabel = $meta['label'];
+        $cnt = (int) ($catMap[$cLabel] ?? 0);
+        $cStyle = $catIcons[$cLabel] ?? ['ic' => 'layers', 'cls' => 'gray', 'color' => '#64748B'];
+        $categoryBreakdown[] = [
+            'key'   => $catKey,
+            'label' => $cLabel,
+            'group' => $meta['group'],
+            'table' => $meta['table'],
+            'count' => $cnt,
+            'color' => $cStyle['color'],
+            'icon'  => $cStyle['ic'],
+            'cls'   => $cStyle['cls'],
+        ];
+    }
+    $sortedCatBreakdown = $categoryBreakdown;
+    usort($sortedCatBreakdown, fn($a, $b) => $b['count'] <=> $a['count']);
+    $activeCatBreakdown = array_values(array_filter($sortedCatBreakdown, fn($c) => $c['count'] > 0));
+
+    $facGrid         = faculty_achievements_grid($user, $department, $academicYear, $category, $facultyId, $searchQuery, $emWindow);
+    $topContributors = top_faculty_contributors($user, $department, $academicYear, $category, 5, $emWindow);
+
+    $studGrid    = student_achievements_grid($user, $department, $academicYear, null, $studentSearch, $emWindow);
+    $studSummary = student_achievements_summary($user, $department, $academicYear, null, $studentSearch, $emWindow);
+
+    $studDeptCounts = [];
+    foreach ($studGrid as $s) {
+        $d = $s['department'] ?: 'Other Department';
+        $studDeptCounts[$d] = ($studDeptCounts[$d] ?? 0) + (int) $s['total'];
+    }
+    arsort($studDeptCounts);
+
+    $facTotalProfiles  = count($facGrid);
+    // A journal or book with several faculty authors is on each author's row, but
+    // the totals below count the publication once.
+    $facTotalRecords   = (int) array_sum(array_column($facGrid, 'total')) - faculty_grid_shared_overlap($facGrid);
+    $facTopContributor = null;
+    $facTopRecords     = 0;
+    $facDeptTotals     = [];
+    $facDeptRows       = [];
+    $facCatTotals      = [
+        'Journals'    => ['count' => faculty_grid_distinct($facGrid, 'journal'),              'color' => '#0066CC'],
+        'Conferences' => ['count' => (int) array_sum(array_column($facGrid, 'conferences')), 'color' => '#059669'],
+        'Books'       => ['count' => faculty_grid_distinct($facGrid, 'book'),                 'color' => '#FF4F01'],
+        'Events'      => ['count' => (int) array_sum(array_column($facGrid, 'events')),      'color' => '#DC2626'],
+        'Training'    => ['count' => (int) array_sum(array_column($facGrid, 'training')),    'color' => '#7E22CE'],
+        'Patents'     => ['count' => (int) array_sum(array_column($facGrid, 'patents')),     'color' => '#0D9488'],
+        'Other'       => ['count' => (int) array_sum(array_column($facGrid, 'other')),       'color' => '#64748B'],
+    ];
+    foreach ($facGrid as $f) {
+        if ((int)$f['total'] > $facTopRecords) {
+            $facTopRecords = (int)$f['total'];
+            $facTopContributor = $f;
+        }
+        $d = $f['department'] ?: 'Other';
+        $facDeptTotals[$d] = ($facDeptTotals[$d] ?? 0) + (int)$f['total'];
+        $facDeptRows[$d][] = $f;
+    }
+    foreach ($facDeptRows as $d => $dRows) {
+        $facDeptTotals[$d] -= faculty_grid_shared_overlap($dRows);
+    }
+    arsort($facDeptTotals);
+    $facRanked = $facGrid;
+    usort($facRanked, fn($a, $b) => (int)$b['total'] <=> (int)$a['total']);
+    $facTop5 = array_slice($facRanked, 0, 5);
+
+    $studCatBreakdown = [
+        'NPTEL' => [
+            'label' => 'SWAYAM-NPTEL Online Courses',
+            'count' => (int) ($studSummary['categoryCounts']['SWAYAM-NPTEL'] ?? 0),
+            'table' => 'nptels',
+            'color' => '#0066CC',
+        ],
+        'Internships' => [
+            'label' => 'Industrial Internships',
+            'count' => (int) ($studSummary['categoryCounts']['Internships'] ?? 0),
+            'table' => 'internships',
+            'color' => '#059669',
+        ],
+        'Placements' => [
+            'label' => 'Campus & Off-Campus Placements',
+            'count' => (int) ($studSummary['categoryCounts']['Placements'] ?? 0),
+            'table' => 'placements',
+            'color' => '#FF4F01',
+        ],
+        'Online Courses' => [
+            'label' => 'Online Courses & Certifications',
+            'count' => (int) ($studSummary['categoryCounts']['Online Courses'] ?? 0),
+            'table' => 'online_courses',
+            'color' => '#7E22CE',
+        ],
+        'Inter-Institute' => [
+            'label' => 'Inter-Institute Events & Awards',
+            'count' => (int) ($studSummary['categoryCounts']['Inter-Institute Events'] ?? ($studSummary['categoryCounts']['Inter-Institute'] ?? 0)),
+            'table' => 'inst_inter_inst_within',
+            'color' => '#FF4F01',
+        ],
+        'Co-Curricular' => [
+            'label' => 'Co-Curricular Activities (Symposiums, Hackathons, etc.)',
+            'count' => (int) ($studSummary['categoryCounts']['Co-Curricular'] ?? 0),
+            'table' => 'student_achievements',
+            'color' => '#0D9488',
+        ],
+        'Extra-Curricular' => [
+            'label' => 'Extra-Curricular Activities (Sports, Cultural, etc.)',
+            'count' => (int) ($studSummary['categoryCounts']['Extra-Curricular'] ?? 0),
+            'table' => 'student_achievements',
+            'color' => '#DC2626',
+        ],
+        'Training' => [
+            'label' => 'Summer & Winter Training Programmes',
+            'count' => (int) ($studSummary['categoryCounts']['Summer / Winter Training'] ?? 0),
+            'table' => 'training_programmes',
+            'color' => '#D97706',
+        ],
+        'Other' => [
+            'label' => 'Other Student Achievements',
+            'count' => (int) ($studSummary['categoryCounts']['Other'] ?? 0),
+            'table' => 'various',
+            'color' => '#64748B',
+        ],
+    ];
+
+    $topCatName = 'None';
+    $topCatVal = 0;
+    foreach ($studCatBreakdown as $k => $c) {
+        if ($c['count'] > $topCatVal) {
+            $topCatVal = $c['count'];
+            $topCatName = $k;
+        }
+    }
+    $activeDeptsCount = count($studDeptCounts);
+
+    $exportQ = array_filter([
+        'department'    => $department,
+        'academic_year' => $academicYear,
+        'category'      => $category,
+        'faculty_id'    => $facultyId,
+        'em'            => $em !== 'all' ? $em : null,
+    ]);
+    $exportLink = fn(string $fmt) => e(url('export-faculty-achievements.php') . '?' . http_build_query($exportQ + ['format' => $fmt]));
+
+    $pageTitle  = 'Consolidated Faculty Achievements';
+    $breadcrumb = 'Consolidated Faculty Achievements';
 }
-$activeDeptsCount = count($studDeptCounts);
-
-$exportQ = array_filter([
-    'department'    => $department,
-    'academic_year' => $academicYear,
-    'category'      => $category,
-    'faculty_id'    => $facultyId,
-    'em'            => $em !== 'all' ? $em : null,   ]);
-$exportLink = fn(string $fmt) => e(url('export-faculty-achievements.php') . '?' . http_build_query($exportQ + ['format' => $fmt]));
-
-$pageTitle  = 'Consolidated Faculty Achievements';
-$breadcrumb = 'Consolidated Faculty Achievements';
 require __DIR__ . '/inc/header.php';
 ?>
 
@@ -1106,11 +1245,15 @@ require __DIR__ . '/inc/header.php';
 <!-- Page Header -->
 <div class="page-head">
   <div>
-    <h1>Consolidated Faculty Achievements</h1>
+    <h1><?= $isFaculty ? 'My Faculty Achievements' : 'Consolidated Faculty Achievements' ?></h1>
     <div class="sub">
-      Institution-wide overview &middot; <?= $department ? e($department) : ($isHod ? e($user['department']) : 'All departments') ?>
-      &middot; Academic Year: <?= e($academicYear ?: 'All Years') ?>
-      <span class="badge badge-neutral" style="margin-left:8px; font-size:11px;"><?= icon('lock', 11) ?> Locked by Admin</span>
+      <?php if ($isFaculty): ?>
+        Your achievements and submissions for the selected Academic Year &middot; <?= e($user['name']) ?> &middot; <?= e($user['department']) ?> &middot; Academic Year: <?= e($academicYear ?: 'All Years') ?>
+      <?php else: ?>
+        Institution-wide overview &middot; <?= $department ? e($department) : ($isHod ? e($user['department']) : 'All departments') ?>
+        &middot; Academic Year: <?= e($academicYear ?: 'All Years') ?>
+        <span class="badge badge-neutral" style="margin-left:8px; font-size:11px;"><?= icon('lock', 11) ?> Locked by Admin</span>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -1137,12 +1280,72 @@ require __DIR__ . '/inc/header.php';
     </div>
 
     <!-- View Reports Primary Button -->
-    <a href="<?= e(url('reports.php')) ?>" class="btn btn-primary btn-sm" style="background:#FF4F01; border-color:#FF4F01; padding:6px 16px; font-weight:700;">
-      <?= icon('reports', 14) ?> View Reports
-    </a>
+    <?php if ($isFaculty): ?>
+      <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int)$user['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?>" class="btn btn-primary btn-sm" style="background:#FF4F01; border-color:#FF4F01; padding:6px 16px; font-weight:700;">
+        <?= icon('reports', 14) ?> View My Report
+      </a>
+    <?php else: ?>
+      <a href="<?= e(url('reports.php')) ?>" class="btn btn-primary btn-sm" style="background:#FF4F01; border-color:#FF4F01; padding:6px 16px; font-weight:700;">
+        <?= icon('reports', 14) ?> View Reports
+      </a>
+    <?php endif; ?>
   </div>
 </div>
 
+<?php if ($isFaculty): ?>
+<!-- 5 Personal KPI Stat Cards Row -->
+<div class="stat-grid grid-5 mt-4" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:14px;">
+  <!-- 1. My Records -->
+  <div class="stat">
+    <div class="stat-top">
+      <div class="stat-label">My Records</div>
+      <div class="stat-ic brand"><?= icon('file-stack', 16) ?></div>
+    </div>
+    <div class="stat-value tabular"><?= number_format($myTotalRecords) ?></div>
+    <div class="stat-desc"><?= number_format($myApproved) ?> approved &middot; <?= number_format($myPending) ?> pending</div>
+  </div>
+
+  <!-- 2. Approved Achievements -->
+  <div class="stat">
+    <div class="stat-top">
+      <div class="stat-label">Approved Achievements</div>
+      <div class="stat-ic navy"><?= icon('check', 16) ?></div>
+    </div>
+    <div class="stat-value tabular"><?= number_format($myApproved) ?></div>
+    <div class="stat-desc">Accepted records</div>
+  </div>
+
+  <!-- 3. Pending Review -->
+  <div class="stat">
+    <div class="stat-top">
+      <div class="stat-label">Pending Review</div>
+      <div class="stat-ic brand"><?= icon('clock', 16) ?></div>
+    </div>
+    <div class="stat-value tabular"><?= number_format($myPending) ?></div>
+    <div class="stat-desc">Awaiting review</div>
+  </div>
+
+  <!-- 4. Rejected Records -->
+  <div class="stat">
+    <div class="stat-top">
+      <div class="stat-label">Rejected Records</div>
+      <div class="stat-ic red" style="background:#FEE2E2; color:#DC2626;"><?= icon('x', 16) ?></div>
+    </div>
+    <div class="stat-value tabular"><?= number_format($myRejected) ?></div>
+    <div class="stat-desc">Need attention</div>
+  </div>
+
+  <!-- 5. Achievement Categories -->
+  <div class="stat">
+    <div class="stat-top">
+      <div class="stat-label">Achievement Categories</div>
+      <div class="stat-ic navy"><?= icon('layers', 16) ?></div>
+    </div>
+    <div class="stat-value tabular"><?= number_format($myCategoriesCount) ?></div>
+    <div class="stat-desc">Categories contributed to</div>
+  </div>
+</div>
+<?php else: ?>
 <!-- 6 KPI Stat Cards Row -->
 <div class="stat-grid grid-6 mt-4" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap:14px;">
   <!-- 1. Total Records -->
@@ -1205,6 +1408,7 @@ require __DIR__ . '/inc/header.php';
     <div class="stat-desc">Registered accounts</div>
   </div>
 </div>
+<?php endif; ?>
 
 <!-- Professional Filter Toolbar -->
 <form method="get" class="fbar mt-5" id="filterForm">
@@ -1222,7 +1426,7 @@ require __DIR__ . '/inc/header.php';
   </label>
 
   <!-- Department -->
-  <?php if (!user_can_choose_department($user)): ?>
+  <?php if ($isFaculty || !user_can_choose_department($user)): ?>
     <label class="fb-field" title="Locked to your assigned department">
       <span class="fb-k">Department</span>
       <select disabled><option selected><?= e($user['department']) ?></option></select>
@@ -1241,17 +1445,25 @@ require __DIR__ . '/inc/header.php';
   <?php endif; ?>
 
   <!-- Faculty -->
-  <label class="fb-field">
-    <span class="fb-k">Faculty</span>
-    <select name="faculty_id" onchange="this.form.submit()">
-      <option value="">All Faculty</option>
-      <?php foreach ($facultyList as $f): ?>
-        <option value="<?= (int) $f['id'] ?>" <?= $facultyId === (int) $f['id'] ? 'selected' : '' ?>>
-          <?= e($f['name']) ?> (<?= e($f['department']) ?>)
-        </option>
-      <?php endforeach; ?>
-    </select>
-  </label>
+  <?php if ($isFaculty): ?>
+    <label class="fb-field" title="Locked to your faculty account">
+      <span class="fb-k">Faculty</span>
+      <select disabled><option selected><?= e($user['name']) ?> (<?= e($user['department']) ?>)</option></select>
+      <input type="hidden" name="faculty_id" value="<?= (int) $user['id'] ?>">
+    </label>
+  <?php else: ?>
+    <label class="fb-field">
+      <span class="fb-k">Faculty</span>
+      <select name="faculty_id" onchange="this.form.submit()">
+        <option value="">All Faculty</option>
+        <?php foreach ($facultyList as $f): ?>
+          <option value="<?= (int) $f['id'] ?>" <?= $facultyId === (int) $f['id'] ? 'selected' : '' ?>>
+            <?= e($f['name']) ?> (<?= e($f['department']) ?>)
+          </option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+  <?php endif; ?>
 
   <!-- Achievement Category -->
   <label class="fb-field">
@@ -1302,6 +1514,7 @@ require __DIR__ . '/inc/header.php';
   </div>
 </div>
 
+<?php if (!$isFaculty): ?>
 <!-- Section 1: Department Performance Analysis -->
 <div class="mt-4 card">
   <div class="card-head">
@@ -1413,13 +1626,14 @@ require __DIR__ . '/inc/header.php';
     <?php endif; ?>
   </div>
 </div>
+<?php endif; ?>
 
 <!-- Section 2: Records by Category (With Data View / Analytics View Toggle & View Reports button) -->
 <div class="mt-5 card">
   <div class="card-head" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
     <div>
-      <div class="card-title"><?= icon('layers', 16) ?> Records by Category</div>
-      <div class="card-sub">Every metric, grouped by what it measures &middot; <?= number_format($summary['totalAchievements']) ?> total verified records</div>
+      <div class="card-title"><?= icon('layers', 16) ?> <?= $isFaculty ? 'My Achievements by Category' : 'Records by Category' ?></div>
+      <div class="card-sub"><?= $isFaculty ? 'Your records per achievement category &middot; ' . number_format($myTotalRecords) . ' total records' : 'Every metric, grouped by what it measures &middot; ' . number_format($summary['totalAchievements']) . ' total verified records' ?></div>
     </div>
 
     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -1429,9 +1643,15 @@ require __DIR__ . '/inc/header.php';
         <button type="button" class="btn-pill active" id="btnCatAnalytics" onclick="switchCatView('analytics')"><?= icon('bar-chart', 13) ?> Analytics View</button>
       </div>
 
-      <a href="<?= e(url('reports.php')) ?>" class="btn btn-primary btn-sm" style="background:#FF4F01; border-color:#FF4F01; border-radius:8px; padding:6px 14px; font-weight:700;">
-        <?= icon('file-text', 13) ?> View Reports
-      </a>
+      <?php if ($isFaculty): ?>
+        <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int)$user['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?>" class="btn btn-primary btn-sm" style="background:#FF4F01; border-color:#FF4F01; border-radius:8px; padding:6px 14px; font-weight:700;">
+          <?= icon('file-text', 13) ?> View My Report
+        </a>
+      <?php else: ?>
+        <a href="<?= e(url('reports.php')) ?>" class="btn btn-primary btn-sm" style="background:#FF4F01; border-color:#FF4F01; border-radius:8px; padding:6px 14px; font-weight:700;">
+          <?= icon('file-text', 13) ?> View Reports
+        </a>
+      <?php endif; ?>
     </div>
   </div>
 
@@ -1562,7 +1782,7 @@ require __DIR__ . '/inc/header.php';
                   </div>
                 </td>
                 <td style="text-align:center;">
-                  <a href="<?= e(url('faculty-achievements.php')) ?>?category=<?= urlencode((string)$cat['key']) ?>&academic_year=<?= urlencode((string)$academicYear) ?>&department=<?= urlencode((string)$department) ?>" class="matrix-btn matrix-btn-outline" style="font-size:11px; padding:3px 10px;" title="Filter by <?= e($cat['label']) ?>">
+                  <a href="<?= e(url('faculty-achievements.php')) ?>?category=<?= urlencode((string)$cat['key']) ?>&academic_year=<?= urlencode((string)$academicYear) ?><?= !$isFaculty ? '&department=' . urlencode((string)$department) : '' ?>" class="matrix-btn matrix-btn-outline" style="font-size:11px; padding:3px 10px;" title="Filter by <?= e($cat['label']) ?>">
                     <?= icon('filter', 11) ?> Filter
                   </a>
                 </td>
@@ -1601,12 +1821,13 @@ $mxAvatar = static function (string $name): string {
       <div class="matrix-heading">
         <span class="matrix-head-icon"><?= icon('users', 16) ?></span>
         <div>
-          <div class="card-title">Faculty Achievement Performance Matrix <span class="matrix-count"><?= count($facGrid) ?></span></div>
-          <div class="card-sub">Faculty grouped by department &middot; Click any row to open the full record</div>
+          <div class="card-title"><?= $isFaculty ? 'My Achievements' : 'Faculty Achievement Performance Matrix' ?> <span class="matrix-count"><?= count($facGrid) ?></span></div>
+          <div class="card-sub"><?= $isFaculty ? 'Your verified achievement summary &middot; Click any row to open the full record' : 'Faculty grouped by department &middot; Click any row to open the full record' ?></div>
         </div>
       </div>
 
       <!-- Quick Search Input -->
+      <?php if (!$isFaculty): ?>
       <form method="get" class="fbar fbar-bare" style="margin:0;">
         <input type="hidden" name="academic_year" value="<?= e($academicYear) ?>">
         <input type="hidden" name="department" value="<?= e($department) ?>">
@@ -1618,6 +1839,7 @@ $mxAvatar = static function (string $name): string {
           <input type="search" name="q" value="<?= e($searchQuery) ?>" placeholder="Search faculty name…" onchange="this.form.submit()">
         </label>
       </form>
+      <?php endif; ?>
     </div>
 
     <!-- 3A. DATA VIEW: Matrix Table -->
@@ -1664,38 +1886,11 @@ $mxAvatar = static function (string $name): string {
               </tr>
             </thead>
             <tbody>
-              <?php
-                $groupedGrid = [];
-                foreach ($facGrid as $f) {
-                    $rawDept = $f['department'] ?: 'Other Department';
-                    $matchedKey = null;
-                    if ($department && department_names_match($rawDept, $department)) {
-                        $matchedKey = $department;
-                    } else {
-                        foreach (array_keys($groupedGrid) as $existing) {
-                            if (department_names_match($existing, $rawDept)) {
-                                $matchedKey = $existing;
-                                break;
-                            }
-                        }
-                    }
-                    $groupName = $matchedKey ?: $rawDept;
-                    $groupedGrid[$groupName][] = $f;
-                }
-                $sno = 1;
-              ?>
-              <?php foreach ($groupedGrid as $deptName => $deptFaculty): ?>
-                <tr class="mx-group">
-                  <td colspan="12">
-                    <div class="mx-group-inner">
-                      <?= icon('building', 13) ?>
-                      <span class="mx-group-name" title="<?= e($deptName) ?>"><?= e($deptName) ?></span>
-                      <span class="mx-group-chip"><?= count($deptFaculty) ?> faculty</span>
-                      <span class="mx-group-total"><b><?= array_sum(array_map(static fn($r) => (int) $r['total'], $deptFaculty)) ?></b> records</span>
-                    </div>
-                  </td>
-                </tr>
-                <?php foreach ($deptFaculty as $f): ?>
+              <?php if ($isFaculty): ?>
+                <?php
+                  $sno = 1;
+                  foreach ($facGrid as $f):
+                ?>
                   <tr class="drill-row" onclick="location.href='individual-faculty-report.php?id=<?= (int) $f['id'] ?>'" style="cursor:pointer;" title="Click to view <?= e($f['name']) ?>'s Individual Faculty Achievement Report">
                     <td class="faint matrix-cell-num"><?= $sno++ ?></td>
                     <td class="text-start">
@@ -1718,10 +1913,10 @@ $mxAvatar = static function (string $name): string {
                     </td>
                     <td style="text-align:center;" onclick="event.stopPropagation();">
                       <div class="matrix-actions">
-                        <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?>" class="matrix-btn matrix-btn-primary" title="View Individual Faculty Report">
+                        <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?>" class="matrix-btn matrix-btn-primary" title="View My Report">
                           <?= icon('file-text', 11) ?> Report
                         </a>
-                        <a href="<?= e(url('faculty-details-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?><?= $em !== 'all' ? '&em=' . urlencode($em) : '' ?>" target="_blank" rel="noopener" class="matrix-btn matrix-btn-outline" title="Open <?= e($f['name']) ?>'s Faculty Details as an A4 document">
+                        <a href="<?= e(url('faculty-details-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?><?= $em !== 'all' ? '&em=' . urlencode($em) : '' ?>" target="_blank" rel="noopener" class="matrix-btn matrix-btn-outline" title="Export My Report as PDF">
                           <?= icon('download', 11) ?> PDF
                         </a>
                         <?php
@@ -1731,14 +1926,90 @@ $mxAvatar = static function (string $name): string {
                           if (!empty($category))     $facPresQ['return_cat']    = $category;
                           $facPresUrl = url('present-faculty-report.php') . '?' . http_build_query($facPresQ);
                         ?>
-                        <a href="<?= e($facPresUrl) ?>" class="matrix-btn matrix-btn-navy" title="Present Faculty Report">
+                        <a href="<?= e($facPresUrl) ?>" class="matrix-btn matrix-btn-navy" title="Present My Achievements">
                           <?= icon('play-circle', 11) ?> Present
                         </a>
                       </div>
                     </td>
                   </tr>
                 <?php endforeach; ?>
-              <?php endforeach; ?>
+              <?php else: ?>
+                <?php
+                  $groupedGrid = [];
+                  foreach ($facGrid as $f) {
+                      $rawDept = $f['department'] ?: 'Other Department';
+                      $matchedKey = null;
+                      if ($department && department_names_match($rawDept, $department)) {
+                          $matchedKey = $department;
+                      } else {
+                          foreach (array_keys($groupedGrid) as $existing) {
+                              if (department_names_match($existing, $rawDept)) {
+                                  $matchedKey = $existing;
+                                  break;
+                              }
+                          }
+                      }
+                      $groupName = $matchedKey ?: $rawDept;
+                      $groupedGrid[$groupName][] = $f;
+                  }
+                  $sno = 1;
+                ?>
+                <?php foreach ($groupedGrid as $deptName => $deptFaculty): ?>
+                  <tr class="mx-group">
+                    <td colspan="12">
+                      <div class="mx-group-inner">
+                        <?= icon('building', 13) ?>
+                        <span class="mx-group-name" title="<?= e($deptName) ?>"><?= e($deptName) ?></span>
+                        <span class="mx-group-chip"><?= count($deptFaculty) ?> faculty</span>
+                        <span class="mx-group-total"><b><?= array_sum(array_map(static fn($r) => (int) $r['total'], $deptFaculty)) ?></b> records</span>
+                      </div>
+                    </td>
+                  </tr>
+                  <?php foreach ($deptFaculty as $f): ?>
+                    <tr class="drill-row" onclick="location.href='individual-faculty-report.php?id=<?= (int) $f['id'] ?>'" style="cursor:pointer;" title="Click to view <?= e($f['name']) ?>'s Individual Faculty Achievement Report">
+                      <td class="faint matrix-cell-num"><?= $sno++ ?></td>
+                      <td class="text-start">
+                        <div class="mx-person">
+                          <?= $mxAvatar((string) $f['name']) ?>
+                          <div class="mx-person-text">
+                            <div class="mx-name" title="<?= e($f['name']) ?>"><?= e($f['name']) ?></div>
+                            <div class="mx-meta"><?= e($f['designation']) ?> &middot; <?= e($f['employee_id']) ?></div>
+                          </div>
+                        </div>
+                      </td>
+                      <td class="text-start mx-muted" title="<?= e($f['department']) ?>">
+                        <div class="truncate"><?= e($f['department']) ?></div>
+                      </td>
+                      <?php foreach ($facCols as $key => [, , $color]): ?>
+                        <td class="matrix-cell-num"><?= $mxCell($f[$key], $color) ?></td>
+                      <?php endforeach; ?>
+                      <td class="matrix-cell-num">
+                        <span class="matrix-total <?= (int) $f['total'] > 0 ? 'is-active' : '' ?>"><?= (int) $f['total'] ?></span>
+                      </td>
+                      <td style="text-align:center;" onclick="event.stopPropagation();">
+                        <div class="matrix-actions">
+                          <a href="<?= e(url('individual-faculty-report.php')) ?>?id=<?= (int) $f['id'] ?>" class="matrix-btn matrix-btn-primary" title="View Individual Faculty Report">
+                            <?= icon('file-text', 11) ?> Report
+                          </a>
+                          <a href="<?= e(url('faculty-details-report.php')) ?>?id=<?= (int) $f['id'] ?><?= !empty($academicYear) ? '&academic_year=' . urlencode($academicYear) : '' ?><?= $em !== 'all' ? '&em=' . urlencode($em) : '' ?>" target="_blank" rel="noopener" class="matrix-btn matrix-btn-outline" title="Open <?= e($f['name']) ?>'s Faculty Details as an A4 document">
+                            <?= icon('download', 11) ?> PDF
+                          </a>
+                          <?php
+                            $facPresQ = ['id' => (int) $f['id'], 'from' => 'faculty-achievements'];
+                            if (!empty($academicYear)) $facPresQ['academic_year'] = $academicYear;
+                            if (!empty($department))   $facPresQ['return_dept']   = $department;
+                            if (!empty($category))     $facPresQ['return_cat']    = $category;
+                            $facPresUrl = url('present-faculty-report.php') . '?' . http_build_query($facPresQ);
+                          ?>
+                          <a href="<?= e($facPresUrl) ?>" class="matrix-btn matrix-btn-navy" title="Present Faculty Report">
+                            <?= icon('play-circle', 11) ?> Present
+                          </a>
+                        </div>
+                      </td>
+                    </tr>
+                  <?php endforeach; ?>
+                <?php endforeach; ?>
+              <?php endif; ?>
             </tbody>
           </table>
         </div>
@@ -1747,6 +2018,7 @@ $mxAvatar = static function (string $name): string {
   </div>
 </div>
 
+<?php if (!$isFaculty): ?>
 <!-- Section 4: Student Achievement Performance Matrix (Dedicated Data Matrix Box) -->
 <div class="mt-5 card matrix-card">
   <div class="card-head matrix-head">
@@ -1940,29 +2212,35 @@ $mxAvatar = static function (string $name): string {
     </div>
   </div>
 </div>
+<?php endif; ?>
 
 
 <?php
 $facReportQs = ['academic_year' => $academicYear];
+if ($isFaculty) {
+    $facReportQs['id'] = (int) $user['id'];
+}
 if ($em !== 'all') { $facReportQs['em'] = $em; }
 $facReportUrl = url('individual-faculty-report.php') . '?' . http_build_query($facReportQs);
 ?>
 <div class="mt-5 card fac-deanband">
   <div class="card-body fac-deanband-row">
     <div class="fac-deanband-copy">
-      <div class="fac-deanband-k"><?= icon('reports', 13) ?> Dean &middot; Academics</div>
-      <div class="fac-deanband-t">Individual Report &amp; Achievements</div>
+      <div class="fac-deanband-k"><?= icon('reports', 13) ?> <?= $isFaculty ? 'Faculty &middot; Personal Report' : 'Dean &middot; Academics' ?></div>
+      <div class="fac-deanband-t"><?= $isFaculty ? 'My Individual Report &amp; Achievements' : 'Individual Report &amp; Achievements' ?></div>
       <div class="card-sub fac-deanband-s">
-        Opens the dedicated single-page view &mdash; profile, achievement summary, category
-        breakdown and every record behind the figures above, on one page ready to sign.
+        <?= $isFaculty
+          ? 'Opens your dedicated single-page view &mdash; profile, achievement summary, category breakdown and your verified records, on one page ready to sign or export.'
+          : 'Opens the dedicated single-page view &mdash; profile, achievement summary, category breakdown and every record behind the figures above, on one page ready to sign.'
+        ?>
       </div>
     </div>
     <div class="fac-deanband-actions">
       <a class="btn btn-primary" href="<?= e($facReportUrl) ?>">
-        <?= icon('reports', 16) ?> Open Single-Page Report
+        <?= icon('reports', 16) ?> <?= $isFaculty ? 'Open My Report' : 'Open Single-Page Report' ?>
       </a>
       <a class="btn btn-secondary" href="<?= e(url('present-faculty-report.php') . '?' . http_build_query($facReportQs)) ?>">
-        <?= icon('presentation', 16) ?> Present
+        <?= icon('presentation', 16) ?> <?= $isFaculty ? 'Present My Achievements' : 'Present' ?>
       </a>
     </div>
   </div>

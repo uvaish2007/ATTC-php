@@ -11,10 +11,44 @@ require_module('reports');
 
 $role = $user['role'] ?? '';
 
-$allowedRoles = ['Admin', 'Dean', 'HoD', 'Coordinator', 'Principal', 'Director'];
+$allowedRoles = ['Admin', 'Dean', 'HoD', 'Coordinator', 'Principal', 'Director', 'Faculty'];
 if (!in_array($role, $allowedRoles, true)) {
     http_response_code(403);
     echo "<h1>403 Forbidden</h1><p>You are not authorized to export Department &amp; Faculty Achievements.</p>";
+    exit;
+}
+
+if ($role === 'Faculty') {
+    $targetFacId = (int) input('faculty_id', 0);
+    if ($targetFacId && $targetFacId !== (int) $user['id']) {
+        http_response_code(403);
+        echo "<h1>403 Forbidden</h1><p>Unauthorized access to another faculty record.</p>";
+        exit;
+    }
+    $reqDept = trim((string) input('department', ''));
+    if ($reqDept !== '' && !department_names_match($reqDept, $user['department'] ?? '')) {
+        http_response_code(403);
+        echo "<h1>403 Forbidden</h1><p>Unauthorized access to another department.</p>";
+        exit;
+    }
+
+    $rawYear      = input('academic_year') ?: input('year');
+    $emCtx        = em_resolve_filter_context($rawYear, input('em'));
+    $academicYear = $emCtx['year'];
+    $category     = trim((string) input('category', '')) ?: null;
+    $format       = strtolower(trim((string) input('format', 'excel')));
+    if (!in_array($format, ['excel', 'word', 'csv', 'pdf'], true)) {
+        $format = 'excel';
+    }
+
+    $exportQ = array_filter([
+        'id'            => (int) $user['id'],
+        'academic_year' => $academicYear,
+        'category'      => $category,
+        'em'            => input('em') !== 'all' ? input('em') : null,
+        'format'        => $format,
+    ]);
+    header('Location: ' . url('export-individual-faculty-report.php') . '?' . http_build_query($exportQ));
     exit;
 }
 

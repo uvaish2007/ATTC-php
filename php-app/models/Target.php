@@ -1091,11 +1091,12 @@ function academic_years_overview(array $years): array
             continue;
         }
         try {
-            $rows = db()->query("SELECT academic_year AS y, COUNT(*) AS n, SUM(status = 'Approved') AS a FROM `{$table}` GROUP BY academic_year");
+            $rows = db()->query("SELECT academic_year AS y, COUNT(*) AS n, SUM(status = 'Approved') AS a FROM `{$table}` WHERE academic_year IS NOT NULL GROUP BY academic_year");
             foreach ($rows as $r) {
-                if (isset($out[$r['y']])) {
-                    $out[$r['y']]['records']          += (int) $r['n'];
-                    $out[$r['y']]['approved_records'] += (int) $r['a'];
+                $y = (string) ($r['y'] ?? '');
+                if ($y !== '' && isset($out[$y])) {
+                    $out[$y]['records']          += (int) $r['n'];
+                    $out[$y]['approved_records'] += (int) $r['a'];
                 }
             }
         } catch (\PDOException $e) {
@@ -1104,18 +1105,20 @@ function academic_years_overview(array $years): array
     }
 
     try {
-        foreach (db()->query('SELECT academic_year AS y, COUNT(*) AS n FROM targets GROUP BY academic_year') as $r) {
-            if (isset($out[$r['y']])) {
-                $out[$r['y']]['targets'] = (int) $r['n'];
+        foreach (db()->query("SELECT academic_year AS y, COUNT(*) AS n FROM targets WHERE academic_year IS NOT NULL GROUP BY academic_year") as $r) {
+            $y = (string) ($r['y'] ?? '');
+            if ($y !== '' && isset($out[$y])) {
+                $out[$y]['targets'] = (int) $r['n'];
             }
         }
     } catch (\PDOException $e) {}
 
     if (executive_meetings_ready()) {
         try {
-            foreach (db()->query("SELECT academic_year AS y, COUNT(*) AS n FROM executive_meetings WHERE status = 'Finished' GROUP BY academic_year") as $r) {
-                if (isset($out[$r['y']])) {
-                    $out[$r['y']]['meetings'] = (int) $r['n'];
+            foreach (db()->query("SELECT academic_year AS y, COUNT(*) AS n FROM executive_meetings WHERE status = 'Finished' AND academic_year IS NOT NULL GROUP BY academic_year") as $r) {
+                $y = (string) ($r['y'] ?? '');
+                if ($y !== '' && isset($out[$y])) {
+                    $out[$y]['meetings'] = (int) $r['n'];
                 }
             }
         } catch (\PDOException $e) {}
@@ -1123,8 +1126,8 @@ function academic_years_overview(array $years): array
 
     try {
         foreach (db()->query("SELECT name, value FROM app_settings WHERE name LIKE 'ay\\_locked\\_%'") as $r) {
-            $y = substr($r['name'], strlen('ay_locked_'));
-            if (isset($out[$y])) {
+            $y = substr((string) ($r['name'] ?? ''), strlen('ay_locked_'));
+            if ($y !== '' && isset($out[$y])) {
                 $out[$y]['locked'] = ($r['value'] === '1');
             }
         }

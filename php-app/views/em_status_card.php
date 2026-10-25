@@ -74,10 +74,16 @@ if ($canPresent) {
       </div>
 
         <div class="em-dash-actions" style="display:flex; gap:8px;">
+          <?php
+            $presentUrl = url('present-targets.php');
+            if (!empty($data['scope']['year'])) {
+                $presentUrl .= (strpos($presentUrl, '?') === false ? '?' : '&') . 'academic_year=' . urlencode((string) $data['scope']['year']);
+            }
+          ?>
           <a class="btn btn-primary em-dash-present-btn" id="presentTargetsBtn"
-             href="<?= e(url('present-targets.php')) ?>"
+             href="<?= e($presentUrl) ?>"
              onclick="return openTargetsPresentation(this.href, event);"
-             title="Present Institutional &amp; Departmental Targets Full Screen">
+             title="Present Targets Full Screen">
             <?= icon('presentation', 16) ?> Present Targets
           </a>
         </div>

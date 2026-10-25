@@ -10,6 +10,12 @@ if (!$targetFacultyId) {
     $targetFacultyId = (int) $user['id'];
 }
 
+if ($user['role'] === 'Faculty' && (int) input('id', 0) && (int) input('id') !== (int) $user['id']) {
+    http_response_code(403);
+    require __DIR__ . '/denied.php';
+    exit;
+}
+
 if (!can_user_view_faculty_report($user, $targetFacultyId)) {
     http_response_code(403);
     require __DIR__ . '/denied.php';
@@ -43,6 +49,7 @@ if (!$faculty) {
 
 $years = academic_years();
 $isSelf = (int) $user['id'] === $targetFacultyId;
+$isFacultySelf = ($user['role'] === 'Faculty' && $isSelf);
 
 $exportQ = array_filter([
     'id'            => $targetFacultyId,
@@ -52,7 +59,7 @@ $exportQ = array_filter([
 ]);
 $exportLink = fn(string $fmt) => e(url('export-individual-faculty-report.php')) . '?' . http_build_query($exportQ + ['format' => $fmt]);
 
-$pageTitle  = 'Individual Faculty Achievement Report';
+$pageTitle  = $isFacultySelf ? 'My Achievement Report' : 'Individual Faculty Achievement Report';
 $breadcrumb = $isSelf ? 'My Achievement Report' : 'Faculty Achievement Report';
 require __DIR__ . '/inc/header.php';
 ?>
@@ -60,7 +67,7 @@ require __DIR__ . '/inc/header.php';
 <!-- Header -->
 <div class="page-head">
   <div>
-    <h1>Individual Faculty Achievement Report</h1>
+    <h1><?= $isFacultySelf ? 'My Achievement Report' : 'Individual Faculty Achievement Report' ?></h1>
     <div class="sub">
       <?= e($faculty['name']) ?> &middot; <?= e($faculty['department']) ?> &middot; Academic Year: <?= e($academicYear ?: 'All Years') ?>
     </div>
@@ -80,9 +87,11 @@ require __DIR__ . '/inc/header.php';
       <?= icon('refresh', 14) ?> Refresh
     </a>
 
-    <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>&from=individual" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
-      <?= icon('play-circle', 14) ?> Present Report
-    </a>
+    <?php if ($user['role'] !== 'Faculty'): ?>
+      <a class="btn btn-secondary btn-sm" href="<?= e(url('present-faculty-report.php')) ?>?id=<?= $targetFacultyId ?>&academic_year=<?= e($academicYear) ?>&from=individual" style="background:#131D3B; color:#ffffff; border-color:#131D3B;" title="Launch Academic Review Presentation Mode">
+        <?= icon('play-circle', 14) ?> Present Report
+      </a>
+    <?php endif; ?>
 
     <!-- Export Dropdown -->
     <div class="dropdown-wrap" style="position:relative;">

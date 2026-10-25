@@ -21,7 +21,64 @@ require_once __DIR__ . '/models/TargetPresentation.php';
 $user = require_login();
 
 $userRole = (string) ($user['role'] ?? '');
-$isHoDRole = in_array($userRole, ['HoD', 'Coordinator', 'Faculty'], true);
+
+// =========================================================================
+// FACULTY ACHIEVEMENT PRESENTATION (Role: Faculty)
+// =========================================================================
+if ($userRole === 'Faculty') {
+    require_once __DIR__ . '/models/FacultyTargetPresentation.php';
+
+    // 1. Strict Server-Side Security Checks:
+    // Block any attempt to inspect another faculty member's presentation or department via URL parameters
+    $reqFacultyId = input('id') ?: input('faculty_id') ?: input('user_id') ?: null;
+    if ($reqFacultyId !== null && (int) $reqFacultyId !== (int) $user['id']) {
+        http_response_code(403);
+        echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>403 Forbidden</title></head><body style='font-family:sans-serif; background:#0D1427; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;'><div style='text-align:center; padding:30px; background:#1E2B52; border-radius:10px;'><h2>403 Forbidden</h2><p>You are not authorized to view another faculty member's achievement presentation.</p></div></body></html>";
+        exit;
+    }
+
+    $reqFacultyName = input('faculty') ?: input('name') ?: null;
+    if ($reqFacultyName !== null && strcasecmp(trim((string) $reqFacultyName), trim((string) $user['name'])) !== 0) {
+        http_response_code(403);
+        echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>403 Forbidden</title></head><body style='font-family:sans-serif; background:#0D1427; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;'><div style='text-align:center; padding:30px; background:#1E2B52; border-radius:10px;'><h2>403 Forbidden</h2><p>You are not authorized to view another faculty member's achievement presentation.</p></div></body></html>";
+        exit;
+    }
+
+    $reqDept = trim((string) (input('dept') ?: input('department') ?: ''));
+    $userDept = trim((string) ($user['department'] ?? ''));
+    if ($reqDept !== '' && !department_names_match($reqDept, $userDept)) {
+        http_response_code(403);
+        echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>403 Forbidden</title></head><body style='font-family:sans-serif; background:#0D1427; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;'><div style='text-align:center; padding:30px; background:#1E2B52; border-radius:10px;'><h2>403 Forbidden</h2><p>You are not authorized to view another department's presentation.</p></div></body></html>";
+        exit;
+    }
+
+    $reqRole = input('role');
+    if ($reqRole !== null && trim((string) $reqRole) !== '' && trim((string) $reqRole) !== 'Faculty') {
+        http_response_code(403);
+        echo "<!DOCTYPE html><html lang='en'><head><meta charset='UTF-8'><title>403 Forbidden</title></head><body style='font-family:sans-serif; background:#0D1427; color:#fff; display:flex; align-items:center; justify-content:center; height:100vh; margin:0;'><div style='text-align:center; padding:30px; background:#1E2B52; border-radius:10px;'><h2>403 Forbidden</h2><p>Invalid role request.</p></div></body></html>";
+        exit;
+    }
+
+    // 2. Academic Year Synchronization:
+    // Respect authorized selection from dashboard or default to centralized active academic year
+    $rawYear = trim((string) (input('academic_year') ?: input('year') ?: ''));
+    $allowedYears = academic_years();
+    if ($rawYear !== '' && in_array($rawYear, $allowedYears, true)) {
+        $academicYear = $rawYear;
+    } else {
+        $academicYear = active_academic_year();
+    }
+
+    // 3. Load dataset strictly scoped to authenticated user
+    $dataset    = faculty_target_presentation_dataset($user, $academicYear);
+    $isEmbedded = ((string) input('embed') === '1');
+    $exitUrl    = url('dashboard.php');
+
+    require __DIR__ . '/views/present_faculty_targets.php';
+    exit;
+}
+
+$isHoDRole = in_array($userRole, ['HoD', 'Coordinator'], true);
 $requestedDept = trim((string) (input('dept') ?: input('department') ?: ''));
 
 if ($isHoDRole) {
